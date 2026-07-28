@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>取水量监测</title>
+<script src="/lib/echarts.min.js"></script>
+<script src="/lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page{padding:16px;display:flex;flex-direction:column;gap:12px;min-height:100vh}
+
+/* 标题 */
+.title-bar{background:#fff;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+.title-bar h2{font-size:16px;font-weight:600;color:#333}
+.title-tag{font-size:12px;background:#e6f4ff;color:#1677ff;padding:2px 8px;border-radius:4px;margin-left:8px}
+
+/* 卡片 */
+.card{background:#fff;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+
+/* 筛选栏 */
+.filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 16px;border-bottom:1px solid #f0f0f0}
+.filter-item{display:flex;align-items:center;gap:6px}
+.filter-item label{color:#666;font-size:13px;white-space:nowrap}
+.filter-bar input[type=date],.filter-bar input[type=month],.filter-bar input[type=number]{height:32px;border:1px solid #d9d9d9;border-radius:4px;padding:0 10px;font-size:13px;outline:none;background:#fff;transition:border-color .2s}
+.filter-bar input[type=date],.filter-bar input[type=month]{width:140px}
+.filter-bar input[type=number]{width:88px}
+.filter-bar input:focus{border-color:#1677ff}
+.filter-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+/* 维度下拉 */
+.dim-select{height:32px;border:1px solid #d9d9d9;border-radius:4px;padding:0 10px;font-size:13px;outline:none;background:#fff;min-width:120px;cursor:pointer;transition:border-color .2s}
+.dim-select:focus{border-color:#1677ff}
+
+/* 按钮 */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:0 15px;height:32px;border:1px solid transparent;border-radius:4px;cursor:pointer;font-size:13px;white-space:nowrap;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+
+/* 图表工具栏 */
+.chart-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:8px 16px 0}
+.tool-btn{background:none;border:none;cursor:pointer;color:#999;padding:4px;border-radius:4px;transition:all .2s;font-size:13px}
+.tool-btn:hover{color:#1677ff;background:#f0f5ff}
+
+/* 图表区 */
+.chart-box{width:100%;height:320px;padding:0 8px 8px}
+
+/* 状态 */
+.state-box{display:flex;flex-direction:column;align-items:center;justify-content:center;height:320px;gap:10px;color:#bbb;font-size:13px}
+.spin{width:24px;height:24px;border:2px solid #e8e8e8;border-top-color:#1677ff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.state-icon{font-size:32px;line-height:1}
+
+/* 表格 */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{position:sticky;top:0;z-index:1}
+thead tr{background:#1677ff}
+th{padding:10px 12px;text-align:left;color:#fff;font-weight:500;white-space:nowrap;border-right:1px solid rgba(255,255,255,.15)}
+th:last-child{border-right:none}
+td{padding:9px 12px;border-bottom:1px solid #f5f5f5;color:#333}
+tbody tr:hover td{background:#f0f5ff}
+.empty{text-align:center;color:#bbb;padding:40px;font-size:13px}
+.sort-btn{background:none;border:none;cursor:pointer;color:rgba(255,255,255,.8);margin-left:4px;font-size:11px;padding:0 2px;vertical-align:middle}
+.sort-btn:hover{color:#fff}
+
+/* 分页 */
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:10px 16px;gap:4px}
+.pg-info{color:#666;font-size:13px;margin-right:8px}
+.pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
+.pg-ellipsis{padding:0 4px;color:#999;font-size:13px}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 标题 -->
+  <div class="title-bar">
+    <div style="display:flex;align-items:center">
+      <h2 id="page-title">取水量监测</h2>
+      <span class="title-tag" id="wiust-cd-tag"></span>
+    </div>
+  </div>
+
+  <!-- 主卡片 -->
+  <div class="card">
+    <!-- 筛选栏 -->
+    <div class="filter-bar">
+      <div class="filter-item">
+        <label>取水单位：</label>
+        <select class="dim-select" id="unit-select"><option value="">加载中...</option></select>
+      </div>
+      <div class="filter-item" id="date-range-wrap">
+        <!-- 由 JS 动态生成 -->
+      </div>
+      <button class="btn btn-primary" id="query-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        查询
+      </button>
+      <button class="btn btn-default" id="export-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        数据导出
+      </button>
+      <div class="filter-right">
+        <select class="dim-select" id="dimension">
+          <option value="hour">小时取水量</option>
+          <option value="day" selected>日取水量</option>
+          <option value="month">月取水量</option>
+          <option value="year">年取水量</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 图表工具栏 -->
+    <div class="chart-toolbar">
+      <button class="tool-btn" id="btn-line" title="折线图">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>
+      </button>
+      <button class="tool-btn" id="btn-bar" title="柱状图">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5 9.2h3V19H5zM10.6 5h2.8v14h-2.8zm5.6 8H19v6h-2.8z"/></svg>
+      </button>
+      <button class="tool-btn" id="btn-download" title="下载图表">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+      </button>
+    </div>
+
+    <!-- 图表/状态 -->
+    <div id="chart-state" class="state-box"><div class="spin"></div><span>加载中...</span></div>
+    <div id="chart-box" class="chart-box" style="display:none"></div>
+
+    <!-- 表格 -->
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>监测点</th>
+            <th>站码</th>
+            <th>
+              时间
+              <button class="sort-btn" onclick="toggleSort('tm')">▲▼</button>
+            </th>
+            <th>
+              水量（m³）
+              <button class="sort-btn" onclick="toggleSort('value')">▲▼</button>
+            </th>
+          </tr>
+        </thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+    </div>
+    <div class="pg-bar" id="tbl-pg"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+
+// ===== URL 参数 =====
+const params     = new URLSearchParams(location.search);
+const initWiustCd = (params.get('wiustCd') || '').trim();
+
+// ===== 状态 =====
+let chart = null;
+let chartType  = 'bar';
+let allRecords = [];
+let units      = [];
+let sortField  = 'tm';
+let sortAsc    = false;   // 列表默认降序
+let wiustCd    = initWiustCd;
+let tablePage     = 1;
+const tablePageSize = 20;
+
+// ===== 初始化 =====
+async function init() {
+  renderDateInputs($('dimension').value);
+  setDateDefaults($('dimension').value);
+  bindEvents();
+  await loadUnits();
+  loadData();
+}
+
+// ===== 日期控件 =====
+function renderDateInputs(dim) {
+  const wrap = $('date-range-wrap');
+  if (dim === 'year') {
+    wrap.innerHTML =
+      `<input type="number" id="start-date" min="2000" max="2099" step="1" placeholder="开始年份" style="width:88px">
+       <span style="color:#bbb;padding:0 4px">至</span>
+       <input type="number" id="end-date"   min="2000" max="2099" step="1" placeholder="结束年份" style="width:88px">`;
+  } else if (dim === 'month') {
+    wrap.innerHTML =
+      `<input type="month" id="start-date" style="width:140px">
+       <span style="color:#bbb;padding:0 4px">至</span>
+       <input type="month" id="end-date"   style="width:140px">`;
+  } else {
+    wrap.innerHTML =
+      `<input type="date" id="start-date" style="width:140px">
+       <span style="color:#bbb;padding:0 4px">至</span>
+       <input type="date" id="end-date"   style="width:140px">`;
+  }
+}
+
+function setDateDefaults(dim) {
+  const now = new Date();
+  const fmtDate  = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const fmtMonth = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+  if (dim === 'hour') {
+    $('start-date').value = fmtDate(now);
+    $('end-date').value   = fmtDate(now);
+  } else if (dim === 'day') {
+    $('start-date').value = fmtDate(new Date(now - 6 * 24 * 3600e3));
+    $('end-date').value   = fmtDate(now);
+  } else if (dim === 'month') {
+    $('start-date').value = `${now.getFullYear()}-01`;
+    $('end-date').value   = fmtMonth(now);
+  } else if (dim === 'year') {
+    $('start-date').value = now.getFullYear() - 4;
+    $('end-date').value   = now.getFullYear();
+  }
+}
+
+// 把控件值转成后端需要的 startTime/endTime（yyyy-MM-dd）
+function getApiDates(dim) {
+  const s = $('start-date').value, e = $('end-date').value;
+  if (!s || !e) return null;
+  if (dim === 'year') {
+    return { startTime: `${s}-01-01`, endTime: `${e}-12-31` };
+  }
+  if (dim === 'month') {
+    // 结束月份取当月最后一天
+    const [ey, em] = e.split('-').map(Number);
+    const lastDay = new Date(ey, em, 0).getDate();
+    return { startTime: `${s}-01`, endTime: `${e}-${pad(lastDay)}` };
+  }
+  return { startTime: s, endTime: e };
+}
+
+function bindEvents() {
+  $('query-btn').addEventListener('click', loadData);
+  $('export-btn').addEventListener('click', exportExcel);
+  $('unit-select').addEventListener('change', onUnitChange);
+  $('dimension').addEventListener('change', () => {
+    const dim = $('dimension').value;
+    renderDateInputs(dim);
+    setDateDefaults(dim);
+    loadData();
+  });
+  $('btn-line').addEventListener('click', () => { chartType = 'line'; redrawChart(); });
+  $('btn-bar').addEventListener('click',  () => { chartType = 'bar';  redrawChart(); });
+  $('btn-download').addEventListener('click', downloadChart);
+  window.addEventListener('resize', () => chart && chart.resize());
+}
+
+// ===== 加载取水单位 =====
+async function loadUnits() {
+  try {
+    units = await fetch('/water-intake/units').then(r => r.json()) || [];
+    const sel = $('unit-select');
+    sel.innerHTML = units.length ? '' : '<option value="">无取水单位</option>';
+    units.forEach(u => {
+      const o = document.createElement('option');
+      o.value = u.mpCd || '';
+      o.textContent = u.mpNm || u.mpCd || '-';
+      sel.appendChild(o);
+    });
+    if (!wiustCd && units.length) wiustCd = (units[0].mpCd || '').trim();
+    if (wiustCd) sel.value = wiustCd;
+    updateTitle();
+  } catch(err) {
+    console.error('加载取水单位失败', err);
+    $('unit-select').innerHTML = '<option value="">加载失败</option>';
+  }
+}
+
+async function onUnitChange() {
+  wiustCd = ($('unit-select').value || '').trim();
+  updateTitle();
+  loadData();
+}
+
+function updateTitle() {
+  const u = units.find(x => (x.mpCd || '').trim() === wiustCd);
+  const nm = u ? (u.mpNm || wiustCd) : wiustCd;
+  $('page-title').textContent = nm ? `取水量监测 - ${nm}` : '取水量监测';
+  $('wiust-cd-tag').textContent = wiustCd || '';
+}
+
+// ===== 加载数据 =====
+async function loadData() {
+  if (!wiustCd) { setStatus('empty'); return; }
+  const dim   = $('dimension').value;
+  const dates = getApiDates(dim);
+  if (!dates) { alert('请选择完整的时间段'); return; }
+  setStatus('loading');
+  try {
+    const p = new URLSearchParams({ wiustCd, dimension: dim, startTime: dates.startTime, endTime: dates.endTime });
+    const res = await fetch(`/water-intake?${p}`).then(r => r.json());
+    allRecords = res.records || [];
+    if (!allRecords.length) {
+      setStatus('empty');
+      $('tbl-body').innerHTML = `<tr><td colspan="4" class="empty">暂无数据</td></tr>`;
+      $('tbl-pg').innerHTML = '';
+      return;
+    }
+    sortField = 'tm'; sortAsc = false;  // 默认时间降序
+    tablePage = 1;
+    renderAll();
+  } catch(err) {
+    console.error(err);
+    setStatus('error');
+  }
+}
+
+function renderAll() {
+  drawChart(allRecords, $('dimension').value);   // 图表始终用原始升序数据
+  renderTable();
+}
+
+// ===== 图表 =====
+function drawChart(records, dim) {
+  setStatus('chart');
+  if (!chart) chart = echarts.init($('chart-box'));
+
+  const xData = records.map(r => fmtTm(r.tm, dim));
+  const yData = records.map(r => r.value != null ? +r.value : null);
+
+  const validY = yData.filter(v => v != null);
+  const yMax   = validY.length ? Math.max(...validY) : 100;
+  const axisMax = Math.ceil(yMax * 1.15);
+
+  const seriesBase = {
+    name: '水量(m³)', data: yData,
+    itemStyle: { color: '#1677ff' },
+    emphasis: { itemStyle: { color: '#4096ff' } }
+  };
+
+  const series = chartType === 'line'
+    ? { ...seriesBase, type: 'line', smooth: 0.3, symbol: 'circle', symbolSize: 4,
+        lineStyle: { color: '#1677ff', width: 2 },
+        areaStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1,
+          colorStops:[{offset:0,color:'rgba(22,119,255,0.25)'},{offset:1,color:'rgba(22,119,255,0.02)'}]
+        }},
+        connectNulls: false }
+    : { ...seriesBase, type: 'bar', barMaxWidth: 40,
+        itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1,
+          colorStops:[{offset:0,color:'#36a3f7'},{offset:1,color:'#1677ff'}]
+        }, borderRadius:[3,3,0,0] }
+      };
+
+  chart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e8e8e8',
+      textStyle: { color: '#333', fontSize: 13 },
+      formatter: p => {
+        const v = p[0].value;
+        return `${p[0].axisValue}<br/><span style="color:#1677ff">●</span> 水量：<b>${v != null ? Number(v).toLocaleString() + ' m³' : '无数据'}</b>`;
+      }
+    },
+    grid: { left: 10, right: 20, top: 40, bottom: 55, containLabel: true },
+    xAxis: {
+      type: 'category', data: xData, boundaryGap: chartType === 'bar',
+      axisLabel: { rotate: 30, fontSize: 11, color: '#888' },
+      axisLine: { lineStyle: { color: '#e8e8e8' } },
+      axisTick: { show: false }
+    },
+    yAxis: {
+      type: 'value', name: '水量(m³)', max: axisMax,
+      nameTextStyle: { color: '#999', fontSize: 12, padding: [0, 0, 0, 50] },
+      axisLabel: { fontSize: 11, color: '#888', formatter: v => v >= 10000 ? (v/10000).toFixed(1)+'万' : v },
+      splitLine: { lineStyle: { color: '#f5f5f5' } }
+    },
+    series: [series]
+  }, true);
+}
+
+function redrawChart() {
+  if (!allRecords.length) return;
+  drawChart(allRecords, $('dimension').value);
+}
+
+function downloadChart() {
+  if (!chart) return;
+  const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `取水量图表_${$('start-date').value}_${$('end-date').value}.png`;
+  a.click();
+}
+
+// ===== 表格 =====
+function sortedRecords() {
+  return [...allRecords].sort((a, b) => {
+    const va = sortField === 'value' ? (a.value ?? -Infinity) : (a.tm || '');
+    const vb = sortField === 'value' ? (b.value ?? -Infinity) : (b.tm || '');
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ?  1 : -1;
+    return 0;
+  });
+}
+
+function toggleSort(field) {
+  if (sortField === field) sortAsc = !sortAsc;
+  else { sortField = field; sortAsc = false; }
+  tablePage = 1;
+  renderTable();
+}
+
+function renderTable() {
+  const dim  = $('dimension').value;
+  const rows = sortedRecords();
+  const total = rows.length;
+  const tp    = Math.max(1, Math.ceil(total / tablePageSize));
+  if (tablePage > tp) tablePage = tp;
+  const start = (tablePage - 1) * tablePageSize;
+  const pageRows = rows.slice(start, start + tablePageSize);
+
+  $('tbl-body').innerHTML = pageRows.length ? pageRows.map(r => `<tr>
+    <td>${r.mpNm || '-'}</td>
+    <td>${r.mpCd || '-'}</td>
+    <td>${fmtTm(r.tm, dim)}</td>
+    <td>${r.value != null ? Number(r.value).toLocaleString() : '-'}</td>
+  </tr>`).join('') : `<tr><td colspan="4" class="empty">暂无数据</td></tr>`;
+
+  renderPg(total, tp);
+}
+
+function renderPg(total, tp) {
+  let html = `<span class="pg-info">共 ${total} 条</span>`;
+  html += pgBtn('‹', tablePage > 1,  `goPage(${tablePage - 1})`);
+  pageNums(tablePage, tp).forEach(n => {
+    if (n === '…') html += `<span class="pg-ellipsis">…</span>`;
+    else html += pgBtn(n, true, `goPage(${n})`, n === tablePage);
+  });
+  html += pgBtn('›', tablePage < tp, `goPage(${tablePage + 1})`);
+  $('tbl-pg').innerHTML = html;
+}
+
+function pgBtn(label, enabled, onclick, active = false) {
+  return `<button class="pg-btn${active?' active':''}" ${!enabled?'disabled':''} onclick="${onclick}">${label}</button>`;
+}
+
+function pageNums(cur, total) {
+  if (total <= 7) return Array.from({length: total}, (_, i) => i + 1);
+  if (cur <= 4)        return [1, 2, 3, 4, 5, '…', total];
+  if (cur >= total-3)  return [1, '…', total-4, total-3, total-2, total-1, total];
+  return [1, '…', cur-1, cur, cur+1, '…', total];
+}
+
+function goPage(p) {
+  tablePage = p;
+  renderTable();
+}
+
+// ===== 导出 Excel =====
+function exportExcel() {
+  if (!allRecords.length) { alert('暂无数据可导出'); return; }
+  const dim      = $('dimension').value;
+  const dimLabel = { hour:'小时', day:'日', month:'月', year:'年' }[dim] || dim;
+  const headers  = ['监测点', '站码', '时间', '水量(m³)'];
+  const data = sortedRecords().map(r => [
+    r.mpNm || '', r.mpCd || '', fmtTm(r.tm, dim), r.value ?? ''
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `${dimLabel}取水量`);
+  const unitNm = ($('unit-select').selectedOptions[0]?.textContent || wiustCd);
+  XLSX.writeFile(wb, `${unitNm}_${dimLabel}取水量_${$('start-date').value}~${$('end-date').value}.xlsx`);
+}
+
+// ===== 工具函数 =====
+function fmtTm(tm, dim) {
+  if (!tm) return '-';
+  const s = String(tm).slice(0, 19);
+  if (dim === 'hour')  return s.slice(5, 16);
+  if (dim === 'day')   return s.slice(0, 10);
+  if (dim === 'month') return s.slice(0,  7);
+  if (dim === 'year')  return s.slice(0,  4);
+  return s;
+}
+
+function setStatus(status) {
+  const st = $('chart-state'), ch = $('chart-box');
+  if (status === 'chart') {
+    st.style.display = 'none'; ch.style.display = 'block';
+  } else {
+    ch.style.display = 'none'; st.style.display = 'flex';
+    if (status === 'loading') st.innerHTML = '<div class="spin"></div><span>加载中...</span>';
+    else if (status === 'empty') st.innerHTML = '<div class="state-icon">📭</div><span>该时间段内暂无数据</span>';
+    else if (status === 'error') st.innerHTML = '<div class="state-icon">⚠️</div><span>数据加载失败，请重试</span>';
+  }
+}
+
+init();
+</script>
+</body>
+</html>

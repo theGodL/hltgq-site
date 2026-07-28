@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>站点监测 - 雨量统计</title>
+<script src="/lib/echarts.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page{padding:16px;display:flex;flex-direction:column;gap:12px;min-height:100vh}
+
+/* 站点信息卡 */
+.info-card{
+  background:linear-gradient(135deg,#1677ff 0%,#0958d9 100%);
+  border-radius:8px;padding:16px 20px;color:#fff;
+  box-shadow:0 2px 10px rgba(22,119,255,.35)
+}
+.info-hd{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.info-name{font-size:18px;font-weight:600;letter-spacing:.5px}
+.info-code{font-size:12px;background:rgba(255,255,255,.2);padding:2px 10px;border-radius:20px}
+.info-tag{font-size:12px;background:rgba(255,255,255,.15);padding:2px 8px;border-radius:4px;margin-left:auto}
+.info-placeholder{color:rgba(255,255,255,.75);font-size:13px;display:flex;align-items:center;gap:8px}
+
+/* 图表卡片 */
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);flex:1}
+
+/* 筛选栏 */
+.filter-bar{display:flex;align-items:center;gap:8px;padding:16px 16px 0;flex-wrap:wrap}
+.filter-bar label{color:#666;font-size:13px;white-space:nowrap}
+.filter-bar .sep{color:#bbb}
+.filter-bar input,.filter-bar select{height:32px;border:1px solid #d9d9d9;border-radius:4px;padding:0 10px;font-size:13px;outline:none;background:#fff;transition:border-color .2s}
+.filter-bar input:focus,.filter-bar select:focus{border-color:#1677ff}
+.filter-bar select{min-width:220px}
+input[type=date]{width:130px}
+
+/* 按钮 */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:0 14px;height:32px;border:1px solid transparent;border-radius:4px;cursor:pointer;font-size:13px;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+
+/* 图表 / 状态 */
+.chart-box{width:100%;height:420px}
+.state-box{display:flex;flex-direction:column;align-items:center;justify-content:center;height:420px;gap:10px;color:#bbb;font-size:13px}
+.spin{width:24px;height:24px;border:2px solid #e8e8e8;border-top-color:#1677ff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.state-icon{font-size:36px;line-height:1}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 站点信息 -->
+  <div class="info-card" id="info-card">
+    <div class="info-placeholder"><div class="spin" style="border-top-color:#fff"></div> 加载站点信息...</div>
+  </div>
+
+  <!-- 雨量折线图（按小时） -->
+  <div class="card">
+    <div class="filter-bar">
+      <label>站点：</label>
+      <select id="station-select"><option value="">加载站点中...</option></select>
+    </div>
+    <div class="filter-bar" style="padding-top:8px">
+      <label>时间段：</label>
+      <input type="date" id="pptn-start">
+      <span class="sep">至</span>
+      <input type="date" id="pptn-end">
+      <button class="btn btn-primary" id="query-btn">查询</button>
+      <button class="btn btn-default" id="reset-btn">近15天</button>
+    </div>
+    <div id="chart-state" class="state-box"><div class="spin"></div><span>加载中...</span></div>
+    <div id="chart-box" class="chart-box" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+// ===== 工具 =====
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+function fmtDt(v){if(!v)return'';return String(v).replace('T',' ').slice(0,19)}
+function toInputDate(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
+
+// ===== 状态 =====
+const initialStcd = new URLSearchParams(location.search).get('stcd') || '';
+let currentStcd = initialStcd;
+let chart = null;
+let stationInfo = null;
+
+// ===== 初始化 =====
+async function init(){
+  setDefaults();
+  $('station-select').addEventListener('change', onStationChange);
+  $('query-btn').addEventListener('click', loadData);
+  $('reset-btn').addEventListener('click',()=>{setDefaults();loadData()});
+  window.addEventListener('resize',()=>{chart && chart.resize()});
+  await loadStations();
+  if(!currentStcd){$('info-card').innerHTML='<div class="info-placeholder">暂无可选站点</div>';setStatus('empty');return}
+  await loadStationInfo();
+  loadData();
+}
+
+function setDefaults(){
+  const now=new Date(), past=new Date(now-14*24*3600e3);
+  $('pptn-start').value=toInputDate(past);
+  $('pptn-end').value=toInputDate(now);
+}
+
+async function loadStations(){
+  try{
+    const data=await fetch('/station-metrics').then(r=>r.json())||[];
+    const usable=data.filter(s=>s.type==='rain'||s.type==='all');
+    const sel=$('station-select');
+    sel.innerHTML=usable.length?'':'<option value="">无可选站点</option>';
+    usable.forEach(s=>{
+      const o=document.createElement('option');
+      o.value=(s.stcd||'').trim();
+      o.textContent=`${(s.stcd||'').trim()}${s.stnm?' - '+s.stnm:''}`;
+      sel.appendChild(o);
+    });
+    if(!currentStcd&&usable.length)currentStcd=(usable[0].stcd||'').trim();
+    if(currentStcd)sel.value=currentStcd;
+  }catch(err){
+    console.error('加载站点失败',err);
+    $('station-select').innerHTML='<option value="">站点加载失败</option>';
+  }
+}
+
+async function onStationChange(){
+  currentStcd=$('station-select').value;
+  stationInfo=null;
+  if(!currentStcd)return;
+  destroyChart();
+  await loadStationInfo();
+  loadData();
+}
+
+async function loadStationInfo(){
+  try{
+    const res=await fetch(`/st-stinfo/${currentStcd}`);
+    stationInfo=await res.json();
+    renderInfo(stationInfo);
+  }catch{$('info-card').innerHTML='<div class="info-placeholder">⚠️ 站点信息加载失败</div>'}
+}
+
+function renderInfo(s){
+  if(!s||!s.stcd){$('info-card').innerHTML='<div class="info-placeholder">⚠️ 未找到该站点信息</div>';return}
+  const na=v=>(v!==null&&v!==undefined&&String(v).trim()!=='')?v:'-';
+  $('info-card').innerHTML=`
+    <div class="info-hd">
+      <span class="info-name">${na(s.stnm)}</span>
+      <span class="info-code">${s.stcd}</span>
+      ${s.sttp?`<span class="info-tag">${s.sttp}</span>`:''}
+    </div>`;
+}
+
+// ===== 雨量折线图（按小时） =====
+async function loadData(){
+  const s=$('pptn-start').value, e=$('pptn-end').value;
+  if(!s||!e){alert('请选择完整的时间段');return}
+  setStatus('loading');
+  destroyChart();
+  try{
+    const p=new URLSearchParams({stcd:currentStcd,startTime:`${s} 00:00:00`,endTime:`${e} 23:59:59`});
+    const data=await fetch(`/st-pptn-r/export?${p}`).then(r=>r.json());
+    drawChart(data||[]);
+  }catch{setStatus('error')}
+}
+
+function destroyChart(){
+  if(chart){chart.dispose();chart=null}
+  $('chart-box').style.display='none';
+}
+
+function hourRange(start, end) {
+  const hours = [];
+  const d = new Date(start + 'T00:00:00');
+  const last = new Date(end + 'T23:00:00');
+  while (d <= last) {
+    hours.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:00`);
+    d.setHours(d.getHours() + 1);
+  }
+  return hours;
+}
+
+function drawChart(records) {
+  // 累积值→增量：按时间排序计算正向增量，再按小时聚合
+  records.sort((a, b) => String(a.tm).localeCompare(String(b.tm)));
+  const hourMap = {};
+  for (let i = 0; i < records.length; i++) {
+    const cur = records[i].drp != null ? +records[i].drp : 0;
+    let inc;
+    if (i === 0) { inc = cur; }
+    else {
+      const prev = records[i - 1].drp != null ? +records[i - 1].drp : 0;
+      inc = cur > prev ? cur - prev : 0;
+    }
+    const hour = fmtDt(records[i].tm).slice(0, 13) + ':00';
+    hourMap[hour] = +(((hourMap[hour] || 0) + inc).toFixed(2));
+  }
+  const hours = hourRange($('pptn-start').value, $('pptn-end').value);
+  const vals = hours.map(h => hourMap[h] ?? null);
+
+  setStatus('chart');
+  chart = echarts.init($('chart-box'));
+  chart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e8e8e8',
+      textStyle: { color: '#333', fontSize: 13 },
+      formatter: p => {
+        const v = p[0].value;
+        return `${p[0].axisValue}<br/><span style="color:#1677ff">●</span> 降水量：<b>${v != null ? v + ' mm' : '无数据'}</b>`;
+      }
+    },
+    grid: { left: 10, right: 20, top: 40, bottom: 55, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: hours.map(h => h.slice(5, 16)),
+      axisLabel: { rotate: 30, fontSize: 11, color: '#888', interval: Math.max(0, Math.floor(hours.length / 24)) },
+      axisLine: { lineStyle: { color: '#e8e8e8' } },
+      axisTick: { show: false }
+    },
+    yAxis: {
+      type: 'value', name: '降水量 (mm)',
+      nameTextStyle: { color: '#999', fontSize: 12, padding: [0, 0, 0, 50] },
+      axisLabel: { formatter: '{value} mm', fontSize: 11, color: '#888' },
+      splitLine: { lineStyle: { color: '#f5f5f5' } },
+      minInterval: 1
+    },
+    series: [{
+      name: '降水量', type: 'line', data: vals,
+      smooth: 0.3, symbol: 'circle', symbolSize: 5,
+      lineStyle: { color: '#1677ff', width: 2 },
+      itemStyle: { color: '#1677ff', borderColor: '#fff', borderWidth: 1.5 },
+      areaStyle: {
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(22,119,255,0.28)' },
+            { offset: 1, color: 'rgba(22,119,255,0.03)' }
+          ]
+        }
+      },
+      connectNulls: false
+    }]
+  });
+}
+
+// ===== 状态切换 =====
+function setStatus(status){
+  const stEl=$('chart-state'), chEl=$('chart-box');
+  if(status==='chart'){stEl.style.display='none';chEl.style.display='block'}
+  else{
+    chEl.style.display='none';stEl.style.display='flex';
+    if(status==='loading')stEl.innerHTML='<div class="spin"></div><span>加载中...</span>';
+    else if(status==='empty')stEl.innerHTML='<div class="state-icon">📭</div><span>该时间段内暂无数据</span>';
+    else if(status==='error')stEl.innerHTML='<div class="state-icon">⚠️</div><span>数据加载失败，请重试</span>';
+  }
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>雨量数据</title>
+<script src="/lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{min-height:100vh;display:flex;flex-direction:column;padding:16px}
+.breadcrumb{color:#999;margin-bottom:12px;font-size:13px}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+.card{flex:1;display:flex;flex-direction:column;background:#fff;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+/* 二级 Tab */
+.sub-tab-bar{display:flex;border-bottom:1px solid #f0f0f0;background:#fafafa;padding:0 16px}
+.sub-tab-item{padding:12px 20px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none;transition:color .2s}
+.sub-tab-item:hover{color:#1677ff}
+.sub-tab-item.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
+.sub-tab-pane{display:none}
+.sub-tab-pane.active{display:flex;flex-direction:column;flex:1;padding:16px}
+.filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.filter-item{display:flex;align-items:center;gap:6px}
+.filter-item label{color:#666;font-size:13px;white-space:nowrap}
+.filter-bar select,.filter-bar input{height:32px;border:1px solid #d9d9d9;border-radius:4px;padding:0 10px;font-size:13px;outline:none;background:#fff;transition:border-color .2s}
+.filter-bar select:focus,.filter-bar input:focus{border-color:#1677ff}
+.filter-bar select{min-width:120px}
+.filter-bar input[type=date]{width:140px}
+.filter-actions{margin-left:auto;display:flex;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:0 15px;height:32px;border:1px solid transparent;border-radius:4px;cursor:pointer;font-size:13px;white-space:nowrap;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.pivot-wrap{overflow-x:auto;flex:1}
+.pivot-wrap table{width:auto;min-width:100%;border-collapse:collapse;font-size:13px}
+.pivot-wrap thead tr{background:#fafafa}
+.pivot-wrap th{padding:10px 12px;text-align:center;color:#595959;font-weight:500;border:1px solid #bfbfbf;white-space:nowrap}
+.pivot-wrap td{padding:8px 12px;border:1px solid #c9c9c9;color:#333;text-align:center;white-space:nowrap}
+.pivot-wrap td:first-child{text-align:left;min-width:160px}
+.pivot-wrap th:first-child{text-align:left}
+.pivot-wrap tbody tr:hover td{background:#fafafa}
+.pivot-wrap tr.total-row>td{font-weight:600;background:#f0f5ff;border-top:2px solid #d6e4ff}
+.pivot-hint{color:#bbb;font-size:13px;flex:1;display:flex;align-items:center;justify-content:center}
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:8px 0 0;gap:4px}
+.pg-info{color:#666;font-size:13px;margin-right:8px}
+.pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
+.pg-ellipsis{padding:0 4px;color:#999;font-size:13px}
+.pg-size{height:28px;border:1px solid #d9d9d9;border-radius:4px;padding:0 6px;font-size:13px;outline:none;background:#fff;margin-right:4px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>业务中心</span><span class="sep">/</span>
+    <span class="cur">水利工程安全运行监测子系统</span>
+  </div>
+
+  <div class="card">
+    <div class="sub-tab-bar">
+      <div class="sub-tab-item active" data-subtab="realtime">实时雨情</div>
+      <div class="sub-tab-item" data-subtab="period">时段雨情</div>
+      <div class="sub-tab-item" data-subtab="daily">日雨情</div>
+    </div>
+
+    <!-- 实时雨情 -->
+    <div class="sub-tab-pane active" id="subpane-realtime">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>开始日期：</label>
+          <input type="date" id="pptn-start">
+        </div>
+        <div class="filter-item">
+          <label>结束日期：</label>
+          <input type="date" id="pptn-end">
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="pptn-query-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            查询
+          </button>
+          <button class="btn btn-default" id="pptn-export-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            导出Excel
+          </button>
+        </div>
+      </div>
+      <div id="pptn-hint" class="pivot-hint">请选择时间段后查询</div>
+      <div class="pivot-wrap" id="pptn-pivot" style="display:none">
+        <table><thead id="pptn-thead"></thead><tbody id="pptn-tbody"></tbody></table>
+      </div>
+      <div class="pg-bar" id="pptn-pg"></div>
+    </div>
+
+    <!-- 时段雨情 -->
+    <div class="sub-tab-pane" id="subpane-period">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>开始日期：</label>
+          <input type="date" id="period-start">
+        </div>
+        <div class="filter-item">
+          <label>结束日期：</label>
+          <input type="date" id="period-end">
+        </div>
+        <div class="filter-item">
+          <label>时间间隔：</label>
+          <select id="period-interval">
+            <option value="15">15分钟</option>
+            <option value="30">30分钟</option>
+            <option value="45">45分钟</option>
+            <option value="60" selected>1小时</option>
+            <option value="120">2小时</option>
+            <option value="180">3小时</option>
+            <option value="240">4小时</option>
+            <option value="360">6小时</option>
+            <option value="480">8小时</option>
+            <option value="720">12小时</option>
+            <option value="1440">24小时</option>
+          </select>
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="period-query-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            查询
+          </button>
+          <button class="btn btn-default" id="period-export-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            导出Excel
+          </button>
+        </div>
+      </div>
+      <div id="period-hint" class="pivot-hint">请选择时间段后查询</div>
+      <div class="pivot-wrap" id="period-pivot" style="display:none">
+        <table><thead id="period-thead"></thead><tbody id="period-tbody"></tbody></table>
+      </div>
+      <div class="pg-bar" id="period-pg"></div>
+    </div>
+
+    <!-- 日雨情 -->
+    <div class="sub-tab-pane" id="subpane-daily">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>开始日期：</label>
+          <input type="date" id="daily-start">
+        </div>
+        <div class="filter-item">
+          <label>结束日期：</label>
+          <input type="date" id="daily-end">
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="daily-query-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            查询
+          </button>
+          <button class="btn btn-default" id="daily-export-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            导出Excel
+          </button>
+        </div>
+      </div>
+      <div id="daily-hint" class="pivot-hint">请选择时间段后查询</div>
+      <div class="pivot-wrap" id="daily-pivot" style="display:none">
+        <table><thead id="daily-thead"></thead><tbody id="daily-tbody"></tbody></table>
+      </div>
+      <div class="pg-bar" id="daily-pg"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 排除无雨量采集能力的站点
+const PPTN_EXCLUDE = new Set(['00000004']);
+
+// ===== 状态 =====
+const S = {
+  stations: [],
+  pptnData: null, periodData: null, dailyData: null,
+  pptnPage: 1, periodPage: 1, dailyPage: 1,
+  pptnSize: 20, periodSize: 20, dailySize: 20,
+};
+
+// ===== 工具 =====
+const $ = id => document.getElementById(id);
+const fmtDt = v => v ? String(v).replace('T',' ').slice(0,19) : '-';
+const pad   = n => String(n).padStart(2, '0');
+
+function fmtDate(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function rainStations() {
+  return S.stations.filter(s => !PPTN_EXCLUDE.has((s.stcd || '').trim()));
+}
+
+// ===== 初始化 =====
+async function init() {
+  await loadStations();
+  document.querySelectorAll('.sub-tab-item').forEach(el =>
+    el.addEventListener('click', () => switchSubTab(el.dataset.subtab)));
+  $('pptn-query-btn').addEventListener('click',  queryPptn);
+  $('pptn-export-btn').addEventListener('click', () => exportPivot('pptn'));
+  $('period-query-btn').addEventListener('click', queryPeriod);
+  $('period-export-btn').addEventListener('click',() => exportPivot('period'));
+  $('daily-query-btn').addEventListener('click',  queryDaily);
+  $('daily-export-btn').addEventListener('click', () => exportPivot('daily'));
+  initRealtimeDefaults();
+  initPeriodDefaults();
+  initDailyDefaults();
+}
+
+async function loadStations() {
+  try {
+    const metrics = await fetch('/station-metrics').then(r => r.json()) || [];
+    // 只保留有雨量数据的站点
+    S.stations = metrics.filter(s => s.type === 'rain' || s.type === 'all');
+  } catch(e) { console.error('加载站点失败', e); }
+}
+
+// ===== 二级 Tab 切换 =====
+function switchSubTab(subtab) {
+  document.querySelectorAll('.sub-tab-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.subtab === subtab));
+  document.querySelectorAll('.sub-tab-pane').forEach(el =>
+    el.classList.toggle('active', el.id === `subpane-${subtab}`));
+}
+
+// ===== 实时雨情（水文日视图透视表，8点切分）=====
+function initRealtimeDefaults() {
+  const now = new Date();
+  const past = new Date(now - 6 * 24 * 3600e3);
+  $('pptn-start').value = fmtDate(past);
+  $('pptn-end').value   = fmtDate(now);
+  queryPptn();
+}
+
+async function queryPptn() {
+  const s = $('pptn-start').value, e = $('pptn-end').value;
+  if (!s || !e) { alert('请选择开始和结束日期'); return; }
+  const endD = new Date(e + 'T00:00:00');
+  endD.setDate(endD.getDate() + 1);
+  const endDate = `${endD.getFullYear()}-${pad(endD.getMonth()+1)}-${pad(endD.getDate())}`;
+  const startD = new Date(s + 'T00:00:00');
+  startD.setDate(startD.getDate() - 1);
+  const startDate = `${startD.getFullYear()}-${pad(startD.getMonth()+1)}-${pad(startD.getDate())}`;
+  setPivotState('pptn', 'loading');
+  try {
+    const p = new URLSearchParams({ startTime: startDate + ' 08:00:00', endTime: endDate + ' 07:59:59' });
+    const rows = await fetch(`/st-pptn-r/export?${p}`).then(r => r.json());
+    const filtered = (rows || []).filter(r => !PPTN_EXCLUDE.has((r.stcd||'').trim()));
+    const buckets = generatePptnBuckets(s, e);
+    S.pptnData = buildPptnPivot(filtered, buckets);
+    renderPivot('pptn', S.pptnData, false);
+  } catch(err) { setPivotState('pptn', 'error'); console.error(err); }
+}
+
+function generatePptnBuckets(startDate, endDate) {
+  const buckets = [];
+  const d = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  while (d <= end) {
+    buckets.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} 08:00:00`);
+    d.setDate(d.getDate() + 1);
+  }
+  return buckets;
+}
+
+function buildPptnPivot(rows, fullBuckets) {
+  const stations = rainStations();
+  const bucketMap = new Map();
+  // DRP 是累积值，按站点分组排序后计算正向增量作为实际降雨量
+  const byStation = new Map();
+  rows.forEach(r => {
+    const stcd = (r.stcd || '').trim();
+    if (PPTN_EXCLUDE.has(stcd)) return;
+    if (!byStation.has(stcd)) byStation.set(stcd, []);
+    byStation.get(stcd).push(r);
+  });
+  byStation.forEach((stationRows, stcd) => {
+    stationRows.sort((a, b) => String(a.tm).localeCompare(String(b.tm)));
+    for (let i = 0; i < stationRows.length; i++) {
+      const bucket = getHydroDayLabel(stationRows[i].tm);
+      if (!bucketMap.has(bucket)) bucketMap.set(bucket, new Map());
+      const m = bucketMap.get(bucket);
+      const cur = stationRows[i].drp != null ? +stationRows[i].drp : 0;
+      let inc;
+      if (i === 0) {
+        inc = 0; // 第一条记录，无法确定增量，不计入
+      } else {
+        const prev = stationRows[i-1].drp != null ? +stationRows[i-1].drp : 0;
+        inc = cur > prev ? cur - prev : 0;
+      }
+      m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
+    }
+  });
+  const buckets = fullBuckets || Array.from(bucketMap.keys()).sort();
+  return { stations, buckets, bucketMap };
+}
+
+// ===== 时段雨情（水文日区间，8点切分）=====
+function initPeriodDefaults() {
+  const now = new Date();
+  $('period-start').value = fmtDate(now);
+  $('period-end').value   = fmtDate(now);
+  queryPeriod();
+}
+
+async function queryPeriod() {
+  const s = $('period-start').value, e = $('period-end').value;
+  if (!s || !e) { alert('请选择开始和结束日期'); return; }
+  const interval = +$('period-interval').value;
+  const endD = new Date(e + 'T00:00:00');
+  endD.setDate(endD.getDate() + 1);
+  const endDate = `${endD.getFullYear()}-${pad(endD.getMonth()+1)}-${pad(endD.getDate())}`;
+  const startD = new Date(s + 'T00:00:00');
+  startD.setDate(startD.getDate() - 1);
+  const startDate = `${startD.getFullYear()}-${pad(startD.getMonth()+1)}-${pad(startD.getDate())}`;
+  setPivotState('period', 'loading');
+  try {
+    const p = new URLSearchParams({ startTime: startDate + ' 08:00:00', endTime: endDate + ' 07:59:59' });
+    const rows = await fetch(`/st-pptn-r/export?${p}`).then(r => r.json());
+    // 只保留所选水文日内的时段
+    const periodBuckets = generatePptnBuckets(s, e);
+    const bucketSet = new Set(periodBuckets);
+    const filtered = (rows || []).filter(r => bucketSet.has(getHydroDayLabel(r.tm)));
+    const fullBuckets = generatePeriodBuckets(s, e, interval);
+    S.periodData = buildPeriodPivot(filtered, interval, fullBuckets);
+    renderPivot('period', S.periodData, false);
+  } catch(err) { setPivotState('period', 'error'); console.error(err); }
+}
+
+function floorToInterval(tmStr, intervalMinutes) {
+  const s = String(tmStr).slice(0, 19);
+  const datePart = s.slice(0, 10), h = +s.slice(11, 13), m = +s.slice(14, 16);
+  const floored = Math.floor((h * 60 + m) / intervalMinutes) * intervalMinutes;
+  return `${datePart} ${pad(Math.floor(floored / 60))}:${pad(floored % 60)}:00`;
+}
+
+function generatePeriodBuckets(startDate, endDate, intervalMinutes) {
+  const buckets = [];
+  const startD = new Date(startDate + 'T00:00:00');
+  startD.setDate(startD.getDate() - 1);
+  const start = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate(), 8, 0, 0);
+  const end = new Date(endDate + 'T08:00:00');
+  const d = new Date(start);
+  while (d < end) {
+    buckets.push(`${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`);
+    d.setMinutes(d.getMinutes() + intervalMinutes);
+  }
+  return buckets;
+}
+
+function buildPeriodPivot(rows, intervalMinutes, fullBuckets) {
+  const stations = rainStations();
+  const bucketMap = new Map();
+  // DRP 是累积值，按站点分组排序后计算正向增量作为实际降雨量
+  const byStation = new Map();
+  rows.forEach(r => {
+    const stcd = (r.stcd || '').trim();
+    if (PPTN_EXCLUDE.has(stcd)) return;
+    if (!byStation.has(stcd)) byStation.set(stcd, []);
+    byStation.get(stcd).push(r);
+  });
+  byStation.forEach((stationRows, stcd) => {
+    stationRows.sort((a, b) => String(a.tm).localeCompare(String(b.tm)));
+    for (let i = 0; i < stationRows.length; i++) {
+      const bucket = floorToInterval(stationRows[i].tm, intervalMinutes);
+      if (!bucketMap.has(bucket)) bucketMap.set(bucket, new Map());
+      const m = bucketMap.get(bucket);
+      const cur = stationRows[i].drp != null ? +stationRows[i].drp : 0;
+      let inc;
+      if (i === 0) {
+        inc = 0; // 第一条记录，无法确定增量，不计入
+      } else {
+        const prev = stationRows[i-1].drp != null ? +stationRows[i-1].drp : 0;
+        inc = cur > prev ? cur - prev : 0;
+      }
+      m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
+    }
+  });
+  const buckets = (fullBuckets && fullBuckets.length) ? fullBuckets : Array.from(bucketMap.keys()).sort();
+  return { stations, buckets, bucketMap };
+}
+
+// ===== 日雨情 =====
+function initDailyDefaults() {
+  const now = new Date();
+  const past = new Date(now - 6 * 24 * 3600e3);
+  $('daily-start').value = fmtDate(past);
+  $('daily-end').value   = fmtDate(now);
+  queryDaily();
+}
+
+async function queryDaily() {
+  const s = $('daily-start').value, e = $('daily-end').value;
+  if (!s || !e) { alert('请选择开始和结束日期'); return; }
+  const endD = new Date(e + 'T00:00:00');
+  endD.setDate(endD.getDate() + 1);
+  const endDate = `${endD.getFullYear()}-${pad(endD.getMonth()+1)}-${pad(endD.getDate())}`;
+  const startD = new Date(s + 'T00:00:00');
+  startD.setDate(startD.getDate() - 1);
+  const startDate = `${startD.getFullYear()}-${pad(startD.getMonth()+1)}-${pad(startD.getDate())}`;
+  setPivotState('daily', 'loading');
+  try {
+    const p = new URLSearchParams({ startTime: startDate + ' 08:00:00', endTime: endDate + ' 07:59:59' });
+    const rows = await fetch(`/st-pptn-r/export?${p}`).then(r => r.json());
+    S.dailyData = buildDailyPivot(rows || [], generateDailyBuckets(s, e));
+    renderPivot('daily', S.dailyData, true);
+  } catch(err) { setPivotState('daily', 'error'); console.error(err); }
+}
+
+function getHydroDayLabel(tmStr) {
+  const s = String(tmStr).slice(0, 19);
+  const datePart = s.slice(0, 10), h = +s.slice(11, 13);
+  if (h >= 8) {
+    const d = new Date(datePart + 'T08:00:00');
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} 08:00:00`;
+  }
+  return `${datePart} 08:00:00`;
+}
+
+function generateDailyBuckets(startDate, endDate) {
+  const buckets = [];
+  const d = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  while (d <= end) {
+    buckets.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} 08:00:00`);
+    d.setDate(d.getDate() + 1);
+  }
+  return buckets;
+}
+
+function buildDailyPivot(rows, fullBuckets) {
+  const stations = rainStations();
+  const bucketMap = new Map();
+  // DRP 是累积值，按站点分组排序后计算正向增量作为实际降雨量
+  const byStation = new Map();
+  rows.forEach(r => {
+    const stcd = (r.stcd || '').trim();
+    if (PPTN_EXCLUDE.has(stcd)) return;
+    if (!byStation.has(stcd)) byStation.set(stcd, []);
+    byStation.get(stcd).push(r);
+  });
+  byStation.forEach((stationRows, stcd) => {
+    stationRows.sort((a, b) => String(a.tm).localeCompare(String(b.tm)));
+    for (let i = 0; i < stationRows.length; i++) {
+      const bucket = getHydroDayLabel(stationRows[i].tm);
+      if (!bucketMap.has(bucket)) bucketMap.set(bucket, new Map());
+      const m = bucketMap.get(bucket);
+      const cur = stationRows[i].drp != null ? +stationRows[i].drp : 0;
+      let inc;
+      if (i === 0) {
+        inc = 0; // 第一条记录，无法确定增量，不计入
+      } else {
+        const prev = stationRows[i-1].drp != null ? +stationRows[i-1].drp : 0;
+        inc = cur > prev ? cur - prev : 0;
+      }
+      m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
+    }
+  });
+  const buckets = (fullBuckets && fullBuckets.length) ? fullBuckets : Array.from(bucketMap.keys()).sort();
+  return { stations, buckets, bucketMap };
+}
+
+// ===== 透视表渲染 =====
+function renderPivot(type, data, isDaily) {
+  // 新查询重置到第一页
+  if (type === 'pptn') S.pptnPage = 1;
+  else if (type === 'period') S.periodPage = 1;
+  else S.dailyPage = 1;
+  renderPivotPage(type, data, isDaily);
+}
+
+function renderPivotPage(type, data, isDaily) {
+  const { stations, buckets, bucketMap } = data;
+  const page = type === 'pptn' ? S.pptnPage : type === 'period' ? S.periodPage : S.dailyPage;
+  const size = type === 'pptn' ? S.pptnSize : type === 'period' ? S.periodSize : S.dailySize;
+  const totalBuckets = buckets.length;
+  const totalPages = Math.max(1, Math.ceil(totalBuckets / size));
+  const validPage = Math.max(1, Math.min(page, totalPages));
+  if (type === 'pptn') S.pptnPage = validPage;
+  else if (type === 'period') S.periodPage = validPage;
+  else S.dailyPage = validPage;
+
+  const start = (validPage - 1) * size;
+  const pageBuckets = buckets.slice(start, start + size);
+  const fmt1 = v => v > 0 ? v.toFixed(1) : '';
+  const fmt2 = v => v > 0 ? v.toFixed(2) : '';
+
+  let thead = '<tr><th>时间</th>';
+  stations.forEach(s => { thead += `<th>${s.stnm || (s.stcd||'').trim()}</th>`; });
+  if (isDaily) thead += '<th>合计(mm)</th><th>平均(mm)</th>';
+  else         thead += '<th>平均(mm)</th>';
+  thead += '</tr>';
+  $(`${type}-thead`).innerHTML = thead;
+
+  // 先基于全部 buckets 计算总计
+  const fullTotals = new Array(stations.length).fill(0);
+  buckets.forEach(bucket => {
+    const m = bucketMap.get(bucket) || new Map();
+    stations.forEach((s, i) => {
+      const val = m.get((s.stcd || '').trim()) || 0;
+      fullTotals[i] = +((fullTotals[i] + val).toFixed(1));
+    });
+  });
+
+  let html = '';
+  pageBuckets.forEach(bucket => {
+    const m = bucketMap.get(bucket) || new Map();
+    let rowSum = 0;
+    html += `<tr><td>${bucket}</td>`;
+    stations.forEach((s, i) => {
+      const val = m.get((s.stcd || '').trim()) || 0;
+      html += `<td>${fmt1(val)}</td>`;
+      rowSum    = +((rowSum + val).toFixed(1));
+    });
+    const avg = stations.length ? rowSum / stations.length : 0;
+    if (isDaily) html += `<td>${fmt1(rowSum)}</td><td>${fmt2(avg)}</td>`;
+    else         html += `<td>${fmt2(avg)}</td>`;
+    html += '</tr>';
+  });
+
+  const grandSum = +fullTotals.reduce((a, b) => a + b, 0).toFixed(1);
+  const grandAvg = stations.length ? grandSum / stations.length : 0;
+  html += '<tr class="total-row"><td>总计</td>';
+  fullTotals.forEach(t => { html += `<td>${fmt1(t)}</td>`; });
+  if (isDaily) html += `<td>${fmt1(grandSum)}</td><td>${fmt2(grandAvg)}</td>`;
+  else         html += `<td>${fmt2(grandAvg)}</td>`;
+  html += '</tr>';
+
+  $(`${type}-tbody`).innerHTML = html;
+  $(`${type}-hint`).style.display = 'none';
+  $(`${type}-pivot`).style.display = 'block';
+
+  renderPivotPg(type, totalBuckets, validPage, size);
+}
+
+// ===== 透视表分页栏 =====
+function goPivotPage(type, p) {
+  const data = type === 'pptn' ? S.pptnData : type === 'period' ? S.periodData : S.dailyData;
+  const isDaily = type === 'daily';
+  if (type === 'pptn') S.pptnPage = p;
+  else if (type === 'period') S.periodPage = p;
+  else S.dailyPage = p;
+  renderPivotPage(type, data, isDaily);
+}
+
+function renderPivotPg(type, totalItems, page, pageSize) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const pgEl = $(`${type}-pg`);
+  let html = `<span class="pg-info">共 ${totalItems} 行</span>`;
+  html += `<select class="pg-size" onchange="changePivotSize('${type}',this.value)">`;
+  [10,20,30,50,100].forEach(s => {
+    html += `<option value="${s}" ${s===pageSize?'selected':''}>${s}条/页</option>`;
+  });
+  html += `</select>`;
+  if (totalPages > 1) {
+    html += pgBtn2('‹', page > 1, `goPivotPage('${type}',${page-1})`);
+    pageNums2(page, totalPages).forEach(n => {
+      if (n === '…') html += `<span class="pg-ellipsis">…</span>`;
+      else html += pgBtn2(n, true, `goPivotPage('${type}',${n})`, n === page);
+    });
+    html += pgBtn2('›', page < totalPages, `goPivotPage('${type}',${page+1})`);
+  }
+  pgEl.innerHTML = html;
+}
+
+function changePivotSize(type, newSize) {
+  const sz = +newSize;
+  if (type === 'pptn') { S.pptnSize = sz; S.pptnPage = 1; }
+  else if (type === 'period') { S.periodSize = sz; S.periodPage = 1; }
+  else { S.dailySize = sz; S.dailyPage = 1; }
+  const data = type === 'pptn' ? S.pptnData : type === 'period' ? S.periodData : S.dailyData;
+  if (data) renderPivotPage(type, data, type === 'daily');
+}
+
+function pgBtn2(label, enabled, onclick, active = false) {
+  return `<button class="pg-btn${active?' active':''}" ${!enabled?'disabled':''} onclick="${onclick}">${label}</button>`;
+}
+
+function pageNums2(cur, total) {
+  if (total <= 7) return Array.from({length:total},(_,i)=>i+1);
+  if (cur <= 4)   return [1,2,3,4,5,'…',total];
+  if (cur >= total-3) return [1,'…',total-4,total-3,total-2,total-1,total];
+  return [1,'…',cur-1,cur,cur+1,'…',total];
+}
+
+// ===== 透视表导出 Excel =====
+function exportPivot(type) {
+  const data = type === 'pptn' ? S.pptnData : type === 'period' ? S.periodData : S.dailyData;
+  if (!data) { alert('请先查询数据'); return; }
+  const isDaily = type === 'daily';
+  const { stations, buckets, bucketMap } = data;
+  const fmt1 = v => v > 0 ? +v.toFixed(1) : '';
+  const fmt2 = v => v > 0 ? +v.toFixed(2) : '';
+
+  const header = ['时间', ...stations.map(s => s.stnm || (s.stcd||'').trim())];
+  if (isDaily) header.push('合计(mm)', '平均(mm)');
+  else         header.push('平均(mm)');
+
+  const totals = new Array(stations.length).fill(0);
+  const aoa = [header];
+  buckets.forEach(bucket => {
+    const m = bucketMap.get(bucket) || new Map();
+    let rowSum = 0;
+    const row = [bucket];
+    stations.forEach((s, i) => {
+      const val = m.get((s.stcd || '').trim()) || 0;
+      row.push(fmt1(val));
+      totals[i] = +((totals[i] + val).toFixed(1));
+      rowSum    = +((rowSum + val).toFixed(1));
+    });
+    const avg = stations.length ? rowSum / stations.length : 0;
+    if (isDaily) row.push(fmt1(rowSum), fmt2(avg));
+    else         row.push(fmt2(avg));
+    aoa.push(row);
+  });
+
+  const grandSum = +totals.reduce((a, b) => a + b, 0).toFixed(1);
+  const grandAvg = stations.length ? grandSum / stations.length : 0;
+  const totalRow = ['总计', ...totals.map(fmt1)];
+  if (isDaily) totalRow.push(fmt1(grandSum), fmt2(grandAvg));
+  else         totalRow.push(fmt2(grandAvg));
+  aoa.push(totalRow);
+
+  const sheetName = type === 'pptn' ? '实时雨情' : isDaily ? '日雨情' : '时段雨情';
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, `${sheetName}_${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}.xlsx`);
+}
+
+// ===== 透视状态 =====
+function setPivotState(type, status) {
+  const hint = $(`${type}-hint`), pivot = $(`${type}-pivot`);
+  pivot.style.display = 'none';
+  hint.style.display = 'block';
+  $(`${type}-pg`).innerHTML = '';
+  if (status === 'loading') hint.textContent = '加载中...';
+  else if (status === 'empty') hint.textContent = '该时间段内暂无数据';
+  else hint.textContent = '数据加载失败，请重试';
+}
+
+init();
+</script>
+</body>
+</html>

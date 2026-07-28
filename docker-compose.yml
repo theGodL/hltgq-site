@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  hltgq-site:
+    image: hltgq-site:latest
+    container_name: hltgq-site
+    restart: unless-stopped
+    ports:
+      - "18687:8080"
+    environment:
+      - TZ=Asia/Shanghai
+    # 日志持久化（可选）
+    volumes:
+      - ./logs:/app/logs
+    # 资源限制（按服务器配置调整）
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 512M
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

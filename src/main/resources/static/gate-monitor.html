@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>闸门监控</title>
+<script src="/lib/echarts.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page{padding:16px;display:flex;flex-direction:column;gap:12px;min-height:100vh}
+
+/* 标题 */
+.title-bar{background:#1677ff;border-radius:8px;padding:14px 20px;color:#fff;font-size:16px;font-weight:600;box-shadow:0 2px 10px rgba(22,119,255,.35)}
+
+/* 卡片 */
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden}
+.card-hd{border-bottom:1px solid #f0f0f0;padding:12px 16px;font-size:14px;font-weight:600;color:#333;display:flex;align-items:center;gap:6px}
+
+/* 筛选栏 */
+.filter-bar{display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap}
+.filter-bar label{color:#666;font-size:13px;white-space:nowrap}
+.filter-bar .sep{color:#bbb}
+.filter-bar input,.filter-bar select{height:32px;border:1px solid #d9d9d9;border-radius:4px;padding:0 10px;font-size:13px;outline:none;background:#fff;transition:border-color .2s}
+.filter-bar input:focus,.filter-bar select:focus{border-color:#1677ff}
+.filter-bar select{min-width:140px}
+input[type=datetime-local]{width:178px}
+
+/* 闸孔多选 */
+.gate-check-wrap{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:4px 0}
+.gate-check-wrap .gate-chk-all{margin-right:8px;font-weight:600}
+.gate-check-wrap label.check-label{display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:3px 8px;border:1px solid #e8e8e8;border-radius:4px;transition:all .2s;font-size:13px;color:#555;white-space:nowrap}
+.gate-check-wrap label.check-label:hover{border-color:#1677ff;color:#1677ff}
+.gate-check-wrap label.check-label.checked{background:#e6f4ff;border-color:#1677ff;color:#1677ff}
+.gate-check-wrap label.check-label.all-checked{font-weight:600;background:#1677ff;color:#fff;border-color:#1677ff}
+.gate-check-wrap label.check-label input[type=checkbox]{display:none}
+.gate-check-wrap .gate-none{color:#999;font-size:13px;padding:4px 0}
+
+/* 按钮 */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:0 14px;height:32px;border:1px solid transparent;border-radius:4px;cursor:pointer;font-size:13px;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+
+/* 图表 */
+.chart-box{width:100%;height:300px}
+.state-box{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:10px;color:#bbb;font-size:13px}
+.spin{width:24px;height:24px;border:2px solid #e8e8e8;border-top-color:#1677ff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.state-icon{font-size:36px;line-height:1}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="title-bar" id="title-bar">闸门监控</div>
+
+  <!-- 筛选栏 -->
+  <div class="card">
+    <div class="filter-bar">
+      <label>站点：</label>
+      <select id="site-select"><option value="">加载中...</option></select>
+      <label>闸孔：</label>
+      <div class="gate-check-wrap" id="gate-checkboxes">
+        <span class="gate-none">请先选择站点</span>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <input type="datetime-local" id="chart-start">
+      <span class="sep">至</span>
+      <input type="datetime-local" id="chart-end">
+      <button class="btn btn-primary" id="query-btn">查询</button>
+      <button class="btn btn-default" id="reset-btn">近一周</button>
+    </div>
+  </div>
+
+  <!-- 水位图表 -->
+  <div class="card">
+    <div class="card-hd">📈 上游 / 下游水位</div>
+    <div id="water-state" class="state-box"><div class="spin"></div><span>请选择站点后查询...</span></div>
+    <div id="water-chart" class="chart-box" style="display:none"></div>
+  </div>
+
+  <!-- 开度图表 -->
+  <div class="card">
+    <div class="card-hd">🔧 闸门开度</div>
+    <div id="open-state" class="state-box"><div class="spin"></div><span>请选择站点后查询...</span></div>
+    <div id="open-chart" class="chart-box" style="display:none"></div>
+  </div>
+
+</div>
+
+<script>
+// ===== 工具 =====
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+function fmtDt(v){if(!v)return'';return String(v).replace('T',' ').slice(0,19)}
+function toInputDt(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`}
+function dtToApi(v){return v.replace('T',' ')+':00'}
+function getUrlParam(name){return new URLSearchParams(location.search).get(name)}
+
+// ===== 状态 =====
+let waterChart = null, openChart = null;
+let siteId = '', gateNos = [];
+let sites = [], gateList = [];
+
+// 色板（开度多闸孔用）
+const COLORS = ['#fa8c16','#1677ff','#52c41a','#722ed1','#eb2f96','#13c2c2'];
+
+// ===== 初始化 =====
+async function init(){
+  setDefaults();
+  await loadSites();    // 先加载站点数据（避免 sel.value 触发 change）
+  bindEvents();         // 站点就绪后再绑定事件
+}
+
+function setDefaults(){
+  const now=new Date(), past=new Date(now-7*24*3600e3);
+  $('chart-start').value=toInputDt(past);
+  $('chart-end').value=toInputDt(now);
+}
+
+function bindEvents(){
+  $('query-btn').addEventListener('click', loadData);
+  $('reset-btn').addEventListener('click',()=>{setDefaults();loadData()});
+  $('site-select').addEventListener('change', onSiteChange);
+  window.addEventListener('resize',()=>{waterChart&&waterChart.resize();openChart&&openChart.resize()});
+}
+
+// ===== 站点列表 =====
+async function loadSites(){
+  try{
+    sites=await fetch('/gate-monitor/sites').then(r=>r.json())||[];
+    const sel=$('site-select');
+    sel.innerHTML=sites.length?'':'<option value="">无站点数据</option>';
+    sites.forEach(s=>{
+      const o=document.createElement('option');
+      o.value=s.site||'';
+      o.textContent=s.siteName||s.site||'-';
+      sel.appendChild(o);
+    });
+    if(!sites.length)return;
+    // 支持 ?name=测站名称 直达
+    const nameParam=getUrlParam('name');
+    let target=null, notFound=false;
+    if(nameParam){
+      const key=nameParam.trim();
+      const found=sites.find(s=>s.siteName&&s.siteName.trim()===key);
+      if(found){target=found;console.log('[gate-monitor] ?name 匹配成功:',key)}
+      else{notFound=true;console.warn('[gate-monitor] ?name 未匹配到站点:',key,'可用站点:',sites.map(s=>s.siteName))}
+    }
+    if(!target && !notFound) target=sites[0];
+    if(target){
+      siteId=(target.site||'').trim();
+      sel.value=siteId;
+      $('title-bar').textContent=target.siteName?`闸门监控 - ${target.siteName}`:'闸门监控';
+      await loadGates();
+    } else {
+      siteId='';
+      $('title-bar').textContent=`闸门监控 - ${nameParam.trim()}（未找到该站点）`;
+      $('gate-checkboxes').innerHTML='<span class="gate-none">站点未匹配，请手动选择</span>';
+      setWaterStatus('empty');setOpenStatus('empty');
+    }
+  }catch(e){console.error('加载站点失败',e)}
+}
+
+async function onSiteChange(){
+  siteId=$('site-select').value;
+  if(!siteId)return;
+  const s=sites.find(x=>x.site===siteId);
+  $('title-bar').textContent=s&&s.siteName?`闸门监控 - ${s.siteName}`:'闸门监控';
+  destroyCharts();
+  await loadGates();
+}
+
+// ===== 闸孔列表（联动站点，多选 checkbox） =====
+async function loadGates(){
+  const wrap=$('gate-checkboxes');
+  if(!siteId){wrap.innerHTML='<span class="gate-none">请先选择站点</span>';gateNos=[];return}
+  wrap.innerHTML='<span class="gate-none">加载中...</span>';
+  try{
+    gateList=await fetch(`/gate-monitor/gates?siteId=${encodeURIComponent(siteId)}`).then(r=>r.json())||[];
+    if(!gateList.length){wrap.innerHTML='<span class="gate-none">该站点无闸孔</span>';gateNos=[];return}
+    renderGateChecks();
+    loadData();
+  }catch(e){console.error('加载闸孔失败',e);wrap.innerHTML='<span class="gate-none">加载失败</span>'}
+}
+
+function renderGateChecks(){
+  const wrap=$('gate-checkboxes');
+  // 全选按钮
+  const allLabel=document.createElement('label');
+  allLabel.className='check-label all-checked checked';
+  allLabel.innerHTML='<input type="checkbox" checked> 全选';
+  allLabel.addEventListener('click',function(e){
+    e.preventDefault();
+    const chks=wrap.querySelectorAll('input[type=checkbox]:not(.chk-all)');
+    const allChecked=allLabel.classList.contains('checked');
+    if(allChecked){ allLabel.classList.remove('checked','all-checked'); chks.forEach(c=>{c.checked=false;c.parentElement.classList.remove('checked')}); }
+    else{ allLabel.classList.add('checked','all-checked'); chks.forEach(c=>{c.checked=true;c.parentElement.classList.add('checked')}); }
+    collectSelectedGates();
+    loadData();
+  });
+  allLabel.querySelector('input').className='chk-all';
+  wrap.innerHTML='';wrap.appendChild(allLabel);
+  // 每个闸孔
+  gateList.forEach(g=>{
+    const lbl=document.createElement('label');
+    lbl.className='check-label checked';
+    lbl.innerHTML=`<input type="checkbox" checked> 闸孔 ${g}`;
+    lbl.addEventListener('click',function(e){
+      e.preventDefault();
+      lbl.classList.toggle('checked');
+      lbl.querySelector('input').checked=lbl.classList.contains('checked');
+      updateAllCheckState();
+      collectSelectedGates();
+      loadData();
+    });
+    wrap.appendChild(lbl);
+  });
+  collectSelectedGates(); // 初始全选
+}
+
+function updateAllCheckState(){
+  const wrap=$('gate-checkboxes');
+  const chks=[...wrap.querySelectorAll('input[type=checkbox]:not(.chk-all)')];
+  const allLabel=wrap.querySelector('.chk-all')?.parentElement;
+  if(!allLabel)return;
+  const allChecked=chks.every(c=>c.checked);
+  if(allChecked){allLabel.classList.add('checked','all-checked');allLabel.querySelector('input').checked=true}
+  else{allLabel.classList.remove('checked','all-checked');allLabel.querySelector('input').checked=false}
+}
+
+function collectSelectedGates(){
+  const wrap=$('gate-checkboxes');
+  const chks=[...wrap.querySelectorAll('input[type=checkbox]:not(.chk-all):checked')];
+  // 提取闸孔编号（从闸孔 N 文本中）
+  gateNos=chks.map(c=>c.parentElement.textContent.trim().replace('闸孔 ','')).filter(v=>v);
+}
+
+// ===== 加载数据 =====
+async function loadData(){
+  if(!siteId){setWaterStatus('empty');setOpenStatus('empty');return}
+  const s=$('chart-start').value, e=$('chart-end').value;
+  if(!s||!e){alert('请选择完整的时间段');return}
+  setWaterStatus('loading');setOpenStatus('loading');
+  destroyCharts();
+  try{
+    const p=new URLSearchParams({siteId,startTime:dtToApi(s),endTime:dtToApi(e)});
+    gateNos.forEach(g=>p.append('gateNos',g));
+    const data=await fetch(`/gate-monitor/export?${p}`).then(r=>r.json())||[];
+    if(!data.length){setWaterStatus('empty');setOpenStatus('empty');return}
+    drawWater(data);
+    drawOpen(data);
+  }catch(e){console.error(e);setWaterStatus('error');setOpenStatus('error')}
+}
+
+function destroyCharts(){
+  if(waterChart){waterChart.dispose();waterChart=null}$('water-chart').style.display='none';
+  if(openChart){openChart.dispose();openChart=null}$('open-chart').style.display='none';
+}
+
+// ===== 水位图：上游 + 下游 =====
+function drawWater(data){
+  const map=new Map();
+  data.forEach(r=>{const k=fmtDt(r.tm);if(!map.has(k))map.set(k,r)});
+  const uniq=[...map.values()].sort((a,b)=>fmtDt(a.tm)>fmtDt(b.tm)?1:-1);
+  const xData=uniq.map(r=>fmtDt(r.tm).slice(5,16));
+  const upData=uniq.map(r=>r.upZ!=null?+r.upZ:null);
+  const dnData=uniq.map(r=>r.downZ!=null?+r.downZ:null);
+  const all=[...upData,...dnData].filter(v=>v!=null);
+  const yMin=all.length?Math.min(...all):0;
+  const yMax=all.length?Math.max(...all):1;
+  const pv=Math.max((yMax-yMin)*0.15,0.1);
+
+  setWaterStatus('chart');
+  waterChart=echarts.init($('water-chart'));
+  waterChart.setOption({
+    tooltip:{trigger:'axis',backgroundColor:'rgba(255,255,255,0.95)',borderColor:'#e8e8e8',textStyle:{color:'#333',fontSize:13},
+      formatter:ps=>ps.map(p=>`<span style="color:${p.color}">●</span> ${p.seriesName}：<b>${p.value!=null?Number(p.value).toFixed(2)+' m':'无数据'}</b>`).join('<br/>')
+    },
+    legend:{data:['上游水位','下游水位'],top:6,textStyle:{fontSize:12}},
+    grid:{left:10,right:20,top:40,bottom:40,containLabel:true},
+    xAxis:{type:'category',data:xData,boundaryGap:false,axisLabel:{rotate:25,fontSize:11,color:'#888'},axisLine:{lineStyle:{color:'#e8e8e8'}},axisTick:{show:false}},
+    yAxis:{type:'value',name:'水位 (m)',min:Math.floor((yMin-pv)*100)/100,max:Math.ceil((yMax+pv)*100)/100,
+      nameTextStyle:{color:'#999',fontSize:11,padding:[0,0,0,35]},axisLabel:{fontSize:11,color:'#888'},splitLine:{lineStyle:{color:'#f5f5f5'}}},
+    series:[
+      {name:'上游水位',type:'line',data:upData,smooth:0.3,symbol:'none',lineStyle:{color:'#1677ff',width:2}},
+      {name:'下游水位',type:'line',data:dnData,smooth:0.3,symbol:'none',lineStyle:{color:'#52c41a',width:2}}
+    ]
+  });
+}
+
+// ===== 开度图：多闸孔折线 =====
+function drawOpen(data){
+  const groups={};
+  data.forEach(r=>{const g=r.gateNo||'_';if(!groups[g])groups[g]=[];groups[g].push(r)});
+  const gates=Object.keys(groups).sort();
+  const allTimes=[...new Set(data.map(r=>fmtDt(r.tm)))].sort();
+  const xData=allTimes.map(t=>t.slice(5,16));
+
+  const series=gates.map((gate,idx)=>{
+    const map=new Map();
+    groups[gate].forEach(r=>map.set(fmtDt(r.tm),r.openDegree!=null?+(r.openDegree).toFixed(2):null));
+    const vals=allTimes.map(t=>map.get(t)??null);
+    return {
+      name:`闸孔 ${gate}`,type:'line',data:vals,smooth:0.3,symbol:'none',
+      lineStyle:{color:COLORS[idx%COLORS.length],width:2},
+      itemStyle:{color:COLORS[idx%COLORS.length]}
+    };
+  });
+
+  setOpenStatus('chart');
+  openChart=echarts.init($('open-chart'));
+  openChart.setOption({
+    tooltip:{trigger:'axis',backgroundColor:'rgba(255,255,255,0.95)',borderColor:'#e8e8e8',textStyle:{color:'#333',fontSize:13},
+      formatter:ps=>ps.map(p=>`<span style="color:${p.color}">●</span> ${p.seriesName}：<b>${p.value!=null?p.value+' m':'无数据'}</b>`).join('<br/>')
+    },
+    legend:{data:series.map(s=>s.name),top:6,textStyle:{fontSize:12},type:'scroll'},
+    grid:{left:10,right:20,top:40,bottom:40,containLabel:true},
+    xAxis:{type:'category',data:xData,boundaryGap:false,axisLabel:{rotate:25,fontSize:11,color:'#888'},axisLine:{lineStyle:{color:'#e8e8e8'}},axisTick:{show:false}},
+    yAxis:{type:'value',name:'开度 (m)',min:0,
+      nameTextStyle:{color:'#999',fontSize:11,padding:[0,0,0,35]},axisLabel:{fontSize:11,color:'#888',formatter:'{value} m'},splitLine:{lineStyle:{color:'#f5f5f5'}}},
+    series:series
+  });
+}
+
+// ===== 状态切换 =====
+function setState(id,status){
+  const st=$(id+'-state'),ch=$(id+'-chart');
+  if(status==='chart'){st.style.display='none';ch.style.display='block'}
+  else{
+    ch.style.display='none';st.style.display='flex';
+    if(status==='loading')st.innerHTML='<div class="spin"></div><span>加载中...</span>';
+    else if(status==='empty')st.innerHTML='<div class="state-icon">📭</div><span>该时间段内暂无数据</span>';
+    else if(status==='error')st.innerHTML='<div class="state-icon">⚠️</div><span>数据加载失败，请重试</span>';
+  }
+}
+function setWaterStatus(s){setState('water',s)}
+function setOpenStatus(s){setState('open',s)}
+
+init();
+</script>
+</body>
+</html>
