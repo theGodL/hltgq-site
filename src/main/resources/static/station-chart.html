@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>站点监测数据</title>
-<script src="/lib/echarts.min.js"></script>
+<script src="/hltgq-site/lib/echarts.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -196,7 +196,7 @@ function switchTab(tab) {
 
 async function loadStations() {
   try {
-    stations = await fetch('/station-metrics').then(r => r.json()) || [];
+    stations = await fetch('/hltgq-site/station-metrics').then(r => r.json()) || [];
     const usable = stations.filter(s => s.type === 'water' || s.type === 'rain' || s.type === 'all');
     const sel = $('station-select');
     sel.innerHTML = usable.length ? '' : '<option value="">无可选站点</option>';
@@ -227,7 +227,7 @@ async function onStationChange() {
 // ===== 站点信息 =====
 async function loadStationInfo() {
   try {
-    const res = await fetch(`/st-stinfo/${currentStcd}`);
+    const res = await fetch(`/hltgq-site/st-stinfo/${currentStcd}`);
     stationInfo = await res.json();
     renderInfo(stationInfo);
   } catch {
@@ -256,7 +256,7 @@ async function loadRiver() {
   setStatus('river', 'loading');
   try {
     const p = new URLSearchParams({ stcd: currentStcd, startTime: dtToApi(s), endTime: dtToApi(e) });
-    const data = await fetch(`/st-river-r/export?${p}`).then(r => r.json());
+    const data = await fetch(`/hltgq-site/st-river-r/export?${p}`).then(r => r.json());
     if (!data?.length) { setStatus('river', 'empty'); return; }
     drawRiver(data);
   } catch {
@@ -340,7 +340,7 @@ async function loadPptn() {
   setStatus('pptn', 'loading');
   try {
     const p = new URLSearchParams({ stcd: currentStcd, startTime: `${s} 00:00:00`, endTime: `${e} 23:59:59` });
-    const data = await fetch(`/st-pptn-r/export?${p}`).then(r => r.json());
+    const data = await fetch(`/hltgq-site/st-pptn-r/export?${p}`).then(r => r.json());
     drawPptn(data || []);
   } catch {
     setStatus('pptn', 'error');

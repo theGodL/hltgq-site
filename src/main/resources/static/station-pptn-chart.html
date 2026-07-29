@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>站点监测 - 雨量统计</title>
-<script src="/lib/echarts.min.js"></script>
+<script src="/hltgq-site/lib/echarts.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -110,7 +110,7 @@ function setDefaults(){
 
 async function loadStations(){
   try{
-    const data=await fetch('/station-metrics').then(r=>r.json())||[];
+    const data=await fetch('/hltgq-site/station-metrics').then(r=>r.json())||[];
     const usable=data.filter(s=>s.type==='rain'||s.type==='all');
     const sel=$('station-select');
     sel.innerHTML=usable.length?'':'<option value="">无可选站点</option>';
@@ -139,7 +139,7 @@ async function onStationChange(){
 
 async function loadStationInfo(){
   try{
-    const res=await fetch(`/st-stinfo/${currentStcd}`);
+    const res=await fetch(`/hltgq-site/st-stinfo/${currentStcd}`);
     stationInfo=await res.json();
     renderInfo(stationInfo);
   }catch{$('info-card').innerHTML='<div class="info-placeholder">⚠️ 站点信息加载失败</div>'}
@@ -164,7 +164,7 @@ async function loadData(){
   destroyChart();
   try{
     const p=new URLSearchParams({stcd:currentStcd,startTime:`${s} 00:00:00`,endTime:`${e} 23:59:59`});
-    const data=await fetch(`/st-pptn-r/export?${p}`).then(r=>r.json());
+    const data=await fetch(`/hltgq-site/st-pptn-r/export?${p}`).then(r=>r.json());
     drawChart(data||[]);
   }catch{setStatus('error')}
 }

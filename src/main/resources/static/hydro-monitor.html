@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>雨量数据</title>
-<script src="/lib/xlsx.full.min.js"></script>
+<script src="/hltgq-site/lib/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -215,7 +215,7 @@ async function init() {
 
 async function loadStations() {
   try {
-    const metrics = await fetch('/station-metrics').then(r => r.json()) || [];
+    const metrics = await fetch('/hltgq-site/station-metrics').then(r => r.json()) || [];
     // 只保留有雨量数据的站点
     S.stations = metrics.filter(s => s.type === 'rain' || s.type === 'all');
   } catch(e) { console.error('加载站点失败', e); }
@@ -250,7 +250,7 @@ async function queryPptn() {
   setPivotState('pptn', 'loading');
   try {
     const p = new URLSearchParams({ startTime: startDate + ' 08:00:00', endTime: endDate + ' 07:59:59' });
-    const rows = await fetch(`/st-pptn-r/export?${p}`).then(r => r.json());
+    const rows = await fetch(`/hltgq-site/st-pptn-r/export?${p}`).then(r => r.json());
     const filtered = (rows || []).filter(r => !PPTN_EXCLUDE.has((r.stcd||'').trim()));
     const buckets = generatePptnBuckets(s, e);
     S.pptnData = buildPptnPivot(filtered, buckets);
@@ -322,7 +322,7 @@ async function queryPeriod() {
   setPivotState('period', 'loading');
   try {
     const p = new URLSearchParams({ startTime: startDate + ' 08:00:00', endTime: endDate + ' 07:59:59' });
-    const rows = await fetch(`/st-pptn-r/export?${p}`).then(r => r.json());
+    const rows = await fetch(`/hltgq-site/st-pptn-r/export?${p}`).then(r => r.json());
     // 只保留所选水文日内的时段
     const periodBuckets = generatePptnBuckets(s, e);
     const bucketSet = new Set(periodBuckets);
@@ -407,7 +407,7 @@ async function queryDaily() {
   setPivotState('daily', 'loading');
   try {
     const p = new URLSearchParams({ startTime: startDate + ' 08:00:00', endTime: endDate + ' 07:59:59' });
-    const rows = await fetch(`/st-pptn-r/export?${p}`).then(r => r.json());
+    const rows = await fetch(`/hltgq-site/st-pptn-r/export?${p}`).then(r => r.json());
     S.dailyData = buildDailyPivot(rows || [], generateDailyBuckets(s, e));
     renderPivot('daily', S.dailyData, true);
   } catch(err) { setPivotState('daily', 'error'); console.error(err); }

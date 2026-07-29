@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>水位数据</title>
-<script src="/lib/xlsx.full.min.js"></script>
+<script src="/hltgq-site/lib/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -187,7 +187,7 @@ async function init() {
 
 async function loadStations() {
   try {
-    const metrics = await fetch('/station-metrics').then(r => r.json()) || [];
+    const metrics = await fetch('/hltgq-site/station-metrics').then(r => r.json()) || [];
     // 只保留有水位数据的站点
     S.stations = metrics.filter(s => s.type === 'water' || s.type === 'all');
     const sel = $('river-stcd');
@@ -225,7 +225,7 @@ function reset() {
 async function fetchLatest() {
   S.mode = 'latest';
   try {
-    const rows = await fetch('/st-river-r/latest').then(r => r.json());
+    const rows = await fetch('/hltgq-site/st-river-r/latest').then(r => r.json());
     S.riverRows = rows;
     renderTable(rows);
     $('river-pg').innerHTML = `<span class="pg-info">共 ${rows.length} 条（最新数据）</span>`;
@@ -234,7 +234,7 @@ async function fetchLatest() {
 
 async function fetchData() {
   try {
-    const res = await fetch(`/st-river-r/page?${buildParams()}`);
+    const res = await fetch(`/hltgq-site/st-river-r/page?${buildParams()}`);
     const d = await res.json();
     S.total = d.total || 0;
     S.page  = d.current || 1;
@@ -299,7 +299,7 @@ function goPage(p) { S.page = p; fetchData(); }
 // ===== 导出 =====
 async function doExport() {
   try {
-    const res = await fetch(`/st-river-r/export?${buildParams(false)}`);
+    const res = await fetch(`/hltgq-site/st-river-r/export?${buildParams(false)}`);
     const rows = await res.json();
     const headers = ['测站编码','测站名称','观测时间','水位(m)','流量(m³/s)','水流特征码','测点编号'];
     const data = rows.map(r => [(r.stcd||'').trim(), stName(r.stcd), fmtDt(r.tm), r.z, r.q, r.flwchrcd, r.wptn]);
@@ -345,7 +345,7 @@ async function saveEdit() {
   const sf = id => $(id).value || null;
   const body = { stcd:orig.stcd, tm:orig.tm, z:nf('e-z'), q:nf('e-q'), flwchrcd:sf('e-flwchrcd'), wptn:sf('e-wptn') };
   try {
-    const res = await fetch('/st-river-r', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    const res = await fetch('/hltgq-site/st-river-r', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
     if (res.ok) {
       closeModal('edit-overlay');
       if (S.mode === 'latest') fetchLatest(); else fetchData();

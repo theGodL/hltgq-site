@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>取水量监测</title>
-<script src="/lib/echarts.min.js"></script>
-<script src="/lib/xlsx.full.min.js"></script>
+<script src="/hltgq-site/lib/echarts.min.js"></script>
+<script src="/hltgq-site/lib/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -261,7 +261,7 @@ function bindEvents() {
 // ===== 加载取水单位 =====
 async function loadUnits() {
   try {
-    units = await fetch('/water-intake/units').then(r => r.json()) || [];
+    units = await fetch('/hltgq-site/water-intake/units').then(r => r.json()) || [];
     const sel = $('unit-select');
     sel.innerHTML = units.length ? '' : '<option value="">无取水单位</option>';
     units.forEach(u => {
@@ -301,7 +301,7 @@ async function loadData() {
   setStatus('loading');
   try {
     const p = new URLSearchParams({ wiustCd, dimension: dim, startTime: dates.startTime, endTime: dates.endTime });
-    const res = await fetch(`/water-intake?${p}`).then(r => r.json());
+    const res = await fetch(`/hltgq-site/water-intake?${p}`).then(r => r.json());
     allRecords = res.records || [];
     if (!allRecords.length) {
       setStatus('empty');

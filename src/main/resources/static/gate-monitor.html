@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>闸门监控</title>
-<script src="/lib/echarts.min.js"></script>
+<script src="/hltgq-site/lib/echarts.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -131,7 +131,7 @@ function bindEvents(){
 // ===== 站点列表 =====
 async function loadSites(){
   try{
-    sites=await fetch('/gate-monitor/sites').then(r=>r.json())||[];
+    sites=await fetch('/hltgq-site/gate-monitor/sites').then(r=>r.json())||[];
     const sel=$('site-select');
     sel.innerHTML=sites.length?'':'<option value="">无站点数据</option>';
     sites.forEach(s=>{
@@ -180,7 +180,7 @@ async function loadGates(){
   if(!siteId){wrap.innerHTML='<span class="gate-none">请先选择站点</span>';gateNos=[];return}
   wrap.innerHTML='<span class="gate-none">加载中...</span>';
   try{
-    gateList=await fetch(`/gate-monitor/gates?siteId=${encodeURIComponent(siteId)}`).then(r=>r.json())||[];
+    gateList=await fetch(`/hltgq-site/gate-monitor/gates?siteId=${encodeURIComponent(siteId)}`).then(r=>r.json())||[];
     if(!gateList.length){wrap.innerHTML='<span class="gate-none">该站点无闸孔</span>';gateNos=[];return}
     renderGateChecks();
     loadData();
@@ -249,7 +249,7 @@ async function loadData(){
   try{
     const p=new URLSearchParams({siteId,startTime:dtToApi(s),endTime:dtToApi(e)});
     gateNos.forEach(g=>p.append('gateNos',g));
-    const data=await fetch(`/gate-monitor/export?${p}`).then(r=>r.json())||[];
+    const data=await fetch(`/hltgq-site/gate-monitor/export?${p}`).then(r=>r.json())||[];
     if(!data.length){setWaterStatus('empty');setOpenStatus('empty');return}
     drawWater(data);
     drawOpen(data);
