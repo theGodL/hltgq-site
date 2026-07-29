@@ -82,6 +82,33 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
                                                     @Param("endTime") LocalDateTime endTime);
 
     /**
+     * 灌区雨量历史：单站点全部记录，每一条含1h/3h/6h前DRP值（用于计算时段增量）
+     * stcd 必填，startTime/endTime 可选
+     */
+    @Select("<script>"
+            + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, "
+            + "  s.zzkaec AS stnm, s.id AS id, "
+            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_1h, "
+            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '3 hours' "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_3h, "
+            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '6 hours' "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_6h "
+            + "FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info t "
+            + "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = t.STCD "
+            + "WHERE t.STCD = #{stcd} "
+            + "<if test=\"startTime != null\"> AND t.TM &gt;= #{startTime} </if>"
+            + "<if test=\"endTime != null\"> AND t.TM &lt;= #{endTime} </if>"
+            + "ORDER BY t.TM DESC"
+            + "</script>")
+    List<Map<String, Object>> selectGqRainfallHistory(@Param("stcd") String stcd,
+                                                       @Param("startTime") LocalDateTime startTime,
+                                                       @Param("endTime") LocalDateTime endTime);
+
+    /**
      * 按站点和时间范围查询原始雨量记录，用于图表增量计算
      */
     @Select("SELECT STCD, TM, DRP " +
@@ -93,4 +120,20 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
     List<StPptnR> selectByStcdAndTimeRange(@Param("stcd") String stcd,
                                            @Param("startTime") LocalDateTime startTime,
                                            @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 按多个站点编号 + 时间范围批量查询原始雨量记录
+     */
+    @Select("<script>" +
+            "SELECT STCD, TM, DRP " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info " +
+            "WHERE STCD IN " +
+            "<foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach> " +
+            "AND TM &gt;= #{startTime} " +
+            "AND TM &lt;= #{endTime} " +
+            "ORDER BY TM ASC" +
+            "</script>")
+    List<StPptnR> selectByStcdsAndTimeRange(@Param("stcds") List<String> stcds,
+                                            @Param("startTime") LocalDateTime startTime,
+                                            @Param("endTime") LocalDateTime endTime);
 }

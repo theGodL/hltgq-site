@@ -9,11 +9,17 @@ import com.qgyun.hltgq.hltgqsite.entity.StPptnR;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallVO;
+import com.qgyun.hltgq.hltgqsite.vo.ReservoirExtremeRainfallVO;
+import com.qgyun.hltgq.hltgqsite.vo.ReservoirPeriodRainfallVO;
+import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallBriefVO;
+import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallVO;
+import com.qgyun.hltgq.hltgqsite.vo.ReservoirTenDayRainfallVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -133,5 +139,83 @@ public class StPptnRController {
         if (endTime == null) endTime = now;
         if (startTime == null) startTime = now.minusDays(7);
         return stPptnRService.gqRainfallChart(stcd, startTime, endTime);
+    }
+
+    /**
+     * 灌区雨量历史：单站点全部记录（含1h/3h/6h时段增量），支持时间范围筛选
+     * stcd 必填
+     */
+    @GetMapping("/gq-rainfall-history")
+    public IPage<GqRainfallVO> gqRainfallHistory(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size,
+            @RequestParam String stcd,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+        return stPptnRService.gqRainfallHistoryPage(page, size, stcd, startTime, endTime);
+    }
+
+    /**
+     * 水库实时雨情：12 个固定站点，按水文日（8:00 切分）聚合日雨量
+     * startDate/endDate 非必填，默认当天
+     */
+    @GetMapping("/reservoir-rainfall")
+    public ReservoirRainfallVO reservoirRainfall(
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate) {
+        LocalDate now = LocalDate.now();
+        if (startDate == null) startDate = now;
+        if (endDate == null) endDate = now;
+        return stPptnRService.reservoirRainfall(startDate, endDate);
+    }
+
+    /**
+     * 水库时段雨情：12 个固定站点，按可配时间间隔聚合时段雨量
+     * startDate/endDate 非必填默认当天，interval 默认 60（可选 15/30/45/60/120/180/240/360/480/720/1440）
+     */
+    @GetMapping("/reservoir-period-rainfall")
+    public ReservoirPeriodRainfallVO reservoirPeriodRainfall(
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
+            @RequestParam(defaultValue = "60") int interval) {
+        LocalDate now = LocalDate.now();
+        if (startDate == null) startDate = now;
+        if (endDate == null) endDate = now;
+        return stPptnRService.reservoirPeriodRainfall(startDate, endDate, interval);
+    }
+
+    /**
+     * 水库旬月雨情：12 个固定站点，按旬（上/中/下旬）聚合雨量 + 平均值
+     * yearMonth 必填，格式 yyyy-MM
+     */
+    @GetMapping("/reservoir-ten-day-rainfall")
+    public ReservoirTenDayRainfallVO reservoirTenDayRainfall(
+            @RequestParam String yearMonth) {
+        return stPptnRService.reservoirTenDayRainfall(yearMonth);
+    }
+
+    /**
+     * 水库极值雨情：12 个站点在各时间窗口内的最大雨量
+     * startDate/endDate 非必填，默认当月
+     */
+    @GetMapping("/reservoir-extreme-rainfall")
+    public List<ReservoirExtremeRainfallVO> reservoirExtremeRainfall(
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate) {
+        LocalDate now = LocalDate.now();
+        if (startDate == null) startDate = now.withDayOfMonth(1);
+        if (endDate == null) endDate = now;
+        return stPptnRService.reservoirExtremeRainfall(startDate, endDate);
+    }
+
+    /**
+     * 水库雨情简报：指定日期各站点日/旬/月三级雨量
+     * date 非必填，默认当天
+     */
+    @GetMapping("/reservoir-rainfall-brief")
+    public List<ReservoirRainfallBriefVO> reservoirRainfallBrief(
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date) {
+        if (date == null) date = LocalDate.now();
+        return stPptnRService.reservoirRainfallBrief(date);
     }
 }
