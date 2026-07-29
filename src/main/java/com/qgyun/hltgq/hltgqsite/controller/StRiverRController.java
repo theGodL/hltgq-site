@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.StRiverR;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
+import com.qgyun.hltgq.hltgqsite.vo.ReservoirRegimeVO;
+import com.qgyun.hltgq.hltgqsite.vo.RiverRegimeVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
@@ -88,4 +90,31 @@ public class StRiverRController {
                 .eq("TM", Timestamp.valueOf(tm)));
     }
 
+    /**
+     * 水库水位-河道水情数据（分页）
+     * 仅支持周家河(00000001)和花凉亭坝下(00000004)
+     */
+    @GetMapping("/regime")
+    public Page<RiverRegimeVO> regime(
+            @RequestParam String stcd,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+        return stRiverRService.riverRegime(stcd, startTime, endTime, page, size);
+    }
+
+    /**
+     * 水库水位-水库水情数据（分页）
+     * 仅支持花凉亭坝上(00000007)
+     */
+    @GetMapping("/reservoir-regime")
+    public Page<ReservoirRegimeVO> reservoirRegime(
+            @RequestParam String stcd,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+        return stRiverRService.reservoirRegime(stcd, startTime, endTime, page, size);
+    }
 }

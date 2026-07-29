@@ -54,7 +54,7 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
      * 支持按站点编号、监测日期范围筛选
      */
     @Select("<script>"
-            + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, "
+            + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
             + "  s.zzkaec AS stnm, s.id AS id, "
             + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' "
@@ -66,15 +66,16 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '6 hours' "
             + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_6h "
             + "FROM ( "
-            + "  SELECT STCD, TM, DRP, "
+            + "  SELECT STCD, TM, DRP, DYP, "
             + "    ROW_NUMBER() OVER (PARTITION BY STCD ORDER BY TM DESC) AS rn "
             + "  FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "  WHERE 1=1 "
+            + "  <if test=\"stcd != null and stcd != ''\"> AND STCD = #{stcd} </if>"
+            + "  <if test=\"startTime != null\"> AND TM &gt;= #{startTime} </if>"
+            + "  <if test=\"endTime != null\"> AND TM &lt;= #{endTime} </if>"
             + ") t "
             + "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = t.STCD "
             + "WHERE t.rn = 1 "
-            + "<if test=\"stcd != null and stcd != ''\"> AND t.STCD = #{stcd} </if>"
-            + "<if test=\"startTime != null\"> AND t.TM &gt;= #{startTime} </if>"
-            + "<if test=\"endTime != null\"> AND t.TM &lt;= #{endTime} </if>"
             + "ORDER BY t.STCD"
             + "</script>")
     List<Map<String, Object>> selectGqRainfallList(@Param("stcd") String stcd,
@@ -86,7 +87,7 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
      * stcd 必填，startTime/endTime 可选
      */
     @Select("<script>"
-            + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, "
+            + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
             + "  s.zzkaec AS stnm, s.id AS id, "
             + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' "
@@ -136,4 +137,10 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
     List<StPptnR> selectByStcdsAndTimeRange(@Param("stcds") List<String> stcds,
                                             @Param("startTime") LocalDateTime startTime,
                                             @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 雨量监测全部站点编号（去重）
+     */
+    @Select("SELECT DISTINCT STCD FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info ORDER BY STCD")
+    List<String> selectDistinctRainfallStcds();
 }

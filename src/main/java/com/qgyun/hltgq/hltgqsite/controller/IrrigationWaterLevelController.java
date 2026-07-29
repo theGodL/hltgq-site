@@ -2,6 +2,8 @@ package com.qgyun.hltgq.hltgqsite.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.service.IrrigationWaterLevelService;
+import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelChartVO;
+import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -45,5 +47,37 @@ public class IrrigationWaterLevelController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
         return irrigationWaterLevelService.page(
                 new Page<>(page, size), stcd, startTime, endTime);
+    }
+
+    /**
+     * 水位变化图表：单站点小时级水位值 + 水位变化（用于水位统计曲线图）
+     * stcd 必填；startTime/endTime 非必填，默认近 7 天
+     */
+    @GetMapping("/chart")
+    public IrrigationWaterLevelChartVO waterLevelChart(
+            @RequestParam String stcd,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+        LocalDateTime now = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
+        if (endTime == null) endTime = now;
+        if (startTime == null) startTime = now.minusDays(7);
+        return irrigationWaterLevelService.waterLevelChart(stcd, startTime, endTime);
+    }
+
+    /**
+     * 水位历史数据（分页）：单站点小时级水位值 + 1h涨幅
+     * stcd 必填；startTime/endTime 非必填，默认近 7 天
+     */
+    @GetMapping("/history")
+    public Page<IrrigationWaterLevelHistoryVO> history(
+            @RequestParam String stcd,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+        LocalDateTime now = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
+        if (endTime == null) endTime = now;
+        if (startTime == null) startTime = now.minusDays(7);
+        return irrigationWaterLevelService.waterLevelHistory(stcd, startTime, endTime, page, size);
     }
 }

@@ -1,28 +1,43 @@
 package com.qgyun.hltgq.hltgqsite.controller;
 
+import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.entity.StPptnR;
 import com.qgyun.hltgq.hltgqsite.entity.StRiverR;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
+import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.IrrigationWaterLevelMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.WaterIntakeMapper;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
 import com.qgyun.hltgq.hltgqsite.service.StStinfoService;
 import com.qgyun.hltgq.hltgqsite.vo.StationMetricsVO;
+import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
+import com.qgyun.hltgq.hltgqsite.vo.StationSitesVO;
+import com.qgyun.hltgq.hltgqsite.vo.WaterIntakeRecordVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/station-metrics")
 public class StationMetricsController {
+
+    private static final Logger log = LoggerFactory.getLogger(StationMetricsController.class);
 
     @Autowired
     private StStinfoService stStinfoService;
@@ -32,6 +47,94 @@ public class StationMetricsController {
 
     @Autowired
     private StPptnRService stPptnRService;
+
+    @Autowired
+    private StPptnRMapper stPptnRMapper;
+
+    @Autowired
+    private IrrigationWaterLevelMapper irrigationWaterLevelMapper;
+
+    @Autowired
+    private GateMonitorMapper gateMonitorMapper;
+
+    @Autowired
+    private WaterIntakeMapper waterIntakeMapper;
+
+    /**
+     * 全量站点分类查询
+     *
+     * @param type 可选筛选：rainfall(雨量) / waterLevel(水位) / gate(闸门) / waterIntake(取水量)。
+     *             不传则返回全部四类，按 JSON key 分组。
+     */
+    @GetMapping("/sites")
+    public Object sites(@RequestParam(required = false) String type) {
+        // 指定类型 → 返回单一列表
+        if (type != null && !type.isEmpty()) {
+            switch (type) {
+                case "rainfall":
+                    List<String> rainfallStcds = stPptnRMapper.selectDistinctRainfallStcds();
+                    List<StationSiteVO> rainfall = new ArrayList<>();
+                    for (String stcd : rainfallStcds) {
+                        StStinfo info = stStinfoService.getById(stcd);
+                        StationSiteVO s = new StationSiteVO();
+                        s.setCode(stcd);
+                        s.setName(info != null ? info.getStnm() : stcd);
+                        rainfall.add(s);
+                    }
+                    return rainfall;
+                case "waterLevel":
+                    return irrigationWaterLevelMapper.selectWaterLevelStations();
+                case "gate":
+                    List<GateMonitor> gateSites = gateMonitorMapper.selectGateSites();
+                    return gateSites.stream().map(g -> {
+                        StationSiteVO s = new StationSiteVO();
+                        s.setCode(g.getSite());
+                        s.setName(g.getSiteName());
+                        return s;
+                    }).collect(Collectors.toList());
+                case "waterIntake":
+                    return safeWaterIntakeSites();
+                default:
+                    throw new IllegalArgumentException("无效的 type 值: " + type + "，可选: rainfall / waterLevel / gate / waterIntake");
+            }
+        }
+
+        // 不传 type → 返回全量分组
+        StationSitesVO vo = new StationSitesVO();
+        vo.setRainfall(stPptnRMapper.selectDistinctRainfallStcds().stream().map(stcd -> {
+            StStinfo info = stStinfoService.getById(stcd);
+            StationSiteVO s = new StationSiteVO();
+            s.setCode(stcd);
+            s.setName(info != null ? info.getStnm() : stcd);
+            return s;
+        }).collect(Collectors.toList()));
+        vo.setWaterLevel(irrigationWaterLevelMapper.selectWaterLevelStations());
+        vo.setGate(gateMonitorMapper.selectGateSites().stream().map(g -> {
+            StationSiteVO s = new StationSiteVO();
+            s.setCode(g.getSite());
+            s.setName(g.getSiteName());
+            return s;
+        }).collect(Collectors.toList()));
+        vo.setWaterIntake(safeWaterIntakeSites());
+        return vo;
+    }
+
+    /**
+     * 安全查询取水量站点：表不存在时返回空列表
+     */
+    private List<StationSiteVO> safeWaterIntakeSites() {
+        try {
+            return waterIntakeMapper.selectAllUnits().stream().map(u -> {
+                StationSiteVO s = new StationSiteVO();
+                s.setCode(u.getMpCd());
+                s.setName(u.getMpNm());
+                return s;
+            }).collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("取水量站点查询失败（表可能不存在）: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
 
     @GetMapping
     public List<StationMetricsVO> list() {

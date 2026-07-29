@@ -24,8 +24,11 @@ public class GqRainfallVO {
     /** 监测日期（最新数据时间） */
     private LocalDateTime tm;
 
-    /** 实时雨量 DRP（mm） */
+    /** 时段降水量 DRP（mm） */
     private BigDecimal drp;
+
+    /** 日降雨量 DYP（mm） */
+    private BigDecimal dyp;
 
     /** 1h 降雨量（mm）= 当前DRP - 1h前DRP */
     private BigDecimal rain1h;

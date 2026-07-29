@@ -156,7 +156,9 @@ public class StPptnRController {
     }
 
     /**
-     * 水库实时雨情：12 个固定站点，按水文日（8:00 切分）聚合日雨量
+     * 水库实时雨情 / 水库日雨情（双视角）
+     * stations[]: 实时雨情 — 各站点最新观测快照（latestTm = 实际观测时间，latestDrp = 当前 DRP）
+     * days[]:    日雨情 — 按水文日（8:00 切分）聚合的逐日雨量透视表
      * startDate/endDate 非必填，默认当天
      */
     @GetMapping("/reservoir-rainfall")

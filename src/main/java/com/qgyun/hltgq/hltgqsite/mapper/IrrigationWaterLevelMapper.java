@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.mapper;
 
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelVO;
+import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;
@@ -8,6 +9,7 @@ import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 水位监测-灌区：每站最新水位 + 1h涨幅
@@ -33,10 +35,10 @@ public interface IrrigationWaterLevelMapper {
             "INNER JOIN (" +
             "  SELECT STCD, MAX(TM) AS MaxTM " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info " +
-            "  ${ew1.customSqlSegment} " +
+            "  ${ew.customSqlSegment} " +
             "  GROUP BY STCD" +
             ") rm ON r.STCD = rm.STCD AND r.TM = rm.MaxTM " +
-            "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef\" s ON r.STCD = s.iofhpi " +
+            "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON r.STCD = s.iofhpi " +
             "${ew2.customSqlSegment} " +
             "ORDER BY r.STCD " +
             "LIMIT #{limit} OFFSET #{offset}")
@@ -49,7 +51,7 @@ public interface IrrigationWaterLevelMapper {
             @Result(column = "rise1h", property = "rise1h")
     })
     List<IrrigationWaterLevelVO> selectPage(
-            @Param("ew1") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> dateWrapper,
+            @Param("ew") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> dateWrapper,
             @Param("ew2") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> stcdWrapper,
             @Param("limit") int limit,
             @Param("offset") int offset);
@@ -63,12 +65,40 @@ public interface IrrigationWaterLevelMapper {
             "  INNER JOIN (" +
             "    SELECT STCD, MAX(TM) AS MaxTM " +
             "    FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info " +
-            "    ${ew1.customSqlSegment} " +
+            "    ${ew.customSqlSegment} " +
             "    GROUP BY STCD" +
             "  ) rm ON r.STCD = rm.STCD AND r.TM = rm.MaxTM " +
             "  ${ew2.customSqlSegment} " +
             ") t")
     long selectCount(
-            @Param("ew1") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> dateWrapper,
+            @Param("ew") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> dateWrapper,
             @Param("ew2") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> stcdWrapper);
+
+    /**
+     * 查询站点水位历史数据（用于水位变化图表）
+     * 按时间升序返回 TM, Z
+     */
+    @Select("SELECT r.TM AS tm, r.Z AS z " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
+            "WHERE r.STCD = #{stcd} " +
+            "AND r.TM >= #{startTime}::timestamp " +
+            "AND r.TM <= #{endTime}::timestamp " +
+            "ORDER BY r.TM ASC")
+    List<Map<String, Object>> selectHistoryRaw(
+            @Param("stcd") String stcd,
+            @Param("startTime") String startTime,
+            @Param("endTime") String endTime);
+
+    /**
+     * 水位监测全部站点编号+名称
+     */
+    @Select("SELECT DISTINCT r.STCD AS code, COALESCE(s.zzkaec, r.STCD) AS name " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
+            "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = r.STCD " +
+            "ORDER BY r.STCD")
+    @Results({
+            @Result(column = "code", property = "code"),
+            @Result(column = "name", property = "name")
+    })
+    List<StationSiteVO> selectWaterLevelStations();
 }

@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Result;
 import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -73,4 +74,35 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
                                               @Param("gateNos") List<String> gateNos,
                                               @Param("startTime") String startTime,
                                               @Param("endTime") String endTime);
+
+    /**
+     * 各闸孔最新一条数据（按站点 + 闸孔分组，取最新 TM）
+     * <p>使用 PostgreSQL DISTINCT ON 对 (site, gate_no) 去重，每组取 tm 最大的一条。
+     *
+     * @param startTime 起始时间（含），null 表示不限制
+     * @param endTime   截止时间（含），null 表示不限制
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT ON (g.site, g.gate_no) " +
+            "g.site, s.zzkaec AS site_name, g.gate_no, g.tm, " +
+            "g.open_degree, g.up_z, g.down_z, g.status " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
+            "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
+            "WHERE 1=1 " +
+            "<if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
+            "<if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
+            "ORDER BY g.site, g.gate_no, g.tm DESC" +
+            "</script>")
+    @Results({
+            @Result(column = "site", property = "site"),
+            @Result(column = "site_name", property = "siteName"),
+            @Result(column = "gate_no", property = "gateNo"),
+            @Result(column = "tm", property = "tm"),
+            @Result(column = "open_degree", property = "openDegree"),
+            @Result(column = "up_z", property = "upZ"),
+            @Result(column = "down_z", property = "downZ"),
+            @Result(column = "status", property = "status")
+    })
+    List<GateMonitor> selectLatestPerHole(@Param("startTime") LocalDateTime startTime,
+                                           @Param("endTime") LocalDateTime endTime);
 }

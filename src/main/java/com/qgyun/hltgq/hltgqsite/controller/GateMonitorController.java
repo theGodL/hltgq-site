@@ -2,12 +2,16 @@ package com.qgyun.hltgq.hltgqsite.controller;
 
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
+import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
+import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -17,6 +21,9 @@ public class GateMonitorController {
 
     @Autowired
     private GateMonitorMapper gateMonitorMapper;
+
+    @Autowired
+    private GateMonitorService gateMonitorService;
 
     /**
      * 有闸门数据的站点列表（返回 site + siteName）
@@ -50,5 +57,21 @@ public class GateMonitorController {
         List<String> filtered = (gateNos.size() == 1 && gateNos.get(0).isEmpty())
                 ? Collections.emptyList() : gateNos;
         return gateMonitorMapper.selectHourlyAggregated(siteId, filtered, startTime, endTime);
+    }
+
+    /**
+     * 闸门监测-最新数据
+     * <p>每个闸站返回一条记录，包含该站所有闸孔的最新开度、闸前/闸后水位及状态。
+     * 支持按日期区间筛选（仅查询该时间范围内的最新数据）。
+     *
+     * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
+     * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
+     * @return 各闸站最新监测数据列表
+     */
+    @GetMapping("/monitoring")
+    public List<GateMonitoringVO> monitoring(
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+        return gateMonitorService.monitoring(startTime, endTime);
     }
 }

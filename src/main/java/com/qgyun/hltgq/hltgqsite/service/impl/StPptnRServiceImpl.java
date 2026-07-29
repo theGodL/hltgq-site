@@ -104,6 +104,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         }
         BigDecimal drp = toBigDecimal(row.get("drp"));
         vo.setDrp(drp);
+        vo.setDyp(toBigDecimal(row.get("dyp")));
         // 时段增量计算：当前DRP - 历史DRP，结果非负
         BigDecimal drp1h = toBigDecimal(row.get("drp_1h"));
         BigDecimal drp3h = toBigDecimal(row.get("drp_3h"));
@@ -220,7 +221,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         // 3. 批量查询原始 DRP 记录
         List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(RESERVOIR_STCDS, queryStart, queryEnd);
 
-        // 4. 按站点 + 水文日聚合增量（完全对齐 hydro-monitor.html buildPptnPivot 逻辑）
+        // 4. 按站点 + 水文日聚合增量（对齐 hydro-monitor.html buildPptnPivot 逻辑）
         //    Map<水文日标签, Map<stcd, 累加增量>>
         Map<String, Map<String, BigDecimal>> bucketMap = new LinkedHashMap<>();
 
@@ -265,9 +266,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             d = d.plusDays(1);
         }
 
-        // 6. 组装站点信息（含最新 DRP）
+        // 6. 组装站点信息（含最新 DRP — 实时雨情视角）
         List<ReservoirRainfallVO.StationInfo> stations = new ArrayList<>();
-        // 先收集每个站点的最新一条记录
         Map<String, StPptnR> latestPerStcd = new HashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
@@ -288,11 +288,14 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             if (latest != null) {
                 si.setLatestTm(latest.getTm());
                 si.setLatestDrp(latest.getDrp());
+            } else {
+                // 无数据时返回当前时间，表示"截至此刻无测量值"，便于前端区分"无数据"与"接口异常"
+                si.setLatestTm(LocalDateTime.now());
             }
             stations.add(si);
         }
 
-        // 7. 组装逐日数据
+        // 7. 组装逐日数据（日雨情视角）
         List<ReservoirRainfallVO.DayRainfall> days = new ArrayList<>();
         for (String bucket : allBuckets) {
             ReservoirRainfallVO.DayRainfall dr = new ReservoirRainfallVO.DayRainfall();
@@ -311,7 +314,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             days.add(dr);
         }
 
-        // 8. 组装结果
+        // 8. 组装结果（双视角：stations=实时 + days=日雨情）
         ReservoirRainfallVO vo = new ReservoirRainfallVO();
         vo.setStations(stations);
         vo.setDays(days);
