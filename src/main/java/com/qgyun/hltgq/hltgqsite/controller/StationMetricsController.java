@@ -7,14 +7,13 @@ import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.IrrigationWaterLevelMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
-import com.qgyun.hltgq.hltgqsite.mapper.WaterIntakeMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
 import com.qgyun.hltgq.hltgqsite.service.StStinfoService;
 import com.qgyun.hltgq.hltgqsite.vo.StationMetricsVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSitesVO;
-import com.qgyun.hltgq.hltgqsite.vo.WaterIntakeRecordVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,19 +24,14 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/station-metrics")
 public class StationMetricsController {
-
-    private static final Logger log = LoggerFactory.getLogger(StationMetricsController.class);
 
     @Autowired
     private StStinfoService stStinfoService;
@@ -58,13 +52,13 @@ public class StationMetricsController {
     private GateMonitorMapper gateMonitorMapper;
 
     @Autowired
-    private WaterIntakeMapper waterIntakeMapper;
+    private WaterFlowMapper waterFlowMapper;
 
     /**
      * 全量站点分类查询
      *
-     * @param type 可选筛选：rainfall(雨量) / waterLevel(水位) / gate(闸门) / waterIntake(取水量)。
-     *             不传则返回全部四类，按 JSON key 分组。
+     * @param type 可选筛选：rainfall(雨量) / waterLevel(水位) / gate(闸门) / flow(流量)。
+     *             不传则返回全部分类，按 JSON key 分组。
      */
     @GetMapping("/sites")
     public Object sites(@RequestParam(required = false) String type) {
@@ -92,10 +86,10 @@ public class StationMetricsController {
                         s.setName(g.getSiteName());
                         return s;
                     }).collect(Collectors.toList());
-                case "waterIntake":
-                    return safeWaterIntakeSites();
+                case "flow":
+                    return waterFlowMapper.selectFlowStations();
                 default:
-                    throw new IllegalArgumentException("无效的 type 值: " + type + "，可选: rainfall / waterLevel / gate / waterIntake");
+                    throw new IllegalArgumentException("无效的 type 值: " + type + "，可选: rainfall / waterLevel / gate / flow");
             }
         }
 
@@ -115,25 +109,8 @@ public class StationMetricsController {
             s.setName(g.getSiteName());
             return s;
         }).collect(Collectors.toList()));
-        vo.setWaterIntake(safeWaterIntakeSites());
+        vo.setFlow(waterFlowMapper.selectFlowStations());
         return vo;
-    }
-
-    /**
-     * 安全查询取水量站点：表不存在时返回空列表
-     */
-    private List<StationSiteVO> safeWaterIntakeSites() {
-        try {
-            return waterIntakeMapper.selectAllUnits().stream().map(u -> {
-                StationSiteVO s = new StationSiteVO();
-                s.setCode(u.getMpCd());
-                s.setName(u.getMpNm());
-                return s;
-            }).collect(Collectors.toList());
-        } catch (Exception e) {
-            log.warn("取水量站点查询失败（表可能不存在）: {}", e.getMessage());
-            return Collections.emptyList();
-        }
     }
 
     @GetMapping

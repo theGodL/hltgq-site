@@ -1,8 +1,10 @@
 package com.qgyun.hltgq.hltgqsite.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
+import com.qgyun.hltgq.hltgqsite.vo.GateHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -73,5 +75,26 @@ public class GateMonitorController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
         return gateMonitorService.monitoring(startTime, endTime);
+    }
+
+    /**
+     * 闸门历史数据
+     * <p>分页返回每个闸孔的原始监测记录，含设备名称、开度、闸前后水位。
+     * 支持按站点和日期区间筛选。
+     *
+     * @param siteId    站点 UUID（可选，不传=全部站点）
+     * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
+     * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
+     * @param page      页码，默认 1
+     * @param size      每页条数，默认 20
+     */
+    @GetMapping("/history")
+    public Page<GateHistoryVO> history(
+            @RequestParam(required = false) String siteId,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size) {
+        return gateMonitorService.history(siteId, startTime, endTime, page, size);
     }
 }

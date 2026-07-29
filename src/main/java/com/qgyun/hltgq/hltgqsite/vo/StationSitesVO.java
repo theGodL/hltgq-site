@@ -19,6 +19,6 @@ public class StationSitesVO {
     /** 闸门监测站点 */
     private List<StationSiteVO> gate;
 
-    /** 取水量监测单位 */
-    private List<StationSiteVO> waterIntake;
+    /** 流量监测站点 */
+    private List<StationSiteVO> flow;
 }

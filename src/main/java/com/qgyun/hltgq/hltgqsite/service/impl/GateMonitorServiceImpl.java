@@ -1,8 +1,10 @@
 package com.qgyun.hltgq.hltgqsite.service.impl;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
+import com.qgyun.hltgq.hltgqsite.vo.GateHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,6 +79,27 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
         // 按站点名称排序
         result.sort(Comparator.comparing(GateMonitoringVO::getSiteName, Comparator.nullsLast(String::compareTo)));
+        return result;
+    }
+
+    @Override
+    public Page<GateHistoryVO> history(String siteId, LocalDateTime startTime, LocalDateTime endTime,
+                                        long page, long size) {
+        long total = gateMonitorMapper.selectHistoryCount(siteId, startTime, endTime);
+
+        Page<GateHistoryVO> result = new Page<>(page, size);
+        result.setTotal(total);
+
+        if (total == 0) {
+            result.setRecords(Collections.emptyList());
+            return result;
+        }
+
+        int offset = (int) ((page - 1) * size);
+        int limit = (int) size;
+        List<GateHistoryVO> records = gateMonitorMapper.selectHistory(siteId, startTime, endTime, limit, offset);
+        result.setRecords(records);
+
         return result;
     }
 }

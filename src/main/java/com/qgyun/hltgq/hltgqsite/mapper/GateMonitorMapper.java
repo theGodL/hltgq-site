@@ -1,7 +1,9 @@
 package com.qgyun.hltgq.hltgqsite.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
+import com.qgyun.hltgq.hltgqsite.vo.GateHistoryVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;
@@ -105,4 +107,50 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     })
     List<GateMonitor> selectLatestPerHole(@Param("startTime") LocalDateTime startTime,
                                            @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 闸门历史数据分页查询（原始记录，按监测时间倒序）
+     */
+    @Select("<script>" +
+            "SELECT s.zzkaec AS stnm, g.gate_no, " +
+            "CONCAT(s.zzkaec, g.gate_no, '#') AS device_name, " +
+            "g.tm, g.open_degree, g.up_z, g.down_z " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
+            "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
+            "WHERE 1=1 " +
+            "<if test='siteId != null and siteId != \"\"'>AND g.site = #{siteId} </if>" +
+            "<if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
+            "<if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
+            "ORDER BY g.tm DESC " +
+            "LIMIT #{limit} OFFSET #{offset}" +
+            "</script>")
+    @Results({
+            @Result(column = "stnm", property = "stnm"),
+            @Result(column = "gate_no", property = "gateNo"),
+            @Result(column = "device_name", property = "deviceName"),
+            @Result(column = "tm", property = "tm"),
+            @Result(column = "open_degree", property = "openDegree"),
+            @Result(column = "up_z", property = "upZ"),
+            @Result(column = "down_z", property = "downZ")
+    })
+    List<GateHistoryVO> selectHistory(@Param("siteId") String siteId,
+                                       @Param("startTime") LocalDateTime startTime,
+                                       @Param("endTime") LocalDateTime endTime,
+                                       @Param("limit") int limit,
+                                       @Param("offset") int offset);
+
+    /**
+     * 闸门历史数据总数
+     */
+    @Select("<script>" +
+            "SELECT COUNT(*) " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
+            "WHERE 1=1 " +
+            "<if test='siteId != null and siteId != \"\"'>AND g.site = #{siteId} </if>" +
+            "<if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
+            "<if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
+            "</script>")
+    long selectHistoryCount(@Param("siteId") String siteId,
+                             @Param("startTime") LocalDateTime startTime,
+                             @Param("endTime") LocalDateTime endTime);
 }
