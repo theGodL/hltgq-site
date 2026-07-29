@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.StPptnR;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
+import com.qgyun.hltgq.hltgqsite.vo.GqRainfallChartVO;
+import com.qgyun.hltgq.hltgqsite.vo.GqRainfallVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
@@ -102,5 +104,34 @@ public class StPptnRController {
         return stPptnRService.remove(new QueryWrapper<StPptnR>()
                 .eq("STCD", stcd)
                 .eq("TM", Timestamp.valueOf(tm)));
+    }
+
+    /**
+     * 灌区雨量监测：每站点最新一条，含1h/3h/6h时段降雨增量
+     * 支持按站点编号、监测日期范围筛选，自定义分页
+     */
+    @GetMapping("/gq-rainfall")
+    public IPage<GqRainfallVO> gqRainfall(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size,
+            @RequestParam(required = false) String stcd,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+        return stPptnRService.gqRainfallPage(page, size, stcd, startTime, endTime);
+    }
+
+    /**
+     * 灌区雨量变化图表：单站点小时级增量+累计雨量
+     * stcd 必填；startTime/endTime 非必填，默认近 7 天
+     */
+    @GetMapping("/gq-rainfall-chart")
+    public GqRainfallChartVO gqRainfallChart(
+            @RequestParam String stcd,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+        LocalDateTime now = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
+        if (endTime == null) endTime = now;
+        if (startTime == null) startTime = now.minusDays(7);
+        return stPptnRService.gqRainfallChart(stcd, startTime, endTime);
     }
 }

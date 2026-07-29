@@ -10,7 +10,9 @@ import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
 
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface StPptnRMapper extends BaseMapper<StPptnR> {
@@ -46,4 +48,49 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
             @Result(column = "drp", property = "drp")
     })
     List<StPptnR> selectTodaySumPerStation(@Param("start") Timestamp start, @Param("end") Timestamp end);
+
+    /**
+     * 灌区雨量：每站点最新一条，含该时刻及1h/3h/6h前的DRP值
+     * 支持按站点编号、监测日期范围筛选
+     */
+    @Select("<script>"
+            + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, "
+            + "  s.zzkaec AS stnm, s.id AS id, "
+            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_1h, "
+            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '3 hours' "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_3h, "
+            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '6 hours' "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_6h "
+            + "FROM ( "
+            + "  SELECT STCD, TM, DRP, "
+            + "    ROW_NUMBER() OVER (PARTITION BY STCD ORDER BY TM DESC) AS rn "
+            + "  FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + ") t "
+            + "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = t.STCD "
+            + "WHERE t.rn = 1 "
+            + "<if test=\"stcd != null and stcd != ''\"> AND t.STCD = #{stcd} </if>"
+            + "<if test=\"startTime != null\"> AND t.TM &gt;= #{startTime} </if>"
+            + "<if test=\"endTime != null\"> AND t.TM &lt;= #{endTime} </if>"
+            + "ORDER BY t.STCD"
+            + "</script>")
+    List<Map<String, Object>> selectGqRainfallList(@Param("stcd") String stcd,
+                                                    @Param("startTime") LocalDateTime startTime,
+                                                    @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 按站点和时间范围查询原始雨量记录，用于图表增量计算
+     */
+    @Select("SELECT STCD, TM, DRP " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info " +
+            "WHERE STCD = #{stcd} " +
+            "AND TM >= #{startTime} " +
+            "AND TM <= #{endTime} " +
+            "ORDER BY TM ASC")
+    List<StPptnR> selectByStcdAndTimeRange(@Param("stcd") String stcd,
+                                           @Param("startTime") LocalDateTime startTime,
+                                           @Param("endTime") LocalDateTime endTime);
 }
