@@ -387,7 +387,7 @@ function drawPptn(records) {
       textStyle: { color: '#333', fontSize: 13 },
       formatter: p => {
         const v = p[0].value;
-        return `${p[0].axisValue}<br/><span style="color:#1677ff">●</span> 降水量：<b>${v != null ? v + ' mm' : '无数据'}</b>`;
+        return `${p[0].axisValue}<br/><span style="color:#1677ff">●</span> 降雨量：<b>${v != null ? v + ' mm' : '无数据'}</b>`;
       }
     },
     grid: { left: 10, right: 20, top: 40, bottom: 55, containLabel: true },
@@ -399,14 +399,14 @@ function drawPptn(records) {
       axisTick: { show: false }
     },
     yAxis: {
-      type: 'value', name: '降水量 (mm)',
+      type: 'value', name: '降雨量 (mm)',
       nameTextStyle: { color: '#999', fontSize: 12, padding: [0, 0, 0, 50] },
       axisLabel: { formatter: '{value} mm', fontSize: 11, color: '#888' },
       splitLine: { lineStyle: { color: '#f5f5f5' } },
       minInterval: 1
     },
     series: [{
-      name: '降水量', type: 'line', data: vals,
+      name: '降雨量', type: 'line', data: vals,
       smooth: 0.3, symbol: 'circle', symbolSize: 5,
       lineStyle: { color: '#1677ff', width: 2 },
       itemStyle: { color: '#1677ff', borderColor: '#fff', borderWidth: 1.5 },
