@@ -363,11 +363,11 @@ function drawPptn(records) {
   records.sort((a, b) => String(a.tm).localeCompare(String(b.tm)));
   const hourMap = {};
   for (let i = 0; i < records.length; i++) {
-    const cur = records[i].drp != null ? +records[i].drp : 0;
+    const cur = records[i].dyp != null ? +records[i].dyp : 0;
     let inc;
-    if (i === 0) { inc = cur; }
+    if (i === 0) { inc = 0; }
     else {
-      const prev = records[i - 1].drp != null ? +records[i - 1].drp : 0;
+      const prev = records[i - 1].dyp != null ? +records[i - 1].dyp : 0;
       inc = cur > prev ? cur - prev : 0;
     }
     const hour = fmtDt(records[i].tm).slice(0, 13) + ':00';

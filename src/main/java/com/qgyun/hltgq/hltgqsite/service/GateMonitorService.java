@@ -25,10 +25,11 @@ public interface GateMonitorService {
      * 闸门历史数据（分页，按监测时间倒序）
      *
      * @param siteId    站点 UUID（可选）
+     * @param gateNo    闸孔编号（可选，如 "1"、"2"），null/空=全部
      * @param startTime 起始时间（含），null 表示不限制
      * @param endTime   截止时间（含），null 表示不限制
      * @param page      页码
      * @param size      每页条数
      */
-    Page<GateHistoryVO> history(String siteId, LocalDateTime startTime, LocalDateTime endTime, long page, long size);
+    Page<GateHistoryVO> history(String siteId, String gateNo, LocalDateTime startTime, LocalDateTime endTime, long page, long size);
 }

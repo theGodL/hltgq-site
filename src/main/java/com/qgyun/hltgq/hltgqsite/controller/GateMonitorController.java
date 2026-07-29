@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
+import com.qgyun.hltgq.hltgqsite.vo.GateDeviceVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +45,14 @@ public class GateMonitorController {
     }
 
     /**
+     * 指定站点下的闸孔设备列表（设备名称、ID、闸孔编号）
+     */
+    @GetMapping("/devices")
+    public List<GateDeviceVO> devices(@RequestParam String siteId) {
+        return gateMonitorMapper.selectDevicesBySite(siteId);
+    }
+
+    /**
      * 闸门历史数据（按站点 + 可选多闸孔，小时级聚合）
      *
      * @param siteId    站点 UUID
@@ -80,9 +89,10 @@ public class GateMonitorController {
     /**
      * 闸门历史数据
      * <p>分页返回每个闸孔的原始监测记录，含设备名称、开度、闸前后水位。
-     * 支持按站点和日期区间筛选。
+     * 支持按站点、闸孔编号和日期区间筛选。
      *
      * @param siteId    站点 UUID（可选，不传=全部站点）
+     * @param gateNo    闸孔编号（可选，如 "1"、"2"），不传=全部闸孔
      * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param page      页码，默认 1
@@ -91,10 +101,11 @@ public class GateMonitorController {
     @GetMapping("/history")
     public Page<GateHistoryVO> history(
             @RequestParam(required = false) String siteId,
+            @RequestParam(required = false) String gateNo,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size) {
-        return gateMonitorService.history(siteId, startTime, endTime, page, size);
+        return gateMonitorService.history(siteId, gateNo, startTime, endTime, page, size);
     }
 }

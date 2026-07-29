@@ -181,11 +181,11 @@ tbody tr.total-row:hover td{background:#e6f4ff}
             <tr>
               <th>站点</th>
               <th>监测时间</th>
-              <th>时段降水量 (mm)</th>
+              <th>当前降雨量 (mm)</th>
               <th>1h降雨量 (mm)</th>
               <th>3h降雨量 (mm)</th>
               <th>6h降雨量 (mm)</th>
-              <th>日降雨量 (mm)</th>
+              <th>累计雨量 (mm)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -299,11 +299,11 @@ tbody tr.total-row:hover td{background:#e6f4ff}
             <thead>
               <tr>
                 <th>监测时间</th>
-                <th>时段降水量 (mm)</th>
+                <th>当前降雨量 (mm)</th>
                 <th>1h降雨量 (mm)</th>
                 <th>3h降雨量 (mm)</th>
                 <th>6h降雨量 (mm)</th>
-                <th>日降雨量 (mm)</th>
+                <th>累计雨量 (mm)</th>
               </tr>
             </thead>
             <tbody id="hist-body"></tbody>
@@ -1048,7 +1048,6 @@ function renderChart(hours) {
 
   const xData = hours.map(h => String(h.hour || '').slice(5, 16));
   const rainData = hours.map(h => h.rainfall);
-  const cumData = hours.map(h => h.cumulative);
 
   chart.setOption({
     tooltip: {
@@ -1058,7 +1057,7 @@ function renderChart(hours) {
       textStyle: { color: '#333', fontSize: 13 },
     },
     legend: {
-      data: ['实时雨量', '累计雨量'],
+      data: ['实时雨量'],
       bottom: 0,
       textStyle: { fontSize: 12, color: '#666' },
     },
@@ -1076,29 +1075,18 @@ function renderChart(hours) {
       axisLine: { lineStyle: { color: '#e8e8e8' } },
       axisTick: { show: false },
     },
-    yAxis: [
-      {
-        type: 'value',
-        name: '实时雨量 (mm)',
-        min: 0,
-        nameTextStyle: { color: '#999', fontSize: 12 },
-        axisLabel: { fontSize: 12, color: '#888' },
-        splitLine: { lineStyle: { color: '#f0f0f0' } },
-      },
-      {
-        type: 'value',
-        name: '累计雨量 (mm)',
-        min: 0,
-        nameTextStyle: { color: '#999', fontSize: 12 },
-        axisLabel: { fontSize: 12, color: '#888' },
-        splitLine: { show: false },
-      },
-    ],
+    yAxis: {
+      type: 'value',
+      name: '实时雨量 (mm)',
+      min: 0,
+      nameTextStyle: { color: '#999', fontSize: 12 },
+      axisLabel: { fontSize: 12, color: '#888' },
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+    },
     series: [
       {
         name: '实时雨量',
         type: 'line',
-        yAxisIndex: 0,
         data: rainData,
         smooth: true,
         symbol: 'none',
@@ -1107,21 +1095,6 @@ function renderChart(hours) {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: 'rgba(22,119,255,0.25)' },
             { offset: 1, color: 'rgba(22,119,255,0.02)' },
-          ]),
-        },
-      },
-      {
-        name: '累计雨量',
-        type: 'line',
-        yAxisIndex: 1,
-        data: cumData,
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { color: '#7B61FF', width: 2 },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(123,97,255,0.25)' },
-            { offset: 1, color: 'rgba(123,97,255,0.02)' },
           ]),
         },
       },

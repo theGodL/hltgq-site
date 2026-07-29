@@ -19,7 +19,7 @@ public class StationMetricsVO {
     /** 水位观测时间，无数据为 null */
     private LocalDateTime riverTm;
 
-    /** 当日累计降水量(mm)，无数据为 null */
+    /** 当前降雨量 DRP（mm）— 水文日累计（8:00 ~ 当前），每日8:00归零；无数据为 null */
     private BigDecimal drp;
 
     /** 雨量观测日期，无数据为 null */

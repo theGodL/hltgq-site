@@ -50,21 +50,21 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
     List<StPptnR> selectTodaySumPerStation(@Param("start") Timestamp start, @Param("end") Timestamp end);
 
     /**
-     * 灌区雨量：每站点最新一条，含该时刻及1h/3h/6h前的DRP值
+     * 灌区雨量：每站点最新一条，含该时刻及1h/3h/6h前的DYP值（用于计算时段增量）
      * 支持按站点编号、监测日期范围筛选
      */
     @Select("<script>"
             + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
             + "  s.zzkaec AS stnm, s.id AS id, "
-            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' "
-            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_1h, "
-            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS dyp_1h, "
+            + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '3 hours' "
-            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_3h, "
-            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS dyp_3h, "
+            + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '6 hours' "
-            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_6h "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS dyp_6h "
             + "FROM ( "
             + "  SELECT STCD, TM, DRP, DYP, "
             + "    ROW_NUMBER() OVER (PARTITION BY STCD ORDER BY TM DESC) AS rn "
@@ -83,21 +83,21 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
                                                     @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 灌区雨量历史：单站点全部记录，每一条含1h/3h/6h前DRP值（用于计算时段增量）
+     * 灌区雨量历史：单站点全部记录，每一条含1h/3h/6h前DYP值（用于计算时段增量）
      * stcd 必填，startTime/endTime 可选
      */
     @Select("<script>"
             + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
             + "  s.zzkaec AS stnm, s.id AS id, "
-            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' "
-            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_1h, "
-            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS dyp_1h, "
+            + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '3 hours' "
-            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_3h, "
-            + "  COALESCE((SELECT DRP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS dyp_3h, "
+            + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '6 hours' "
-            + "            ORDER BY TM DESC LIMIT 1), 0) AS drp_6h "
+            + "            ORDER BY TM DESC LIMIT 1), 0) AS dyp_6h "
             + "FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info t "
             + "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = t.STCD "
             + "WHERE t.STCD = #{stcd} "
@@ -112,7 +112,7 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
     /**
      * 按站点和时间范围查询原始雨量记录，用于图表增量计算
      */
-    @Select("SELECT STCD, TM, DRP " +
+    @Select("SELECT STCD, TM, DRP, DYP " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info " +
             "WHERE STCD = #{stcd} " +
             "AND TM >= #{startTime} " +
@@ -126,7 +126,7 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
      * 按多个站点编号 + 时间范围批量查询原始雨量记录
      */
     @Select("<script>" +
-            "SELECT STCD, TM, DRP " +
+            "SELECT STCD, TM, DRP, DYP " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info " +
             "WHERE STCD IN " +
             "<foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach> " +

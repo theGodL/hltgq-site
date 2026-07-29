@@ -272,7 +272,7 @@ function generatePptnBuckets(startDate, endDate) {
 function buildPptnPivot(rows, fullBuckets) {
   const stations = rainStations();
   const bucketMap = new Map();
-  // DRP 是累积值，按站点分组排序后计算正向增量作为实际降雨量
+  // DYP 是永不归零的累计值，按站点分组排序后计算正向增量作为实际降雨量
   const byStation = new Map();
   rows.forEach(r => {
     const stcd = (r.stcd || '').trim();
@@ -286,12 +286,12 @@ function buildPptnPivot(rows, fullBuckets) {
       const bucket = getHydroDayLabel(stationRows[i].tm);
       if (!bucketMap.has(bucket)) bucketMap.set(bucket, new Map());
       const m = bucketMap.get(bucket);
-      const cur = stationRows[i].drp != null ? +stationRows[i].drp : 0;
+      const cur = stationRows[i].dyp != null ? +stationRows[i].dyp : 0;
       let inc;
       if (i === 0) {
         inc = 0; // 第一条记录，无法确定增量，不计入
       } else {
-        const prev = stationRows[i-1].drp != null ? +stationRows[i-1].drp : 0;
+        const prev = stationRows[i-1].dyp != null ? +stationRows[i-1].dyp : 0;
         inc = cur > prev ? cur - prev : 0;
       }
       m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
@@ -357,7 +357,7 @@ function generatePeriodBuckets(startDate, endDate, intervalMinutes) {
 function buildPeriodPivot(rows, intervalMinutes, fullBuckets) {
   const stations = rainStations();
   const bucketMap = new Map();
-  // DRP 是累积值，按站点分组排序后计算正向增量作为实际降雨量
+  // DYP 是永不归零的累计值，按站点分组排序后计算正向增量作为实际降雨量
   const byStation = new Map();
   rows.forEach(r => {
     const stcd = (r.stcd || '').trim();
@@ -371,12 +371,12 @@ function buildPeriodPivot(rows, intervalMinutes, fullBuckets) {
       const bucket = floorToInterval(stationRows[i].tm, intervalMinutes);
       if (!bucketMap.has(bucket)) bucketMap.set(bucket, new Map());
       const m = bucketMap.get(bucket);
-      const cur = stationRows[i].drp != null ? +stationRows[i].drp : 0;
+      const cur = stationRows[i].dyp != null ? +stationRows[i].dyp : 0;
       let inc;
       if (i === 0) {
         inc = 0; // 第一条记录，无法确定增量，不计入
       } else {
-        const prev = stationRows[i-1].drp != null ? +stationRows[i-1].drp : 0;
+        const prev = stationRows[i-1].dyp != null ? +stationRows[i-1].dyp : 0;
         inc = cur > prev ? cur - prev : 0;
       }
       m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
@@ -438,7 +438,7 @@ function generateDailyBuckets(startDate, endDate) {
 function buildDailyPivot(rows, fullBuckets) {
   const stations = rainStations();
   const bucketMap = new Map();
-  // DRP 是累积值，按站点分组排序后计算正向增量作为实际降雨量
+  // DYP 是永不归零的累计值，按站点分组排序后计算正向增量作为实际降雨量
   const byStation = new Map();
   rows.forEach(r => {
     const stcd = (r.stcd || '').trim();
@@ -452,12 +452,12 @@ function buildDailyPivot(rows, fullBuckets) {
       const bucket = getHydroDayLabel(stationRows[i].tm);
       if (!bucketMap.has(bucket)) bucketMap.set(bucket, new Map());
       const m = bucketMap.get(bucket);
-      const cur = stationRows[i].drp != null ? +stationRows[i].drp : 0;
+      const cur = stationRows[i].dyp != null ? +stationRows[i].dyp : 0;
       let inc;
       if (i === 0) {
         inc = 0; // 第一条记录，无法确定增量，不计入
       } else {
-        const prev = stationRows[i-1].drp != null ? +stationRows[i-1].drp : 0;
+        const prev = stationRows[i-1].dyp != null ? +stationRows[i-1].dyp : 0;
         inc = cur > prev ? cur - prev : 0;
       }
       m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));

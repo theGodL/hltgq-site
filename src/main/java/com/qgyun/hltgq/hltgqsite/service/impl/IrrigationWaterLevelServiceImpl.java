@@ -136,7 +136,7 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
 
             IrrigationWaterLevelChartVO.HourPoint point = new IrrigationWaterLevelChartVO.HourPoint();
             point.setHour(key);
-            point.setWaterLevel(currentLevel);
+            point.setWaterLevel(currentLevel != null ? currentLevel.setScale(2, RoundingMode.DOWN) : null);
 
             // 计算水位变化 (cm)：当前小时水位 - 前一小时水位，乘以 100 转为 cm
             if (prevLevel != null && currentLevel != null) {
@@ -230,7 +230,7 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
 
             IrrigationWaterLevelHistoryVO row = new IrrigationWaterLevelHistoryVO();
             row.setHour(key);
-            row.setWaterLevel(currentLevel);
+            row.setWaterLevel(currentLevel != null ? currentLevel.setScale(2, RoundingMode.DOWN) : null);
 
             if (prevLevel != null && currentLevel != null) {
                 BigDecimal change = currentLevel.subtract(prevLevel)

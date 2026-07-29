@@ -242,6 +242,13 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="modal-pane" id="mpane-history">
         <div class="modal-filter">
+          <label style="color:#666;white-space:nowrap">设备</label>
+          <div class="ss" id="hist-dev-ss" style="width: 170px;">
+            <input type="text" class="ss-input" id="hist-dev-input" placeholder="请选择或搜索设备" autocomplete="off">
+            <span class="ss-arrow"></span>
+            <input type="hidden" id="hist-dev-gate" value="">
+            <div class="ss-dd" id="hist-dev-dd"></div>
+          </div>
           <input type="date" id="hist-start">
           <span class="date-sep">—</span>
           <input type="date" id="hist-end">
@@ -273,6 +280,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const pad = n => String(n).padStart(2, '0');
 const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
+const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (+v).toFixed(2);
 const fmtTm = v => {
   if (v === null || v === undefined || v === '') return '-';
   return String(v).replace('T', ' ').replace(/\.\d+$/, '');
@@ -322,6 +330,7 @@ function waitTick(ms = 200) {
 const S = { page: 1, size: 20, total: 0, rows: [], allRows: [], current: null };
 const DETAIL = { holeNos: [], selected: [] }; // holeNos 原始 gateNo
 const HIST = { page: 1, size: 20, total: 0, rows: [] };
+let HIST_DEVICES = []; // [{id, gateNo, deviceName}]
 let chart = null;
 let openChart = null;
 
@@ -564,8 +573,8 @@ function renderTable() {
     <tr>
       <td>${fmtN(r.siteName)}</td>
       <td>${openCell}</td>
-      <td>${fmtN(r.upZ)}</td>
-      <td>${fmtN(r.downZ)}</td>
+      <td>${fmtN2(r.upZ)}</td>
+      <td>${fmtN2(r.downZ)}</td>
       <td>${fmtTm(r.tm)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
     </tr>`;
@@ -646,6 +655,7 @@ function openDetail(row) {
   S.current = row;
   setModalDefaultDates();
   initDetailHoles(row);
+  clearHistDev();
   $('detail-title').textContent = row.siteName || '站点详情';
 
   document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
@@ -655,9 +665,10 @@ function openDetail(row) {
 
   openModal('detail-overlay');
   HIST.page = 1;
-  requestAnimationFrame(() => {
+  requestAnimationFrame(async () => {
     reloadDetail();
-    loadHistory();
+    await loadHistDevices(row.siteId);
+    await loadHistory();
   });
 }
 
@@ -863,8 +874,8 @@ function renderHistory() {
       <td>${fmtN(r.deviceName)}</td>
       <td>${fmtTm(r.tm)}</td>
       <td>${fmtOpen(r.openDegree)}</td>
-      <td>${fmtN(r.upZ)}</td>
-      <td>${fmtN(r.downZ)}</td>
+      <td>${fmtN2(r.upZ)}</td>
+      <td>${fmtN2(r.downZ)}</td>
     </tr>
   `).join('');
 }
@@ -922,6 +933,8 @@ async function loadHistory() {
     p.set('siteId', S.current.siteId);
     p.set('page', HIST.page);
     p.set('size', HIST.size);
+    const gateNo = ($('hist-dev-gate').value || '').trim();
+    if (gateNo) p.set('gateNo', gateNo);
     const s = dateToStart($('hist-start').value);
     const e = dateToEnd($('hist-end').value);
     if (s) p.set('startTime', s);
@@ -944,6 +957,86 @@ async function loadHistory() {
   } finally {
     setLoading(wrap, false);
     if (wrap) wrap.style.minHeight = '';
+  }
+}
+
+/* ===== 历史设备可搜索下拉 ===== */
+function renderHistDevDd(keyword) {
+  const dd = $('hist-dev-dd');
+  const gate = $('hist-dev-gate').value;
+  const list = HIST_DEVICES.filter(d =>
+    fuzzyMatch(d.deviceName, keyword) || fuzzyMatch(d.gateNo, keyword) || fuzzyMatch(d.id, keyword)
+  );
+  if (!list.length) {
+    dd.innerHTML = '<div class="ss-empty">无匹配设备</div>';
+    dd.classList.add('open');
+    return;
+  }
+  dd.innerHTML = list.map(d =>
+    `<div class="ss-opt${String(d.gateNo) === gate ? ' active' : ''}" data-gate="${esc(d.gateNo)}" data-name="${esc(d.deviceName)}">${esc(d.deviceName)}</div>`
+  ).join('');
+  dd.classList.add('open');
+}
+
+function setHistDev(gateNo, name) {
+  $('hist-dev-gate').value = gateNo || '';
+  $('hist-dev-input').value = name || '';
+  $('hist-dev-dd').classList.remove('open');
+}
+
+function clearHistDev() {
+  setHistDev('', '');
+}
+
+function bindHistDevSelect() {
+  const input = $('hist-dev-input');
+  const dd = $('hist-dev-dd');
+  const wrap = $('hist-dev-ss');
+  if (!input || wrap.dataset.bound) return;
+  wrap.dataset.bound = '1';
+
+  input.addEventListener('focus', () => renderHistDevDd(input.value));
+  input.addEventListener('click', () => renderHistDevDd(input.value));
+  input.addEventListener('input', () => {
+    $('hist-dev-gate').value = '';
+    renderHistDevDd(input.value);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') dd.classList.remove('open');
+    if (e.key === 'Enter') {
+      const first = dd.querySelector('.ss-opt');
+      if (first && dd.classList.contains('open')) {
+        e.preventDefault();
+        setHistDev(first.dataset.gate, first.dataset.name);
+      }
+    }
+  });
+  dd.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.ss-opt');
+    if (!opt) return;
+    e.preventDefault();
+    setHistDev(opt.dataset.gate, opt.dataset.name);
+  });
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dd.classList.remove('open');
+  });
+}
+
+async function loadHistDevices(siteId) {
+  HIST_DEVICES = [];
+  if (!siteId) return;
+  try {
+    const res = await fetch(`${API}/gate-monitor/devices?siteId=${encodeURIComponent(siteId)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    HIST_DEVICES = Array.isArray(data) ? data.map(x => ({
+      id: String(x.id ?? ''),
+      gateNo: String(x.gateNo ?? ''),
+      deviceName: String(x.deviceName ?? x.name ?? '')
+    })).filter(x => x.gateNo || x.deviceName) : [];
+  } catch (e) {
+    console.warn('加载闸门设备列表失败', e);
+    HIST_DEVICES = [];
   }
 }
 
@@ -997,6 +1090,7 @@ function bindModal() {
   });
 
   bindGateFilter();
+  bindHistDevSelect();
   bindAsyncClick($('chart-query-btn'), reloadDetail);
   bindAsyncClick($('hist-query-btn'), async () => {
     HIST.page = 1;
@@ -1008,6 +1102,7 @@ function bindModal() {
     await reloadDetail();
   }, { loadingText: '重置中...' });
   bindAsyncClick($('hist-reset-btn'), async () => {
+    clearHistDev();
     setModalDefaultDates();
     HIST.page = 1;
     await loadHistory();

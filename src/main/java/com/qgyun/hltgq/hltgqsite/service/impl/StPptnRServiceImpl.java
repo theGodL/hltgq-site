@@ -105,13 +105,14 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         BigDecimal drp = toBigDecimal(row.get("drp"));
         vo.setDrp(drp);
         vo.setDyp(toBigDecimal(row.get("dyp")));
-        // 时段增量计算：当前DRP - 历史DRP，结果非负
-        BigDecimal drp1h = toBigDecimal(row.get("drp_1h"));
-        BigDecimal drp3h = toBigDecimal(row.get("drp_3h"));
-        BigDecimal drp6h = toBigDecimal(row.get("drp_6h"));
-        vo.setRain1h(subtractOrNull(drp, drp1h));
-        vo.setRain3h(subtractOrNull(drp, drp3h));
-        vo.setRain6h(subtractOrNull(drp, drp6h));
+        // 时段增量计算：当前DYP - 历史DYP（DYP永不归零，计算结果准确）
+        BigDecimal dypVal = toBigDecimal(row.get("dyp"));
+        BigDecimal dyp1h = toBigDecimal(row.get("dyp_1h"));
+        BigDecimal dyp3h = toBigDecimal(row.get("dyp_3h"));
+        BigDecimal dyp6h = toBigDecimal(row.get("dyp_6h"));
+        vo.setRain1h(subtractOrNull(dypVal, dyp1h));
+        vo.setRain3h(subtractOrNull(dypVal, dyp3h));
+        vo.setRain6h(subtractOrNull(dypVal, dyp6h));
         return vo;
     }
 
@@ -160,9 +161,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     inc = BigDecimal.ZERO; // 第一条记录无法确定增量，跳过
                 } else {
                     StPptnR prev = records.get(i - 1);
-                    BigDecimal curDrp = cur.getDrp() != null ? cur.getDrp() : BigDecimal.ZERO;
-                    BigDecimal prevDrp = prev.getDrp() != null ? prev.getDrp() : BigDecimal.ZERO;
-                    inc = curDrp.compareTo(prevDrp) > 0 ? curDrp.subtract(prevDrp) : BigDecimal.ZERO;
+                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                    BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
+                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
                 // 归属到小时桶
                 String hourKey = cur.getTm().truncatedTo(ChronoUnit.HOURS)
@@ -218,7 +219,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         LocalDateTime queryStart = startDate.atTime(8, 0).minusDays(1);
         LocalDateTime queryEnd = endDate.atTime(7, 59, 59).plusDays(1);
 
-        // 3. 批量查询原始 DRP 记录
+        // 3. 批量查询原始雨量记录（含 DRP 和 DYP）
         List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(RESERVOIR_STCDS, queryStart, queryEnd);
 
         // 4. 按站点 + 水文日聚合增量（对齐 hydro-monitor.html buildPptnPivot 逻辑）
@@ -247,9 +248,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     inc = BigDecimal.ZERO; // 第一条记录无法确定增量
                 } else {
                     StPptnR prev = stationRows.get(i - 1);
-                    BigDecimal curDrp = cur.getDrp() != null ? cur.getDrp() : BigDecimal.ZERO;
-                    BigDecimal prevDrp = prev.getDrp() != null ? prev.getDrp() : BigDecimal.ZERO;
-                    inc = curDrp.compareTo(prevDrp) > 0 ? curDrp.subtract(prevDrp) : BigDecimal.ZERO;
+                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                    BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
+                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
                 // 归属到水文日桶
                 String bucket = getHydroDayLabel(cur.getTm());
@@ -345,7 +346,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         LocalDateTime queryStart = startDate.atTime(8, 0).minusDays(1);
         LocalDateTime queryEnd = endDate.atTime(7, 59, 59).plusDays(1);
 
-        // 3. 批量查询原始 DRP 记录
+        // 3. 批量查询原始雨量记录（含 DRP 和 DYP）
         List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(RESERVOIR_STCDS, queryStart, queryEnd);
 
         // 4. 按站点 + 时间间隔聚合增量（对齐 hydro-monitor.html buildPeriodPivot 逻辑）
@@ -370,9 +371,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     inc = BigDecimal.ZERO;
                 } else {
                     StPptnR prev = stationRows.get(i - 1);
-                    BigDecimal curDrp = cur.getDrp() != null ? cur.getDrp() : BigDecimal.ZERO;
-                    BigDecimal prevDrp = prev.getDrp() != null ? prev.getDrp() : BigDecimal.ZERO;
-                    inc = curDrp.compareTo(prevDrp) > 0 ? curDrp.subtract(prevDrp) : BigDecimal.ZERO;
+                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                    BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
+                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
                 // floorToInterval：分钟取整到间隔边界
                 String bucket = floorToInterval(cur.getTm(), intervalMinutes);
@@ -487,9 +488,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 BigDecimal inc = BigDecimal.ZERO;
                 if (i > 0) {
                     StPptnR prev = stationRows.get(i - 1);
-                    BigDecimal curDrp = cur.getDrp() != null ? cur.getDrp() : BigDecimal.ZERO;
-                    BigDecimal prevDrp = prev.getDrp() != null ? prev.getDrp() : BigDecimal.ZERO;
-                    inc = curDrp.compareTo(prevDrp) > 0 ? curDrp.subtract(prevDrp) : BigDecimal.ZERO;
+                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                    BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
+                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
                 String dayKey = getHydroDayLabel(cur.getTm());
                 dailyRainfall.computeIfAbsent(dayKey, k -> new LinkedHashMap<>())
@@ -576,9 +577,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 BigDecimal inc = BigDecimal.ZERO;
                 if (i > 0) {
                     StPptnR prev = stationRows.get(i - 1);
-                    BigDecimal curDrp = cur.getDrp() != null ? cur.getDrp() : BigDecimal.ZERO;
-                    BigDecimal prevDrp = prev.getDrp() != null ? prev.getDrp() : BigDecimal.ZERO;
-                    inc = curDrp.compareTo(prevDrp) > 0 ? curDrp.subtract(prevDrp) : BigDecimal.ZERO;
+                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                    BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
+                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
                 String hourKey = cur.getTm().truncatedTo(ChronoUnit.HOURS)
                         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));
@@ -672,9 +673,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 BigDecimal inc = BigDecimal.ZERO;
                 if (i > 0) {
                     StPptnR prev = stationRows.get(i - 1);
-                    BigDecimal curDrp = cur.getDrp() != null ? cur.getDrp() : BigDecimal.ZERO;
-                    BigDecimal prevDrp = prev.getDrp() != null ? prev.getDrp() : BigDecimal.ZERO;
-                    inc = curDrp.compareTo(prevDrp) > 0 ? curDrp.subtract(prevDrp) : BigDecimal.ZERO;
+                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                    BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
+                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
                 String dayKey = getHydroDayLabel(cur.getTm());
                 dailyByStation.computeIfAbsent(stcd, k -> new LinkedHashMap<>())

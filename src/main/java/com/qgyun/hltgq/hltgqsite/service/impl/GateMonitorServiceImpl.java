@@ -71,8 +71,8 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             vo.setSiteId(siteId);
             vo.setSiteName(siteName);
             vo.setTm(latestTm);
-            vo.setUpZ(latestWithZ != null ? latestWithZ.getUpZ() : null);
-            vo.setDownZ(latestWithZ != null ? latestWithZ.getDownZ() : null);
+            vo.setUpZ(latestWithZ != null && latestWithZ.getUpZ() != null ? latestWithZ.getUpZ().setScale(2, java.math.RoundingMode.DOWN) : null);
+            vo.setDownZ(latestWithZ != null && latestWithZ.getDownZ() != null ? latestWithZ.getDownZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setHoles(holeDataList);
             result.add(vo);
         }
@@ -83,9 +83,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     }
 
     @Override
-    public Page<GateHistoryVO> history(String siteId, LocalDateTime startTime, LocalDateTime endTime,
+    public Page<GateHistoryVO> history(String siteId, String gateNo, LocalDateTime startTime, LocalDateTime endTime,
                                         long page, long size) {
-        long total = gateMonitorMapper.selectHistoryCount(siteId, startTime, endTime);
+        long total = gateMonitorMapper.selectHistoryCount(siteId, gateNo, startTime, endTime);
 
         Page<GateHistoryVO> result = new Page<>(page, size);
         result.setTotal(total);
@@ -97,7 +97,7 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
         int offset = (int) ((page - 1) * size);
         int limit = (int) size;
-        List<GateHistoryVO> records = gateMonitorMapper.selectHistory(siteId, startTime, endTime, limit, offset);
+        List<GateHistoryVO> records = gateMonitorMapper.selectHistory(siteId, gateNo, startTime, endTime, limit, offset);
         result.setRecords(records);
 
         return result;

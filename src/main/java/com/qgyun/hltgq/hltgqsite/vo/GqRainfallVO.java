@@ -24,18 +24,18 @@ public class GqRainfallVO {
     /** 监测日期（最新数据时间） */
     private LocalDateTime tm;
 
-    /** 时段降水量 DRP（mm） */
+    /** 当前降雨量 DRP（mm）— 水文日累计（8:00 ~ 当前） */
     private BigDecimal drp;
 
-    /** 日降雨量 DYP（mm） */
+    /** 累计雨量 DYP（mm）— RTU安装至今的总累计，永不归零 */
     private BigDecimal dyp;
 
-    /** 1h 降雨量（mm）= 当前DRP - 1h前DRP */
+    /** 1h 降雨量（mm）= 当前DYP - 1h前DYP */
     private BigDecimal rain1h;
 
-    /** 3h 降雨量（mm）= 当前DRP - 3h前DRP */
+    /** 3h 降雨量（mm）= 当前DYP - 3h前DYP */
     private BigDecimal rain3h;
 
-    /** 6h 降雨量（mm）= 当前DRP - 6h前DRP */
+    /** 6h 降雨量（mm）= 当前DYP - 6h前DYP */
     private BigDecimal rain6h;
 }

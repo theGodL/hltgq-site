@@ -25,7 +25,7 @@ public interface IrrigationWaterLevelMapper {
      * @param limit       每页条数
      * @param offset      偏移量
      */
-    @Select("SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, r.Z AS z, " +
+    @Select("SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, TRUNC(r.Z, 2) AS z, " +
             "COALESCE((r.Z - (" +
             "  SELECT r2.Z FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r2 " +
             "  WHERE r2.STCD = r.STCD AND r2.TM <= r.TM - INTERVAL '1 hour' " +
@@ -78,7 +78,7 @@ public interface IrrigationWaterLevelMapper {
      * 查询站点水位历史数据（用于水位变化图表）
      * 按时间升序返回 TM, Z
      */
-    @Select("SELECT r.TM AS tm, r.Z AS z " +
+    @Select("SELECT r.TM AS tm, TRUNC(r.Z, 2) AS z " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "WHERE r.STCD = #{stcd} " +
             "AND r.TM >= #{startTime}::timestamp " +

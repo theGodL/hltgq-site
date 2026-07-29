@@ -31,7 +31,7 @@ public class ReservoirRainfallVO {
         private String id;
         /** 该站点最新观测时间（实际记录时间，未经水文日调整） */
         private LocalDateTime latestTm;
-        /** 该站点最新 DRP 累计值 (mm) */
+        /** 该站点最新当前降雨量 DRP（mm）— 水文日累计 */
         private BigDecimal latestDrp;
     }
 

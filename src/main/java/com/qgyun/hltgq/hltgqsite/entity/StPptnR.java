@@ -20,6 +20,7 @@ public class StPptnR {
     @TableField("\"TM\"")
     private LocalDateTime tm;
 
+    /** 当前降雨量 — 水文日累计（8:00 ~ 当前），每日8:00归零 */
     @TableField("\"DRP\"")
     private BigDecimal drp;
 
@@ -29,6 +30,7 @@ public class StPptnR {
     @TableField("\"PDR\"")
     private BigDecimal pdr;
 
+    /** 累计雨量 — RTU安装至今总累计，永不归零 */
     @TableField("\"DYP\"")
     private BigDecimal dyp;
 

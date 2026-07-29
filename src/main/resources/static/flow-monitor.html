@@ -217,6 +217,7 @@ tbody tr:hover td{background:#fafafa}
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
 const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
+const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (+v).toFixed(2);
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const fmtMdHm = d => `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
@@ -350,7 +351,7 @@ function renderTable() {
       <td>${fmtN(r.q)}</td>
       <td>${fmtN(r.cumQ)}</td>
       <td>${fmtN(r.v)}</td>
-      <td>${fmtN(r.z)}</td>
+      <td>${fmtN2(r.z)}</td>
       <td>${fmtN(r.tm)}</td>
       <td>${fmtN(r.remark) === '-' ? '' : fmtN(r.remark)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
@@ -507,7 +508,7 @@ function renderHistory(rows) {
       <td>${fmtN(r.q)}</td>
       <td>${fmtN(r.cumQ)}</td>
       <td>${fmtN(r.v)}</td>
-      <td>${fmtN(r.z)}</td>
+      <td>${fmtN2(r.z)}</td>
       <td>${fmtN(r.tm)}</td>
     </tr>
   `).join('');

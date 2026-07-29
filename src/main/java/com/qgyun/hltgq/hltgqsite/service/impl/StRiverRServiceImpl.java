@@ -90,9 +90,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
             vo.setStcd(r.getStcd());
             vo.setStnm(stnm);
             vo.setTm(r.getTm());
-            vo.setWarningLevel(warningLevel);
-            vo.setGuaranteedLevel(guaranteedLevel);
-            vo.setZ(r.getZ());
+            vo.setWarningLevel(warningLevel != null ? warningLevel.setScale(2, java.math.RoundingMode.DOWN) : null);
+            vo.setGuaranteedLevel(guaranteedLevel != null ? guaranteedLevel.setScale(2, java.math.RoundingMode.DOWN) : null);
+            vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setWptn(mapWptn(r.getWptn()));
             return vo;
         }).collect(Collectors.toList());
@@ -147,9 +147,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
             vo.setStcd(r.getStcd());
             vo.setStnm(stnm);
             vo.setTm(r.getTm());
-            vo.setWarningLevel(warningLevel);
-            vo.setGuaranteedLevel(guaranteedLevel);
-            vo.setZ(r.getZ());
+            vo.setWarningLevel(warningLevel != null ? warningLevel.setScale(2, java.math.RoundingMode.DOWN) : null);
+            vo.setGuaranteedLevel(guaranteedLevel != null ? guaranteedLevel.setScale(2, java.math.RoundingMode.DOWN) : null);
+            vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setWptn(mapWptn(r.getWptn()));
             // Q 字段暂同时作为入库/出库流量，待设备报文到位后区分字段映射
             vo.setInq(r.getQ());
