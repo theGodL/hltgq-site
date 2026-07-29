@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>流量监测</title>
+<script src="./lib/echarts.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:12px}
+.breadcrumb{color:#999;font-size:13px}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+
+.filter-card{padding:16px 20px}
+.filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
+.filter-item{display:flex;align-items:center;gap:8px}
+.filter-item label{color:#666;font-size:14px;white-space:nowrap}
+.filter-bar input,.modal-filter input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
+.filter-bar input:focus,.modal-filter input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.filter-bar input[type=text]{width:180px}
+.filter-bar input[type=date],.modal-filter input[type=date]{width:140px}
+.date-sep{color:#bbb}
+.filter-actions{display:flex;gap:8px;margin-left:112px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important;position:relative}
+.btn.is-loading::after{
+  content:'';
+  box-sizing:border-box;
+  position:absolute;left:50%;top:50%;
+  width:16px;height:16px;margin:-8px 0 0 -8px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,.35);
+  border-top-color:#fff;
+  animation:spin .6s linear infinite;
+}
+.btn-default.is-loading::after{
+  border-color:rgba(22,119,255,.2);
+  border-top-color:#1677ff;
+}
+
+.result-card{padding:16px 20px 12px;flex:1;display:flex;flex-direction:column;min-height:360px}
+.tbl-wrap{overflow-x:auto;position:relative;flex:none}
+.tbl-wrap.is-loading,.chart-box.is-loading{pointer-events:none}
+.tbl-wrap.is-loading::before,.chart-box.is-loading::before{
+  content:'';
+  position:absolute;inset:0;z-index:5;
+  background:rgba(255,255,255,.55);
+}
+.tbl-wrap.is-loading::after,.chart-box.is-loading::after{
+  content:'';
+  box-sizing:border-box;
+  position:absolute;left:50%;top:50%;z-index:6;
+  width:36px;height:36px;margin:-18px 0 0 -18px;
+  border-radius:50%;
+  border:3px solid rgba(22,119,255,.15);
+  border-top-color:#1677ff;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid #e8e8e8}
+thead tr{background:#fafafa}
+th{padding:12px 16px;text-align:left;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
+td{padding:12px 16px;border:1px solid #e8e8e8;color:#000000d9}
+tbody tr:hover td{background:#fafafa}
+.empty{text-align:center;color:#bbb;padding:48px;font-size:14px}
+.act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s}
+.act-btn:hover{opacity:.7}
+
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:12px 0 0;gap:4px;flex-shrink:0}
+.pg-info{color:#666;font-size:13px;margin-right:8px}
+.pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
+.pg-ellipsis{padding:0 4px;color:#999;font-size:13px}
+.pg-size{height:28px;border:1px solid #d9d9d9;border-radius:4px;padding:0 6px;font-size:13px;outline:none;background:#fff;margin-right:4px;cursor:pointer}
+
+/* 详情弹窗 */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:20px}
+.overlay.show{display:flex}
+.modal{background:#fff;border-radius:8px;width:900px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.modal-hd span{font-size:16px;font-weight:500;color:#333}
+.modal-close{background:none;border:none;cursor:pointer;color:#999;font-size:20px;line-height:1;padding:0 2px}
+.modal-close:hover{color:#333}
+.modal-bd{padding:0 20px 20px;overflow-y:auto;flex:1}
+.modal-tabs{display:flex;border-bottom:1px solid #f0f0f0;margin-bottom:16px}
+.modal-tab{padding:12px 16px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none}
+.modal-tab:hover{color:#1677ff}
+.modal-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
+.modal-pane{display:none}
+.modal-pane.active{display:block}
+.modal-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.chart-block{margin-bottom:8px}
+.chart-title{font-size:14px;font-weight:500;color:#333;margin-bottom:4px}
+.chart-box{width:100%;height:240px;position:relative}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>水资源调度</span><span class="sep">/</span>
+    <span>数据统计</span><span class="sep">/</span>
+    <span class="cur">流量监测</span>
+  </div>
+
+  <div class="card filter-card">
+    <div class="filter-bar">
+      <div class="filter-item">
+        <label>站点</label>
+        <input type="text" id="st-keyword" placeholder="请输入">
+      </div>
+      <div class="filter-item">
+        <label>日期</label>
+        <input type="date" id="start-date">
+        <span class="date-sep">—</span>
+        <input type="date" id="end-date">
+      </div>
+      <div class="filter-actions">
+        <button class="btn btn-primary" id="query-btn">查询</button>
+        <button class="btn btn-default" id="reset-btn">重置</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card result-card">
+    <div class="tbl-wrap" id="list-tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>站点</th>
+            <th>瞬时流量 (m³/s)</th>
+            <th>累计流量 (万m³)</th>
+            <th>流速 (m/s)</th>
+            <th>断面水位 (m)</th>
+            <th>采集时间</th>
+            <th>备注</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+    </div>
+    <div class="pg-bar" id="tbl-pg"></div>
+  </div>
+</div>
+
+<!-- 详情弹窗 -->
+<div class="overlay" id="detail-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span id="detail-title">站点详情</span>
+      <button class="modal-close" data-close="detail-overlay">×</button>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-tabs">
+        <div class="modal-tab active" data-mtab="chart">流量变化</div>
+        <div class="modal-tab" data-mtab="history">历史数据</div>
+      </div>
+
+      <div class="modal-pane active" id="mpane-chart">
+        <div class="modal-filter">
+          <input type="date" id="chart-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="chart-end">
+          <button class="btn btn-primary" id="chart-query-btn">查询</button>
+          <button class="btn btn-default" id="chart-reset-btn">重置</button>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">瞬时流量过程线</div>
+          <div id="q-chart" class="chart-box"></div>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">累计流量</div>
+          <div id="cum-chart" class="chart-box"></div>
+        </div>
+      </div>
+
+      <div class="modal-pane" id="mpane-history">
+        <div class="modal-filter">
+          <input type="date" id="hist-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="hist-end">
+          <button class="btn btn-primary" id="hist-query-btn">查询</button>
+          <button class="btn btn-default" id="hist-reset-btn">重置</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>瞬时流量 (m³/s)</th>
+                <th>累计流量 (万m³)</th>
+                <th>流速 (m/s)</th>
+                <th>断面水位 (m)</th>
+                <th>采集时间</th>
+              </tr>
+            </thead>
+            <tbody id="hist-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
+const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fmtMdHm = d => `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+function setLoading(el, on) {
+  if (!el) return;
+  el.classList.toggle('is-loading', !!on);
+}
+function bindAsyncClick(el, asyncFn, opts = {}) {
+  if (!el) return;
+  const wait = opts.wait == null ? 800 : opts.wait;
+  let pending = false;
+  let last = 0;
+  el.addEventListener('click', async () => {
+    const now = Date.now();
+    if (pending || now - last < wait) return;
+    last = now;
+    pending = true;
+    el.disabled = true;
+    el.classList.add('is-loading');
+    try { await asyncFn(); }
+    finally {
+      pending = false;
+      el.disabled = false;
+      el.classList.remove('is-loading');
+    }
+  });
+}
+function waitTick(ms = 200) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+const S = { page: 1, size: 20, total: 0, rows: [], current: null };
+let qChart = null;
+let cumChart = null;
+let detailRows = [];
+
+const MOCK_ROWS = [
+  { name: '1#流量计', stnm: '南山寺节制闸', q: 12.5, cumQ: 128.3, v: 0.85, z: 5.62, tm: '2026-05-12 10:30:00', remark: '' },
+  { name: '2#流量计', stnm: '太怀干渠长沟节制闸', q: 42.6, cumQ: 231.4, v: 1.12, z: 6.18, tm: '2026-05-12 10:30:00', remark: '' },
+  { name: '3#流量计', stnm: '东湖进水口', q: 68.45, cumQ: 473.4, v: 1.56, z: 7.05, tm: '2026-05-12 10:30:00', remark: '正常' },
+];
+
+/** 详情过程线假数据（后续对接接口后替换） */
+function buildMockDetail() {
+  // 贴近样本：瞬时流量起伏较大，累计流量持续爬升
+  const labels = [
+    '07-17 15:34', '07-18 08:17', '07-18 12:40', '07-18 18:05',
+    '07-19 02:20', '07-19 09:15', '07-19 16:48', '07-20 07:30',
+    '07-20 14:22', '07-21 06:10', '07-21 11:55', '07-21 19:40',
+  ];
+  const qList = [182.31, 292.9, 247.89, 155.3, 98.6, 210.45, 268.2, 137.96, 176.4, 230.15, 188.7, 145.2];
+  let cum = 0;
+  return labels.map((label, i) => {
+    const q = qList[i];
+    cum = +(cum + q * 0.55).toFixed(2);
+    return {
+      tm: `2026-${label}:00`,
+      label,
+      q,
+      cumQ: cum,
+      v: +(0.5 + Math.random() * 1.5).toFixed(2),
+      z: +(4.5 + Math.random() * 3).toFixed(2),
+    };
+  });
+}
+
+function setDefaultDates() {
+  const now = new Date();
+  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
+  const e = fmtDate(now);
+  $('start-date').value = s;
+  $('end-date').value = e;
+}
+
+function setModalDefaultDates() {
+  const now = new Date();
+  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
+  const e = fmtDate(now);
+  ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
+  ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
+}
+
+async function query() {
+  S.page = 1;
+  const wrap = $('list-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    await waitTick();
+    // TODO: 对接流量监测列表接口
+    loadMock();
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+async function reset() {
+  $('st-keyword').value = '';
+  setDefaultDates();
+  S.page = 1;
+  const wrap = $('list-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    await waitTick();
+    loadMock();
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+function loadMock() {
+  const kw = ($('st-keyword').value || '').trim();
+  let list = MOCK_ROWS.slice();
+  if (kw) list = list.filter(r => (r.stnm || '').includes(kw) || (r.name || '').includes(kw));
+  S.total = list.length;
+  const start = (S.page - 1) * S.size;
+  S.rows = list.slice(start, start + S.size);
+  renderTable();
+  renderPager();
+}
+
+function renderTable() {
+  const tbody = $('tbl-body');
+  if (!S.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = S.rows.map((r, i) => `
+    <tr>
+      <td>${fmtN(r.name)}</td>
+      <td>${fmtN(r.stnm)}</td>
+      <td>${fmtN(r.q)}</td>
+      <td>${fmtN(r.cumQ)}</td>
+      <td>${fmtN(r.v)}</td>
+      <td>${fmtN(r.z)}</td>
+      <td>${fmtN(r.tm)}</td>
+      <td>${fmtN(r.remark) === '-' ? '' : fmtN(r.remark)}</td>
+      <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderPager() {
+  const bar = $('tbl-pg');
+  const pages = Math.max(1, Math.ceil(S.total / S.size) || 1);
+  if (S.page > pages) S.page = pages;
+
+  let html = `<span class="pg-info">共 ${S.total} 条</span>`;
+  html += `<select class="pg-size" id="pg-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === S.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${S.page - 1}" ${S.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+  const maxShow = 5;
+  let from = Math.max(1, S.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === S.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${S.page + 1}" ${S.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === S.page || p < 1 || p > pages) return;
+      S.page = p;
+      loadMock();
+    });
+  });
+  const sizeSel = $('pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      S.size = +sizeSel.value;
+      S.page = 1;
+      loadMock();
+    });
+  }
+}
+
+function openModal(id) {
+  $(id).classList.add('show');
+}
+
+function closeModal(id) {
+  $(id).classList.remove('show');
+  if (id === 'detail-overlay') {
+    if (qChart) { qChart.dispose(); qChart = null; }
+    if (cumChart) { cumChart.dispose(); cumChart = null; }
+  }
+}
+
+function openDetail(row) {
+  S.current = row;
+  setModalDefaultDates();
+  detailRows = buildMockDetail();
+  $('detail-title').textContent = row.stnm || row.name || '站点详情';
+
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('.modal-tab[data-mtab="chart"]').classList.add('active');
+  $('mpane-chart').classList.add('active');
+
+  openModal('detail-overlay');
+  requestAnimationFrame(() => {
+    renderCharts(detailRows);
+    renderHistory(detailRows);
+  });
+}
+
+function makeAreaOption(xData, yData, unit) {
+  const lineColor = '#5B8FF9';
+  return {
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e8e8e8',
+      textStyle: { color: '#333', fontSize: 13 },
+    },
+    grid: { left: 12, right: 28, top: 40, bottom: 28, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: xData,
+      boundaryGap: false,
+      axisLabel: { fontSize: 11, color: '#888', rotate: 20 },
+      axisLine: { lineStyle: { color: '#e8e8e8' } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: `单位: ${unit}`,
+      nameTextStyle: { color: '#999', fontSize: 12, padding: [0, 0, 0, 8] },
+      axisLabel: { fontSize: 12, color: '#888' },
+      splitLine: { lineStyle: { color: '#f0f0f0', type: 'solid' } },
+    },
+    series: [{
+      type: 'line',
+      data: yData,
+      smooth: true,
+      smoothMonotone: 'x',
+      symbol: 'circle',
+      symbolSize: 8,
+      showSymbol: true,
+      label: {
+        show: true,
+        position: 'top',
+        fontSize: 11,
+        color: '#666',
+        formatter: p => p.value,
+      },
+      lineStyle: { color: lineColor, width: 2.5 },
+      itemStyle: { color: '#fff', borderColor: lineColor, borderWidth: 2 },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(91,143,249,0.45)' },
+          { offset: 0.55, color: 'rgba(91,143,249,0.18)' },
+          { offset: 1, color: 'rgba(91,143,249,0.02)' },
+        ]),
+      },
+    }],
+  };
+}
+
+function renderCharts(rows) {
+  const xData = rows.map(r => r.label);
+  const qData = rows.map(r => r.q);
+  const cumData = rows.map(r => r.cumQ);
+
+  if (!qChart) qChart = echarts.init($('q-chart'));
+  if (!cumChart) cumChart = echarts.init($('cum-chart'));
+
+  qChart.setOption(makeAreaOption(xData, qData, 'm³/s'), true);
+  cumChart.setOption(makeAreaOption(xData, cumData, '万m³'), true);
+  qChart.resize();
+  cumChart.resize();
+}
+
+function renderHistory(rows) {
+  const tbody = $('hist-body');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${fmtN(r.q)}</td>
+      <td>${fmtN(r.cumQ)}</td>
+      <td>${fmtN(r.v)}</td>
+      <td>${fmtN(r.z)}</td>
+      <td>${fmtN(r.tm)}</td>
+    </tr>
+  `).join('');
+}
+
+async function reloadDetail() {
+  if (!S.current) return;
+  setLoading($('q-chart'), true);
+  setLoading($('cum-chart'), true);
+  try {
+    await waitTick();
+    // TODO: 按日期区间请求流量详情接口
+    detailRows = buildMockDetail();
+    renderCharts(detailRows);
+    renderHistory(detailRows);
+  } finally {
+    setLoading($('q-chart'), false);
+    setLoading($('cum-chart'), false);
+  }
+}
+
+function bindModal() {
+  document.querySelectorAll('[data-close]').forEach(btn =>
+    btn.addEventListener('click', () => closeModal(btn.dataset.close)));
+  document.querySelectorAll('.overlay').forEach(el =>
+    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); }));
+
+  document.querySelectorAll('.modal-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      $('mpane-' + tab.dataset.mtab).classList.add('active');
+      if (tab.dataset.mtab === 'chart') {
+        requestAnimationFrame(() => {
+          if (qChart) qChart.resize();
+          if (cumChart) cumChart.resize();
+        });
+      }
+    });
+  });
+
+  bindAsyncClick($('chart-query-btn'), reloadDetail);
+  bindAsyncClick($('hist-query-btn'), reloadDetail);
+  bindAsyncClick($('chart-reset-btn'), async () => {
+    setModalDefaultDates();
+    await reloadDetail();
+  }, { loadingText: '重置中...' });
+  bindAsyncClick($('hist-reset-btn'), async () => {
+    setModalDefaultDates();
+    await reloadDetail();
+  }, { loadingText: '重置中...' });
+
+  window.addEventListener('resize', () => {
+    if (qChart) qChart.resize();
+    if (cumChart) cumChart.resize();
+  });
+}
+
+function onTableClick(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn || btn.dataset.action !== 'detail') return;
+  const row = S.rows[+btn.dataset.idx];
+  if (row) openDetail(row);
+}
+
+function init() {
+  setDefaultDates();
+  bindModal();
+  bindAsyncClick($('query-btn'), query);
+  bindAsyncClick($('reset-btn'), reset, { loadingText: '重置中...' });
+  $('tbl-body').addEventListener('click', onTableClick);
+  loadMock();
+}
+
+init();
+</script>
+</body>
+</html>

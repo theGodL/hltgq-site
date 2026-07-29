@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>水位监测</title>
+<script src="./lib/echarts.min.js"></script>
+<script src="./lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:12px}
+.breadcrumb{color:#999;font-size:13px}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+
+/* 灌区 / 水库：两个独立白块 */
+.tab-bar{display:flex;gap:10px;align-items:center}
+.tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 108px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent}
+.tab-item:hover{color:#1677ff}
+.tab-item.active{color:#1677ff;font-weight:500;border-color:#1677ff;box-shadow:0 1px 4px rgba(22,119,255,.12)}
+
+.filter-card{padding:16px 20px}
+.filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
+.filter-item{display:flex;align-items:center;gap:8px}
+.filter-item label{color:#666;font-size:14px;white-space:nowrap}
+.filter-bar input,.modal-filter input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
+.filter-bar input:focus,.modal-filter input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.filter-bar input[type=text]{width:180px}
+.filter-bar input[type=date],.modal-filter input[type=date]{width:140px}
+.date-sep{color:#bbb}
+
+/* 可搜索站点下拉 */
+.ss{position:relative;width:200px}
+.ss-input{width:100% !important;padding-right:28px !important}
+.ss-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #999;pointer-events:none}
+.ss-dd{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #d9d9d9;border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08)}
+.ss-dd.open{display:block}
+.ss-opt{padding:8px 12px;cursor:pointer;color:#333;line-height:1.4}
+.ss-opt:hover,.ss-opt.active{background:#e6f4ff;color:#1677ff}
+.ss-empty{padding:12px;color:#bbb;text-align:center;font-size:13px}
+
+.filter-actions{display:flex;gap:8px; margin-left:112px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important;position:relative}
+.btn.is-loading::after{
+  content:'';
+  box-sizing:border-box;
+  position:absolute;left:50%;top:50%;
+  width:16px;height:16px;margin:-8px 0 0 -8px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,.35);
+  border-top-color:#fff;
+  animation:spin .6s linear infinite;
+}
+.btn-default.is-loading::after{
+  border-color:rgba(22,119,255,.2);
+  border-top-color:#1677ff;
+}
+
+.result-card{padding:16px 20px 12px;flex:1;display:flex;flex-direction:column;min-height:360px}
+.tbl-wrap{overflow-x:auto;position:relative;flex:none}
+.tbl-wrap.is-loading,.chart-box.is-loading{pointer-events:none}
+.tbl-wrap.is-loading::before,.chart-box.is-loading::before{
+  content:'';
+  position:absolute;inset:0;z-index:5;
+  background:rgba(255,255,255,.55);
+}
+.tbl-wrap.is-loading::after,.chart-box.is-loading::after{
+  content:'';
+  box-sizing:border-box;
+  position:absolute;left:50%;top:50%;z-index:6;
+  width:36px;height:36px;margin:-18px 0 0 -18px;
+  border-radius:50%;
+  border:3px solid rgba(22,119,255,.15);
+  border-top-color:#1677ff;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid #e8e8e8}
+thead tr{background:#fafafa}
+th{padding:12px 16px;text-align:left;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
+td{padding:12px 16px;border:1px solid #e8e8e8;color:#000000d9}
+tbody tr:hover td{background:#fafafa}
+.empty{text-align:center;color:#bbb;padding:48px;font-size:14px}
+.act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s}
+.act-btn:hover{opacity:.7}
+
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:12px 0 0;gap:4px;flex-shrink:0}
+.pg-info{color:#666;font-size:13px;margin-right:8px}
+.pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
+.pg-ellipsis{padding:0 4px;color:#999;font-size:13px}
+.pg-size{height:28px;border:1px solid #d9d9d9;border-radius:4px;padding:0 6px;font-size:13px;outline:none;background:#fff;margin-right:4px;cursor:pointer}
+
+.panel{display:none}
+.panel.active{display:flex;flex-direction:column;gap:12px;flex:1}
+
+/* 水库结果卡头部：子 Tab + 导出 */
+.res-toolbar{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f0f0f0;margin:0 -20px 12px;padding:0 20px}
+.res-tabs{display:flex;gap:0;flex-wrap:wrap}
+.res-tab{padding:12px 14px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none;white-space:nowrap}
+.res-tab:hover{color:#1677ff}
+.res-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
+.cell-stack{display:flex;flex-direction:column;line-height:1.35}
+.cell-stack .sub{color:#999;font-size:12px}
+.result-card.res-result{padding-top:0}
+
+/* 详情弹窗 */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:20px}
+.overlay.show{display:flex}
+.modal{background:#fff;border-radius:8px;width:860px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.modal-hd span{font-size:16px;font-weight:500;color:#333}
+.modal-close{background:none;border:none;cursor:pointer;color:#999;font-size:20px;line-height:1;padding:0 2px}
+.modal-close:hover{color:#333}
+.modal-bd{padding:0 20px 20px;overflow-y:auto;flex:1}
+.modal-tabs{display:flex;border-bottom:1px solid #f0f0f0;margin-bottom:16px}
+.modal-tab{padding:12px 16px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none}
+.modal-tab:hover{color:#1677ff}
+.modal-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
+.modal-pane{display:none}
+.modal-pane.active{display:block}
+.modal-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.chart-box{width:100%;height:360px;position:relative}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>水资源调度</span><span class="sep">/</span>
+    <span>数据统计</span><span class="sep">/</span>
+    <span class="cur">水位监测</span>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab-item active" data-tab="irrigation">灌区</div>
+    <div class="tab-item" data-tab="reservoir">水库</div>
+  </div>
+
+  <div class="panel active" id="panel-irrigation">
+    <div class="card filter-card">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>站点</label>
+          <div class="ss" id="st-ss">
+            <input type="text" class="ss-input" id="st-input" placeholder="请选择或搜索站点" autocomplete="off">
+            <span class="ss-arrow"></span>
+            <input type="hidden" id="st-code" value="">
+            <div class="ss-dd" id="st-dd"></div>
+          </div>
+        </div>
+        <div class="filter-item">
+          <label>日期</label>
+          <input type="date" id="start-date">
+          <span class="date-sep">—</span>
+          <input type="date" id="end-date">
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="query-btn">查询</button>
+          <button class="btn btn-default" id="reset-btn">重置</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card result-card">
+      <div class="tbl-wrap" id="irr-tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>站点</th>
+              <th>监测日期</th>
+              <th>水位值 (m)</th>
+              <th>1h水位涨幅 (cm)</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="tbl-pg"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-reservoir">
+    <div class="card filter-card">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>日期</label>
+          <input type="date" id="res-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="res-end">
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="res-query-btn">查询</button>
+          <button class="btn btn-default" id="res-reset-btn">重置</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card result-card res-result">
+      <div class="res-toolbar">
+        <div class="res-tabs">
+          <div class="res-tab active" data-res="river">河道水情表</div>
+          <div class="res-tab" data-res="reservoir">水库水情表</div>
+          <div class="res-tab" data-res="period">日时段水情表</div>
+          <div class="res-tab" data-res="brief">水情简报</div>
+          <div class="res-tab" data-res="years">多年同期水情</div>
+        </div>
+        <button class="btn btn-default" id="res-export-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          导出
+        </button>
+      </div>
+      <div class="tbl-wrap" id="res-tbl-wrap">
+        <table>
+          <thead id="res-thead"></thead>
+          <tbody id="res-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 详情弹窗 -->
+<div class="overlay" id="detail-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span id="detail-title">站点详情</span>
+      <button class="modal-close" data-close="detail-overlay">×</button>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-tabs">
+        <div class="modal-tab active" data-mtab="chart">水位变化</div>
+        <div class="modal-tab" data-mtab="history">历史数据</div>
+      </div>
+
+      <div class="modal-pane active" id="mpane-chart">
+        <div class="modal-filter">
+          <input type="date" id="chart-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="chart-end">
+          <button class="btn btn-primary" id="chart-query-btn">查询</button>
+          <button class="btn btn-default" id="chart-reset-btn">重置</button>
+        </div>
+        <div id="chart-box" class="chart-box"></div>
+      </div>
+
+      <div class="modal-pane" id="mpane-history">
+        <div class="modal-filter">
+          <input type="date" id="hist-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="hist-end">
+          <button class="btn btn-primary" id="hist-query-btn">查询</button>
+          <button class="btn btn-default" id="hist-reset-btn">重置</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>监测日期</th>
+                <th>水位值 (m)</th>
+                <th>1h水位涨幅 (cm)</th>
+              </tr>
+            </thead>
+            <tbody id="hist-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const pad = n => String(n).padStart(2, '0');
+const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
+const fmtTm = v => {
+  if (v === null || v === undefined || v === '') return '-';
+  return String(v).replace('T', ' ').replace(/\.\d+$/, '');
+};
+const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fmtMd = d => `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const API = '/hltgq-site';
+const dateToStart = v => v ? `${v} 00:00:00` : null;
+const dateToEnd = v => v ? `${v} 23:59:59` : null;
+
+function setLoading(el, on) {
+  if (!el) return;
+  el.classList.toggle('is-loading', !!on);
+}
+function bindAsyncClick(el, asyncFn, opts = {}) {
+  if (!el) return;
+  const wait = opts.wait == null ? 800 : opts.wait;
+  let pending = false;
+  let last = 0;
+  el.addEventListener('click', async () => {
+    const now = Date.now();
+    if (pending || now - last < wait) return;
+    last = now;
+    pending = true;
+    el.disabled = true;
+    el.classList.add('is-loading');
+    try { await asyncFn(); }
+    finally {
+      pending = false;
+      el.disabled = false;
+      el.classList.remove('is-loading');
+    }
+  });
+}
+function waitTick(ms = 200) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+const S = { page: 1, size: 20, total: 0, rows: [], current: null, resTab: 'river' };
+let chart = null;
+
+/* ===== 水库假数据（后续对接接口后替换） ===== */
+const RES_STATIONS = ['周家河', '姜家寨', '九田', '牛镇', '马厮铺'];
+
+const RES_MOCK = {
+  river: [
+    { stnm: '周家河', tm: '2026-06-05 14:00', wrz: 88.50, grz: 90.00, z: 87.93, wptn: '落', q: 162.5, msqmt: 'ADCP', msamt: '断面法', msvmt: '多普勒流速仪', flwchrcd: '正常' },
+    { stnm: '李家村', tm: '2026-06-05 15:00', wrz: 92.30, grz: 93.00, z: 91.75, wptn: '涨', q: 165.0, msqmt: 'ADCP', msamt: '断面法', msvmt: '多普勒流速仪', flwchrcd: '正常' },
+    { stnm: '王家屯', tm: '2026-06-05 16:00', wrz: 85.20, grz: 86.50, z: 84.75, wptn: '平', q: 160.0, msqmt: '流速仪', msamt: '声学法', msvmt: '流速仪', flwchrcd: '正常' },
+  ],
+  reservoir: [
+    { stnm: '周家河', tm: '2026-06-05 14:00', wrz: 88.50, grz: 90.00, z: 87.93, wptn: '落', inq: 162.5, otq: 162.5 },
+    { stnm: '李家村', tm: '2026-06-05 15:00', wrz: 92.30, grz: 93.00, z: 91.75, wptn: '涨', inq: 165.0, otq: 165.0 },
+    { stnm: '王家屯', tm: '2026-06-05 16:00', wrz: 85.20, grz: 86.50, z: 84.75, wptn: '平', inq: 160.0, otq: 160.0 },
+  ],
+  period: [
+    { stnm: '周家河', tm: '2026-06-05 14:00', z: 87.93, wptn: '落', q: 162.5, msqmt: 'ADCP', msamt: '断面法', msvmt: '多普勒流速仪' },
+    { stnm: '李家村', tm: '2026-06-05 15:00', z: 91.75, wptn: '涨', q: 165.0, msqmt: 'ADCP', msamt: '断面法', msvmt: '多普勒流速仪' },
+    { stnm: '王家屯', tm: '2026-06-05 16:00', z: 84.75, wptn: '平', q: 160.0, msqmt: '流速仪', msamt: '声学法', msvmt: '流速仪' },
+  ],
+  brief: [
+    { stnm: '周家河', wrz: 88.50, y8: 87.93, y20: 87.93, t8: 88.93, wptn: '落', cmp: '+1', q: 162.5, w: 162.5, maxz: 162.5, maxTm: '2026-06-03', dsflz: 88.93 },
+    { stnm: '李家村', wrz: 92.30, y8: 91.75, y20: 91.80, t8: 87.75, wptn: '涨', cmp: '-4', q: 165.0, w: 165.0, maxz: 165.0, maxTm: '2026-06-02', dsflz: 92.00 },
+    { stnm: '王家屯', wrz: 85.20, y8: 84.75, y20: 84.90, t8: 87.75, wptn: '平', cmp: '=3', q: 160.0, w: 160.0, maxz: 160.0, maxTm: '2026-06-01', dsflz: 85.50 },
+  ],
+  years: {
+    stations: RES_STATIONS,
+    rows: [
+      { tm: '2026-06', values: [5.8, 6.0, 6.2, 6.4, 5.8] },
+      { tm: '2026-05', values: [5.6, 5.9, 6.1, 6.3, 5.7] },
+      { tm: '2026-04', values: [5.4, 5.7, 5.9, 6.1, 5.5] },
+    ],
+  },
+};
+
+const RES_META = {
+  river: {
+    name: '河道水情表',
+    headers: ['站点名称', '时间', '警戒水位m', '保证水位m', '水位m', '水势', '流量 m³/s', '测流方法', '测积方法', '测速方法', '河水特征码'],
+    rowToArr: r => [r.stnm, r.tm, r.wrz, r.grz, r.z, r.wptn, r.q, r.msqmt, r.msamt, r.msvmt, r.flwchrcd],
+  },
+  reservoir: {
+    name: '水库水情表',
+    headers: ['站点名称', '时间', '警戒水位m', '保证水位m', '水位m', '水势', '入库流量 m³/s', '出库流量 m³/s'],
+    rowToArr: r => [r.stnm, r.tm, r.wrz, r.grz, r.z, r.wptn, r.inq, r.otq],
+  },
+  period: {
+    name: '日时段水情表',
+    headers: ['站点名称', '时间', '水位m', '水势', '流量 m³/s', '测流方法', '测积方法', '测速方法'],
+    rowToArr: r => [r.stnm, r.tm, r.z, r.wptn, r.q, r.msqmt, r.msamt, r.msvmt],
+  },
+  brief: {
+    name: '水情简报',
+    headers: ['站点名称', '警戒水位m', '昨日8点水位m', '昨日20点水位m', '今天8点水位m', '水势', '与昨日8点比(m)', '流量 m³/s', '蓄水量 百万m³', '最高水位 m', '设防水位m'],
+    rowToArr: r => [r.stnm, r.wrz, r.y8, r.y20, r.t8, r.wptn, r.cmp, r.q, r.w, `${r.maxz} ${r.maxTm}`, r.dsflz],
+  },
+  years: {
+    name: '多年同期水情',
+    headers: () => ['监测日期', ...RES_MOCK.years.stations],
+    rowToArr: r => [r.tm, ...r.values],
+  },
+};
+
+/** 生成站点详情占位数据（后续对接接口后替换） */
+function buildMockDetail(stnm) {
+  const start = new Date();
+  start.setDate(start.getDate() - 7);
+  const list = [];
+  let z = 3.2 + Math.random() * 0.6;
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const prev = z;
+    z = +(z + (Math.random() - 0.45) * 0.35).toFixed(2);
+    z = Math.max(2.5, Math.min(5.2, z));
+    list.push({
+      stnm,
+      tm: `${fmtDate(d)} 08:00:00`,
+      dateLabel: fmtMd(d),
+      z,
+      rise1h: +((z - prev) * 100).toFixed(2),
+    });
+  }
+  return list;
+}
+
+function setDefaultDates() {
+  const now = new Date();
+  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
+  const e = fmtDate(now);
+  $('start-date').value = s;
+  $('end-date').value = e;
+  $('res-start').value = s;
+  $('res-end').value = e;
+}
+
+function setModalDefaultDates() {
+  const now = new Date();
+  const s = fmtDate(new Date(now - 7 * 24 * 3600e3));
+  const e = fmtDate(now);
+  ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
+  ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
+}
+
+function bindTabs() {
+  document.querySelectorAll('.tab-item').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      const panel = $('panel-' + tab.dataset.tab);
+      if (panel) panel.classList.add('active');
+    });
+  });
+}
+
+/* ===== 站点可搜索下拉 ===== */
+let WL_SITES = []; // [{code, name}]
+
+function fuzzyMatch(text, kw) {
+  if (!kw) return true;
+  const t = String(text || '').toLowerCase();
+  const k = String(kw).toLowerCase().trim();
+  if (!k) return true;
+  if (t.includes(k)) return true;
+  let i = 0;
+  for (const ch of t) {
+    if (ch === k[i]) i++;
+    if (i >= k.length) return true;
+  }
+  return false;
+}
+
+function renderStDd(keyword) {
+  const dd = $('st-dd');
+  const code = $('st-code').value;
+  const list = WL_SITES.filter(s => fuzzyMatch(s.name, keyword) || fuzzyMatch(s.code, keyword));
+  if (!list.length) {
+    dd.innerHTML = '<div class="ss-empty">无匹配站点</div>';
+    dd.classList.add('open');
+    return;
+  }
+  dd.innerHTML = list.map(s =>
+    `<div class="ss-opt${s.code === code ? ' active' : ''}" data-code="${esc(s.code)}" data-name="${esc(s.name)}">${esc(s.name)}</div>`
+  ).join('');
+  dd.classList.add('open');
+}
+
+function setSt(code, name) {
+  $('st-code').value = code || '';
+  $('st-input').value = name || '';
+  $('st-dd').classList.remove('open');
+}
+
+function clearSt() {
+  setSt('', '');
+}
+
+function bindStSelect() {
+  const input = $('st-input');
+  const dd = $('st-dd');
+  const wrap = $('st-ss');
+
+  input.addEventListener('focus', () => renderStDd(input.value));
+  input.addEventListener('click', () => renderStDd(input.value));
+  input.addEventListener('input', () => {
+    $('st-code').value = '';
+    renderStDd(input.value);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') dd.classList.remove('open');
+    if (e.key === 'Enter') {
+      const first = dd.querySelector('.ss-opt');
+      if (first && dd.classList.contains('open')) {
+        e.preventDefault();
+        setSt(first.dataset.code, first.dataset.name);
+      }
+    }
+  });
+  dd.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.ss-opt');
+    if (!opt) return;
+    e.preventDefault();
+    setSt(opt.dataset.code, opt.dataset.name);
+  });
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dd.classList.remove('open');
+  });
+}
+
+async function loadWlSites() {
+  try {
+    const res = await fetch(`${API}/station-metrics/sites?type=waterLevel`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    WL_SITES = Array.isArray(data) ? data.map(x => ({
+      code: String(x.code ?? x.stcd ?? ''),
+      name: String(x.name ?? x.stnm ?? x.code ?? '')
+    })).filter(x => x.code) : [];
+  } catch (e) {
+    console.warn('加载水位站点失败', e);
+    WL_SITES = [];
+  }
+}
+
+/** 查询参数：站点传 code（对接列表接口时用 stcd） */
+function getSelectedStcd() {
+  return ($('st-code').value || '').trim();
+}
+
+function buildIrrParams() {
+  const p = new URLSearchParams();
+  p.set('page', S.page);
+  p.set('size', S.size);
+  const stcd = getSelectedStcd();
+  const s = dateToStart($('start-date').value);
+  const e = dateToEnd($('end-date').value);
+  if (stcd) p.set('stcd', stcd);
+  if (s) p.set('startTime', s);
+  if (e) p.set('endTime', e);
+  return p;
+}
+
+async function loadIrrList() {
+  const wrap = $('irr-tbl-wrap');
+  setLoading(wrap, true);
+  const tbody = $('tbl-body');
+  tbody.innerHTML = '';
+  try {
+    const res = await fetch(`${API}/irrigation-water-level/page?${buildIrrParams()}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    S.total = data.total || 0;
+    S.page = data.current || S.page;
+    S.size = data.size || S.size;
+    S.rows = data.records || [];
+    renderTable();
+    renderPager();
+  } catch (e) {
+    console.error(e);
+    S.rows = [];
+    S.total = 0;
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">数据加载失败，请重试</td></tr>';
+    renderPager();
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+async function query() {
+  S.page = 1;
+  await loadIrrList();
+}
+
+async function reset() {
+  clearSt();
+  setDefaultDates();
+  S.page = 1;
+  await loadIrrList();
+}
+
+function renderTable() {
+  const tbody = $('tbl-body');
+  if (!S.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = S.rows.map((r, i) => `
+    <tr>
+      <td>${fmtN(r.stnm)}</td>
+      <td>${fmtTm(r.tm)}</td>
+      <td>${fmtN(r.z)}</td>
+      <td>${fmtN(r.rise1h)}</td>
+      <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderPager() {
+  const bar = $('tbl-pg');
+  const pages = Math.max(1, Math.ceil(S.total / S.size) || 1);
+  if (S.page > pages) S.page = pages;
+
+  let html = `<span class="pg-info">共 ${S.total} 条</span>`;
+  html += `<select class="pg-size" id="pg-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === S.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${S.page - 1}" ${S.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+  const maxShow = 5;
+  let from = Math.max(1, S.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === S.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${S.page + 1}" ${S.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === S.page || p < 1 || p > pages) return;
+      S.page = p;
+      loadIrrList();
+    });
+  });
+  const sizeSel = $('pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      S.size = +sizeSel.value;
+      S.page = 1;
+      loadIrrList();
+    });
+  }
+}
+
+// ===== 详情弹窗 =====
+function openModal(id) {
+  $(id).classList.add('show');
+}
+
+function closeModal(id) {
+  $(id).classList.remove('show');
+  if (id === 'detail-overlay' && chart) {
+    chart.dispose();
+    chart = null;
+  }
+}
+
+function openDetail(row) {
+  S.current = row;
+  S.detailRows = buildMockDetail(row.stnm);
+  $('detail-title').textContent = row.stnm || '站点详情';
+  setModalDefaultDates();
+
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('.modal-tab[data-mtab="chart"]').classList.add('active');
+  $('mpane-chart').classList.add('active');
+
+  openModal('detail-overlay');
+  // 等弹窗显示后再画图，避免宽高为 0
+  requestAnimationFrame(() => {
+    renderChart(S.detailRows);
+    renderHistory(S.detailRows);
+  });
+}
+
+function renderChart(rows) {
+  const box = $('chart-box');
+  if (!chart) chart = echarts.init(box);
+  const xData = rows.map(r => r.dateLabel);
+  const yData = rows.map(r => r.z);
+  const yMin = Math.min(...yData);
+  const yMax = Math.max(...yData);
+  const padY = Math.max((yMax - yMin) * 0.2, 0.3);
+
+  chart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e8e8e8',
+      textStyle: { color: '#333', fontSize: 13 },
+      formatter: ps => {
+        const p = ps[0];
+        return `${p.axisValue}<br/><span style="color:${p.color}">●</span> 水位：<b>${p.value != null ? Number(p.value).toFixed(2) + ' m' : '无数据'}</b>`;
+      },
+    },
+    grid: { left: 16, right: 24, top: 40, bottom: 32, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: xData,
+      boundaryGap: false,
+      axisLabel: { fontSize: 12, color: '#888' },
+      axisLine: { lineStyle: { color: '#e8e8e8' } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: '单位: 米',
+      min: Math.max(0, +(yMin - padY).toFixed(2)),
+      max: +(yMax + padY).toFixed(2),
+      nameTextStyle: { color: '#999', fontSize: 12, padding: [0, 0, 0, 10] },
+      axisLabel: { fontSize: 12, color: '#888' },
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+    },
+    series: [{
+      name: '水位',
+      type: 'line',
+      data: yData,
+      smooth: 0.4,
+      symbol: 'circle',
+      symbolSize: 8,
+      showSymbol: true,
+      lineStyle: { color: '#7B61FF', width: 2 },
+      itemStyle: { color: '#fff', borderColor: '#7B61FF', borderWidth: 2 },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(123,97,255,0.35)' },
+          { offset: 1, color: 'rgba(123,97,255,0.02)' },
+        ]),
+      },
+    }],
+  }, true);
+  chart.resize();
+}
+
+function renderHistory(rows) {
+  const tbody = $('hist-body');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${fmtN(r.tm)}</td>
+      <td>${fmtN(r.z)}</td>
+      <td>${fmtN(r.rise1h)}</td>
+    </tr>
+  `).join('');
+}
+
+async function reloadDetail() {
+  if (!S.current) return;
+  const chartBox = $('chart-box');
+  setLoading(chartBox, true);
+  try {
+    await waitTick();
+    // TODO: 按日期区间请求详情接口
+    S.detailRows = buildMockDetail(S.current.stnm);
+    renderChart(S.detailRows);
+    renderHistory(S.detailRows);
+  } finally {
+    setLoading(chartBox, false);
+  }
+}
+
+function bindModal() {
+  document.querySelectorAll('[data-close]').forEach(btn =>
+    btn.addEventListener('click', () => closeModal(btn.dataset.close)));
+  document.querySelectorAll('.overlay').forEach(el =>
+    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); }));
+
+  document.querySelectorAll('.modal-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      $('mpane-' + tab.dataset.mtab).classList.add('active');
+      if (tab.dataset.mtab === 'chart' && chart) {
+        requestAnimationFrame(() => chart.resize());
+      }
+    });
+  });
+
+  bindAsyncClick($('chart-query-btn'), reloadDetail);
+  bindAsyncClick($('hist-query-btn'), reloadDetail);
+  bindAsyncClick($('chart-reset-btn'), async () => {
+    setModalDefaultDates();
+    await reloadDetail();
+  }, { loadingText: '重置中...' });
+  bindAsyncClick($('hist-reset-btn'), async () => {
+    setModalDefaultDates();
+    await reloadDetail();
+  }, { loadingText: '重置中...' });
+
+  window.addEventListener('resize', () => { if (chart) chart.resize(); });
+}
+
+function onTableClick(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  if (btn.dataset.action === 'detail') {
+    const row = S.rows[+btn.dataset.idx];
+    if (row) openDetail(row);
+  }
+}
+
+/* ===== 水库 ===== */
+function bindResTabs() {
+  document.querySelectorAll('.res-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.res-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      S.resTab = tab.dataset.res;
+      // TODO: 对接水库各表接口
+      renderResTable();
+    });
+  });
+}
+
+function getResRows() {
+  if (S.resTab === 'years') return RES_MOCK.years.rows;
+  return RES_MOCK[S.resTab] || [];
+}
+
+function getResHeaders() {
+  const meta = RES_META[S.resTab];
+  return typeof meta.headers === 'function' ? meta.headers() : meta.headers;
+}
+
+function renderResTable() {
+  const headers = getResHeaders();
+  const rows = getResRows();
+  const meta = RES_META[S.resTab];
+  $('res-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+
+  if (!rows.length) {
+    $('res-tbody').innerHTML = `<tr><td colspan="${headers.length}" class="empty">暂无数据</td></tr>`;
+    return;
+  }
+
+  if (S.resTab === 'brief') {
+    $('res-tbody').innerHTML = rows.map(r => `
+      <tr>
+        <td>${fmtN(r.stnm)}</td>
+        <td>${fmtN(r.wrz)}</td>
+        <td>${fmtN(r.y8)}</td>
+        <td>${fmtN(r.y20)}</td>
+        <td>${fmtN(r.t8)}</td>
+        <td>${fmtN(r.wptn)}</td>
+        <td>${fmtN(r.cmp)}</td>
+        <td>${fmtN(r.q)}</td>
+        <td>${fmtN(r.w)}</td>
+        <td><div class="cell-stack"><span>${fmtN(r.maxz)}</span><span class="sub">${fmtN(r.maxTm)}</span></div></td>
+        <td>${fmtN(r.dsflz)}</td>
+      </tr>
+    `).join('');
+    return;
+  }
+
+  $('res-tbody').innerHTML = rows.map(r => {
+    const arr = meta.rowToArr(r);
+    return `<tr>${arr.map(v => `<td>${fmtN(v)}</td>`).join('')}</tr>`;
+  }).join('');
+}
+
+async function queryRes() {
+  const wrap = $('res-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    await waitTick();
+    // TODO: 对接水库查询接口
+    renderResTable();
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+async function resetRes() {
+  const now = new Date();
+  $('res-start').value = fmtDate(new Date(now - 3 * 24 * 3600e3));
+  $('res-end').value = fmtDate(now);
+  const wrap = $('res-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    await waitTick();
+    renderResTable();
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+function exportResExcel() {
+  const meta = RES_META[S.resTab];
+  const headers = getResHeaders();
+  const rows = getResRows();
+  if (!rows.length) { alert('暂无数据可导出'); return; }
+
+  const aoa = [headers, ...rows.map(r => meta.rowToArr(r))];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, meta.name);
+  const s = $('res-start').value || '';
+  const e = $('res-end').value || '';
+  const range = s && e ? `_${s}~${e}` : '';
+  XLSX.writeFile(wb, `${meta.name}${range}.xlsx`);
+}
+
+async function init() {
+  setDefaultDates();
+  bindTabs();
+  bindModal();
+  bindResTabs();
+  bindStSelect();
+  bindAsyncClick($('query-btn'), query);
+  bindAsyncClick($('reset-btn'), reset, { loadingText: '重置中...' });
+  $('tbl-body').addEventListener('click', onTableClick);
+  bindAsyncClick($('res-query-btn'), queryRes);
+  bindAsyncClick($('res-reset-btn'), resetRes, { loadingText: '重置中...' });
+  bindAsyncClick($('res-export-btn'), async () => { exportResExcel(); }, { wait: 1000, loadingText: '导出中...' });
+  await loadWlSites();
+  loadIrrList();
+  renderResTable();
+}
+
+init();
+</script>
+</body>
+</html>

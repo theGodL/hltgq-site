@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>闸门监测</title>
+<script src="./lib/echarts.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:12px}
+.breadcrumb{color:#999;font-size:13px}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+
+.filter-card{padding:16px 20px}
+.filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
+.filter-item{display:flex;align-items:center;gap:8px}
+.filter-item label{color:#666;font-size:14px;white-space:nowrap}
+.filter-bar input,.modal-filter input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
+.filter-bar input:focus,.modal-filter input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.filter-bar input[type=text]{width:180px}
+.filter-bar input[type=date],.modal-filter input[type=date]{width:140px}
+.date-sep{color:#bbb}
+
+/* 可搜索设备下拉 */
+.ss{position:relative;width:220px}
+.ss-input{width:100% !important;padding-right:28px !important}
+.ss-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #999;pointer-events:none}
+.ss-dd{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #d9d9d9;border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08)}
+.ss-dd.open{display:block}
+.ss-opt{padding:8px 12px;cursor:pointer;color:#333;line-height:1.4}
+.ss-opt:hover,.ss-opt.active{background:#e6f4ff;color:#1677ff}
+.ss-empty{padding:12px;color:#bbb;text-align:center;font-size:13px}
+
+.filter-actions{display:flex;gap:8px;margin-left:112px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important;position:relative}
+.btn.is-loading::after{
+  content:'';
+  box-sizing:border-box;
+  position:absolute;left:50%;top:50%;
+  width:16px;height:16px;margin:-8px 0 0 -8px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,.35);
+  border-top-color:#fff;
+  animation:spin .6s linear infinite;
+}
+.btn-default.is-loading::after{
+  border-color:rgba(22,119,255,.2);
+  border-top-color:#1677ff;
+}
+
+.result-card{padding:16px 20px 12px;flex:1;display:flex;flex-direction:column;min-height:360px}
+.tbl-wrap{overflow-x:auto;position:relative;flex:none}
+.tbl-wrap.is-loading,.chart-box.is-loading{pointer-events:none}
+.tbl-wrap.is-loading::before,.chart-box.is-loading::before{
+  content:'';
+  position:absolute;inset:0;z-index:5;
+  background:rgba(255,255,255,.55);
+}
+.tbl-wrap.is-loading::after,.chart-box.is-loading::after{
+  content:'';
+  box-sizing:border-box;
+  position:absolute;left:50%;top:50%;z-index:6;
+  width:36px;height:36px;margin:-18px 0 0 -18px;
+  border-radius:50%;
+  border:3px solid rgba(22,119,255,.15);
+  border-top-color:#1677ff;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid #e8e8e8}
+thead tr{background:#fafafa}
+th{padding:12px 16px;text-align:left;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
+td{padding:12px 16px;border:1px solid #e8e8e8;color:#000000d9}
+tbody tr:hover td{background:#fafafa}
+.empty{text-align:center;color:#bbb;padding:48px;font-size:14px}
+.act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s}
+.act-btn:hover{opacity:.7}
+.modal.modal-sm{width:420px}
+.status-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;line-height:1.6}
+.status-open{background:#e6f4ff;color:#1677ff}
+.status-close{background:#f5f5f5;color:#666}
+.status-part{background:#fff7e6;color:#fa8c16}
+.status-moving{background:#f0f5ff;color:#597ef7}
+.status-fault{background:#fff1f0;color:#ff4d4f}
+
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:12px 0 0;gap:4px;flex-shrink:0}
+.pg-info{color:#666;font-size:13px;margin-right:8px}
+.pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
+.pg-ellipsis{padding:0 4px;color:#999;font-size:13px}
+.pg-size{height:28px;border:1px solid #d9d9d9;border-radius:4px;padding:0 6px;font-size:13px;outline:none;background:#fff;margin-right:4px;cursor:pointer}
+
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:20px}
+.overlay.show{display:flex}
+.modal{background:#fff;border-radius:8px;width:960px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.modal.modal-sm{width:480px}
+.modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.modal-hd span{font-size:16px;font-weight:500;color:#333}
+.modal-close{background:none;border:none;cursor:pointer;color:#999;font-size:20px;line-height:1;padding:0 2px}
+.modal-close:hover{color:#333}
+.modal-bd{padding:0 20px 20px;overflow-y:auto;flex:1}
+.modal-tabs{display:flex;border-bottom:1px solid #f0f0f0;margin-bottom:16px}
+.modal-tab{padding:12px 16px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none}
+.modal-tab:hover{color:#1677ff}
+.modal-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
+.modal-pane{display:none}
+.modal-pane.active{display:block}
+.modal-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px}
+.gate-filter{display:flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%}
+.gate-filter-label{color:#666;font-size:14px;white-space:nowrap}
+.gate-chip{
+  height:28px;padding:0 12px;border-radius:6px;border:1px solid #91caff;
+  background:#e6f4ff;color:#1677ff;font-size:13px;cursor:pointer;
+  transition:all .2s;user-select:none;
+}
+.gate-chip:hover{border-color:#1677ff}
+.gate-chip.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.chart-block{margin-top:4px}
+.chart-block + .chart-block{margin-top:20px;padding-top:16px;border-top:1px solid #f0f0f0}
+.chart-title{font-size:14px;font-weight:500;color:#333;margin-bottom:8px}
+.chart-box{width:100%;height:320px;position:relative}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>水资源调度</span><span class="sep">/</span>
+    <span>数据统计</span><span class="sep">/</span>
+    <span class="cur">闸门监测</span>
+  </div>
+
+  <div class="card filter-card">
+    <div class="filter-bar">
+      <div class="filter-item">
+        <label>设备</label>
+        <div class="ss" id="dev-ss">
+          <input type="text" class="ss-input" id="dev-input" placeholder="请选择或搜索设备" autocomplete="off">
+          <span class="ss-arrow"></span>
+          <input type="hidden" id="dev-code" value="">
+          <div class="ss-dd" id="dev-dd"></div>
+        </div>
+      </div>
+      <div class="filter-item">
+        <label>日期</label>
+        <input type="date" id="start-date">
+        <span class="date-sep">—</span>
+        <input type="date" id="end-date">
+      </div>
+      <div class="filter-actions">
+        <button class="btn btn-primary" id="query-btn">查询</button>
+        <button class="btn btn-default" id="reset-btn">重置</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card result-card">
+    <div class="tbl-wrap" id="list-tbl-wrap">
+      <table>
+        <thead>
+            <tr>
+            <th>名称</th>
+            <th>闸门开度 (m)</th>
+            <th>闸前水位 (m)</th>
+            <th>闸后水位 (m)</th>
+            <th>采集时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+    </div>
+    <div class="pg-bar" id="tbl-pg"></div>
+  </div>
+</div>
+
+<div class="overlay" id="holes-overlay">
+  <div class="modal modal-sm">
+    <div class="modal-hd">
+      <span id="holes-title">闸孔开度</span>
+      <button class="modal-close" data-close="holes-overlay">×</button>
+    </div>
+    <div class="modal-bd" style="padding-top:16px">
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>闸孔</th>
+              <th>开度 (m)</th>
+            </tr>
+          </thead>
+          <tbody id="holes-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="detail-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span id="detail-title">站点详情</span>
+      <button class="modal-close" data-close="detail-overlay">×</button>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-tabs">
+        <div class="modal-tab active" data-mtab="chart">闸前闸后水位对比</div>
+        <div class="modal-tab" data-mtab="history">历史数据</div>
+      </div>
+
+      <div class="modal-pane active" id="mpane-chart">
+        <div class="modal-filter">
+          <input type="date" id="chart-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="chart-end">
+          <button class="btn btn-primary" id="chart-query-btn">查询</button>
+          <button class="btn btn-default" id="chart-reset-btn">重置</button>
+          <div class="gate-filter" id="chart-gate-filter">
+            <span class="gate-filter-label">闸孔:</span>
+          </div>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">闸前闸后水位对比</div>
+          <div id="chart-box" class="chart-box"></div>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">闸门开度</div>
+          <div id="open-chart-box" class="chart-box"></div>
+        </div>
+      </div>
+
+      <div class="modal-pane" id="mpane-history">
+        <div class="modal-filter">
+          <input type="date" id="hist-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="hist-end">
+          <button class="btn btn-primary" id="hist-query-btn">查询</button>
+          <button class="btn btn-default" id="hist-reset-btn">重置</button>
+        </div>
+        <div class="tbl-wrap" id="hist-tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>设备名称</th>
+                <th>监测日期</th>
+                <th>闸门开度 (m)</th>
+                <th>闸前水位 (m)</th>
+                <th>闸后水位 (m)</th>
+              </tr>
+            </thead>
+            <tbody id="hist-body"></tbody>
+          </table>
+        </div>
+        <div class="pg-bar" id="hist-pg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const pad = n => String(n).padStart(2, '0');
+const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
+const fmtTm = v => {
+  if (v === null || v === undefined || v === '') return '-';
+  return String(v).replace('T', ' ').replace(/\.\d+$/, '');
+};
+const fmtOpen = v => {
+  if (v === null || v === undefined || v === '') return '-';
+  const n = +v;
+  if (!Number.isFinite(n)) return '-';
+  return Math.abs(n - Math.round(n)) < 1e-9 ? String(Math.round(n)) : n.toFixed(3);
+};
+const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const API = '/hltgq-site';
+const holeName = no => {
+  if (no === null || no === undefined || no === '') return '-';
+  const n = String(no);
+  return `闸孔${n === '0' ? '1' : n}`;
+};
+
+function setLoading(el, on) {
+  if (!el) return;
+  el.classList.toggle('is-loading', !!on);
+}
+function bindAsyncClick(el, asyncFn, opts = {}) {
+  if (!el) return;
+  const wait = opts.wait == null ? 800 : opts.wait;
+  let pending = false;
+  let last = 0;
+  el.addEventListener('click', async () => {
+    const now = Date.now();
+    if (pending || now - last < wait) return;
+    last = now;
+    pending = true;
+    el.disabled = true;
+    el.classList.add('is-loading');
+    try { await asyncFn(); }
+    finally {
+      pending = false;
+      el.disabled = false;
+      el.classList.remove('is-loading');
+    }
+  });
+}
+function waitTick(ms = 200) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+const S = { page: 1, size: 20, total: 0, rows: [], allRows: [], current: null };
+const DETAIL = { holeNos: [], selected: [] }; // holeNos 原始 gateNo
+const HIST = { page: 1, size: 20, total: 0, rows: [] };
+let chart = null;
+let openChart = null;
+
+const OPEN_COLORS = ['#FA8C16', '#1677FF', '#52C41A', '#722ED1', '#EB2F96', '#13C2C2', '#2F54EB', '#A0D911'];
+
+const dateToStart = v => v ? `${v} 00:00:00` : null;
+const dateToEnd = v => v ? `${v} 23:59:59` : null;
+
+function fmtAxisTm(v) {
+  const s = fmtTm(v);
+  if (s === '-') return s;
+  // 2026-07-22 18:00:00 -> 07-22 18:00
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : s;
+}
+
+function setDefaultDates() {
+  const now = new Date();
+  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
+  const e = fmtDate(now);
+  $('start-date').value = s;
+  $('end-date').value = e;
+}
+
+function setModalDefaultDates() {
+  const now = new Date();
+  const s = $('start-date').value || fmtDate(new Date(now - 7 * 24 * 3600e3));
+  const e = $('end-date').value || fmtDate(now);
+  ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
+  ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
+}
+
+function initDetailHoles(row) {
+  const holes = Array.isArray(row.holes) ? row.holes : [];
+  const nos = [];
+  holes.forEach(h => {
+    if (h == null || h.gateNo === null || h.gateNo === undefined || h.gateNo === '') return;
+    const no = String(h.gateNo);
+    if (!nos.includes(no)) nos.push(no);
+  });
+  DETAIL.holeNos = nos;
+  DETAIL.selected = nos.slice();
+  renderGateFilter();
+}
+
+function renderGateFilter() {
+  const wrap = $('chart-gate-filter');
+  if (!wrap) return;
+  const allOn = DETAIL.holeNos.length > 0 && DETAIL.selected.length === DETAIL.holeNos.length;
+  let html = `<span class="gate-filter-label">闸孔:</span>`;
+  html += `<button type="button" class="gate-chip all${allOn ? ' active' : ''}" data-role="all">全选</button>`;
+  DETAIL.holeNos.forEach(no => {
+    const on = DETAIL.selected.includes(no);
+    html += `<button type="button" class="gate-chip${on ? ' active' : ''}" data-gate="${esc(no)}">${esc(holeName(no))}</button>`;
+  });
+  wrap.innerHTML = html;
+}
+
+function bindGateFilter() {
+  const wrap = $('chart-gate-filter');
+  if (!wrap || wrap.dataset.bound) return;
+  wrap.dataset.bound = '1';
+  wrap.addEventListener('click', e => {
+    const btn = e.target.closest('.gate-chip');
+    if (!btn) return;
+    if (btn.dataset.role === 'all') {
+      const allOn = DETAIL.selected.length === DETAIL.holeNos.length;
+      DETAIL.selected = allOn ? [] : DETAIL.holeNos.slice();
+    } else {
+      const no = btn.dataset.gate;
+      const i = DETAIL.selected.indexOf(no);
+      if (i >= 0) DETAIL.selected.splice(i, 1);
+      else DETAIL.selected.push(no);
+    }
+    renderGateFilter();
+  });
+}
+
+/* ===== 设备可搜索下拉 ===== */
+let GATE_SITES = []; // [{code, name}]
+
+function fuzzyMatch(text, kw) {
+  if (!kw) return true;
+  const t = String(text || '').toLowerCase();
+  const k = String(kw).toLowerCase().trim();
+  if (!k) return true;
+  if (t.includes(k)) return true;
+  let i = 0;
+  for (const ch of t) {
+    if (ch === k[i]) i++;
+    if (i >= k.length) return true;
+  }
+  return false;
+}
+
+function renderDevDd(keyword) {
+  const dd = $('dev-dd');
+  const code = $('dev-code').value;
+  const list = GATE_SITES.filter(s => fuzzyMatch(s.name, keyword) || fuzzyMatch(s.code, keyword));
+  if (!list.length) {
+    dd.innerHTML = '<div class="ss-empty">无匹配设备</div>';
+    dd.classList.add('open');
+    return;
+  }
+  dd.innerHTML = list.map(s =>
+    `<div class="ss-opt${s.code === code ? ' active' : ''}" data-code="${esc(s.code)}" data-name="${esc(s.name)}">${esc(s.name)}</div>`
+  ).join('');
+  dd.classList.add('open');
+}
+
+function setDev(code, name) {
+  $('dev-code').value = code || '';
+  $('dev-input').value = name || '';
+  $('dev-dd').classList.remove('open');
+}
+
+function clearDev() {
+  setDev('', '');
+}
+
+function bindDevSelect() {
+  const input = $('dev-input');
+  const dd = $('dev-dd');
+  const wrap = $('dev-ss');
+
+  input.addEventListener('focus', () => renderDevDd(input.value));
+  input.addEventListener('click', () => renderDevDd(input.value));
+  input.addEventListener('input', () => {
+    $('dev-code').value = '';
+    renderDevDd(input.value);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') dd.classList.remove('open');
+    if (e.key === 'Enter') {
+      const first = dd.querySelector('.ss-opt');
+      if (first && dd.classList.contains('open')) {
+        e.preventDefault();
+        setDev(first.dataset.code, first.dataset.name);
+      }
+    }
+  });
+  dd.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.ss-opt');
+    if (!opt) return;
+    e.preventDefault();
+    setDev(opt.dataset.code, opt.dataset.name);
+  });
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dd.classList.remove('open');
+  });
+}
+
+async function loadGateSites() {
+  try {
+    const res = await fetch(`${API}/station-metrics/sites?type=gate`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    GATE_SITES = Array.isArray(data) ? data.map(x => ({
+      code: String(x.code ?? x.stcd ?? ''),
+      name: String(x.name ?? x.stnm ?? x.code ?? '')
+    })).filter(x => x.code) : [];
+  } catch (e) {
+    console.warn('加载闸门设备失败', e);
+    GATE_SITES = [];
+  }
+}
+
+/** 查询参数：设备传 code（siteId） */
+function getSelectedDevCode() {
+  return ($('dev-code').value || '').trim();
+}
+
+async function loadList() {
+  const wrap = $('list-tbl-wrap');
+  const keepH = wrap.offsetHeight;
+  if (keepH > 0) wrap.style.minHeight = keepH + 'px';
+  setLoading(wrap, true);
+  try {
+    const p = new URLSearchParams();
+    const s = dateToStart($('start-date').value);
+    const e = dateToEnd($('end-date').value);
+    if (s) p.set('startTime', s);
+    if (e) p.set('endTime', e);
+    const qs = p.toString();
+    const res = await fetch(`${API}/gate-monitor/monitoring${qs ? `?${qs}` : ''}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    let list = Array.isArray(data) ? data : [];
+    const siteId = getSelectedDevCode();
+    if (siteId) list = list.filter(r => String(r.siteId || '') === siteId);
+    S.allRows = list;
+    S.total = list.length;
+    applyPage();
+  } catch (e) {
+    console.error(e);
+    S.allRows = [];
+    S.total = 0;
+    S.rows = [];
+    $('tbl-body').innerHTML = '<tr><td colspan="6" class="empty">数据加载失败，请重试</td></tr>';
+    renderPager();
+  } finally {
+    setLoading(wrap, false);
+    wrap.style.minHeight = '';
+  }
+}
+
+function applyPage() {
+  const pages = Math.max(1, Math.ceil(S.total / S.size) || 1);
+  if (S.page > pages) S.page = pages;
+  const start = (S.page - 1) * S.size;
+  S.rows = S.allRows.slice(start, start + S.size);
+  renderTable();
+  renderPager();
+}
+
+async function query() {
+  S.page = 1;
+  await loadList();
+}
+
+async function reset() {
+  clearDev();
+  setDefaultDates();
+  S.page = 1;
+  await loadList();
+}
+
+function renderTable() {
+  const tbody = $('tbl-body');
+  if (!S.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = S.rows.map((r, i) => {
+    const holes = Array.isArray(r.holes) ? r.holes : [];
+    const openCell = holes.length
+      ? `<button class="act-btn" data-action="holes" data-idx="${i}">查看开度（${holes.length}）</button>`
+      : '-';
+    return `
+    <tr>
+      <td>${fmtN(r.siteName)}</td>
+      <td>${openCell}</td>
+      <td>${fmtN(r.upZ)}</td>
+      <td>${fmtN(r.downZ)}</td>
+      <td>${fmtTm(r.tm)}</td>
+      <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPager() {
+  const bar = $('tbl-pg');
+  const pages = Math.max(1, Math.ceil(S.total / S.size) || 1);
+  if (S.page > pages) S.page = pages;
+
+  let html = `<span class="pg-info">共 ${S.total} 条</span>`;
+  html += `<select class="pg-size" id="pg-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === S.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${S.page - 1}" ${S.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+  const maxShow = 5;
+  let from = Math.max(1, S.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === S.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${S.page + 1}" ${S.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === S.page || p < 1 || p > pages) return;
+      S.page = p;
+      applyPage();
+    });
+  });
+  const sizeSel = $('pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      S.size = +sizeSel.value;
+      S.page = 1;
+      applyPage();
+    });
+  }
+}
+
+function openHolesModal(row) {
+  const holes = Array.isArray(row.holes) ? row.holes : [];
+  $('holes-title').textContent = `${row.siteName || '站点'} · 闸孔开度`;
+  const tbody = $('holes-body');
+  if (!holes.length) {
+    tbody.innerHTML = '<tr><td colspan="2" class="empty">暂无闸孔数据</td></tr>';
+  } else {
+    tbody.innerHTML = holes.map(h => `
+      <tr>
+        <td>${esc(holeName(h.gateNo))}</td>
+        <td>${fmtOpen(h.openDegree)}</td>
+      </tr>
+    `).join('');
+  }
+  openModal('holes-overlay');
+}
+
+function openModal(id) {
+  $(id).classList.add('show');
+}
+
+function closeModal(id) {
+  $(id).classList.remove('show');
+  if (id === 'detail-overlay') {
+    if (chart) { chart.dispose(); chart = null; }
+    if (openChart) { openChart.dispose(); openChart = null; }
+  }
+}
+
+function openDetail(row) {
+  S.current = row;
+  setModalDefaultDates();
+  initDetailHoles(row);
+  $('detail-title').textContent = row.siteName || '站点详情';
+
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('.modal-tab[data-mtab="chart"]').classList.add('active');
+  $('mpane-chart').classList.add('active');
+
+  openModal('detail-overlay');
+  HIST.page = 1;
+  requestAnimationFrame(() => {
+    reloadDetail();
+    loadHistory();
+  });
+}
+
+function buildExportParams() {
+  const p = new URLSearchParams();
+  p.set('siteId', S.current.siteId);
+  const s = dateToStart($('chart-start').value);
+  const e = dateToEnd($('chart-end').value);
+  if (s) p.set('startTime', s);
+  if (e) p.set('endTime', e);
+  DETAIL.selected.forEach(no => p.append('gateNos', no));
+  return p;
+}
+
+/** 将 export 列表整理为图表数据 */
+function processExportRows(list) {
+  const selected = new Set(DETAIL.selected.map(String));
+  const rows = (list || []).filter(r => selected.has(String(r.gateNo)));
+  const tmSet = new Set();
+  const byGate = {};
+  const waterByTm = {}; // tm -> {upZ, downZ}
+
+  rows.forEach(r => {
+    const tm = r.tm;
+    const g = String(r.gateNo);
+    tmSet.add(tm);
+    if (!byGate[g]) byGate[g] = {};
+    byGate[g][tm] = r.openDegree;
+    if (!waterByTm[tm]) waterByTm[tm] = { upZ: null, downZ: null };
+    if (waterByTm[tm].upZ == null && r.upZ != null) waterByTm[tm].upZ = r.upZ;
+    if (waterByTm[tm].downZ == null && r.downZ != null) waterByTm[tm].downZ = r.downZ;
+  });
+
+  const times = [...tmSet].sort((a, b) => String(a).localeCompare(String(b)));
+  const labels = times.map(fmtAxisTm);
+  const upData = times.map(t => waterByTm[t]?.upZ ?? null);
+  const downData = times.map(t => waterByTm[t]?.downZ ?? null);
+  const openSeries = DETAIL.selected.map(g => ({
+    gateNo: g,
+    name: holeName(g),
+    data: times.map(t => {
+      const v = byGate[g]?.[t];
+      return (v === null || v === undefined || v === '') ? null : +v;
+    }),
+  }));
+
+  return { labels, upData, downData, openSeries };
+}
+
+function emptyChart(inst, box, tip) {
+  if (!inst) inst = echarts.init(box);
+  inst.clear();
+  inst.setOption({
+    title: { text: tip || '暂无数据', left: 'center', top: 'middle', textStyle: { color: '#bbb', fontSize: 14, fontWeight: 'normal' } },
+  });
+  return inst;
+}
+
+function renderWaterChart(labels, upData, downData) {
+  const box = $('chart-box');
+  if (!chart) chart = echarts.init(box);
+  const has = labels.length && (upData.some(v => v != null) || downData.some(v => v != null));
+  if (!has) {
+    chart = emptyChart(chart, box, '暂无水位数据');
+    return;
+  }
+  const upColor = '#5B8FF9';
+  const downColor = '#91CAFF';
+  chart.setOption({
+    title: { show: false },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e8e8e8',
+      textStyle: { color: '#333', fontSize: 13 },
+    },
+    legend: {
+      data: ['闸前水位', '闸后水位'],
+      top: 4,
+      textStyle: { fontSize: 12, color: '#666' },
+    },
+    grid: { left: 12, right: 28, top: 40, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      boundaryGap: false,
+      axisLabel: { fontSize: 11, color: '#888', rotate: 30 },
+      axisLine: { lineStyle: { color: '#e8e8e8' } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: '单位: m',
+      scale: true,
+      nameTextStyle: { color: '#999', fontSize: 12 },
+      axisLabel: { fontSize: 12, color: '#888' },
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+    },
+    series: [
+      {
+        name: '闸前水位',
+        type: 'line',
+        data: upData,
+        smooth: true,
+        showSymbol: false,
+        connectNulls: true,
+        lineStyle: { color: upColor, width: 2 },
+        itemStyle: { color: upColor },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(91,143,249,0.28)' },
+            { offset: 1, color: 'rgba(91,143,249,0.02)' },
+          ]),
+        },
+      },
+      {
+        name: '闸后水位',
+        type: 'line',
+        data: downData,
+        smooth: true,
+        showSymbol: false,
+        connectNulls: true,
+        lineStyle: { color: downColor, width: 2 },
+        itemStyle: { color: downColor },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(145,202,255,0.22)' },
+            { offset: 1, color: 'rgba(145,202,255,0.02)' },
+          ]),
+        },
+      },
+    ],
+  }, true);
+  chart.resize();
+}
+
+function renderOpenChart(labels, openSeries) {
+  const box = $('open-chart-box');
+  if (!openChart) openChart = echarts.init(box);
+  const has = labels.length && openSeries.some(s => s.data.some(v => v != null && Number.isFinite(v)));
+  if (!has) {
+    openChart = emptyChart(openChart, box, '暂无开度数据');
+    return;
+  }
+  const legend = openSeries.map(s => s.name);
+  openChart.setOption({
+    title: { show: false },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e8e8e8',
+      textStyle: { color: '#333', fontSize: 13 },
+      valueFormatter: v => (v == null || !Number.isFinite(+v)) ? '-' : fmtOpen(v) + ' m',
+    },
+    legend: {
+      data: legend,
+      top: 4,
+      type: 'scroll',
+      textStyle: { fontSize: 12, color: '#666' },
+    },
+    grid: { left: 12, right: 28, top: 40, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      boundaryGap: false,
+      axisLabel: { fontSize: 11, color: '#888', rotate: 30 },
+      axisLine: { lineStyle: { color: '#e8e8e8' } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: '开度 (m)',
+      min: 0,
+      nameTextStyle: { color: '#999', fontSize: 12 },
+      axisLabel: { fontSize: 12, color: '#888' },
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+    },
+    series: openSeries.map((s, i) => {
+      const color = OPEN_COLORS[i % OPEN_COLORS.length];
+      return {
+        name: s.name,
+        type: 'line',
+        data: s.data,
+        smooth: true,
+        showSymbol: false,
+        connectNulls: true,
+        lineStyle: { color, width: 2 },
+        itemStyle: { color },
+      };
+    }),
+  }, true);
+  openChart.resize();
+}
+
+function renderHistory() {
+  const tbody = $('hist-body');
+  if (!HIST.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = HIST.rows.map(r => `
+    <tr>
+      <td>${fmtN(r.deviceName)}</td>
+      <td>${fmtTm(r.tm)}</td>
+      <td>${fmtOpen(r.openDegree)}</td>
+      <td>${fmtN(r.upZ)}</td>
+      <td>${fmtN(r.downZ)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderHistPager() {
+  const bar = $('hist-pg');
+  if (!bar) return;
+  const pages = Math.max(1, Math.ceil(HIST.total / HIST.size) || 1);
+  if (HIST.page > pages) HIST.page = pages;
+
+  let html = `<span class="pg-info">共 ${HIST.total} 条</span>`;
+  html += `<select class="pg-size" data-role="hist-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === HIST.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${HIST.page - 1}" ${HIST.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+  const maxShow = 5;
+  let from = Math.max(1, HIST.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === HIST.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${HIST.page + 1}" ${HIST.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === HIST.page || p < 1 || p > pages) return;
+      HIST.page = p;
+      loadHistory();
+    });
+  });
+  const sizeSel = bar.querySelector('[data-role="hist-size"]');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      HIST.size = +sizeSel.value;
+      HIST.page = 1;
+      loadHistory();
+    });
+  }
+}
+
+async function loadHistory() {
+  if (!S.current || !S.current.siteId) return;
+  const wrap = $('hist-tbl-wrap');
+  const keepH = wrap ? wrap.offsetHeight : 0;
+  if (wrap && keepH > 0) wrap.style.minHeight = keepH + 'px';
+  setLoading(wrap, true);
+  try {
+    const p = new URLSearchParams();
+    p.set('siteId', S.current.siteId);
+    p.set('page', HIST.page);
+    p.set('size', HIST.size);
+    const s = dateToStart($('hist-start').value);
+    const e = dateToEnd($('hist-end').value);
+    if (s) p.set('startTime', s);
+    if (e) p.set('endTime', e);
+    const res = await fetch(`${API}/gate-monitor/history?${p}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    HIST.total = data.total || 0;
+    HIST.page = data.current || HIST.page;
+    HIST.size = data.size || HIST.size;
+    HIST.rows = data.records || [];
+    renderHistory();
+    renderHistPager();
+  } catch (e) {
+    console.error(e);
+    HIST.rows = [];
+    HIST.total = 0;
+    $('hist-body').innerHTML = '<tr><td colspan="5" class="empty">数据加载失败，请重试</td></tr>';
+    renderHistPager();
+  } finally {
+    setLoading(wrap, false);
+    if (wrap) wrap.style.minHeight = '';
+  }
+}
+
+async function reloadDetail() {
+  if (!S.current || !S.current.siteId) return;
+  const waterBox = $('chart-box');
+  const openBox = $('open-chart-box');
+  setLoading(waterBox, true);
+  setLoading(openBox, true);
+  try {
+    if (!DETAIL.selected.length) {
+      chart = emptyChart(chart, waterBox, '请选择闸孔');
+      openChart = emptyChart(openChart, openBox, '请选择闸孔');
+      return;
+    }
+    const res = await fetch(`${API}/gate-monitor/export?${buildExportParams()}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const { labels, upData, downData, openSeries } = processExportRows(Array.isArray(data) ? data : []);
+    renderWaterChart(labels, upData, downData);
+    renderOpenChart(labels, openSeries);
+  } catch (e) {
+    console.error(e);
+    chart = emptyChart(chart, waterBox, '数据加载失败');
+    openChart = emptyChart(openChart, openBox, '数据加载失败');
+  } finally {
+    setLoading(waterBox, false);
+    setLoading(openBox, false);
+  }
+}
+
+function bindModal() {
+  document.querySelectorAll('[data-close]').forEach(btn =>
+    btn.addEventListener('click', () => closeModal(btn.dataset.close)));
+  document.querySelectorAll('.overlay').forEach(el =>
+    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); }));
+
+  document.querySelectorAll('.modal-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      $('mpane-' + tab.dataset.mtab).classList.add('active');
+      if (tab.dataset.mtab === 'chart') {
+        requestAnimationFrame(() => {
+          if (chart) chart.resize();
+          if (openChart) openChart.resize();
+        });
+      }
+    });
+  });
+
+  bindGateFilter();
+  bindAsyncClick($('chart-query-btn'), reloadDetail);
+  bindAsyncClick($('hist-query-btn'), async () => {
+    HIST.page = 1;
+    await loadHistory();
+  });
+  bindAsyncClick($('chart-reset-btn'), async () => {
+    setModalDefaultDates();
+    if (S.current) initDetailHoles(S.current);
+    await reloadDetail();
+  }, { loadingText: '重置中...' });
+  bindAsyncClick($('hist-reset-btn'), async () => {
+    setModalDefaultDates();
+    HIST.page = 1;
+    await loadHistory();
+  }, { loadingText: '重置中...' });
+
+  window.addEventListener('resize', () => {
+    if (chart) chart.resize();
+    if (openChart) openChart.resize();
+  });
+}
+
+function onTableClick(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const row = S.rows[+btn.dataset.idx];
+  if (!row) return;
+  if (btn.dataset.action === 'holes') openHolesModal(row);
+  if (btn.dataset.action === 'detail') openDetail(row);
+}
+
+async function init() {
+  setDefaultDates();
+  bindModal();
+  bindDevSelect();
+  bindAsyncClick($('query-btn'), query);
+  bindAsyncClick($('reset-btn'), reset, { loadingText: '重置中...' });
+  $('tbl-body').addEventListener('click', onTableClick);
+  await loadGateSites();
+  await loadList();
+}
+
+init();
+</script>
+</body>
+</html>
