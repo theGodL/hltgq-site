@@ -56,8 +56,8 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         // 4. 按小时聚合：同一小时内取平均流量
         Map<String, List<BigDecimal>> hourFlows = new LinkedHashMap<>();
         for (Map<String, Object> row : rawRecords) {
-            Object tmObj = row.get("TM");
-            Object qObj = row.get("Q");
+            Object tmObj = row.get("tm");
+            Object qObj = row.get("q");
             if (tmObj == null || qObj == null) continue;
 
             LocalDateTime tm;
