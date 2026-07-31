@@ -16,7 +16,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 
-/* 灌区 / 水库：两个独立白块 */
+/* 花凉亭灌区 / 花凉亭水库 / 麻塘湖灌区 */
 .tab-bar{display:flex;gap:10px;align-items:center}
 .tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 108px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent}
 .tab-item:hover{color:#1677ff}
@@ -143,8 +143,9 @@ tbody tr:hover td{background:#fafafa}
   </div>
 
   <div class="tab-bar">
-    <div class="tab-item active" data-tab="irrigation">灌区</div>
-    <div class="tab-item" data-tab="reservoir">水库</div>
+    <div class="tab-item active" data-tab="irrigation">花凉亭灌区</div>
+    <div class="tab-item" data-tab="reservoir">花凉亭水库</div>
+    <div class="tab-item" data-tab="mth">麻塘湖灌区</div>
   </div>
 
   <div class="panel active" id="panel-irrigation">
@@ -227,6 +228,51 @@ tbody tr:hover td{background:#fafafa}
           <tbody id="res-tbody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- 麻塘湖灌区：同款样式，接口暂空 -->
+  <div class="panel" id="panel-mth">
+    <div class="card filter-card">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>站点</label>
+          <div class="ss" id="mth-st-ss">
+            <input type="text" class="ss-input" id="mth-st-input" placeholder="请选择或搜索站点" autocomplete="off">
+            <span class="ss-arrow"></span>
+            <input type="hidden" id="mth-st-code" value="">
+            <div class="ss-dd" id="mth-st-dd"></div>
+          </div>
+        </div>
+        <div class="filter-item">
+          <label>日期</label>
+          <input type="date" id="mth-start-date">
+          <span class="date-sep">—</span>
+          <input type="date" id="mth-end-date">
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="mth-query-btn">查询</button>
+          <button class="btn btn-default" id="mth-reset-btn">重置</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card result-card">
+      <div class="tbl-wrap" id="mth-tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>站点</th>
+              <th>监测日期</th>
+              <th>水位值 (m)</th>
+              <th>1h水位涨幅 (cm)</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="mth-tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="mth-tbl-pg"></div>
     </div>
   </div>
 </div>
@@ -443,8 +489,82 @@ function bindTabs() {
       tab.classList.add('active');
       const panel = $('panel-' + tab.dataset.tab);
       if (panel) panel.classList.add('active');
+      if (tab.dataset.tab === 'mth') renderMthEmpty();
     });
   });
+}
+
+/* ===== 麻塘湖灌区：同款 UI，接口暂空 ===== */
+let MTH_WL_SITES = [];
+
+function setMthDefaultDates() {
+  const now = new Date();
+  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
+  const e = fmtDate(now);
+  $('mth-start-date').value = s;
+  $('mth-end-date').value = e;
+}
+
+function setMthSite(code, name) {
+  $('mth-st-code').value = code || '';
+  $('mth-st-input').value = name || '';
+  $('mth-st-dd').classList.remove('open');
+}
+
+function clearMthSite() {
+  setMthSite('', '');
+}
+
+function renderMthSiteDd(keyword) {
+  const dd = $('mth-st-dd');
+  const code = $('mth-st-code').value;
+  const list = MTH_WL_SITES.filter(s => fuzzyMatch(s.name, keyword) || fuzzyMatch(s.code, keyword));
+  if (!list.length) {
+    dd.innerHTML = '<div class="ss-empty">无匹配站点</div>';
+    dd.classList.add('open');
+    return;
+  }
+  dd.innerHTML = list.map(s =>
+    `<div class="ss-opt${s.code === code ? ' active' : ''}" data-code="${esc(s.code)}" data-name="${esc(s.name)}">${esc(s.name)}</div>`
+  ).join('');
+  dd.classList.add('open');
+}
+
+function bindMthSiteSelect() {
+  const input = $('mth-st-input');
+  const dd = $('mth-st-dd');
+  const wrap = $('mth-st-ss');
+  input.addEventListener('focus', () => renderMthSiteDd(input.value));
+  input.addEventListener('click', () => renderMthSiteDd(input.value));
+  input.addEventListener('input', () => {
+    $('mth-st-code').value = '';
+    renderMthSiteDd(input.value);
+  });
+  dd.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.ss-opt');
+    if (!opt) return;
+    e.preventDefault();
+    setMthSite(opt.dataset.code, opt.dataset.name);
+  });
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dd.classList.remove('open');
+  });
+}
+
+function renderMthEmpty() {
+  $('mth-tbl-body').innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
+  $('mth-tbl-pg').innerHTML = `<span class="pg-info">共 0 条</span>
+    <select class="pg-size" disabled><option>20条/页</option></select>
+    <button class="pg-btn" disabled>&lt;</button>
+    <button class="pg-btn active" disabled>1</button>
+    <button class="pg-btn" disabled>&gt;</button>`;
+}
+
+async function mthQuery() { renderMthEmpty(); }
+async function mthReset() {
+  clearMthSite();
+  setMthDefaultDates();
+  renderMthEmpty();
 }
 
 /* ===== 站点可搜索下拉 ===== */
@@ -915,16 +1035,21 @@ function exportResExcel() {
 
 async function init() {
   setDefaultDates();
+  setMthDefaultDates();
   bindTabs();
   bindModal();
   bindResTabs();
   bindStSelect();
+  bindMthSiteSelect();
   bindAsyncClick($('query-btn'), query);
   bindAsyncClick($('reset-btn'), reset, { loadingText: '重置中...' });
   $('tbl-body').addEventListener('click', onTableClick);
   bindAsyncClick($('res-query-btn'), queryRes);
   bindAsyncClick($('res-reset-btn'), resetRes, { loadingText: '重置中...' });
   bindAsyncClick($('res-export-btn'), async () => { exportResExcel(); }, { wait: 1000, loadingText: '导出中...' });
+  bindAsyncClick($('mth-query-btn'), mthQuery);
+  bindAsyncClick($('mth-reset-btn'), mthReset);
+  renderMthEmpty();
   await loadWlSites();
   loadIrrList();
   renderResTable();

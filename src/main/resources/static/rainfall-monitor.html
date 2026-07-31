@@ -16,7 +16,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 
-/* 灌区 / 水库：两个独立白块 */
+/* 花凉亭灌区 / 花凉亭水库 / 麻塘湖灌区 */
 .tab-bar{display:flex;gap:10px;align-items:center}
 .tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 108px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent}
 .tab-item:hover{color:#1677ff}
@@ -144,11 +144,12 @@ tbody tr.total-row:hover td{background:#e6f4ff}
   </div>
 
   <div class="tab-bar">
-    <div class="tab-item active" data-tab="irrigation">灌区</div>
-    <div class="tab-item" data-tab="reservoir">水库</div>
+    <div class="tab-item active" data-tab="irrigation">花凉亭灌区</div>
+    <div class="tab-item" data-tab="reservoir">花凉亭水库</div>
+    <div class="tab-item" data-tab="mth">麻塘湖灌区</div>
   </div>
 
-  <!-- 灌区 -->
+  <!-- 花凉亭灌区 -->
   <div class="panel active" id="panel-irrigation">
     <div class="card filter-card">
       <div class="filter-bar">
@@ -196,7 +197,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
     </div>
   </div>
 
-  <!-- 水库 -->
+  <!-- 花凉亭水库 -->
   <div class="panel" id="panel-reservoir">
     <div class="card filter-card" id="res-filter-card">
       <div class="filter-bar">
@@ -245,6 +246,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
           <div class="res-tab" data-res="daily">日雨情</div>
           <div class="res-tab" data-res="tenday">旬月雨情</div>
           <div class="res-tab" data-res="extreme">极值雨情</div>
+          <div class="res-tab" data-res="sameperiod">多年同期雨情</div>
           <div class="res-tab" data-res="brief">雨情简报</div>
         </div>
         <button class="btn btn-default" id="res-export-btn">
@@ -258,6 +260,54 @@ tbody tr.total-row:hover td{background:#e6f4ff}
           <tbody id="res-tbody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- 麻塘湖灌区：同款样式，接口暂空 -->
+  <div class="panel" id="panel-mth">
+    <div class="card filter-card">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>站点</label>
+          <div class="ss" id="mth-site-ss">
+            <input type="text" class="ss-input" id="mth-site-input" placeholder="请选择或搜索站点" autocomplete="off">
+            <span class="ss-arrow"></span>
+            <input type="hidden" id="mth-site-code" value="">
+            <div class="ss-dd" id="mth-site-dd"></div>
+          </div>
+        </div>
+        <div class="filter-item">
+          <label>日期</label>
+          <input type="date" id="mth-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="mth-end">
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="mth-query-btn">查询</button>
+          <button class="btn btn-default" id="mth-reset-btn">重置</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card result-card">
+      <div class="tbl-wrap" id="mth-tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>站点</th>
+              <th>监测时间</th>
+              <th>当前降雨量 (mm)</th>
+              <th>1h降雨量 (mm)</th>
+              <th>3h降雨量 (mm)</th>
+              <th>6h降雨量 (mm)</th>
+              <th>累计雨量 (mm)</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="mth-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="mth-pg"></div>
     </div>
   </div>
 </div>
@@ -357,6 +407,7 @@ const TAB_NAMES = {
   daily: '日雨情',
   tenday: '旬月雨情',
   extreme: '极值雨情',
+  sameperiod: '多年同期雨情',
   brief: '雨情简报',
 };
 const API = '/hltgq-site';
@@ -452,11 +503,11 @@ function updateResFilterUI() {
     return;
   }
   filterCard.style.display = '';
-  const useRange = tab !== 'tenday' && tab !== 'brief';
+  const useRange = tab !== 'tenday' && tab !== 'brief' && tab !== 'sameperiod';
   $('res-date-wrap').style.display = useRange ? '' : 'none';
   $('res-brief-date-wrap').style.display = tab === 'brief' ? '' : 'none';
   $('res-interval-wrap').style.display = tab === 'period' ? '' : 'none';
-  $('res-month-wrap').style.display = tab === 'tenday' ? '' : 'none';
+  $('res-month-wrap').style.display = (tab === 'tenday' || tab === 'sameperiod') ? '' : 'none';
 }
 
 function bindTabs() {
@@ -471,8 +522,74 @@ function bindTabs() {
         updateResFilterUI();
         loadResData();
       }
+      if (tab.dataset.tab === 'mth') renderMthEmpty();
     });
   });
+}
+
+/* ===== 麻塘湖灌区：同款 UI，接口暂空 ===== */
+let MTH_SITES = [];
+
+function setMthSite(code, name) {
+  $('mth-site-code').value = code || '';
+  $('mth-site-input').value = name || '';
+  $('mth-site-dd').classList.remove('open');
+}
+
+function clearMthSite() {
+  setMthSite('', '');
+}
+
+function renderMthSiteDd(keyword) {
+  const dd = $('mth-site-dd');
+  const code = $('mth-site-code').value;
+  const list = MTH_SITES.filter(s => fuzzyMatch(s.name, keyword) || fuzzyMatch(s.code, keyword));
+  if (!list.length) {
+    dd.innerHTML = '<div class="ss-empty">无匹配站点</div>';
+    dd.classList.add('open');
+    return;
+  }
+  dd.innerHTML = list.map(s =>
+    `<div class="ss-opt${s.code === code ? ' active' : ''}" data-code="${esc(s.code)}" data-name="${esc(s.name)}">${esc(s.name)}</div>`
+  ).join('');
+  dd.classList.add('open');
+}
+
+function bindMthSiteSelect() {
+  const input = $('mth-site-input');
+  const dd = $('mth-site-dd');
+  const wrap = $('mth-site-ss');
+  input.addEventListener('focus', () => renderMthSiteDd(input.value));
+  input.addEventListener('click', () => renderMthSiteDd(input.value));
+  input.addEventListener('input', () => {
+    $('mth-site-code').value = '';
+    renderMthSiteDd(input.value);
+  });
+  dd.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.ss-opt');
+    if (!opt) return;
+    e.preventDefault();
+    setMthSite(opt.dataset.code, opt.dataset.name);
+  });
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dd.classList.remove('open');
+  });
+}
+
+function renderMthEmpty() {
+  $('mth-tbody').innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+  $('mth-pg').innerHTML = `<span class="pg-info">共 0 条</span>
+    <select class="pg-size" disabled><option>20条/页</option></select>
+    <button class="pg-btn" disabled>&lt;</button>
+    <button class="pg-btn active" disabled>1</button>
+    <button class="pg-btn" disabled>&gt;</button>`;
+}
+
+async function mthQuery() { renderMthEmpty(); }
+async function mthReset() {
+  clearMthSite();
+  setDefaultDates('mth');
+  renderMthEmpty();
 }
 
 /* ===== 站点可搜索下拉 ===== */
@@ -857,6 +974,11 @@ async function loadResData() {
           fmtN(r.max7d),
         ]);
       });
+    } else if (RES.tab === 'sameperiod') {
+      // 多年同期雨情：列表表头参考旬月雨情；暂无接口，不请求、不造数据，仅底部合计占位
+      headers = ['监测日期', '旬段', '平均值 (mm)'];
+      aoa = [headers, ['合计', '-', '-']];
+      hasTotal = true;
     } else if (RES.tab === 'brief') {
       const p = new URLSearchParams();
       const date = $('res-brief-date').value;
@@ -900,7 +1022,7 @@ function renderResTable() {
   $('res-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
   const bodyRows = aoa.slice(1);
   $('res-tbody').innerHTML = bodyRows.map((row, idx) => {
-    const isTotal = RES.hasTotal && idx === bodyRows.length - 1 && row[0] === '总计';
+    const isTotal = RES.hasTotal && idx === bodyRows.length - 1 && (row[0] === '总计' || row[0] === '合计');
     return `<tr class="${isTotal ? 'total-row' : ''}">${row.map(v => {
       const text = (v === null || v === undefined) ? '-' : v;
       return `<td>${text}</td>`;
@@ -931,7 +1053,7 @@ function exportResExcel() {
   const ym = $('res-month').value || '';
   const brief = $('res-brief-date').value || '';
   let range = '';
-  if (RES.tab === 'tenday') range = ym ? `_${ym}` : '';
+  if (RES.tab === 'tenday' || RES.tab === 'sameperiod') range = ym ? `_${ym}` : '';
   else if (RES.tab === 'brief') range = brief ? `_${brief}` : '';
   else if (s && e) range = `_${s}~${e}`;
   XLSX.writeFile(wb, `${RES.name}${range}.xlsx`);
@@ -1164,12 +1286,14 @@ function onIrrTableClick(e) {
 
 async function init() {
   setDefaultDates('irr');
+  setDefaultDates('mth');
   setResDefaultFilters();
   updateResFilterUI();
   bindTabs();
   bindResTabs();
   bindModal();
   bindIrrSiteSelect();
+  bindMthSiteSelect();
 
   bindAsyncClick($('irr-query-btn'), async () => { IRR.page = 1; await loadIrrList(); });
   bindAsyncClick($('irr-reset-btn'), async () => {
@@ -1181,7 +1305,10 @@ async function init() {
   bindAsyncClick($('res-query-btn'), queryRes);
   bindAsyncClick($('res-reset-btn'), resetRes, { loadingText: '重置中...' });
   bindAsyncClick($('res-export-btn'), async () => { exportResExcel(); }, { wait: 1000, loadingText: '导出中...' });
+  bindAsyncClick($('mth-query-btn'), mthQuery);
+  bindAsyncClick($('mth-reset-btn'), mthReset);
   $('irr-tbody').addEventListener('click', onIrrTableClick);
+  renderMthEmpty();
 
   await loadIrrSites();
   loadIrrList();
