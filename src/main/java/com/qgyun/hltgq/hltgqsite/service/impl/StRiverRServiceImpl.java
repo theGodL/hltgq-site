@@ -152,8 +152,8 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
             vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setWptn(mapWptn(r.getWptn()));
             // Q 字段暂同时作为入库/出库流量，待设备报文到位后区分字段映射
-            vo.setInq(r.getQ());
-            vo.setOtq(r.getQ());
+            vo.setInq(r.getQ() != null ? r.getQ().setScale(3, java.math.RoundingMode.DOWN) : null);
+            vo.setOtq(r.getQ() != null ? r.getQ().setScale(3, java.math.RoundingMode.DOWN) : null);
             return vo;
         }).collect(Collectors.toList());
 

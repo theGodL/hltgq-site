@@ -12,7 +12,7 @@ import java.util.List;
 @Mapper
 public interface StRiverRMapper extends BaseMapper<StRiverR> {
 
-    @Select("SELECT r.STCD AS stcd, r.TM AS tm, COALESCE(r.Z, r.Z1) AS z, r.Z2 AS z2, w.Q AS q, " +
+    @Select("SELECT r.STCD AS stcd, r.TM AS tm, COALESCE(r.Z, r.Z1) AS z, r.Z2 AS z2, TRUNC(w.Q, 3) AS q, " +
             "r.XSA AS xsa, r.XSAVV AS xsavv, r.XSMXV AS xsmxv, r.FLWCHRCD AS flwchrcd, r.WPTN AS wptn " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "INNER JOIN (SELECT STCD, MAX(TM) AS MaxTM FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info GROUP BY STCD) rm " +

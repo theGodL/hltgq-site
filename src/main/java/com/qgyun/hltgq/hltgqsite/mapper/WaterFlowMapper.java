@@ -26,7 +26,7 @@ public interface WaterFlowMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (f.stcd) " +
-            "f.stcd, COALESCE(s.zzkaec, f.stcd) AS stnm, f.tm, f.q " +
+            "f.stcd, COALESCE(s.zzkaec, f.stcd) AS stnm, f.tm, TRUNC(f.q, 3) AS q " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
             "WHERE 1=1 " +
@@ -53,7 +53,7 @@ public interface WaterFlowMapper {
      * 查询原始流量记录（用于图表 + 历史数据，按时间升序）
      */
     @Select("<script>" +
-            "SELECT f.tm, f.q " +
+            "SELECT f.tm, TRUNC(f.q, 3) AS q " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "WHERE f.stcd = #{stcd} " +
             "<if test='startTime != null'>AND f.tm &gt;= #{startTime} </if>" +
@@ -69,7 +69,7 @@ public interface WaterFlowMapper {
      * 流量历史分页查询
      */
     @Select("<script>" +
-            "SELECT f.stcd, COALESCE(s.zzkaec, f.stcd) AS stnm, f.tm, f.q " +
+            "SELECT f.stcd, COALESCE(s.zzkaec, f.stcd) AS stnm, f.tm, TRUNC(f.q, 3) AS q " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
             "WHERE f.stcd = #{stcd} " +
