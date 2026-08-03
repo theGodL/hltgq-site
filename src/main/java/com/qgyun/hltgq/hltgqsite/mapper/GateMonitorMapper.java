@@ -67,7 +67,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "date_trunc('hour', tm) AS tm, " +
             "site, " +
             "gate_no, " +
-            "AVG(open_degree) AS open_degree, " +
+            "TRUNC(AVG(open_degree), 2) AS open_degree, " +
             "TRUNC(AVG(up_z), 2) AS up_z, " +
             "TRUNC(AVG(down_z), 2) AS down_z " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" " +
@@ -104,7 +104,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     @Select("<script>" +
             "SELECT DISTINCT ON (g.site, g.gate_no) " +
             "g.site, s.zzkaec AS site_name, g.gate_no, g.tm, " +
-            "g.open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status " +
+            "TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
             "WHERE 1=1 " +
@@ -131,7 +131,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     @Select("<script>" +
             "SELECT s.zzkaec AS stnm, g.gate_no, " +
             "CONCAT(s.zzkaec, g.gate_no, '#') AS device_name, " +
-            "g.tm, g.open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z " +
+            "g.tm, TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
             "WHERE 1=1 " +
