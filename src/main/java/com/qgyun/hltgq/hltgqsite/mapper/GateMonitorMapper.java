@@ -33,7 +33,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     /**
      * 指定站点的闸孔列表
      */
-    @Select("SELECT DISTINCT gate_no " +
+    @Select("SELECT DISTINCT CASE WHEN gate_no = '0' THEN '1' ELSE gate_no END AS gate_no " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" " +
             "WHERE site = #{siteId} ORDER BY gate_no")
     List<String> selectGatesBySite(@Param("siteId") String siteId);
@@ -41,8 +41,9 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     /**
      * 指定站点的闸孔设备列表（设备名称、ID、闸孔编号）
      */
-    @Select("SELECT DISTINCT ON (g.gate_no) g.id, g.gate_no, " +
-            "CONCAT(s.zzkaec, g.gate_no, '#') AS device_name " +
+    @Select("SELECT DISTINCT ON (g.gate_no) g.id, " +
+            "CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, " +
+            "CONCAT(s.zzkaec, CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END, '#') AS device_name " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
             "WHERE g.site = #{siteId} " +
@@ -66,7 +67,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "SELECT " +
             "date_trunc('hour', tm) AS tm, " +
             "site, " +
-            "gate_no, " +
+            "CASE WHEN gate_no = '0' THEN '1' ELSE gate_no END AS gate_no, " +
             "TRUNC(AVG(open_degree), 2) AS open_degree, " +
             "TRUNC(AVG(up_z), 2) AS up_z, " +
             "TRUNC(AVG(down_z), 2) AS down_z " +
@@ -78,7 +79,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "AND gate_no IN " +
             "<foreach collection='gateNos' item='g' open='(' separator=',' close=')'>#{g}</foreach>" +
             "</if>" +
-            "GROUP BY date_trunc('hour', tm), site, gate_no " +
+            "GROUP BY date_trunc('hour', tm), site, CASE WHEN gate_no = '0' THEN '1' ELSE gate_no END " +
             "ORDER BY date_trunc('hour', tm)" +
             "</script>")
     @Results({
@@ -103,7 +104,8 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (g.site, g.gate_no) " +
-            "g.site, s.zzkaec AS site_name, g.gate_no, g.tm, " +
+            "g.site, s.zzkaec AS site_name, " +
+            "CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, g.tm, " +
             "TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
@@ -129,8 +131,9 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
      * 闸门历史数据分页查询（原始记录，按监测时间倒序）
      */
     @Select("<script>" +
-            "SELECT s.zzkaec AS stnm, g.gate_no, " +
-            "CONCAT(s.zzkaec, g.gate_no, '#') AS device_name, " +
+            "SELECT s.zzkaec AS stnm, " +
+            "CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, " +
+            "CONCAT(s.zzkaec, CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END, '#') AS device_name, " +
             "g.tm, TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +

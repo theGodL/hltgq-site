@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/gate-monitor")
@@ -67,7 +68,11 @@ public class GateMonitorController {
                                     @RequestParam String endTime) {
         List<String> filtered = (gateNos.size() == 1 && gateNos.get(0).isEmpty())
                 ? Collections.emptyList() : gateNos;
-        return gateMonitorMapper.selectHourlyAggregated(siteId, filtered, startTime, endTime);
+        // 将归一化后的闸孔号映射回 DB 实际值（0→1 → DB 0）
+        List<String> mapped = filtered.stream()
+                .map(GateMonitorController::mapGateNoToDb)
+                .collect(Collectors.toList());
+        return gateMonitorMapper.selectHourlyAggregated(siteId, mapped, startTime, endTime);
     }
 
     /**
@@ -106,6 +111,13 @@ public class GateMonitorController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size) {
-        return gateMonitorService.history(siteId, gateNo, startTime, endTime, page, size);
+        return gateMonitorService.history(siteId, mapGateNoToDb(gateNo), startTime, endTime, page, size);
+    }
+
+    /**
+     * 闸孔号归一化映射：用户侧 1-based → DB 侧 0-based
+     */
+    private static String mapGateNoToDb(String gateNo) {
+        return "1".equals(gateNo) ? "0" : gateNo;
     }
 }
