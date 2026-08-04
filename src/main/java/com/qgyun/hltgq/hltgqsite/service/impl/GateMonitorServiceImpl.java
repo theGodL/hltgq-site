@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -84,8 +85,10 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     @Override
     public Page<GateHistoryVO> history(String siteId, String gateNo, LocalDateTime startTime, LocalDateTime endTime,
+                                        BigDecimal zMin, BigDecimal zMax,
                                         long page, long size) {
-        long total = gateMonitorMapper.selectHistoryCount(siteId, gateNo, startTime, endTime);
+        long total = gateMonitorMapper.selectHistoryCount(siteId, gateNo, startTime, endTime,
+                zMin, zMax);
 
         Page<GateHistoryVO> result = new Page<>(page, size);
         result.setTotal(total);
@@ -97,7 +100,8 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
         int offset = (int) ((page - 1) * size);
         int limit = (int) size;
-        List<GateHistoryVO> records = gateMonitorMapper.selectHistory(siteId, gateNo, startTime, endTime, limit, offset);
+        List<GateHistoryVO> records = gateMonitorMapper.selectHistory(siteId, gateNo, startTime, endTime,
+                zMin, zMax, limit, offset);
         result.setRecords(records);
 
         return result;

@@ -112,7 +112,7 @@ tbody tr:hover td{background:#fafafa}
 
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .overlay.show{display:flex}
-.modal{background:#fff;border-radius:8px;width:960px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.modal{background:#fff;border-radius:8px;width:1100px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.15)}
 .modal.modal-sm{width:480px}
 .modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .modal-hd span{font-size:16px;font-weight:500;color:#333}
@@ -283,6 +283,7 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="modal-pane active" id="mpane-chart">
         <div class="modal-filter">
+          <label style="color:#666;white-space:nowrap">日期</label>
           <input type="date" id="chart-start">
           <span class="date-sep">—</span>
           <input type="date" id="chart-end">
@@ -304,18 +305,25 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="modal-pane" id="mpane-history">
         <div class="modal-filter">
-          <label style="color:#666;white-space:nowrap">设备</label>
-          <div class="ss" id="hist-dev-ss" style="width: 170px;">
-            <input type="text" class="ss-input" id="hist-dev-input" placeholder="请选择或搜索设备" autocomplete="off">
-            <span class="ss-arrow"></span>
-            <input type="hidden" id="hist-dev-gate" value="">
-            <div class="ss-dd" id="hist-dev-dd"></div>
-          </div>
-          <input type="date" id="hist-start">
-          <span class="date-sep">—</span>
-          <input type="date" id="hist-end">
-          <button class="btn btn-primary" id="hist-query-btn">查询</button>
-          <button class="btn btn-default" id="hist-reset-btn">重置</button>
+            <label style="color:#666;white-space:nowrap">设备</label>
+            <div class="ss" id="hist-dev-ss" style="width: 170px;">
+              <input type="text" class="ss-input" id="hist-dev-input" placeholder="请选择或搜索设备" autocomplete="off">
+              <span class="ss-arrow"></span>
+              <input type="hidden" id="hist-dev-gate" value="">
+              <div class="ss-dd" id="hist-dev-dd"></div>
+            </div>
+            <label style="color:#666;white-space:nowrap">水位</label>
+            <input type="number" id="hist-z-min" placeholder="最低" step="0.01" style="width:80px">
+            <span class="date-sep">—</span>
+            <input type="number" id="hist-z-max" placeholder="最高" step="0.01" style="width:80px">
+            <label style="color:#666;white-space:nowrap">日期</label>
+            <input type="date" id="hist-start">
+            <span class="date-sep">—</span>
+            <input type="date" id="hist-end">
+            <span style="white-space:nowrap">
+              <button class="btn btn-primary" id="hist-query-btn">查询</button>
+              <button class="btn btn-default" id="hist-reset-btn">重置</button>
+            </span>
         </div>
         <div class="tbl-wrap" id="hist-tbl-wrap">
           <table>
@@ -1001,6 +1009,10 @@ async function loadHistory() {
     const e = dateToEnd($('hist-end').value);
     if (s) p.set('startTime', s);
     if (e) p.set('endTime', e);
+    const zMin = $('hist-z-min').value.trim();
+    const zMax = $('hist-z-max').value.trim();
+    if (zMin) p.set('zMin', zMin);
+    if (zMax) p.set('zMax', zMax);
     const res = await fetch(`${API}/gate-monitor/history?${p}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -1166,6 +1178,7 @@ function bindModal() {
   bindAsyncClick($('hist-reset-btn'), async () => {
     clearHistDev();
     setModalDefaultDates();
+    ['hist-z-min','hist-z-max'].forEach(id => $(id).value = '');
     HIST.page = 1;
     await loadHistory();
   }, { loadingText: '重置中...' });

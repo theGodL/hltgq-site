@@ -12,6 +12,7 @@ import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.List;
 
 @Mapper
@@ -142,6 +143,10 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "<if test='gateNo != null and gateNo != \"\"'>AND g.gate_no = #{gateNo} </if>" +
             "<if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
             "<if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
+            "<if test='zMin != null || zMax != null'>" +
+            "AND ( (g.up_z &gt;= COALESCE(#{zMin}, g.up_z) AND g.up_z &lt;= COALESCE(#{zMax}, g.up_z)) " +
+            "OR (g.down_z &gt;= COALESCE(#{zMin}, g.down_z) AND g.down_z &lt;= COALESCE(#{zMax}, g.down_z)) ) " +
+            "</if>" +
             "ORDER BY g.tm DESC " +
             "LIMIT #{limit} OFFSET #{offset}" +
             "</script>")
@@ -158,6 +163,8 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
                                        @Param("gateNo") String gateNo,
                                        @Param("startTime") LocalDateTime startTime,
                                        @Param("endTime") LocalDateTime endTime,
+                                       @Param("zMin") BigDecimal zMin,
+                                       @Param("zMax") BigDecimal zMax,
                                        @Param("limit") int limit,
                                        @Param("offset") int offset);
 
@@ -172,9 +179,15 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "<if test='gateNo != null and gateNo != \"\"'>AND g.gate_no = #{gateNo} </if>" +
             "<if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
             "<if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
+            "<if test='zMin != null || zMax != null'>" +
+            "AND ( (g.up_z &gt;= COALESCE(#{zMin}, g.up_z) AND g.up_z &lt;= COALESCE(#{zMax}, g.up_z)) " +
+            "OR (g.down_z &gt;= COALESCE(#{zMin}, g.down_z) AND g.down_z &lt;= COALESCE(#{zMax}, g.down_z)) ) " +
+            "</if>" +
             "</script>")
     long selectHistoryCount(@Param("siteId") String siteId,
                              @Param("gateNo") String gateNo,
                              @Param("startTime") LocalDateTime startTime,
-                             @Param("endTime") LocalDateTime endTime);
+                             @Param("endTime") LocalDateTime endTime,
+                             @Param("zMin") BigDecimal zMin,
+                             @Param("zMax") BigDecimal zMax);
 }

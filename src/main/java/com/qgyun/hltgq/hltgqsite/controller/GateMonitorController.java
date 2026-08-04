@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -100,6 +101,8 @@ public class GateMonitorController {
      * @param gateNo    闸孔编号（可选，如 "1"、"2"），不传=全部闸孔
      * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
+     * @param zMin      水位最小值（含），闸前/闸后任一命中即返回，可选
+     * @param zMax      水位最大值（含），闸前/闸后任一命中即返回，可选
      * @param page      页码，默认 1
      * @param size      每页条数，默认 20
      */
@@ -109,9 +112,11 @@ public class GateMonitorController {
             @RequestParam(required = false) String gateNo,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(required = false) BigDecimal zMin,
+            @RequestParam(required = false) BigDecimal zMax,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size) {
-        return gateMonitorService.history(siteId, mapGateNoToDb(gateNo), startTime, endTime, page, size);
+        return gateMonitorService.history(siteId, mapGateNoToDb(gateNo), startTime, endTime, zMin, zMax, page, size);
     }
 
     /**
