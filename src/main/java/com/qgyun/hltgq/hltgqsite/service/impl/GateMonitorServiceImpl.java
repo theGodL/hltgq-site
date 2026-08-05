@@ -4,14 +4,13 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
-import com.qgyun.hltgq.hltgqsite.vo.GateHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.math.BigDecimal;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -84,13 +83,11 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     }
 
     @Override
-    public Page<GateHistoryVO> history(String siteId, String gateNo, LocalDateTime startTime, LocalDateTime endTime,
-                                        BigDecimal zMin, BigDecimal zMax,
-                                        long page, long size) {
-        long total = gateMonitorMapper.selectHistoryCount(siteId, gateNo, startTime, endTime,
-                zMin, zMax);
+    public Page<Map<String, Object>> history(String siteId, String type, LocalDateTime startTime, LocalDateTime endTime,
+                                              long page, long size) {
+        long total = gateMonitorMapper.selectHistoryTmCount(siteId, startTime, endTime);
 
-        Page<GateHistoryVO> result = new Page<>(page, size);
+        Page<Map<String, Object>> result = new Page<>(page, size);
         result.setTotal(total);
 
         if (total == 0) {
@@ -100,10 +97,62 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
         int offset = (int) ((page - 1) * size);
         int limit = (int) size;
-        List<GateHistoryVO> records = gateMonitorMapper.selectHistory(siteId, gateNo, startTime, endTime,
-                zMin, zMax, limit, offset);
-        result.setRecords(records);
+        List<LocalDateTime> tms = gateMonitorMapper.selectHistoryTmPage(siteId, startTime, endTime, limit, offset);
+
+        if (tms.isEmpty()) {
+            result.setRecords(Collections.emptyList());
+            return result;
+        }
+
+        List<GateMonitor> rows = gateMonitorMapper.selectHistoryDetail(siteId, tms);
+
+        if ("opening".equals(type)) {
+            result.setRecords(pivotOpening(rows));
+        } else if ("waterLevel".equals(type)) {
+            result.setRecords(extractWaterLevel(rows));
+        } else {
+            result.setRecords(Collections.emptyList());
+        }
 
         return result;
+    }
+
+    /**
+     * 开度透视：按监测时间分组，每个闸孔号作为独立列（open1, open2, open3...）
+     */
+    private List<Map<String, Object>> pivotOpening(List<GateMonitor> rows) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        Map<LocalDateTime, Map<String, Object>> grouped = new LinkedHashMap<>();
+        for (GateMonitor r : rows) {
+            Map<String, Object> record = grouped.computeIfAbsent(r.getTm(), k -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("tm", k.format(fmt));
+                return m;
+            });
+            record.put("open" + r.getGateNo(), r.getOpenDegree());
+        }
+        return new ArrayList<>(grouped.values());
+    }
+
+    /**
+     * 水位提取：按监测时间分组，取闸前/闸后水位（同一站点各闸孔水位相同，取首个非空值）
+     */
+    private List<Map<String, Object>> extractWaterLevel(List<GateMonitor> rows) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        Map<LocalDateTime, Map<String, Object>> grouped = new LinkedHashMap<>();
+        for (GateMonitor r : rows) {
+            Map<String, Object> record = grouped.computeIfAbsent(r.getTm(), k -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("tm", k.format(fmt));
+                return m;
+            });
+            if (!record.containsKey("upZ") && r.getUpZ() != null) {
+                record.put("upZ", r.getUpZ());
+            }
+            if (!record.containsKey("downZ") && r.getDownZ() != null) {
+                record.put("downZ", r.getDownZ());
+            }
+        }
+        return new ArrayList<>(grouped.values());
     }
 }

@@ -1,12 +1,11 @@
 package com.qgyun.hltgq.hltgqsite.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.qgyun.hltgq.hltgqsite.vo.GateHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 闸门监测服务
@@ -26,15 +25,12 @@ public interface GateMonitorService {
      * 闸门历史数据（分页，按监测时间倒序）
      *
      * @param siteId    站点 UUID（可选）
-     * @param gateNo    闸孔编号（可选，如 "1"、"2"），null/空=全部
+     * @param type      数据类型："opening"（开度）或 "waterLevel"（水位）
      * @param startTime 起始时间（含），null 表示不限制
      * @param endTime   截止时间（含），null 表示不限制
-     * @param zMin      水位最小值（含），闸前/闸后任一命中即返回，null 表示不限制
-     * @param zMax      水位最大值（含），闸前/闸后任一命中即返回，null 表示不限制
      * @param page      页码
      * @param size      每页条数
      */
-    Page<GateHistoryVO> history(String siteId, String gateNo, LocalDateTime startTime, LocalDateTime endTime,
-                                 BigDecimal zMin, BigDecimal zMax,
-                                 long page, long size);
+    Page<Map<String, Object>> history(String siteId, String type, LocalDateTime startTime, LocalDateTime endTime,
+                                       long page, long size);
 }

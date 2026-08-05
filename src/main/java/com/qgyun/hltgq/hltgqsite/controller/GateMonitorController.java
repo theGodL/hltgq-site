@@ -5,7 +5,6 @@ import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.GateDeviceVO;
-import com.qgyun.hltgq.hltgqsite.vo.GateHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -14,10 +13,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -94,29 +93,28 @@ public class GateMonitorController {
 
     /**
      * 闸门历史数据
-     * <p>分页返回每个闸孔的原始监测记录，含设备名称、开度、闸前后水位。
-     * 支持按站点、闸孔编号和日期区间筛选。
+     * <p>按监测时间分页，根据 type 返回不同结构的数据。
+     * <ul>
+     *   <li>开度：每行包含 tm + 各闸孔开度（open1, open2...）</li>
+     *   <li>水位：每行包含 tm + 闸前水位（upZ）、闸后水位（downZ）</li>
+     * </ul>
      *
      * @param siteId    站点 UUID（可选，不传=全部站点）
-     * @param gateNo    闸孔编号（可选，如 "1"、"2"），不传=全部闸孔
+     * @param type      数据类型："opening"（开度）或 "waterLevel"（水位）
      * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
-     * @param zMin      水位最小值（含），闸前/闸后任一命中即返回，可选
-     * @param zMax      水位最大值（含），闸前/闸后任一命中即返回，可选
      * @param page      页码，默认 1
      * @param size      每页条数，默认 20
      */
     @GetMapping("/history")
-    public Page<GateHistoryVO> history(
+    public Page<Map<String, Object>> history(
             @RequestParam(required = false) String siteId,
-            @RequestParam(required = false) String gateNo,
+            @RequestParam String type,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
-            @RequestParam(required = false) BigDecimal zMin,
-            @RequestParam(required = false) BigDecimal zMax,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size) {
-        return gateMonitorService.history(siteId, mapGateNoToDb(gateNo), startTime, endTime, zMin, zMax, page, size);
+        return gateMonitorService.history(siteId, type, startTime, endTime, page, size);
     }
 
     /**

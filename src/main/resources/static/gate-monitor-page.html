@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>闸门监测</title>
+<title>闸站监测</title>
 <script src="./lib/echarts.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -27,9 +27,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
 .filter-item{display:flex;align-items:center;gap:8px}
 .filter-item label{color:#666;font-size:14px;white-space:nowrap}
-.filter-bar input,.modal-filter input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
-.filter-bar input:focus,.modal-filter input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.filter-bar input,.filter-bar select,.modal-filter input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
+.filter-bar input:focus,.filter-bar select:focus,.modal-filter input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 .filter-bar input[type=text]{width:180px}
+.filter-bar select{min-width:160px;cursor:pointer}
 .filter-bar input[type=date],.modal-filter input[type=date]{width:140px}
 .date-sep{color:#bbb}
 
@@ -113,13 +114,20 @@ tbody tr:hover td{background:#fafafa}
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .overlay.show{display:flex}
 .modal{background:#fff;border-radius:8px;width:1100px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.15)}
-.modal.modal-sm{width:480px}
+/* 详情弹窗固定尺寸，不随数据多少伸缩 */
+#detail-overlay .modal{
+  width:1100px;
+  height:min(820px,90vh);
+  max-width:95vw;
+  max-height:90vh;
+}
+.modal.modal-sm{width:480px;height:auto;max-height:90vh}
 .modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .modal-hd span{font-size:16px;font-weight:500;color:#333}
 .modal-close{background:none;border:none;cursor:pointer;color:#999;font-size:20px;line-height:1;padding:0 2px}
 .modal-close:hover{color:#333}
-.modal-bd{padding:0 20px 20px;overflow-y:auto;flex:1}
-.modal-tabs{display:flex;border-bottom:1px solid #f0f0f0;margin-bottom:16px}
+.modal-bd{padding:0 20px 20px;overflow-y:auto;flex:1;min-height:0}
+.modal-tabs{display:flex;border-bottom:1px solid #f0f0f0;margin-bottom:16px;flex-shrink:0}
 .modal-tab{padding:12px 16px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none}
 .modal-tab:hover{color:#1677ff}
 .modal-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
@@ -146,7 +154,7 @@ tbody tr:hover td{background:#fafafa}
   <div class="breadcrumb">
     <span>水资源调度</span><span class="sep">/</span>
     <span>数据统计</span><span class="sep">/</span>
-    <span class="cur">闸门监测</span>
+    <span class="cur">闸站监测</span>
   </div>
 
   <div class="tab-bar">
@@ -277,8 +285,8 @@ tbody tr:hover td{background:#fafafa}
     </div>
     <div class="modal-bd">
       <div class="modal-tabs">
-        <div class="modal-tab active" data-mtab="chart">闸前闸后水位对比</div>
-        <div class="modal-tab" data-mtab="history">历史数据</div>
+        <div class="modal-tab active" data-mtab="chart">趋势图</div>
+        <div class="modal-tab" data-mtab="history">统计数据</div>
       </div>
 
       <div class="modal-pane active" id="mpane-chart">
@@ -289,33 +297,25 @@ tbody tr:hover td{background:#fafafa}
           <input type="date" id="chart-end">
           <button class="btn btn-primary" id="chart-query-btn">查询</button>
           <button class="btn btn-default" id="chart-reset-btn">重置</button>
-          <div class="gate-filter" id="chart-gate-filter">
-            <span class="gate-filter-label">闸孔:</span>
-          </div>
         </div>
         <div class="chart-block">
-          <div class="chart-title">闸前闸后水位对比</div>
+          <div class="chart-title">水位</div>
           <div id="chart-box" class="chart-box"></div>
         </div>
         <div class="chart-block">
-          <div class="chart-title">闸门开度</div>
+          <div class="chart-title">开度</div>
           <div id="open-chart-box" class="chart-box"></div>
         </div>
       </div>
 
       <div class="modal-pane" id="mpane-history">
         <div class="modal-filter">
-            <label style="color:#666;white-space:nowrap">设备</label>
-            <div class="ss" id="hist-dev-ss" style="width: 170px;">
-              <input type="text" class="ss-input" id="hist-dev-input" placeholder="请选择或搜索设备" autocomplete="off">
-              <span class="ss-arrow"></span>
-              <input type="hidden" id="hist-dev-gate" value="">
-              <div class="ss-dd" id="hist-dev-dd"></div>
-            </div>
-            <label style="color:#666;white-space:nowrap">水位</label>
-            <input type="number" id="hist-z-min" placeholder="最低" step="0.01" style="width:80px">
-            <span class="date-sep">—</span>
-            <input type="number" id="hist-z-max" placeholder="最高" step="0.01" style="width:80px">
+            <label style="color:#666;white-space:nowrap">类型</label>
+            <select id="hist-type-select" style="min-width:200px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;background:#fff;cursor:pointer">
+              <option value="waterLevel">水位</option>
+              <option value="opening">开度</option>
+            </select>
+
             <label style="color:#666;white-space:nowrap">日期</label>
             <input type="date" id="hist-start">
             <span class="date-sep">—</span>
@@ -327,15 +327,7 @@ tbody tr:hover td{background:#fafafa}
         </div>
         <div class="tbl-wrap" id="hist-tbl-wrap">
           <table>
-            <thead>
-              <tr>
-                <th>设备名称</th>
-                <th>监测日期</th>
-                <th>闸门开度 (m)</th>
-                <th>闸前水位 (m)</th>
-                <th>闸后水位 (m)</th>
-              </tr>
-            </thead>
+            <thead id="hist-thead"></thead>
             <tbody id="hist-body"></tbody>
           </table>
         </div>
@@ -399,8 +391,8 @@ function waitTick(ms = 200) {
 
 const S = { page: 1, size: 20, total: 0, rows: [], allRows: [], current: null };
 const DETAIL = { holeNos: [], selected: [] }; // holeNos 原始 gateNo
-const HIST = { page: 1, size: 20, total: 0, rows: [] };
-let HIST_DEVICES = []; // [{id, gateNo, deviceName}]
+const HIST = { page: 1, size: 20, total: 0, rows: [], histType: 'waterLevel', openCols: [] };
+let HIST_DEVICES = []; // [{id, gateNo, deviceName}] 备用
 let chart = null;
 let openChart = null;
 
@@ -442,8 +434,8 @@ function initDetailHoles(row) {
     if (!nos.includes(no)) nos.push(no);
   });
   DETAIL.holeNos = nos;
+  // 已去掉闸孔筛选 UI，趋势图默认全部闸孔
   DETAIL.selected = nos.slice();
-  renderGateFilter();
 }
 
 function renderGateFilter() {
@@ -526,8 +518,13 @@ function bindDevSelect() {
   const dd = $('dev-dd');
   const wrap = $('dev-ss');
 
-  input.addEventListener('focus', () => renderDevDd(input.value));
-  input.addEventListener('click', () => renderDevDd(input.value));
+  // 再次打开时展示全部设备；仅在用户输入时按关键字过滤
+  const openAll = () => {
+    input.select();
+    renderDevDd('');
+  };
+  input.addEventListener('focus', openAll);
+  input.addEventListener('click', openAll);
   input.addEventListener('input', () => {
     $('dev-code').value = '';
     renderDevDd(input.value);
@@ -571,6 +568,12 @@ async function loadGateSites() {
 /** 查询参数：设备传 code（siteId） */
 function getSelectedDevCode() {
   return ($('dev-code').value || '').trim();
+}
+
+function normGateNo(no) {
+  if (no === null || no === undefined || no === '') return '';
+  const n = String(no);
+  return n === '0' ? '1' : n;
 }
 
 async function loadList() {
@@ -628,27 +631,28 @@ async function reset() {
   await loadList();
 }
 
+/** 多闸孔开度直接拼接展示，如 0.50+1.20+0.80 */
+function fmtHolesOpen(holes) {
+  const list = Array.isArray(holes) ? holes : [];
+  if (!list.length) return '-';
+  return list.map(h => fmtOpen(h.openDegree)).join('+');
+}
+
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
     tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
     return;
   }
-  tbody.innerHTML = S.rows.map((r, i) => {
-    const holes = Array.isArray(r.holes) ? r.holes : [];
-    const openCell = holes.length
-      ? `<button class="act-btn" data-action="holes" data-idx="${i}">查看开度（${holes.length}）</button>`
-      : '-';
-    return `
+  tbody.innerHTML = S.rows.map((r, i) => `
     <tr>
       <td>${fmtN(r.siteName)}</td>
-      <td>${openCell}</td>
+      <td>${esc(fmtHolesOpen(r.holes))}</td>
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
       <td>${fmtTm(r.tm)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
-    </tr>`;
-  }).join('');
+    </tr>`).join('');
 }
 
 function renderPager() {
@@ -725,7 +729,7 @@ function openDetail(row) {
   S.current = row;
   setModalDefaultDates();
   initDetailHoles(row);
-  clearHistDev();
+  initHistTypeSelect(row);
   $('detail-title').textContent = row.siteName || '站点详情';
 
   document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
@@ -737,7 +741,6 @@ function openDetail(row) {
   HIST.page = 1;
   requestAnimationFrame(async () => {
     reloadDetail();
-    await loadHistDevices(row.siteId);
     await loadHistory();
   });
 }
@@ -933,21 +936,96 @@ function renderOpenChart(labels, openSeries) {
   openChart.resize();
 }
 
+/** 弹窗类型下拉：选项文案 = 外层站点名 + 水位/开度；入参 type=waterLevel|opening */
+function initHistTypeSelect(row) {
+  const siteName = (row && row.siteName) ? String(row.siteName) : '站点';
+  const sel = $('hist-type-select');
+  const cur = sel.value === 'opening' ? 'opening' : 'waterLevel';
+  sel.innerHTML = `
+    <option value="waterLevel">${esc(siteName)}+水位</option>
+    <option value="opening">${esc(siteName)}+开度</option>
+  `;
+  sel.value = cur;
+  HIST.histType = cur;
+  HIST.openCols = collectOpenColsFromHoles(row && row.holes);
+  if (!HIST.openCols.length) HIST.openCols = ['1'];
+  renderHistHead();
+}
+
+function collectOpenColsFromHoles(holes) {
+  const set = new Set();
+  (Array.isArray(holes) ? holes : []).forEach(h => {
+    const no = normGateNo(h?.gateNo);
+    if (no) set.add(no);
+  });
+  return [...set].sort((a, b) => (+a || 0) - (+b || 0) || a.localeCompare(b));
+}
+
+/** 从接口记录里提取 open1/open2… 列号 */
+function collectOpenColsFromRecords(records) {
+  const set = new Set();
+  (records || []).forEach(r => {
+    if (!r || typeof r !== 'object') return;
+    Object.keys(r).forEach(k => {
+      const m = /^open(\d+)$/i.exec(k);
+      if (m) set.add(m[1]);
+    });
+  });
+  return [...set].sort((a, b) => (+a || 0) - (+b || 0) || a.localeCompare(b));
+}
+
+function getHistType() {
+  return ($('hist-type-select')?.value || 'waterLevel') === 'opening' ? 'opening' : 'waterLevel';
+}
+
+
+function histColspan() {
+  if (HIST.histType === 'opening') return 1 + Math.max(1, HIST.openCols.length);
+  return 3;
+}
+
+function renderHistHead() {
+  const thead = $('hist-thead');
+  if (!thead) return;
+  if (HIST.histType === 'opening') {
+    const cols = HIST.openCols.length ? HIST.openCols : ['1'];
+    thead.innerHTML = `<tr>
+      <th>监测日期</th>
+      ${cols.map(n => `<th>开度${esc(n)}</th>`).join('')}
+    </tr>`;
+  } else {
+    thead.innerHTML = `<tr>
+      <th>监测日期</th>
+      <th>闸前水位 (m)</th>
+      <th>闸后水位 (m)</th>
+    </tr>`;
+  }
+}
+
 function renderHistory() {
   const tbody = $('hist-body');
+  const span = histColspan();
   if (!HIST.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="${span}" class="empty">暂无数据</td></tr>`;
     return;
   }
-  tbody.innerHTML = HIST.rows.map(r => `
-    <tr>
-      <td>${fmtN(r.deviceName)}</td>
-      <td>${fmtTm(r.tm)}</td>
-      <td>${fmtOpen(r.openDegree)}</td>
-      <td>${fmtN2(r.upZ)}</td>
-      <td>${fmtN2(r.downZ)}</td>
-    </tr>
-  `).join('');
+  if (HIST.histType === 'opening') {
+    const cols = HIST.openCols.length ? HIST.openCols : ['1'];
+    tbody.innerHTML = HIST.rows.map(r => `
+      <tr>
+        <td>${fmtTm(r.tm)}</td>
+        ${cols.map(n => `<td>${fmtOpen(r['open' + n])}</td>`).join('')}
+      </tr>
+    `).join('');
+  } else {
+    tbody.innerHTML = HIST.rows.map(r => `
+      <tr>
+        <td>${fmtTm(r.tm)}</td>
+        <td>${fmtN2(r.upZ)}</td>
+        <td>${fmtN2(r.downZ)}</td>
+      </tr>
+    `).join('');
+  }
 }
 
 function renderHistPager() {
@@ -998,35 +1076,41 @@ async function loadHistory() {
   const keepH = wrap ? wrap.offsetHeight : 0;
   if (wrap && keepH > 0) wrap.style.minHeight = keepH + 'px';
   setLoading(wrap, true);
+  HIST.histType = getHistType();
   try {
     const p = new URLSearchParams();
     p.set('siteId', S.current.siteId);
-    p.set('page', HIST.page);
-    p.set('size', HIST.size);
-    const gateNo = ($('hist-dev-gate').value || '').trim();
-    if (gateNo) p.set('gateNo', gateNo);
+    p.set('type', HIST.histType); // waterLevel | opening
+    p.set('page', String(HIST.page));
+    p.set('size', String(HIST.size));
     const s = dateToStart($('hist-start').value);
     const e = dateToEnd($('hist-end').value);
     if (s) p.set('startTime', s);
     if (e) p.set('endTime', e);
-    const zMin = $('hist-z-min').value.trim();
-    const zMax = $('hist-z-max').value.trim();
-    if (zMin) p.set('zMin', zMin);
-    if (zMax) p.set('zMax', zMax);
+
     const res = await fetch(`${API}/gate-monitor/history?${p}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    const records = Array.isArray(data.records) ? data.records : [];
     HIST.total = data.total || 0;
     HIST.page = data.current || HIST.page;
     HIST.size = data.size || HIST.size;
-    HIST.rows = data.records || [];
+    HIST.rows = records;
+
+    if (HIST.histType === 'opening') {
+      const fromApi = collectOpenColsFromRecords(records);
+      const fromRow = collectOpenColsFromHoles(S.current.holes);
+      HIST.openCols = fromApi.length ? fromApi : (fromRow.length ? fromRow : ['1']);
+    }
+    renderHistHead();
     renderHistory();
     renderHistPager();
   } catch (e) {
     console.error(e);
     HIST.rows = [];
     HIST.total = 0;
-    $('hist-body').innerHTML = '<tr><td colspan="5" class="empty">数据加载失败，请重试</td></tr>';
+    renderHistHead();
+    $('hist-body').innerHTML = `<tr><td colspan="${histColspan()}" class="empty">数据加载失败，请重试</td></tr>`;
     renderHistPager();
   } finally {
     setLoading(wrap, false);
@@ -1034,84 +1118,15 @@ async function loadHistory() {
   }
 }
 
-/* ===== 历史设备可搜索下拉 ===== */
-function renderHistDevDd(keyword) {
-  const dd = $('hist-dev-dd');
-  const gate = $('hist-dev-gate').value;
-  const list = HIST_DEVICES.filter(d =>
-    fuzzyMatch(d.deviceName, keyword) || fuzzyMatch(d.gateNo, keyword) || fuzzyMatch(d.id, keyword)
-  );
-  if (!list.length) {
-    dd.innerHTML = '<div class="ss-empty">无匹配设备</div>';
-    dd.classList.add('open');
-    return;
-  }
-  dd.innerHTML = list.map(d =>
-    `<div class="ss-opt${String(d.gateNo) === gate ? ' active' : ''}" data-gate="${esc(d.gateNo)}" data-name="${esc(d.deviceName)}">${esc(d.deviceName)}</div>`
-  ).join('');
-  dd.classList.add('open');
-}
-
-function setHistDev(gateNo, name) {
-  $('hist-dev-gate').value = gateNo || '';
-  $('hist-dev-input').value = name || '';
-  $('hist-dev-dd').classList.remove('open');
-}
-
-function clearHistDev() {
-  setHistDev('', '');
-}
-
-function bindHistDevSelect() {
-  const input = $('hist-dev-input');
-  const dd = $('hist-dev-dd');
-  const wrap = $('hist-dev-ss');
-  if (!input || wrap.dataset.bound) return;
-  wrap.dataset.bound = '1';
-
-  input.addEventListener('focus', () => renderHistDevDd(input.value));
-  input.addEventListener('click', () => renderHistDevDd(input.value));
-  input.addEventListener('input', () => {
-    $('hist-dev-gate').value = '';
-    renderHistDevDd(input.value);
+function bindHistTypeSelect() {
+  const sel = $('hist-type-select');
+  if (!sel || sel.dataset.bound) return;
+  sel.dataset.bound = '1';
+  sel.addEventListener('change', async () => {
+    HIST.histType = getHistType();
+    HIST.page = 1;
+    await loadHistory();
   });
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Escape') dd.classList.remove('open');
-    if (e.key === 'Enter') {
-      const first = dd.querySelector('.ss-opt');
-      if (first && dd.classList.contains('open')) {
-        e.preventDefault();
-        setHistDev(first.dataset.gate, first.dataset.name);
-      }
-    }
-  });
-  dd.addEventListener('mousedown', e => {
-    const opt = e.target.closest('.ss-opt');
-    if (!opt) return;
-    e.preventDefault();
-    setHistDev(opt.dataset.gate, opt.dataset.name);
-  });
-  document.addEventListener('click', e => {
-    if (!wrap.contains(e.target)) dd.classList.remove('open');
-  });
-}
-
-async function loadHistDevices(siteId) {
-  HIST_DEVICES = [];
-  if (!siteId) return;
-  try {
-    const res = await fetch(`${API}/gate-monitor/devices?siteId=${encodeURIComponent(siteId)}`);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    HIST_DEVICES = Array.isArray(data) ? data.map(x => ({
-      id: String(x.id ?? ''),
-      gateNo: String(x.gateNo ?? ''),
-      deviceName: String(x.deviceName ?? x.name ?? '')
-    })).filter(x => x.gateNo || x.deviceName) : [];
-  } catch (e) {
-    console.warn('加载闸门设备列表失败', e);
-    HIST_DEVICES = [];
-  }
 }
 
 async function reloadDetail() {
@@ -1163,8 +1178,7 @@ function bindModal() {
     });
   });
 
-  bindGateFilter();
-  bindHistDevSelect();
+  bindHistTypeSelect();
   bindAsyncClick($('chart-query-btn'), reloadDetail);
   bindAsyncClick($('hist-query-btn'), async () => {
     HIST.page = 1;
@@ -1176,9 +1190,10 @@ function bindModal() {
     await reloadDetail();
   }, { loadingText: '重置中...' });
   bindAsyncClick($('hist-reset-btn'), async () => {
-    clearHistDev();
+    if (S.current) initHistTypeSelect(S.current);
+    else $('hist-type-select').value = 'waterLevel';
     setModalDefaultDates();
-    ['hist-z-min','hist-z-max'].forEach(id => $(id).value = '');
+
     HIST.page = 1;
     await loadHistory();
   }, { loadingText: '重置中...' });
@@ -1194,7 +1209,7 @@ function onTableClick(e) {
   if (!btn) return;
   const row = S.rows[+btn.dataset.idx];
   if (!row) return;
-  if (btn.dataset.action === 'holes') openHolesModal(row);
+  // 开度改为列表内直接展示，不再弹小框；openHolesModal 保留备用
   if (btn.dataset.action === 'detail') openDetail(row);
 }
 
@@ -1238,8 +1253,12 @@ function bindMthDevSelect() {
   const input = $('mth-dev-input');
   const dd = $('mth-dev-dd');
   const wrap = $('mth-dev-ss');
-  input.addEventListener('focus', () => renderMthDevDd(input.value));
-  input.addEventListener('click', () => renderMthDevDd(input.value));
+  const openAll = () => {
+    input.select();
+    renderMthDevDd('');
+  };
+  input.addEventListener('focus', openAll);
+  input.addEventListener('click', openAll);
   input.addEventListener('input', () => {
     $('mth-dev-code').value = '';
     renderMthDevDd(input.value);

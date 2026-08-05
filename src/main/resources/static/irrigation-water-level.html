@@ -143,12 +143,14 @@ tbody tr:hover td{background:#fafafa}
   </div>
 
   <div class="tab-bar">
-    <div class="tab-item active" data-tab="irrigation">花凉亭灌区</div>
-    <div class="tab-item" data-tab="reservoir">花凉亭水库</div>
+    <!-- 暂隐藏：花凉亭灌区 -->
+    <div class="tab-item" data-tab="irrigation" style="display:none">花凉亭灌区</div>
+    <div class="tab-item active" data-tab="reservoir">花凉亭水库</div>
     <div class="tab-item" data-tab="mth">麻塘湖灌区</div>
   </div>
 
-  <div class="panel active" id="panel-irrigation">
+  <!-- 暂隐藏：花凉亭灌区面板（随 tab 隐藏，代码保留） -->
+  <div class="panel" id="panel-irrigation" style="display:none">
     <div class="card filter-card">
       <div class="filter-bar">
         <div class="filter-item">
@@ -192,7 +194,7 @@ tbody tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <div class="panel" id="panel-reservoir">
+  <div class="panel active" id="panel-reservoir">
     <div class="card filter-card">
       <div class="filter-bar">
         <div class="filter-item">
