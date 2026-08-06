@@ -942,8 +942,8 @@ function initHistTypeSelect(row) {
   const sel = $('hist-type-select');
   const cur = sel.value === 'opening' ? 'opening' : 'waterLevel';
   sel.innerHTML = `
-    <option value="waterLevel">${esc(siteName)}+水位</option>
-    <option value="opening">${esc(siteName)}+开度</option>
+    <option value="waterLevel">${esc(siteName)}水位</option>
+    <option value="opening">${esc(siteName)}开度</option>
   `;
   sel.value = cur;
   HIST.histType = cur;

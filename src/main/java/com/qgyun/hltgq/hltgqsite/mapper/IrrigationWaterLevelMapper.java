@@ -26,11 +26,11 @@ public interface IrrigationWaterLevelMapper {
      * @param offset      偏移量
      */
     @Select("SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, TRUNC(r.Z, 2) AS z, " +
-            "COALESCE((r.Z - (" +
+            "TRUNC(COALESCE((r.Z - (" +
             "  SELECT r2.Z FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r2 " +
             "  WHERE r2.STCD = r.STCD AND r2.TM <= r.TM - INTERVAL '1 hour' " +
             "  ORDER BY r2.TM DESC LIMIT 1" +
-            ")) * 100, 0) AS rise1h " +
+            ")) * 100, 0), 2) AS rise1h " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "INNER JOIN (" +
             "  SELECT STCD, MAX(TM) AS MaxTM " +
