@@ -43,6 +43,22 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             "00000011", "00000012", "00000013"
     ));
 
+    // ======================== 灌区接口-水库站点排除 ========================
+    // 后续所有 13 个站点 STCD 确认后，可全部移入 RESERVOIR_STCD_NEW，删除名称兜底
+
+    /** 已知新表水库 STCD（待后续补全） */
+    private static final Set<String> RESERVOIR_STCD_NEW = new HashSet<>(Arrays.asList(
+            "3206400007",  // 花凉亭坝上
+            "320640000A"   // 花凉亭坝下
+    ));
+
+    /** 花凉亭水库 13 站点名称（STCD 未知时按名称兜底排除） */
+    private static final Set<String> RESERVOIR_STATION_NAMES = new HashSet<>(Arrays.asList(
+            "周家河", "姜家寨", "九田", "牛镇", "马嘶铺", "寺前",
+            "河图铺", "下前河", "鲤鱼墩", "弥陀", "白帽",
+            "花凉亭坝上", "花凉亭坝下"
+    ));
+
     @Override
     public List<StPptnR> latestPerStation() {
         return baseMapper.selectLatestPerStation();
@@ -80,14 +96,18 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     @Override
     public IPage<GqRainfallVO> gqRainfallPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime) {
         List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(stcd, startTime, endTime);
-        List<GqRainfallVO> vos = rows.stream().map(this::toGqRainfallVO).collect(Collectors.toList());
+        List<GqRainfallVO> vos = rows.stream()
+                .filter(row -> !isReservoirStation(row))
+                .map(this::toGqRainfallVO).collect(Collectors.toList());
         return toPage(vos, page, size);
     }
 
     @Override
     public IPage<GqRainfallVO> gqRainfallHistoryPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime) {
         List<Map<String, Object>> rows = baseMapper.selectGqRainfallHistory(stcd, startTime, endTime);
-        List<GqRainfallVO> vos = rows.stream().map(this::toGqRainfallVO).collect(Collectors.toList());
+        List<GqRainfallVO> vos = rows.stream()
+                .filter(row -> !isReservoirStation(row))
+                .map(this::toGqRainfallVO).collect(Collectors.toList());
         return toPage(vos, page, size);
     }
 
@@ -127,6 +147,19 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         if (current == null || prev == null) return null;
         BigDecimal diff = current.subtract(prev);
         return diff.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : diff;
+    }
+
+    /** 判断行是否属于水库站点（STCD 匹配 或 名称匹配） */
+    private boolean isReservoirStation(Map<String, Object> row) {
+        String stcd = (String) row.get("stcd");
+        if (stcd != null && RESERVOIR_STCD_NEW.contains(stcd)) {
+            return true;
+        }
+        String stnm = (String) row.get("stnm");
+        if (stnm != null && RESERVOIR_STATION_NAMES.contains(stnm)) {
+            return true;
+        }
+        return false;
     }
 
     private IPage<GqRainfallVO> toPage(List<GqRainfallVO> list, long page, long size) {
@@ -205,14 +238,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Override
     public ReservoirRainfallVO reservoirRainfall(LocalDate startDate, LocalDate endDate) {
-        // 1. 查询 12 个站点信息
-        Map<String, StStinfo> stinfoMap = new LinkedHashMap<>();
-        for (String stcd : RESERVOIR_STCDS) {
-            StStinfo info = stStinfoMapper.selectById(stcd);
-            if (info != null) {
-                stinfoMap.put(stcd, info);
-            }
-        }
+        // 1. 通过名称反查站点信息（替代旧 RESERVOIR_STCDS）
+        Map<String, StStinfo> resolved = resolveReservoirStcds();
+        List<String> reservoirStcds = new ArrayList<>(resolved.keySet());
 
         // 2. 扩展查询范围（向前后各 1 天，确保水文日边界完整）
         //    水文日：8:00 ~ 次日 7:59:59
@@ -220,7 +248,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         LocalDateTime queryEnd = endDate.atTime(7, 59, 59).plusDays(1);
 
         // 3. 批量查询原始雨量记录（含 DRP 和 DYP）
-        List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(RESERVOIR_STCDS, queryStart, queryEnd);
+        List<StPptnR> records = reservoirStcds.isEmpty()
+                ? Collections.emptyList()
+                : baseMapper.selectByStcdsAndTimeRange(reservoirStcds, queryStart, queryEnd);
 
         // 4. 按站点 + 水文日聚合增量（对齐 hydro-monitor.html buildPptnPivot 逻辑）
         //    Map<水文日标签, Map<stcd, 累加增量>>
@@ -230,7 +260,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
-            if (!RESERVOIR_STCDS.contains(key)) continue;
+            if (!resolved.containsKey(key)) continue;
             byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
 
@@ -277,14 +307,13 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 latestPerStcd.put(key, r);
             }
         }
-        for (String stcd : RESERVOIR_STCDS) {
+        for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+            String stcd = entry.getKey();
+            StStinfo info = entry.getValue();
             ReservoirRainfallVO.StationInfo si = new ReservoirRainfallVO.StationInfo();
             si.setStcd(stcd);
-            StStinfo info = stinfoMap.get(stcd);
-            if (info != null) {
-                si.setStnm(info.getStnm());
-                si.setId(info.getId());
-            }
+            si.setStnm(info.getStnm());
+            si.setId(info.getId());
             StPptnR latest = latestPerStcd.get(stcd);
             if (latest != null) {
                 si.setLatestTm(latest.getTm());
@@ -305,13 +334,15 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             // 补充缺失站点的 0 值，同时计算平均值
             Map<String, BigDecimal> fullValues = new LinkedHashMap<>();
             BigDecimal sum = BigDecimal.ZERO;
-            for (String stcd : RESERVOIR_STCDS) {
+            for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+                String stcd = entry.getKey();
                 BigDecimal val = values.getOrDefault(stcd, BigDecimal.ZERO);
                 fullValues.put(stcd, val);
                 sum = sum.add(val);
             }
             dr.setValues(fullValues);
-            dr.setAvg(sum.divide(new BigDecimal(RESERVOIR_STCDS.size()), 2, BigDecimal.ROUND_HALF_UP));
+            dr.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
+                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
             days.add(dr);
         }
 
@@ -333,21 +364,18 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Override
     public ReservoirPeriodRainfallVO reservoirPeriodRainfall(LocalDate startDate, LocalDate endDate, int intervalMinutes) {
-        // 1. 查询 12 个站点信息
-        Map<String, StStinfo> stinfoMap = new LinkedHashMap<>();
-        for (String stcd : RESERVOIR_STCDS) {
-            StStinfo info = stStinfoMapper.selectById(stcd);
-            if (info != null) {
-                stinfoMap.put(stcd, info);
-            }
-        }
+        // 1. 通过名称反查站点信息
+        Map<String, StStinfo> resolved = resolveReservoirStcds();
+        List<String> reservoirStcds = new ArrayList<>(resolved.keySet());
 
         // 2. 扩展查询范围（向前后各 1 天，确保时段边界完整）
         LocalDateTime queryStart = startDate.atTime(8, 0).minusDays(1);
         LocalDateTime queryEnd = endDate.atTime(7, 59, 59).plusDays(1);
 
         // 3. 批量查询原始雨量记录（含 DRP 和 DYP）
-        List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(RESERVOIR_STCDS, queryStart, queryEnd);
+        List<StPptnR> records = reservoirStcds.isEmpty()
+                ? Collections.emptyList()
+                : baseMapper.selectByStcdsAndTimeRange(reservoirStcds, queryStart, queryEnd);
 
         // 4. 按站点 + 时间间隔聚合增量（对齐 hydro-monitor.html buildPeriodPivot 逻辑）
         //    Map<时段标签, Map<stcd, 累加增量>>
@@ -356,7 +384,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
-            if (!RESERVOIR_STCDS.contains(key)) continue;
+            if (!resolved.containsKey(key)) continue;
             byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
 
@@ -404,14 +432,13 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 latestPerStcd.put(key, r);
             }
         }
-        for (String stcd : RESERVOIR_STCDS) {
+        for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+            String stcd = entry.getKey();
+            StStinfo info = entry.getValue();
             ReservoirRainfallVO.StationInfo si = new ReservoirRainfallVO.StationInfo();
             si.setStcd(stcd);
-            StStinfo info = stinfoMap.get(stcd);
-            if (info != null) {
-                si.setStnm(info.getStnm());
-                si.setId(info.getId());
-            }
+            si.setStnm(info.getStnm());
+            si.setId(info.getId());
             StPptnR latest = latestPerStcd.get(stcd);
             if (latest != null) {
                 si.setLatestTm(latest.getTm());
@@ -429,13 +456,15 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             Map<String, BigDecimal> rawValues = bucketMap.getOrDefault(bucketKey, Collections.emptyMap());
             Map<String, BigDecimal> fullValues = new LinkedHashMap<>();
             BigDecimal sum = BigDecimal.ZERO;
-            for (String stcd : RESERVOIR_STCDS) {
+            for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+                String stcd = entry.getKey();
                 BigDecimal val = rawValues.getOrDefault(stcd, BigDecimal.ZERO);
                 fullValues.put(stcd, val);
                 sum = sum.add(val);
             }
             row.setValues(fullValues);
-            row.setAvg(sum.divide(new BigDecimal(RESERVOIR_STCDS.size()), 2, BigDecimal.ROUND_HALF_UP));
+            row.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
+                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
             buckets.add(row);
         }
 
@@ -464,18 +493,24 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         LocalDate monthStart = LocalDate.parse(yearMonth + "-01");
         LocalDate monthEnd = monthStart.plusMonths(1).minusDays(1);
 
+        // 通过名称反查站点信息
+        Map<String, StStinfo> resolved = resolveReservoirStcds();
+        List<String> reservoirStcds = new ArrayList<>(resolved.keySet());
+
         // 扩展查询范围（水文日边界）
         LocalDateTime queryStart = monthStart.atTime(8, 0).minusDays(1);
         LocalDateTime queryEnd = monthEnd.plusDays(1).atTime(7, 59, 59);
 
-        List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(RESERVOIR_STCDS, queryStart, queryEnd);
+        List<StPptnR> records = reservoirStcds.isEmpty()
+                ? Collections.emptyList()
+                : baseMapper.selectByStcdsAndTimeRange(reservoirStcds, queryStart, queryEnd);
 
         // 按站点分组 → 计算日雨量
         Map<String, Map<String, BigDecimal>> dailyRainfall = new LinkedHashMap<>();
         Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
-            if (!RESERVOIR_STCDS.contains(key)) continue;
+            if (!resolved.containsKey(key)) continue;
             byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
 
@@ -509,7 +544,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
             Map<String, BigDecimal> tenDayValues = new LinkedHashMap<>();
             BigDecimal sum = BigDecimal.ZERO;
-            for (String stcd : RESERVOIR_STCDS) {
+            for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+                String stcd = entry.getKey();
                 BigDecimal stcdSum = BigDecimal.ZERO;
                 for (int day = dStart; day <= dEnd; day++) {
                     String hydroKey = String.format("%s-%02d-%02d 08:00:00",
@@ -527,12 +563,13 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             row.setYearMonth(yearMonth);
             row.setTenDay(name);
             row.setValues(tenDayValues);
-            row.setAvg(sum.divide(new BigDecimal(RESERVOIR_STCDS.size()), 2, BigDecimal.ROUND_HALF_UP));
+            row.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
+                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
             periods.add(row);
         }
 
         // 组装站点信息
-        List<ReservoirRainfallVO.StationInfo> stations = buildStationInfos(records);
+        List<ReservoirRainfallVO.StationInfo> stations = buildStationInfos(resolved, records);
 
         ReservoirTenDayRainfallVO vo = new ReservoirTenDayRainfallVO();
         vo.setStations(stations);
@@ -544,29 +581,30 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Override
     public List<ReservoirExtremeRainfallVO> reservoirExtremeRainfall(LocalDate startDate, LocalDate endDate) {
+        // 通过名称反查站点信息
+        Map<String, StStinfo> resolved = resolveReservoirStcds();
+        List<String> reservoirStcds = new ArrayList<>(resolved.keySet());
+
         // 扩展查询范围（向前多取几天确保窗口完整）
         LocalDateTime queryStart = startDate.atTime(8, 0).minusDays(8);
         LocalDateTime queryEnd = endDate.atTime(7, 59, 59);
 
-        List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(RESERVOIR_STCDS, queryStart, queryEnd);
+        List<StPptnR> records = reservoirStcds.isEmpty()
+                ? Collections.emptyList()
+                : baseMapper.selectByStcdsAndTimeRange(reservoirStcds, queryStart, queryEnd);
 
         // 按站点分组
         Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
-            if (!RESERVOIR_STCDS.contains(key)) continue;
+            if (!resolved.containsKey(key)) continue;
             byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
 
-        // 查询站点名称
-        Map<String, String> stnmMap = new HashMap<>();
-        for (String stcd : RESERVOIR_STCDS) {
-            StStinfo info = stStinfoMapper.selectById(stcd);
-            if (info != null) stnmMap.put(stcd, info.getStnm());
-        }
-
         List<ReservoirExtremeRainfallVO> result = new ArrayList<>();
-        for (String stcd : RESERVOIR_STCDS) {
+        for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+            String stcd = entry.getKey();
+            StStinfo info = entry.getValue();
             List<StPptnR> stationRows = byStation.getOrDefault(stcd, Collections.emptyList());
             stationRows.sort(Comparator.comparing(StPptnR::getTm));
 
@@ -610,7 +648,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
             ReservoirExtremeRainfallVO vo = new ReservoirExtremeRainfallVO();
             vo.setStcd(stcd);
-            vo.setStnm(stnmMap.getOrDefault(stcd, stcd));
+            vo.setStnm(info.getStnm());
             vo.setMax3h(max3h);
             vo.setMax6h(max6h);
             vo.setMax24h(max24h);
@@ -648,20 +686,26 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         else if (day <= 20) { tenDayName = "中旬"; dStart = 11; dEnd = 20; }
         else { tenDayName = "下旬"; dStart = 21; dEnd = date.lengthOfMonth(); }
 
+        // 通过名称反查站点信息
+        Map<String, StStinfo> resolved = resolveReservoirStcds();
+        List<String> reservoirStcds = new ArrayList<>(resolved.keySet());
+
         // 查询范围：该月完整数据
         LocalDate monthStart = date.withDayOfMonth(1);
         LocalDate monthEnd = date.withDayOfMonth(date.lengthOfMonth());
         LocalDateTime queryStart = monthStart.atTime(8, 0).minusDays(1);
         LocalDateTime queryEnd = monthEnd.plusDays(1).atTime(7, 59, 59);
 
-        List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(RESERVOIR_STCDS, queryStart, queryEnd);
+        List<StPptnR> records = reservoirStcds.isEmpty()
+                ? Collections.emptyList()
+                : baseMapper.selectByStcdsAndTimeRange(reservoirStcds, queryStart, queryEnd);
 
         // 按站点 → 按日聚合
         Map<String, Map<String, BigDecimal>> dailyByStation = new LinkedHashMap<>();
         Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
-            if (!RESERVOIR_STCDS.contains(key)) continue;
+            if (!resolved.containsKey(key)) continue;
             byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
         for (Map.Entry<String, List<StPptnR>> entry : byStation.entrySet()) {
@@ -683,20 +727,15 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             }
         }
 
-        // 查询站点名称
-        Map<String, String> stnmMap = new HashMap<>();
-        for (String stcd : RESERVOIR_STCDS) {
-            StStinfo info = stStinfoMapper.selectById(stcd);
-            if (info != null) stnmMap.put(stcd, info.getStnm());
-        }
-
         // 组装结果
         String targetDayKey = date.toString() + " 08:00:00";
         List<ReservoirRainfallBriefVO> result = new ArrayList<>();
-        for (String stcd : RESERVOIR_STCDS) {
+        for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+            String stcd = entry.getKey();
+            StStinfo info = entry.getValue();
             ReservoirRainfallBriefVO vo = new ReservoirRainfallBriefVO();
             vo.setStcd(stcd);
-            vo.setStnm(stnmMap.getOrDefault(stcd, stcd));
+            vo.setStnm(info.getStnm());
 
             Map<String, BigDecimal> dayMap = dailyByStation.getOrDefault(stcd, Collections.emptyMap());
 
@@ -724,8 +763,26 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         return result;
     }
 
+    /**
+     * 通过 13 个水库站点名称反查 station_info 表，获取真实 STCD 及站点信息。
+     * 返回 LinkedHashMap 保证迭代顺序稳定。
+     */
+    private Map<String, StStinfo> resolveReservoirStcds() {
+        QueryWrapper<StStinfo> wrapper = new QueryWrapper<>();
+        wrapper.in("zzkaec", RESERVOIR_STATION_NAMES);
+        List<StStinfo> list = stStinfoMapper.selectList(wrapper);
+        Map<String, StStinfo> map = new LinkedHashMap<>();
+        for (StStinfo s : list) {
+            String stcd = s.getStcd();
+            if (stcd != null) {
+                map.put(stcd, s);
+            }
+        }
+        return map;
+    }
+
     /** 提取公共站点信息组装 */
-    private List<ReservoirRainfallVO.StationInfo> buildStationInfos(List<StPptnR> records) {
+    private List<ReservoirRainfallVO.StationInfo> buildStationInfos(Map<String, StStinfo> resolved, List<StPptnR> records) {
         List<ReservoirRainfallVO.StationInfo> stations = new ArrayList<>();
         Map<String, StPptnR> latestPerStcd = new HashMap<>();
         for (StPptnR r : records) {
@@ -735,18 +792,19 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 latestPerStcd.put(key, r);
             }
         }
-        for (String stcd : RESERVOIR_STCDS) {
+        for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+            String stcd = entry.getKey();
+            StStinfo info = entry.getValue();
             ReservoirRainfallVO.StationInfo si = new ReservoirRainfallVO.StationInfo();
             si.setStcd(stcd);
-            StStinfo info = stStinfoMapper.selectById(stcd);
-            if (info != null) {
-                si.setStnm(info.getStnm());
-                si.setId(info.getId());
-            }
+            si.setStnm(info.getStnm());
+            si.setId(info.getId());
             StPptnR latest = latestPerStcd.get(stcd);
             if (latest != null) {
                 si.setLatestTm(latest.getTm());
                 si.setLatestDrp(latest.getDrp());
+            } else {
+                si.setLatestTm(LocalDateTime.now());
             }
             stations.add(si);
         }

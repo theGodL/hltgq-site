@@ -111,9 +111,9 @@ tbody tr:hover td{background:#fafafa}
 .pg-ellipsis{padding:0 4px;color:#999;font-size:13px}
 .pg-size{height:28px;border:1px solid #d9d9d9;border-radius:4px;padding:0 6px;font-size:13px;outline:none;background:#fff;margin-right:4px;cursor:pointer}
 
-.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:20px}
+.overlay{display:none;position:fixed;inset:0;background:transparent;z-index:1000;align-items:center;justify-content:center;padding:20px}
 .overlay.show{display:flex}
-.modal{background:#fff;border-radius:8px;width:1100px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.modal{background:#fff;border-radius:10px;width:1100px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;border:1px solid #e8e8e8;box-shadow:0 8px 28px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06)}
 /* 详情弹窗固定尺寸，不随数据多少伸缩 */
 #detail-overlay .modal{
   width:1100px;
@@ -121,12 +121,18 @@ tbody tr:hover td{background:#fafafa}
   max-width:95vw;
   max-height:90vh;
 }
-.modal.modal-sm{width:480px;height:auto;max-height:90vh}
-.modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.modal-hd span{font-size:16px;font-weight:500;color:#333}
-.modal-close{background:none;border:none;cursor:pointer;color:#999;font-size:20px;line-height:1;padding:0 2px}
-.modal-close:hover{color:#333}
-.modal-bd{padding:0 20px 20px;overflow-y:auto;flex:1;min-height:0}
+.modal.modal-sm{width:420px;height:auto;max-height:90vh}
+.modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#fff}
+.modal-hd span{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
+.modal-actions{display:inline-flex;align-items:center;gap:2px}
+.modal-max,.modal-close{background:none;border:none;cursor:pointer;color:#8c8c8c;font-size:18px;line-height:1;width:28px;height:28px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:color .2s,background .2s}
+.modal-max:hover,.modal-close:hover{color:#262626;background:#f5f5f5}
+.modal-max svg{display:block}
+.modal-max .icon-restore{display:none}
+.modal.is-max .modal-max .icon-max{display:none}
+.modal.is-max .modal-max .icon-restore{display:block}
+.modal.is-max{width:calc(100vw - 40px)!important;height:calc(100vh - 40px)!important;max-width:none!important;max-height:none!important}
+.modal-bd{padding:0 20px 20px;overflow-y:auto;flex:1;min-height:0;background:#fff}
 .modal-tabs{display:flex;border-bottom:1px solid #f0f0f0;margin-bottom:16px;flex-shrink:0}
 .modal-tab{padding:12px 16px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none}
 .modal-tab:hover{color:#1677ff}
@@ -167,7 +173,7 @@ tbody tr:hover td{background:#fafafa}
     <div class="card filter-card">
       <div class="filter-bar">
         <div class="filter-item">
-          <label>设备</label>
+          <label>站点</label>
           <div class="ss" id="dev-ss">
             <input type="text" class="ss-input" id="dev-input" placeholder="请选择或搜索设备" autocomplete="off">
             <span class="ss-arrow"></span>
@@ -259,7 +265,13 @@ tbody tr:hover td{background:#fafafa}
   <div class="modal modal-sm">
     <div class="modal-hd">
       <span id="holes-title">闸孔开度</span>
-      <button class="modal-close" data-close="holes-overlay">×</button>
+      <div class="modal-actions">
+        <button type="button" class="modal-max" title="最大化" aria-label="最大化">
+          <svg class="icon-max" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.5V2h3.5M11.5 2H15v3.5M15 11.5V15h-3.5M5.5 15H2v-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="icon-restore" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 5h9v9H5V5z" stroke="currentColor" stroke-width="1.4"/><path d="M2 11V2h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="modal-close" data-close="holes-overlay">×</button>
+      </div>
     </div>
     <div class="modal-bd" style="padding-top:16px">
       <div class="tbl-wrap">
@@ -281,7 +293,13 @@ tbody tr:hover td{background:#fafafa}
   <div class="modal">
     <div class="modal-hd">
       <span id="detail-title">站点详情</span>
-      <button class="modal-close" data-close="detail-overlay">×</button>
+      <div class="modal-actions">
+        <button type="button" class="modal-max" title="最大化" aria-label="最大化">
+          <svg class="icon-max" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.5V2h3.5M11.5 2H15v3.5M15 11.5V15h-3.5M5.5 15H2v-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="icon-restore" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 5h9v9H5V5z" stroke="currentColor" stroke-width="1.4"/><path d="M2 11V2h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="modal-close" data-close="detail-overlay">×</button>
+      </div>
     </div>
     <div class="modal-bd">
       <div class="modal-tabs">
@@ -718,7 +736,13 @@ function openModal(id) {
 }
 
 function closeModal(id) {
-  $(id).classList.remove('show');
+  const ov = $(id);
+  ov.classList.remove('show');
+  ov.querySelectorAll('.modal.is-max').forEach(m => {
+    m.classList.remove('is-max');
+    const btn = m.querySelector('.modal-max');
+    if (btn) { btn.title = '最大化'; btn.setAttribute('aria-label', '最大化'); }
+  });
   if (id === 'detail-overlay') {
     if (chart) { chart.dispose(); chart = null; }
     if (openChart) { openChart.dispose(); openChart = null; }
@@ -1162,6 +1186,20 @@ function bindModal() {
     btn.addEventListener('click', () => closeModal(btn.dataset.close)));
   document.querySelectorAll('.overlay').forEach(el =>
     el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); }));
+  document.querySelectorAll('.modal-max').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const modal = btn.closest('.modal');
+      if (!modal) return;
+      modal.classList.toggle('is-max');
+      const maxed = modal.classList.contains('is-max');
+      btn.title = maxed ? '还原' : '最大化';
+      btn.setAttribute('aria-label', btn.title);
+      requestAnimationFrame(() => {
+        if (chart) chart.resize();
+        if (openChart) openChart.resize();
+      });
+    });
+  });
 
   document.querySelectorAll('.modal-tab').forEach(tab => {
     tab.addEventListener('click', () => {
