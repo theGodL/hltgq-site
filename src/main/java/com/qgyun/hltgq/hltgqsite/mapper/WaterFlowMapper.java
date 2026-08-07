@@ -26,7 +26,7 @@ public interface WaterFlowMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (f.stcd) " +
-            "f.stcd, COALESCE(s.zzkaec, f.stcd) AS stnm, f.tm, TRUNC(f.q, 3) AS q " +
+            "f.stcd, COALESCE(s.zzkaec, f.stcd) AS stnm, f.tm, TRUNC(f.q, 2) AS q, TRUNC(f.tf, 2) AS tf " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
             "WHERE 1=1 " +
@@ -42,7 +42,8 @@ public interface WaterFlowMapper {
             @Result(column = "stcd", property = "stcd"),
             @Result(column = "stnm", property = "stnm"),
             @Result(column = "tm", property = "tm"),
-            @Result(column = "q", property = "q")
+            @Result(column = "q", property = "q"),
+            @Result(column = "tf", property = "tf")
     })
     List<FlowMonitoringVO> selectLatestPerStation(
             @Param("stcds") List<String> stcds,
@@ -53,7 +54,7 @@ public interface WaterFlowMapper {
      * 查询原始流量记录（用于图表 + 历史数据，按时间升序）
      */
     @Select("<script>" +
-            "SELECT f.tm, TRUNC(f.q, 3) AS q " +
+            "SELECT f.tm, TRUNC(f.q, 2) AS q, TRUNC(f.tf, 2) AS tf " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "WHERE f.stcd = #{stcd} " +
             "<if test='startTime != null'>AND f.tm &gt;= #{startTime} </if>" +
@@ -69,7 +70,7 @@ public interface WaterFlowMapper {
      * 流量历史分页查询
      */
     @Select("<script>" +
-            "SELECT f.stcd, COALESCE(s.zzkaec, f.stcd) AS stnm, f.tm, TRUNC(f.q, 3) AS q " +
+            "SELECT f.stcd, COALESCE(s.zzkaec, f.stcd) AS stnm, f.tm, TRUNC(f.q, 2) AS q, TRUNC(f.tf, 2) AS tf " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
             "WHERE f.stcd = #{stcd} " +
@@ -82,7 +83,8 @@ public interface WaterFlowMapper {
             @Result(column = "stcd", property = "stcd"),
             @Result(column = "stnm", property = "stnm"),
             @Result(column = "tm", property = "tm"),
-            @Result(column = "q", property = "q")
+            @Result(column = "q", property = "q"),
+            @Result(column = "tf", property = "tf")
     })
     List<FlowMonitoringVO> selectHistoryPage(
             @Param("stcd") String stcd,

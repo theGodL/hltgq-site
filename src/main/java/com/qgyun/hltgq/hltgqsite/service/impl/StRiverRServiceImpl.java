@@ -27,19 +27,31 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
     @Autowired
     private StStinfoMapper stStinfoMapper;
 
-    /** 河道水位站：仅周家河(00000001)和花凉亭坝下(00000004) */
-    private static final Set<String> RIVER_STCDS = new HashSet<>(Arrays.asList("00000001", "00000004"));
+    /** 河道水位站名称 */
+    private static final Set<String> RIVER_STATION_NAMES = new HashSet<>(Arrays.asList("周家河", "花凉亭坝下"));
 
-    /** 水库水位站：仅花凉亭坝上(00000007) */
-    private static final Set<String> RESERVOIR_STCDS = new HashSet<>(Collections.singletonList("00000007"));
+    /** 水库水位站名称 */
+    private static final Set<String> RESERVOIR_STATION_NAMES = new HashSet<>(Collections.singletonList("花凉亭坝上"));
 
-    /** 站点固定参考值：警戒水位/保证水位 (m)，暂未配置则为 null */
+    /** 旧 STCD → 新 STCD 映射（新表已全部迁移，逐步补充） */
+    private static final Map<String, String> OLD_TO_NEW_STCD = new HashMap<>();
+    static {
+        OLD_TO_NEW_STCD.put("00000004", "320640000A");  // 花凉亭坝下
+        OLD_TO_NEW_STCD.put("00000007", "3206400007");  // 花凉亭坝上
+        // 00000001 周家河 - 新 STCD 待确认，暂不可查
+    }
+
+    /** 站点固定参考值（按名称索引）：{ 警戒水位, 保证水位 } (m)，暂未配置则为 null */
     private static final Map<String, BigDecimal[]> STATION_REF = new HashMap<>();
     static {
-        // { 警戒水位, 保证水位 }
-        STATION_REF.put("00000001", new BigDecimal[]{null, null});
-        STATION_REF.put("00000004", new BigDecimal[]{null, null});
-        STATION_REF.put("00000007", new BigDecimal[]{null, null});
+        STATION_REF.put("周家河", new BigDecimal[]{null, null});
+        STATION_REF.put("花凉亭坝下", new BigDecimal[]{null, null});
+        STATION_REF.put("花凉亭坝上", new BigDecimal[]{null, null});
+    }
+
+    /** 解析 STCD：旧格式 → 新格式；已是新格式则原样返回 */
+    private String resolveStcd(String stcd) {
+        return OLD_TO_NEW_STCD.getOrDefault(stcd, stcd);
     }
 
     @Override
@@ -62,22 +74,23 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
 
     @Override
     public Page<RiverRegimeVO> riverRegime(String stcd, LocalDateTime startTime, LocalDateTime endTime, long page, long size) {
-        if (!RIVER_STCDS.contains(stcd)) {
-            throw new IllegalArgumentException("河道水位站仅支持: 00000001(周家河)、00000004(花凉亭坝下)");
+        // 1. 解析新旧 STCD，查询站点信息
+        String resolvedStcd = resolveStcd(stcd);
+        StStinfo stinfo = stStinfoMapper.selectById(resolvedStcd);
+        String stnm = stinfo != null ? stinfo.getStnm() : null;
+
+        if (stnm == null || !RIVER_STATION_NAMES.contains(stnm)) {
+            throw new IllegalArgumentException("河道水位站仅支持: 周家河、花凉亭坝下");
         }
 
-        // 1. 查询站点名称
-        StStinfo stinfo = stStinfoMapper.selectById(stcd);
-        String stnm = stinfo != null ? stinfo.getStnm() : stcd;
-
-        // 2. 站点参考水位
-        BigDecimal[] ref = STATION_REF.get(stcd);
+        // 2. 站点参考水位（按名称索引）
+        BigDecimal[] ref = STATION_REF.get(stnm);
         BigDecimal warningLevel = ref != null ? ref[0] : null;
         BigDecimal guaranteedLevel = ref != null ? ref[1] : null;
 
         // 3. 分页查询河道水位记录
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<StRiverR>().orderByAsc("TM");
-        wrapper.eq("STCD", stcd);
+        wrapper.eq("STCD", resolvedStcd);
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
 
@@ -119,22 +132,23 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
 
     @Override
     public Page<ReservoirRegimeVO> reservoirRegime(String stcd, LocalDateTime startTime, LocalDateTime endTime, long page, long size) {
-        if (!RESERVOIR_STCDS.contains(stcd)) {
-            throw new IllegalArgumentException("水库水位站仅支持: 00000007(花凉亭坝上)");
+        // 1. 解析新旧 STCD，查询站点信息
+        String resolvedStcd = resolveStcd(stcd);
+        StStinfo stinfo = stStinfoMapper.selectById(resolvedStcd);
+        String stnm = stinfo != null ? stinfo.getStnm() : null;
+
+        if (stnm == null || !RESERVOIR_STATION_NAMES.contains(stnm)) {
+            throw new IllegalArgumentException("水库水位站仅支持: 花凉亭坝上");
         }
 
-        // 1. 查询站点名称
-        StStinfo stinfo = stStinfoMapper.selectById(stcd);
-        String stnm = stinfo != null ? stinfo.getStnm() : stcd;
-
-        // 2. 站点参考水位
-        BigDecimal[] ref = STATION_REF.get(stcd);
+        // 2. 站点参考水位（按名称索引）
+        BigDecimal[] ref = STATION_REF.get(stnm);
         BigDecimal warningLevel = ref != null ? ref[0] : null;
         BigDecimal guaranteedLevel = ref != null ? ref[1] : null;
 
         // 3. 分页查询水库水位记录
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<StRiverR>().orderByAsc("TM");
-        wrapper.eq("STCD", stcd);
+        wrapper.eq("STCD", resolvedStcd);
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
 

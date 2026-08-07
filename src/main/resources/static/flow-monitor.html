@@ -175,6 +175,7 @@ tbody tr:hover td{background:#fafafa}
               <th>站点名称</th>
               <th>站点编号</th>
               <th>瞬时流量 (m³/s)</th>
+              <th>累计流量 (m³)</th>
               <th>采集时间</th>
               <th>操作</th>
             </tr>
@@ -220,6 +221,7 @@ tbody tr:hover td{background:#fafafa}
               <th>站点名称</th>
               <th>站点编号</th>
               <th>瞬时流量 (m³/s)</th>
+              <th>累计流量 (m³)</th>
               <th>采集时间</th>
               <th>操作</th>
             </tr>
@@ -280,6 +282,7 @@ tbody tr:hover td{background:#fafafa}
             <thead>
               <tr>
                 <th>瞬时流量 (m³/s)</th>
+                <th>累计流量 (m³)</th>
                 <th>采集时间</th>
               </tr>
             </thead>
@@ -296,11 +299,11 @@ tbody tr:hover td{background:#fafafa}
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
 const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
-const fmtN3 = v => {
+const fmtN2 = v => {
   if (v === null || v === undefined || v === '') return '-';
   const n = +v;
   if (!Number.isFinite(n)) return '-';
-  return Math.abs(n - Math.round(n)) < 1e-9 ? String(Math.round(n)) : n.toFixed(3);
+  return n.toFixed(2);
 };
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const fmtTm = v => {
@@ -499,7 +502,7 @@ async function loadList() {
     S.total = 0;
     renderTable();
     renderPager();
-    $('tbl-body').innerHTML = `<tr><td colspan="5" class="empty">加载失败：${err.message || err}</td></tr>`;
+    $('tbl-body').innerHTML = `<tr><td colspan="6" class="empty">加载失败：${err.message || err}</td></tr>`;
   } finally {
     setLoading(wrap, false);
   }
@@ -520,14 +523,15 @@ async function reset() {
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = S.rows.map((r, i) => `
     <tr>
       <td>${fmtN(r.stnm)}</td>
       <td>${fmtN(r.stcd)}</td>
-      <td>${fmtN3(r.q)}</td>
+      <td>${fmtN2(r.q)}</td>
+      <td>${fmtN2(r.tf)}</td>
       <td>${fmtTm(r.tm)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
     </tr>
@@ -707,12 +711,13 @@ async function reloadChart() {
 function renderHistory() {
   const tbody = $('hist-body');
   if (!HIST.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="2" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = HIST.rows.map(r => `
     <tr>
-      <td>${fmtN3(r.q)}</td>
+      <td>${fmtN2(r.q)}</td>
+      <td>${fmtN2(r.tf)}</td>
       <td>${fmtTm(r.tm)}</td>
     </tr>
   `).join('');
@@ -783,7 +788,7 @@ async function reloadHistory() {
     HIST.rows = [];
     renderHistory();
     renderHistPager();
-    $('hist-body').innerHTML = `<tr><td colspan="2" class="empty">加载失败：${err.message || err}</td></tr>`;
+    $('hist-body').innerHTML = `<tr><td colspan="3" class="empty">加载失败：${err.message || err}</td></tr>`;
   } finally {
     setLoading(wrap, false);
   }
@@ -906,7 +911,7 @@ function bindMthSiteSelect() {
 function renderMthEmpty() {
   MTH.total = 0;
   MTH.page = 1;
-  $('mth-tbl-body').innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
+  $('mth-tbl-body').innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
   const bar = $('mth-tbl-pg');
   bar.innerHTML = `<span class="pg-info">共 0 条</span>
     <select class="pg-size" disabled><option>20条/页</option></select>

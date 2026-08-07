@@ -22,4 +22,7 @@ public class FlowMonitoringVO {
 
     /** 流量 (m³/s) */
     private BigDecimal q;
+
+    /** 累计流量 (万 m³) */
+    private BigDecimal tf;
 }
