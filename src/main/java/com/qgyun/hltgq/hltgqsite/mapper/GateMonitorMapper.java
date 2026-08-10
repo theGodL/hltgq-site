@@ -74,7 +74,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "AND tm &gt;= #{startTime}::timestamp " +
             "AND tm &lt;= #{endTime}::timestamp " +
             "<if test='gateNos != null and gateNos.size() > 0'>" +
-            "AND gate_no IN " +
+            "AND CASE WHEN gate_no = '0' THEN '1' ELSE gate_no END IN " +
             "<foreach collection='gateNos' item='g' open='(' separator=',' close=')'>#{g}</foreach>" +
             "</if>" +
             "GROUP BY date_trunc('hour', tm), site, CASE WHEN gate_no = '0' THEN '1' ELSE gate_no END " +

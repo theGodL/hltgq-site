@@ -32,6 +32,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .filter-bar input[type=date],.modal-filter input[type=date]{width:140px}
 .date-sep{color:#bbb}
 
+/* ---- select 下拉框 ---- */
+.filter-bar select {
+  height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 26px 0 11px;
+  font-size:14px;outline:none;background-color:#fff;color:#333;width:80px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23999' stroke-width='1.4' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 7px center;background-size:12px;
+  appearance:none;-webkit-appearance:none;-moz-appearance:none;
+  cursor:pointer;transition:border-color .2s;
+}
+.filter-bar select:focus {
+  border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1);
+}
+
 /* 可搜索站点下拉 */
 .ss{position:relative;width:200px}
 .ss-input{width:100% !important;padding-right:28px !important}
@@ -41,6 +54,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .ss-opt{padding:8px 12px;cursor:pointer;color:#333;line-height:1.4}
 .ss-opt:hover,.ss-opt.active{background:#e6f4ff;color:#1677ff}
 .ss-empty{padding:12px;color:#bbb;text-align:center;font-size:13px}
+
+/* ---- 站点多选框（日时段水情表） ---- */
+.cks{display:flex;align-items:center;gap:18px}
+.ck{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:14px;color:#333;user-select:none;white-space:nowrap}
+.ck input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:#1677ff}
 
 .filter-actions{display:flex;gap:8px; margin-left:112px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s}
@@ -138,6 +156,11 @@ tbody tr:hover td{background:#fafafa}
 .modal-pane.active{display:block}
 .modal-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}
 .chart-box{width:100%;height:360px;position:relative}
+
+.ss-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;min-height:0}
+.ss-tag{display:inline-flex;align-items:center;gap:4px;background:#e6f4ff;color:#1677ff;border:1px solid #91caff;border-radius:4px;padding:1px 8px;font-size:12px;cursor:pointer;user-select:none;white-space:nowrap}
+.ss-tag:hover{background:#bae0ff}
+.ss-cb{margin-right:2px;font-size:13px}
 </style>
 </head>
 <body>
@@ -202,7 +225,7 @@ tbody tr:hover td{background:#fafafa}
 
   <div class="panel active" id="panel-reservoir">
     <div class="card filter-card">
-      <div class="filter-bar">
+      <div class="filter-bar" id="res-filter-bar">
         <div class="filter-item">
           <label>日期</label>
           <input type="date" id="res-start">
@@ -212,6 +235,33 @@ tbody tr:hover td{background:#fafafa}
         <div class="filter-actions">
           <button class="btn btn-primary" id="res-query-btn">查询</button>
           <button class="btn btn-default" id="res-reset-btn">重置</button>
+        </div>
+      </div>
+      <div class="filter-bar period-filter" id="period-filter" style="display:none">
+        <div class="filter-item">
+          <label>日期</label>
+          <input type="date" id="period-date">
+        </div>
+        <div class="filter-item">
+          <label>时段(h)</label>
+          <select id="period-interval">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="6">6</option>
+            <option value="12">12</option>
+          </select>
+        </div>
+        <div class="filter-item">
+          <label>站点</label>
+          <div class="cks" id="period-cks">
+            <label class="ck"><input type="checkbox" value="00000004" onchange="onPeriodCk(this)">花凉亭坝下</label>
+            <label class="ck"><input type="checkbox" value="00000007" onchange="onPeriodCk(this)">花凉亭坝上</label>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="period-query-btn">查询</button>
+          <button class="btn btn-default" id="period-reset-btn">重置</button>
         </div>
       </div>
     </div>
@@ -236,6 +286,7 @@ tbody tr:hover td{background:#fafafa}
           <tbody id="res-tbody"></tbody>
         </table>
       </div>
+      <div class="pg-bar" id="res-pg-bar"></div>
     </div>
   </div>
 
@@ -391,7 +442,8 @@ function waitTick(ms = 200) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-const S = { page: 1, size: 20, total: 0, rows: [], current: null, resTab: 'river', resRows: { river: [], reservoir: [] } };
+const S = { page: 1, size: 20, total: 0, rows: [], current: null, resTab: 'river', resRows: { river: [], reservoir: [] },
+  periodInterval: 1, periodStcds: ['00000004','00000007'], resPeriodRows: [] };
 let chart = null;
 
 /* ===== 水库站点（接口限定） ===== */
@@ -405,11 +457,6 @@ const RES_RESERVOIR_STCD = { stcd: '00000007', stnm: '花凉亭坝上' };
 const RES_STATIONS = ['周家河', '姜家寨', '九田', '牛镇', '马厮铺'];
 
 const RES_MOCK = {
-  period: [
-    { stnm: '周家河', tm: '2026-06-05 14:00', z: 87.93, wptn: '落', q: 162.5, msqmt: 'ADCP', msamt: '断面法', msvmt: '多普勒流速仪' },
-    { stnm: '李家村', tm: '2026-06-05 15:00', z: 91.75, wptn: '涨', q: 165.0, msqmt: 'ADCP', msamt: '断面法', msvmt: '多普勒流速仪' },
-    { stnm: '王家屯', tm: '2026-06-05 16:00', z: 84.75, wptn: '平', q: 160.0, msqmt: '流速仪', msamt: '声学法', msvmt: '流速仪' },
-  ],
   brief: [
     { stnm: '周家河', wrz: 88.50, y8: 87.93, y20: 87.93, t8: 88.93, wptn: '落', cmp: '+1', q: 162.5, w: 162.5, maxz: 162.5, maxTm: '2026-06-03', dsflz: 88.93 },
     { stnm: '李家村', wrz: 92.30, y8: 91.75, y20: 91.80, t8: 87.75, wptn: '涨', cmp: '-4', q: 165.0, w: 165.0, maxz: 165.0, maxTm: '2026-06-02', dsflz: 92.00 },
@@ -441,7 +488,7 @@ const RES_META = {
   period: {
     name: '日时段水情表',
     headers: ['站点名称', '时间', '水位m', '水势', '流量 m³/s', '测流方法', '测积方法', '测速方法'],
-    rowToArr: r => [r.stnm, r.tm, r.z, r.wptn, r.q, r.msqmt, r.msamt, r.msvmt],
+    rowToArr: r => [r.stnm, fmtTm(r.tm), r.z, r.wptn, r.q, r.msqmt, r.msamt, r.msvmt],
   },
   brief: {
     name: '水情简报',
@@ -486,6 +533,7 @@ function setDefaultDates() {
   $('end-date').value = e;
   $('res-start').value = s;
   $('res-end').value = e;
+  $('period-date').value = fmtDate(now);
 }
 
 function setModalDefaultDates() {
@@ -971,6 +1019,10 @@ function bindResTabs() {
       document.querySelectorAll('.res-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       S.resTab = tab.dataset.res;
+      // 切换筛选栏显隐
+      const isPeriod = S.resTab === 'period';
+      $('res-filter-bar').style.display = isPeriod ? 'none' : '';
+      $('period-filter').style.display = isPeriod ? '' : 'none';
       await loadResData();
     });
   });
@@ -980,6 +1032,7 @@ function getResRows() {
   if (S.resTab === 'river' || S.resTab === 'reservoir') {
     return S.resRows[S.resTab] || [];
   }
+  if (S.resTab === 'period') return S.resPeriodRows;
   if (S.resTab === 'years') return RES_MOCK.years.rows;
   return RES_MOCK[S.resTab] || [];
 }
@@ -1031,6 +1084,22 @@ async function loadReservoirRegime() {
   S.resRows.reservoir = records;
 }
 
+/** 日时段水情表：按日期+时段+站点查询，后端返回完整槽位填数 */
+async function loadPeriodRegime() {
+  const date = $('period-date').value;
+  if (!date) { S.resPeriodRows = []; return; }
+  S.periodInterval = +($('period-interval').value) || 1;
+
+  const p = new URLSearchParams();
+  p.set('date', date);
+  p.set('interval', S.periodInterval);
+  p.set('stcds', S.periodStcds.join(','));
+
+  const res = await fetch(`${API}/flow-monitor/period-regime?${p}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  S.resPeriodRows = await res.json();
+}
+
 async function loadResData() {
   const wrap = $('res-tbl-wrap');
   const keepH = wrap.offsetHeight;
@@ -1041,14 +1110,17 @@ async function loadResData() {
       await loadRiverRegime();
     } else if (S.resTab === 'reservoir') {
       await loadReservoirRegime();
+    } else if (S.resTab === 'period') {
+      await loadPeriodRegime();
     }
-    // period / brief / years 暂无接口，继续用假数据
+    // brief / years 暂无接口，继续用假数据
     renderResTable();
   } catch (e) {
     console.error(e);
     if (S.resTab === 'river' || S.resTab === 'reservoir') {
       S.resRows[S.resTab] = [];
     }
+    if (S.resTab === 'period') S.resPeriodRows = [];
     const headers = getResHeaders();
     $('res-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
     $('res-tbody').innerHTML = `<tr><td colspan="${headers.length}" class="empty">数据加载失败，请重试</td></tr>`;
@@ -1064,8 +1136,12 @@ function renderResTable() {
   const meta = RES_META[S.resTab];
   $('res-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
 
+  // period 无分页，清空分页条
+  $('res-pg-bar').innerHTML = '';
+
   if (!rows.length) {
     $('res-tbody').innerHTML = `<tr><td colspan="${headers.length}" class="empty">暂无数据</td></tr>`;
+    if (S.resTab !== 'period') $('res-pg-bar').innerHTML = '';
     return;
   }
 
@@ -1102,7 +1178,28 @@ async function resetRes() {
   const now = new Date();
   $('res-start').value = fmtDate(new Date(now - 3 * 24 * 3600e3));
   $('res-end').value = fmtDate(now);
+  $('period-date').value = fmtDate(now);
+  $('period-interval').value = '1';
+  S.periodInterval = 1;
+  S.periodStcds = ['00000004', '00000007'];
+  initPeriodCks();
   await loadResData();
+}
+
+/* ===== period 多选框 ===== */
+function onPeriodCk(cb) {
+  const stcd = cb.value;
+  if (cb.checked) {
+    if (!S.periodStcds.includes(stcd)) S.periodStcds.push(stcd);
+  } else {
+    S.periodStcds = S.periodStcds.filter(s => s !== stcd);
+  }
+}
+
+function initPeriodCks() {
+  document.querySelectorAll('#period-cks input[type=checkbox]').forEach(cb => {
+    cb.checked = S.periodStcds.includes(cb.value);
+  });
 }
 
 function exportResExcel() {
@@ -1134,10 +1231,13 @@ async function init() {
   $('tbl-body').addEventListener('click', onTableClick);
   bindAsyncClick($('res-query-btn'), queryRes);
   bindAsyncClick($('res-reset-btn'), resetRes, { loadingText: '重置中...' });
+  bindAsyncClick($('period-query-btn'), queryRes);
+  bindAsyncClick($('period-reset-btn'), resetRes, { loadingText: '重置中...' });
   bindAsyncClick($('res-export-btn'), async () => { exportResExcel(); }, { wait: 1000, loadingText: '导出中...' });
   bindAsyncClick($('mth-query-btn'), mthQuery);
   bindAsyncClick($('mth-reset-btn'), mthReset);
   renderMthEmpty();
+  initPeriodCks();
   await loadWlSites();
   loadIrrList();
   await loadResData();

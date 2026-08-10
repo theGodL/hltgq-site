@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.mapper;
 
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.PeriodRegimeVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;
@@ -120,4 +121,21 @@ public interface WaterFlowMapper {
             @Result(column = "name", property = "name")
     })
     List<com.qgyun.hltgq.hltgqsite.vo.StationSiteVO> selectFlowStations();
+
+    /**
+     * 日时段水情表：查询选中站点在时间窗口内的原始水位记录（用于槽位匹配）
+     */
+    @Select("<script>" +
+            "SELECT f.stcd, f.tm, TRUNC(f.z, 2) AS z " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_river_info\" f " +
+            "WHERE f.stcd IN " +
+            "<foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
+            "AND f.tm &gt;= #{startTime} " +
+            "AND f.tm &lt;= #{endTime} " +
+            "ORDER BY f.stcd, f.tm ASC" +
+            "</script>")
+    List<Map<String, Object>> selectPeriodRawRecords(
+            @Param("stcds") List<String> stcds,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
 }

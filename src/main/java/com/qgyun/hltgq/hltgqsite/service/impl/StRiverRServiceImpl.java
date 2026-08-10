@@ -7,8 +7,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.qgyun.hltgq.hltgqsite.entity.StRiverR;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
+import com.qgyun.hltgq.hltgqsite.entity.WaterThreshold;
 import com.qgyun.hltgq.hltgqsite.mapper.StRiverRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.WaterThresholdMapper;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRegimeVO;
 import com.qgyun.hltgq.hltgqsite.vo.RiverRegimeVO;
@@ -27,6 +29,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
     @Autowired
     private StStinfoMapper stStinfoMapper;
 
+    @Autowired
+    private WaterThresholdMapper waterThresholdMapper;
+
     /** 河道水位站名称 */
     private static final Set<String> RIVER_STATION_NAMES = new HashSet<>(Arrays.asList("周家河", "花凉亭坝下"));
 
@@ -41,17 +46,25 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         // 00000001 周家河 - 新 STCD 待确认，暂不可查
     }
 
-    /** 站点固定参考值（按名称索引）：{ 警戒水位, 保证水位 } (m)，暂未配置则为 null */
-    private static final Map<String, BigDecimal[]> STATION_REF = new HashMap<>();
-    static {
-        STATION_REF.put("周家河", new BigDecimal[]{null, null});
-        STATION_REF.put("花凉亭坝下", new BigDecimal[]{null, null});
-        STATION_REF.put("花凉亭坝上", new BigDecimal[]{null, null});
-    }
-
     /** 解析 STCD：旧格式 → 新格式；已是新格式则原样返回 */
     private String resolveStcd(String stcd) {
         return OLD_TO_NEW_STCD.getOrDefault(stcd, stcd);
+    }
+
+    /**
+     * 查询水位阈值（警戒水位/保证水位）
+     * @param siteId 站点 UUID（station_info.id）
+     * @return [警戒水位, 保证水位]，无记录时均为 null
+     */
+    private BigDecimal[] queryThreshold(String siteId) {
+        if (siteId == null) return new BigDecimal[]{null, null};
+        QueryWrapper<WaterThreshold> wrapper = new QueryWrapper<>();
+        wrapper.eq("site", siteId);
+        wrapper.like("type", "#1#");  // 水位类型
+        wrapper.last("LIMIT 1");
+        WaterThreshold t = waterThresholdMapper.selectOne(wrapper);
+        if (t == null) return new BigDecimal[]{null, null};
+        return new BigDecimal[]{t.getThreshold(), t.getGuarantee()};
     }
 
     @Override
@@ -83,10 +96,10 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
             throw new IllegalArgumentException("河道水位站仅支持: 周家河、花凉亭坝下");
         }
 
-        // 2. 站点参考水位（按名称索引）
-        BigDecimal[] ref = STATION_REF.get(stnm);
-        BigDecimal warningLevel = ref != null ? ref[0] : null;
-        BigDecimal guaranteedLevel = ref != null ? ref[1] : null;
+        // 2. 查询站点阈值（警戒水位/保证水位）
+        BigDecimal[] ref = queryThreshold(stinfo.getId());
+        BigDecimal warningLevel = ref[0];
+        BigDecimal guaranteedLevel = ref[1];
 
         // 3. 分页查询河道水位记录
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<StRiverR>().orderByAsc("TM");
@@ -141,10 +154,10 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
             throw new IllegalArgumentException("水库水位站仅支持: 花凉亭坝上");
         }
 
-        // 2. 站点参考水位（按名称索引）
-        BigDecimal[] ref = STATION_REF.get(stnm);
-        BigDecimal warningLevel = ref != null ? ref[0] : null;
-        BigDecimal guaranteedLevel = ref != null ? ref[1] : null;
+        // 2. 查询站点阈值（警戒水位/保证水位）
+        BigDecimal[] ref = queryThreshold(stinfo.getId());
+        BigDecimal warningLevel = ref[0];
+        BigDecimal guaranteedLevel = ref[1];
 
         // 3. 分页查询水库水位记录
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<StRiverR>().orderByAsc("TM");
@@ -165,9 +178,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
             vo.setGuaranteedLevel(guaranteedLevel != null ? guaranteedLevel.setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setWptn(mapWptn(r.getWptn()));
-            // Q 字段暂同时作为入库/出库流量，待设备报文到位后区分字段映射
-            vo.setInq(r.getQ() != null ? r.getQ().setScale(3, java.math.RoundingMode.DOWN) : null);
-            vo.setOtq(r.getQ() != null ? r.getQ().setScale(3, java.math.RoundingMode.DOWN) : null);
+            // 出入库流量临时写死，待设备报文到位后改回字段映射
+            vo.setInq(new BigDecimal("21.80"));
+            vo.setOtq(new BigDecimal("28.95"));
             return vo;
         }).collect(Collectors.toList());
 

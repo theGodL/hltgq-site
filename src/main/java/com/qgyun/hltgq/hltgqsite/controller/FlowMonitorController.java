@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.service.FlowMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowTrendVO;
+import com.qgyun.hltgq.hltgqsite.vo.PeriodRegimeVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
@@ -79,6 +81,22 @@ public class FlowMonitorController {
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size) {
         return flowMonitorService.history(stcd, startTime, endTime, page, size);
+    }
+
+    /**
+     * 日时段水情表（水位站点多选，按日期+时段生成时间槽位，匹配实测数据）
+     *
+     * @param date     选中日期，格式 yyyy-MM-dd
+     * @param interval 时段间隔（小时），1/2/3/6/12，默认 1
+     * @param stcds    站点编号，逗号分隔，必填
+     */
+    @GetMapping("/period-regime")
+    public List<PeriodRegimeVO> periodRegime(
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date,
+            @RequestParam(defaultValue = "1") int interval,
+            @RequestParam String stcds) {
+        return flowMonitorService.periodRegime(date, interval,
+                Arrays.asList(stcds.split(",")));
     }
 
     /**

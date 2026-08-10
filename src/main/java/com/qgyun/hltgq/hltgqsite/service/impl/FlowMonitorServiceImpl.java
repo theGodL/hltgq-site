@@ -1,17 +1,23 @@
 package com.qgyun.hltgq.hltgqsite.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
+import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.service.FlowMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowTrendVO;
+import com.qgyun.hltgq.hltgqsite.vo.PeriodRegimeVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -25,6 +31,31 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
     @Autowired
     private WaterFlowMapper waterFlowMapper;
+
+    @Autowired
+    private StStinfoMapper stStinfoMapper;
+
+    /**
+     * 旧 STCD → 新 STCD 映射（与 StRiverRServiceImpl 保持一致）
+     */
+    private static final Map<String, String> OLD_TO_NEW_STCD = new HashMap<>();
+    static {
+        OLD_TO_NEW_STCD.put("00000004", "320640000A");  // 花凉亭坝下
+        OLD_TO_NEW_STCD.put("00000007", "3206400007");  // 花凉亭坝上
+    }
+
+    /** 解析 STCD：旧格式 → 新格式；已是新格式则原样返回 */
+    private String resolveStcd(String stcd) {
+        return OLD_TO_NEW_STCD.getOrDefault(stcd, stcd);
+    }
+
+    /**
+     * 通过 stcd 查找站点名称（先从 StStinfo.zzkaec 取，失败则返回 stcd 自身）
+     */
+    private String resolveStnm(String stcd) {
+        StStinfo stinfo = stStinfoMapper.selectById(stcd);
+        return stinfo != null && stinfo.getStnm() != null ? stinfo.getStnm() : stcd;
+    }
 
     @Override
     public List<FlowMonitoringVO> monitoring(List<String> stcds, LocalDateTime startTime, LocalDateTime endTime) {
@@ -139,4 +170,93 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
         return result;
     }
+
+    @Override
+    public List<PeriodRegimeVO> periodRegime(LocalDate date, int interval, List<String> stcds) {
+        // 1. 解析 STCD（旧→新），建立 stcd → stnm 映射
+        Map<String, String> stcdToName = new LinkedHashMap<>();
+        for (String raw : stcds) {
+            String resolved = resolveStcd(raw.trim());
+            if (resolved == null || resolved.isEmpty()) continue;
+            stcdToName.putIfAbsent(resolved, resolveStnm(resolved));
+        }
+
+        if (stcdToName.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> resolvedStcds = new ArrayList<>(stcdToName.keySet());
+
+        // 2. 生成时间槽位：选中日期 08:00 起，按 interval 小时递增，到次日 07:00 止
+        LocalDateTime slotStart = date.atTime(LocalTime.of(8, 0));
+        LocalDateTime slotEnd = date.plusDays(1).atTime(LocalTime.of(7, 0));
+        List<LocalDateTime> slots = new ArrayList<>();
+        LocalDateTime t = slotStart;
+        while (!t.isAfter(slotEnd)) {
+            slots.add(t);
+            t = t.plusHours(interval);
+        }
+
+        // 3. 批量查询所有选中站点在时间窗口内的原始水位记录（按 stcd, tm 升序）
+        List<Map<String, Object>> rawRecords = waterFlowMapper.selectPeriodRawRecords(
+                resolvedStcds, slotStart, slotEnd);
+
+        // 4. 构建结果：N站 × M槽 = 完整 VO 列表
+        // 槽位匹配策略：记录 tm ∈ [slot_i, nextSlot) → 归属 slot_i；同槽位多条取 tm 最大的
+        List<PeriodRegimeVO> result = new ArrayList<>();
+        for (Map.Entry<String, String> entry : stcdToName.entrySet()) {
+            String stcd = entry.getKey();
+            String stnm = entry.getValue();
+
+            // 为该站点构建：槽位 → 最新 z 值
+            Map<LocalDateTime, BigDecimal> slotZ = new LinkedHashMap<>();
+            for (Map<String, Object> row : rawRecords) {
+                if (!stcd.equals(String.valueOf(row.get("stcd")))) continue;
+
+                Object tmObj = row.get("tm");
+                Object zObj = row.get("z");
+                if (tmObj == null) continue;
+
+                LocalDateTime recordTm;
+                if (tmObj instanceof Timestamp) {
+                    recordTm = ((Timestamp) tmObj).toLocalDateTime();
+                } else if (tmObj instanceof LocalDateTime) {
+                    recordTm = (LocalDateTime) tmObj;
+                } else {
+                    continue;
+                }
+
+                // 找到该记录归属的槽位
+                for (int i = 0; i < slots.size(); i++) {
+                    LocalDateTime slot = slots.get(i);
+                    LocalDateTime nextSlot = (i + 1 < slots.size()) ? slots.get(i + 1) : slotEnd.plusHours(1);
+                    if (!recordTm.isBefore(slot) && recordTm.isBefore(nextSlot)) {
+                        BigDecimal z = null;
+                        if (zObj instanceof BigDecimal) {
+                            z = (BigDecimal) zObj;
+                        } else if (zObj != null) {
+                            z = new BigDecimal(zObj.toString());
+                        }
+                        // 同槽位多条时，后扫描的（tm 更大）覆盖前者
+                        slotZ.put(slot, z);
+                        break;
+                    }
+                }
+            }
+
+            // 为该站点的每个槽位生成 VO
+            for (LocalDateTime slot : slots) {
+                PeriodRegimeVO vo = new PeriodRegimeVO();
+                vo.setStcd(stcd);
+                vo.setStnm(stnm);
+                vo.setTm(slot);
+                vo.setZ(slotZ.get(slot));
+                // wptn/q/msqmt/msamt/msvmt 留空
+                result.add(vo);
+            }
+        }
+
+        return result;
+    }
+
 }

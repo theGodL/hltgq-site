@@ -3,7 +3,9 @@ package com.qgyun.hltgq.hltgqsite.service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowTrendVO;
+import com.qgyun.hltgq.hltgqsite.vo.PeriodRegimeVO;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -40,4 +42,13 @@ public interface FlowMonitorService {
      * @param size      每页条数
      */
     Page<FlowMonitoringVO> history(String stcd, LocalDateTime startTime, LocalDateTime endTime, long page, long size);
+
+    /**
+     * 日时段水情表（水位站点多选，按日期+时段生成时间槽位，匹配实测数据）
+     *
+     * @param date     选中日期
+     * @param interval 时段间隔（小时），1/2/3/6/12
+     * @param stcds    站点编号列表
+     */
+    List<PeriodRegimeVO> periodRegime(LocalDate date, int interval, List<String> stcds);
 }
