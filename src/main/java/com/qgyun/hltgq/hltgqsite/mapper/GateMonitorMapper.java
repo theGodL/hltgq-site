@@ -63,22 +63,29 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
      */
     @Select("<script>" +
             "SELECT " +
-            "date_trunc('hour', tm) AS tm, " +
-            "site, " +
-            "CASE WHEN gate_no = '0' THEN '1' ELSE gate_no END AS gate_no, " +
-            "TRUNC(AVG(open_degree), 2) AS open_degree, " +
-            "TRUNC(AVG(up_z), 2) AS up_z, " +
-            "TRUNC(AVG(down_z), 2) AS down_z " +
-            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" " +
-            "WHERE site = #{siteId} " +
-            "AND tm &gt;= #{startTime}::timestamp " +
-            "AND tm &lt;= #{endTime}::timestamp " +
+            "date_trunc('hour', g.tm) AS tm, " +
+            "g.site, " +
+            "CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, " +
+            "TRUNC(AVG(g.open_degree), 2) AS open_degree, " +
+            "TRUNC(AVG(g.up_z), 2) AS up_z, " +
+            "TRUNC(AVG(g.down_z), 2) AS down_z, " +
+            "TRUNC(fq.q, 2) AS q " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
+            "LEFT JOIN (" +
+            "  SELECT f.site, date_trunc('hour', f.tm) AS hour, AVG(f.q) AS q " +
+            "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE f.tm &gt;= #{startTime}::timestamp AND f.tm &lt;= #{endTime}::timestamp " +
+            "  GROUP BY f.site, date_trunc('hour', f.tm)" +
+            ") fq ON fq.site = g.site AND fq.hour = date_trunc('hour', g.tm) " +
+            "WHERE g.site = #{siteId} " +
+            "AND g.tm &gt;= #{startTime}::timestamp " +
+            "AND g.tm &lt;= #{endTime}::timestamp " +
             "<if test='gateNos != null and gateNos.size() > 0'>" +
-            "AND CASE WHEN gate_no = '0' THEN '1' ELSE gate_no END IN " +
-            "<foreach collection='gateNos' item='g' open='(' separator=',' close=')'>#{g}</foreach>" +
+            "AND CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END IN " +
+            "<foreach collection='gateNos' item='g2' open='(' separator=',' close=')'>#{g2}</foreach>" +
             "</if>" +
-            "GROUP BY date_trunc('hour', tm), site, CASE WHEN gate_no = '0' THEN '1' ELSE gate_no END " +
-            "ORDER BY date_trunc('hour', tm)" +
+            "GROUP BY date_trunc('hour', g.tm), g.site, CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END, fq.q " +
+            "ORDER BY date_trunc('hour', g.tm)" +
             "</script>")
     @Results({
             @Result(column = "tm", property = "tm"),
@@ -86,7 +93,8 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             @Result(column = "gate_no", property = "gateNo"),
             @Result(column = "open_degree", property = "openDegree"),
             @Result(column = "up_z", property = "upZ"),
-            @Result(column = "down_z", property = "downZ")
+            @Result(column = "down_z", property = "downZ"),
+            @Result(column = "q", property = "q")
     })
     List<GateMonitor> selectHourlyAggregated(@Param("siteId") String siteId,
                                               @Param("gateNos") List<String> gateNos,
@@ -102,12 +110,18 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (g.site, g.gate_no) " +
-            "g.site, s.zzkaec AS site_name, " +
+            "g.site, s.zzkaec AS site_name, s.bviiio_x AS lon, s.bviiio_y AS lat, " +
             "CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, g.tm, " +
-            "TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status " +
+            "TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status, " +
+            "TRUNC((SELECT f.q FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE f.site = g.site " +
+            "  <if test='startTime != null'>AND f.tm &gt;= #{startTime} </if>" +
+            "  <if test='endTime != null'>AND f.tm &lt;= #{endTime} </if>" +
+            "  ORDER BY f.tm DESC LIMIT 1), 2) AS q " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
             "WHERE 1=1 " +
+            "<if test='site != null and site != \"\"'>AND g.site = #{site} </if>" +
             "<if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
             "<if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
             "ORDER BY g.site, g.gate_no, g.tm DESC" +
@@ -115,14 +129,18 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     @Results({
             @Result(column = "site", property = "site"),
             @Result(column = "site_name", property = "siteName"),
+            @Result(column = "lon", property = "lon"),
+            @Result(column = "lat", property = "lat"),
             @Result(column = "gate_no", property = "gateNo"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "open_degree", property = "openDegree"),
             @Result(column = "up_z", property = "upZ"),
             @Result(column = "down_z", property = "downZ"),
-            @Result(column = "status", property = "status")
+            @Result(column = "status", property = "status"),
+            @Result(column = "q", property = "q")
     })
-    List<GateMonitor> selectLatestPerHole(@Param("startTime") LocalDateTime startTime,
+    List<GateMonitor> selectLatestPerHole(@Param("site") String site,
+                                           @Param("startTime") LocalDateTime startTime,
                                            @Param("endTime") LocalDateTime endTime);
 
     /**
@@ -165,7 +183,9 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     @Select("<script>" +
             "SELECT " +
             "CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, " +
-            "g.tm, TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z " +
+            "g.tm, TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, " +
+            "TRUNC((SELECT f.q FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE f.site = g.site AND f.tm &lt;= g.tm ORDER BY f.tm DESC LIMIT 1), 2) AS q " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "WHERE 1=1 " +
             "<if test='siteId != null and siteId != \"\"'>AND g.site = #{siteId} </if>" +
@@ -180,7 +200,8 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             @Result(column = "tm", property = "tm"),
             @Result(column = "open_degree", property = "openDegree"),
             @Result(column = "up_z", property = "upZ"),
-            @Result(column = "down_z", property = "downZ")
+            @Result(column = "down_z", property = "downZ"),
+            @Result(column = "q", property = "q")
     })
     List<GateMonitor> selectHistoryDetail(@Param("siteId") String siteId,
                                            @Param("tms") List<LocalDateTime> tms);

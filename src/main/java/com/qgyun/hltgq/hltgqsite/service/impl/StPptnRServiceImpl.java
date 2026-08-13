@@ -119,6 +119,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         vo.setStcd((String) row.get("stcd"));
         vo.setId((String) row.get("id"));
         vo.setStnm((String) row.get("stnm"));
+        vo.setLon(toBigDecimal(row.get("lon")));
+        vo.setLat(toBigDecimal(row.get("lat")));
         Object tmObj = row.get("tm");
         if (tmObj instanceof LocalDateTime) {
             vo.setTm((LocalDateTime) tmObj);

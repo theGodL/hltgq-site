@@ -29,6 +29,15 @@ public class GateMonitoringVO {
     /** 闸后水位 (m) — 下游水位 */
     private BigDecimal downZ;
 
+    /** 流量 (m³/s)，取关联流量表 t_auto_hltgq_water_wt_nfo 最新值 */
+    private BigDecimal q;
+
+    /** 站点经度（站点表 bviiio_x） */
+    private BigDecimal lon;
+
+    /** 站点纬度（站点表 bviiio_y） */
+    private BigDecimal lat;
+
     /** 各闸孔数据（按闸孔号排序） */
     private List<GateHoleData> holes;
 }

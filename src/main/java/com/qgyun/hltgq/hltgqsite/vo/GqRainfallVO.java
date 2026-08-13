@@ -21,6 +21,12 @@ public class GqRainfallVO {
     /** 站点名称 */
     private String stnm;
 
+    /** 站点经度（站点表 bviiio_x） */
+    private BigDecimal lon;
+
+    /** 站点纬度（站点表 bviiio_y） */
+    private BigDecimal lat;
+
     /** 监测日期（最新数据时间） */
     private LocalDateTime tm;
 

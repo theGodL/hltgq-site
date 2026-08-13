@@ -21,9 +21,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     private GateMonitorMapper gateMonitorMapper;
 
     @Override
-    public List<GateMonitoringVO> monitoring(LocalDateTime startTime, LocalDateTime endTime) {
+    public List<GateMonitoringVO> monitoring(String site, LocalDateTime startTime, LocalDateTime endTime) {
         // 1. 查询各闸孔最新一条数据
-        List<GateMonitor> rows = gateMonitorMapper.selectLatestPerHole(startTime, endTime);
+        List<GateMonitor> rows = gateMonitorMapper.selectLatestPerHole(site, startTime, endTime);
 
         if (rows == null || rows.isEmpty()) {
             return Collections.emptyList();
@@ -73,6 +73,10 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             vo.setTm(latestTm);
             vo.setUpZ(latestWithZ != null && latestWithZ.getUpZ() != null ? latestWithZ.getUpZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setDownZ(latestWithZ != null && latestWithZ.getDownZ() != null ? latestWithZ.getDownZ().setScale(2, java.math.RoundingMode.DOWN) : null);
+            // 流量与经纬度为站点级数据，各孔子查询结果相同，取第一条非空值
+            vo.setQ(holes.stream().map(GateMonitor::getQ).filter(Objects::nonNull).findFirst().orElse(null));
+            vo.setLon(holes.stream().map(GateMonitor::getLon).filter(Objects::nonNull).findFirst().orElse(null));
+            vo.setLat(holes.stream().map(GateMonitor::getLat).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setHoles(holeDataList);
             result.add(vo);
         }
@@ -118,7 +122,7 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     }
 
     /**
-     * 开度透视：按监测时间分组，每个闸孔号作为独立列（open1, open2, open3...）
+     * 开度透视：按监测时间分组，每个闸孔号作为独立列（open1, open2, open3...），q 为站点流量
      */
     private List<Map<String, Object>> pivotOpening(List<GateMonitor> rows) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -130,12 +134,16 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                 return m;
             });
             record.put("open" + r.getGateNo(), r.getOpenDegree());
+            // 流量为站点级数据，同一时刻各孔相同，仅放入一次
+            if (!record.containsKey("q") && r.getQ() != null) {
+                record.put("q", r.getQ());
+            }
         }
         return new ArrayList<>(grouped.values());
     }
 
     /**
-     * 水位提取：按监测时间分组，取闸前/闸后水位（同一站点各闸孔水位相同，取首个非空值）
+     * 水位提取：按监测时间分组，取闸前/闸后水位及流量 q（同一站点各闸孔水位相同，取首个非空值）
      */
     private List<Map<String, Object>> extractWaterLevel(List<GateMonitor> rows) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -151,6 +159,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             }
             if (!record.containsKey("downZ") && r.getDownZ() != null) {
                 record.put("downZ", r.getDownZ());
+            }
+            if (!record.containsKey("q") && r.getQ() != null) {
+                record.put("q", r.getQ());
             }
         }
         return new ArrayList<>(grouped.values());

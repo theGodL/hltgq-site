@@ -44,6 +44,18 @@ public class GateMonitor {
     @TableField("\"gate_discharge\"")
     private BigDecimal gateDischarge;
 
+    /** 流量 (m³/s)，关联流量表 t_auto_hltgq_water_wt_nfo 的 q（非本表字段） */
+    @TableField(exist = false)
+    private BigDecimal q;
+
+    /** 站点经度（站点表 bviiio_x，非本表字段） */
+    @TableField(exist = false)
+    private BigDecimal lon;
+
+    /** 站点纬度（站点表 bviiio_y，非本表字段） */
+    @TableField(exist = false)
+    private BigDecimal lat;
+
     @TableField("\"status\"")
     private String status;
 
@@ -105,6 +117,15 @@ public class GateMonitor {
 
     public BigDecimal getGateDischarge() { return gateDischarge; }
     public void setGateDischarge(BigDecimal gateDischarge) { this.gateDischarge = gateDischarge; }
+
+    public BigDecimal getQ() { return q; }
+    public void setQ(BigDecimal q) { this.q = q; }
+
+    public BigDecimal getLon() { return lon; }
+    public void setLon(BigDecimal lon) { this.lon = lon; }
+
+    public BigDecimal getLat() { return lat; }
+    public void setLat(BigDecimal lat) { this.lat = lat; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }

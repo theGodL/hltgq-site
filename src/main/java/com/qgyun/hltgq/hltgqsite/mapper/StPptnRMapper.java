@@ -55,7 +55,7 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
      */
     @Select("<script>"
             + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
-            + "  s.zzkaec AS stnm, s.id AS id, "
+            + "  s.zzkaec AS stnm, s.id AS id, s.bviiio_x AS lon, s.bviiio_y AS lat, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_1h, "
@@ -88,7 +88,7 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
      */
     @Select("<script>"
             + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
-            + "  s.zzkaec AS stnm, s.id AS id, "
+            + "  s.zzkaec AS stnm, s.id AS id, s.bviiio_x AS lon, s.bviiio_y AS lat, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_1h, "

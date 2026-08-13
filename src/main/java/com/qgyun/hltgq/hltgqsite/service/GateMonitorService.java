@@ -15,11 +15,12 @@ public interface GateMonitorService {
     /**
      * 查询各闸站最新闸孔数据（每个闸站一条记录）
      *
+     * @param site      站点 UUID（可选，不传=全部站点）
      * @param startTime 起始时间（含），null 表示不限制
      * @param endTime   截止时间（含），null 表示不限制
      * @return 各闸站监测数据列表（按站点名称排序）
      */
-    List<GateMonitoringVO> monitoring(LocalDateTime startTime, LocalDateTime endTime);
+    List<GateMonitoringVO> monitoring(String site, LocalDateTime startTime, LocalDateTime endTime);
 
     /**
      * 闸门历史数据（分页，按监测时间倒序）

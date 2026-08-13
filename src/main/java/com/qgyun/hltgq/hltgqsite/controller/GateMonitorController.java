@@ -72,18 +72,20 @@ public class GateMonitorController {
 
     /**
      * 闸门监测-最新数据
-     * <p>每个闸站返回一条记录，包含该站所有闸孔的最新开度、闸前/闸后水位及状态。
-     * 支持按日期区间筛选（仅查询该时间范围内的最新数据）。
+     * <p>每个闸站返回一条记录，包含该站所有闸孔的最新开度、闸前/闸后水位、状态、流量 q 及站点经纬度。
+     * 支持按站点、日期区间筛选（仅查询该时间范围内的最新数据）。
      *
+     * @param site      站点 UUID（可选，不传=全部站点）
      * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @return 各闸站最新监测数据列表
      */
     @GetMapping("/monitoring")
     public List<GateMonitoringVO> monitoring(
+            @RequestParam(required = false) String site,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
-        return gateMonitorService.monitoring(startTime, endTime);
+        return gateMonitorService.monitoring(site, startTime, endTime);
     }
 
     /**
