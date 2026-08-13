@@ -38,17 +38,41 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
     /** 水库水位站名称 */
     private static final Set<String> RESERVOIR_STATION_NAMES = new HashSet<>(Collections.singletonList("花凉亭坝上"));
 
-    /** 旧 STCD → 新 STCD 映射（新表已全部迁移，逐步补充） */
-    private static final Map<String, String> OLD_TO_NEW_STCD = new HashMap<>();
+    /**
+     * 旧 STCD → 新 STCD（过渡期兼容：客户端可能仍持有旧页面/旧缓存，收到旧编号时自动映射到新编号）
+     */
+    private static final Map<String, String> LEGACY_TO_NEW_STCD = new HashMap<>();
     static {
-        OLD_TO_NEW_STCD.put("00000004", "320640000A");  // 花凉亭坝下
-        OLD_TO_NEW_STCD.put("00000007", "3206400007");  // 花凉亭坝上
-        // 00000001 周家河 - 新 STCD 待确认，暂不可查
+        LEGACY_TO_NEW_STCD.put("00000001", "3206400001");
+        LEGACY_TO_NEW_STCD.put("00000004", "320640000A");
+        LEGACY_TO_NEW_STCD.put("00000007", "3206400007");
     }
 
-    /** 解析 STCD：旧格式 → 新格式；已是新格式则原样返回 */
-    private String resolveStcd(String stcd) {
-        return OLD_TO_NEW_STCD.getOrDefault(stcd, stcd);
+    /**
+     * 新 STCD → 站点名称（站点表接入过渡期，STCD 查不到时按名称反查）
+     */
+    private static final Map<String, String> STCD_TO_STNM = new HashMap<>();
+    static {
+        STCD_TO_STNM.put("3206400001", "周家河");
+        STCD_TO_STNM.put("320640000A", "花凉亭坝下");
+        STCD_TO_STNM.put("3206400007", "花凉亭坝上");
+    }
+
+    /**
+     * 查询站点：先按 STCD 精确查询；查不到或名称不在白名单时，
+     * 按 STCD 对应的站点名称反查（站点表接入过渡期主键可能未对齐）。
+     */
+    private StStinfo findStation(String stcd, Set<String> stationNames) {
+        StStinfo byId = stStinfoMapper.selectById(stcd);
+        if (byId != null && byId.getStnm() != null && stationNames.contains(byId.getStnm())) {
+            return byId;
+        }
+        String stnm = STCD_TO_STNM.get(stcd);
+        if (stnm == null) return null;
+        QueryWrapper<StStinfo> wrapper = new QueryWrapper<>();
+        wrapper.eq("zzkaec", stnm);
+        wrapper.last("LIMIT 1");
+        return stStinfoMapper.selectOne(wrapper);
     }
 
     /**
@@ -87,14 +111,14 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
 
     @Override
     public Page<RiverRegimeVO> riverRegime(String stcd, LocalDateTime startTime, LocalDateTime endTime, long page, long size) {
-        // 1. 解析新旧 STCD，查询站点信息
-        String resolvedStcd = resolveStcd(stcd);
-        StStinfo stinfo = stStinfoMapper.selectById(resolvedStcd);
-        String stnm = stinfo != null ? stinfo.getStnm() : null;
-
-        if (stnm == null || !RIVER_STATION_NAMES.contains(stnm)) {
-            throw new IllegalArgumentException("河道水位站仅支持: 周家河、花凉亭坝下");
+        // 1. 查询站点信息（过渡期兼容：旧编号映射 + 站名反查兜底，数据查询用站点表真实主键）
+        String resolvedInput = LEGACY_TO_NEW_STCD.getOrDefault(stcd, stcd);
+        StStinfo stinfo = findStation(resolvedInput, RIVER_STATION_NAMES);
+        if (stinfo == null || stinfo.getStnm() == null || !RIVER_STATION_NAMES.contains(stinfo.getStnm())) {
+            throw new IllegalArgumentException("河道水位站仅支持: 周家河、花凉亭坝下（收到 stcd: " + stcd + "）");
         }
+        String resolvedStcd = stinfo.getStcd();
+        String stnm = stinfo.getStnm();
 
         // 2. 查询站点阈值（警戒水位/保证水位）
         BigDecimal[] ref = queryThreshold(stinfo.getId());
@@ -145,14 +169,14 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
 
     @Override
     public Page<ReservoirRegimeVO> reservoirRegime(String stcd, LocalDateTime startTime, LocalDateTime endTime, long page, long size) {
-        // 1. 解析新旧 STCD，查询站点信息
-        String resolvedStcd = resolveStcd(stcd);
-        StStinfo stinfo = stStinfoMapper.selectById(resolvedStcd);
-        String stnm = stinfo != null ? stinfo.getStnm() : null;
-
-        if (stnm == null || !RESERVOIR_STATION_NAMES.contains(stnm)) {
-            throw new IllegalArgumentException("水库水位站仅支持: 花凉亭坝上");
+        // 1. 查询站点信息（过渡期兼容：旧编号映射 + 站名反查兜底，数据查询用站点表真实主键）
+        String resolvedInput = LEGACY_TO_NEW_STCD.getOrDefault(stcd, stcd);
+        StStinfo stinfo = findStation(resolvedInput, RESERVOIR_STATION_NAMES);
+        if (stinfo == null || stinfo.getStnm() == null || !RESERVOIR_STATION_NAMES.contains(stinfo.getStnm())) {
+            throw new IllegalArgumentException("水库水位站仅支持: 花凉亭坝上（收到 stcd: " + stcd + "）");
         }
+        String resolvedStcd = stinfo.getStcd();
+        String stnm = stinfo.getStnm();
 
         // 2. 查询站点阈值（警戒水位/保证水位）
         BigDecimal[] ref = queryThreshold(stinfo.getId());

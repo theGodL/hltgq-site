@@ -18,7 +18,7 @@ public interface StRiverRService extends IService<StRiverR> {
     /**
      * 河道水情数据（分页）
      *
-     * @param stcd      站点编号（必填，仅限 00000001/00000007）
+     * @param stcd      站点编号（必填，仅限 3206400001 周家河 / 320640000A 花凉亭坝下）
      * @param startTime 起始时间
      * @param endTime   截止时间
      * @param page      页码
@@ -30,7 +30,7 @@ public interface StRiverRService extends IService<StRiverR> {
     /**
      * 水库水情数据（分页）
      *
-     * @param stcd      站点编号（必填，目前仅支持 00000007 花凉亭坝上）
+     * @param stcd      站点编号（必填，目前仅支持 3206400007 花凉亭坝上）
      * @param startTime 起始时间
      * @param endTime   截止时间
      * @param page      页码

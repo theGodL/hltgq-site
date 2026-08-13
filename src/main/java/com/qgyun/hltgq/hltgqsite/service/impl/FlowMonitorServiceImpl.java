@@ -36,25 +36,47 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     private StStinfoMapper stStinfoMapper;
 
     /**
-     * 旧 STCD → 新 STCD 映射（与 StRiverRServiceImpl 保持一致）
+     * 旧 STCD → 新 STCD（过渡期兼容：客户端可能仍持有旧页面/旧缓存，收到旧编号时自动映射到新编号）
      */
-    private static final Map<String, String> OLD_TO_NEW_STCD = new HashMap<>();
+    private static final Map<String, String> LEGACY_TO_NEW_STCD = new HashMap<>();
     static {
-        OLD_TO_NEW_STCD.put("00000004", "320640000A");  // 花凉亭坝下
-        OLD_TO_NEW_STCD.put("00000007", "3206400007");  // 花凉亭坝上
-    }
-
-    /** 解析 STCD：旧格式 → 新格式；已是新格式则原样返回 */
-    private String resolveStcd(String stcd) {
-        return OLD_TO_NEW_STCD.getOrDefault(stcd, stcd);
+        LEGACY_TO_NEW_STCD.put("00000004", "320640000A");
+        LEGACY_TO_NEW_STCD.put("00000007", "3206400007");
     }
 
     /**
-     * 通过 stcd 查找站点名称（先从 StStinfo.zzkaec 取，失败则返回 stcd 自身）
+     * 新 STCD → 站点名称（站点表接入过渡期，STCD 查不到时按名称反查）
+     */
+    private static final Map<String, String> STCD_TO_STNM = new HashMap<>();
+    static {
+        STCD_TO_STNM.put("320640000A", "花凉亭坝下");
+        STCD_TO_STNM.put("3206400007", "花凉亭坝上");
+    }
+
+    /**
+     * 解析站点：先按 STCD 精确查询；查不到时按名称反查（过渡期主键可能未对齐）。
+     * 返回站点表记录，查不到返回 null。
+     */
+    private StStinfo resolveStation(String stcd) {
+        String resolved = LEGACY_TO_NEW_STCD.getOrDefault(stcd, stcd);
+        StStinfo byId = stStinfoMapper.selectById(resolved);
+        if (byId != null && byId.getStnm() != null) {
+            return byId;
+        }
+        String stnm = STCD_TO_STNM.get(resolved);
+        if (stnm == null) return null;
+        QueryWrapper<StStinfo> wrapper = new QueryWrapper<>();
+        wrapper.eq("zzkaec", stnm);
+        wrapper.last("LIMIT 1");
+        return stStinfoMapper.selectOne(wrapper);
+    }
+
+    /**
+     * 通过 stcd 查找站点名称（站点表查不到时返回 stcd 自身）
      */
     private String resolveStnm(String stcd) {
-        StStinfo stinfo = stStinfoMapper.selectById(stcd);
-        return stinfo != null && stinfo.getStnm() != null ? stinfo.getStnm() : stcd;
+        StStinfo stinfo = resolveStation(stcd);
+        return stinfo != null ? stinfo.getStnm() : stcd;
     }
 
     @Override
@@ -173,12 +195,15 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
     @Override
     public List<PeriodRegimeVO> periodRegime(LocalDate date, int interval, List<String> stcds) {
-        // 1. 解析 STCD（旧→新），建立 stcd → stnm 映射
+        // 1. 解析站点（过渡期按站名反查），建立真实 stcd → stnm 映射
         Map<String, String> stcdToName = new LinkedHashMap<>();
         for (String raw : stcds) {
-            String resolved = resolveStcd(raw.trim());
-            if (resolved == null || resolved.isEmpty()) continue;
-            stcdToName.putIfAbsent(resolved, resolveStnm(resolved));
+            String stcd = raw.trim();
+            if (stcd == null || stcd.isEmpty()) continue;
+            StStinfo info = resolveStation(stcd);
+            String realStcd = info != null && info.getStcd() != null ? info.getStcd() : stcd;
+            String stnm = info != null && info.getStnm() != null ? info.getStnm() : stcd;
+            stcdToName.putIfAbsent(realStcd, stnm);
         }
 
         if (stcdToName.isEmpty()) {

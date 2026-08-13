@@ -255,8 +255,8 @@ tbody tr:hover td{background:#fafafa}
         <div class="filter-item">
           <label>站点</label>
           <div class="cks" id="period-cks">
-            <label class="ck"><input type="checkbox" value="00000004" onchange="onPeriodCk(this)">花凉亭坝下</label>
-            <label class="ck"><input type="checkbox" value="00000007" onchange="onPeriodCk(this)">花凉亭坝上</label>
+            <label class="ck"><input type="checkbox" value="320640000A" onchange="onPeriodCk(this)">花凉亭坝下</label>
+            <label class="ck"><input type="checkbox" value="3206400007" onchange="onPeriodCk(this)">花凉亭坝上</label>
           </div>
         </div>
         <div class="filter-actions">
@@ -443,15 +443,15 @@ function waitTick(ms = 200) {
 }
 
 const S = { page: 1, size: 20, total: 0, rows: [], current: null, resTab: 'river', resRows: { river: [], reservoir: [] },
-  periodInterval: 1, periodStcds: ['00000004','00000007'], resPeriodRows: [] };
+  periodInterval: 1, periodStcds: ['320640000A','3206400007'], resPeriodRows: [] };
 let chart = null;
 
 /* ===== 水库站点（接口限定） ===== */
 const RES_RIVER_STCDS = [
-  { stcd: '00000001', stnm: '周家河' },
-  { stcd: '00000004', stnm: '花凉亭坝下' },
+  { stcd: '3206400001', stnm: '周家河' },
+  { stcd: '320640000A', stnm: '花凉亭坝下' },
 ];
-const RES_RESERVOIR_STCD = { stcd: '00000007', stnm: '花凉亭坝上' };
+const RES_RESERVOIR_STCD = { stcd: '3206400007', stnm: '花凉亭坝上' };
 
 /* ===== 水库假数据（日时段/简报/多年同期暂无接口，保留） ===== */
 const RES_STATIONS = ['周家河', '姜家寨', '九田', '牛镇', '马厮铺'];
@@ -1060,17 +1060,19 @@ async function fetchRegimePage(url) {
   return Array.isArray(data.records) ? data.records : [];
 }
 
-/** 河道水情：并行拉周家河 + 花凉亭坝下，合并后按时间倒序 */
+/** 河道水情：并行拉周家河 + 花凉亭坝下，合并后按时间倒序；单站失败不连累整表 */
 async function loadRiverRegime() {
   const base = buildResTimeParams();
-  const lists = await Promise.all(
+  const results = await Promise.allSettled(
     RES_RIVER_STCDS.map(async ({ stcd }) => {
       const p = new URLSearchParams(base);
       p.set('stcd', stcd);
       return fetchRegimePage(`${API}/st-river-r/regime?${p}`);
     })
   );
-  const merged = lists.flat();
+  const merged = results
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => r.value);
   merged.sort((a, b) => String(b.tm || '').localeCompare(String(a.tm || '')));
   S.resRows.river = merged;
 }
@@ -1181,7 +1183,7 @@ async function resetRes() {
   $('period-date').value = fmtDate(now);
   $('period-interval').value = '1';
   S.periodInterval = 1;
-  S.periodStcds = ['00000004', '00000007'];
+  S.periodStcds = ['320640000A', '3206400007'];
   initPeriodCks();
   await loadResData();
 }

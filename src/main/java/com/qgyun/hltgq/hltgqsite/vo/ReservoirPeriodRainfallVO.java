@@ -8,12 +8,12 @@ import java.util.Map;
 
 /**
  * 水库时段雨情 VO
- * 12 个固定水库站点，按可配时间间隔聚合时段雨量
+ * 13 个固定水库站点，按可配时间间隔聚合时段雨量
  */
 @Data
 public class ReservoirPeriodRainfallVO {
 
-    /** 12 个站点信息（复用 StationInfo） */
+    /** 13 个站点信息（复用 StationInfo） */
     private List<ReservoirRainfallVO.StationInfo> stations;
 
     /** 时段桶数据 */
@@ -25,7 +25,7 @@ public class ReservoirPeriodRainfallVO {
         private String time;
         /** stcd → 时段降雨量(mm)，无数据站点 = 0 */
         private Map<String, BigDecimal> values;
-        /** 该时段 12 站平均值 (mm) */
+        /** 该时段 13 站平均值 (mm) */
         private BigDecimal avg;
     }
 }

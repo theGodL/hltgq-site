@@ -901,12 +901,16 @@ async function loadResData() {
 
     if (RES.tab === 'realtime') {
       // stations 横向：监测日期 + 各站列；不传日期，取实时最新
+      // 使用 days[0] 的 DYP 增量聚合值（与日雨情一致），而非 latestDrp 瞬时值
       const data = await fetchJson(`${API}/st-pptn-r/reservoir-rainfall`);
       const stations = data.stations || [];
+      const days = data.days || [];
+      const dayValues = days.length ? (days[0].values || {}) : {};
       const values = {};
       let latestTm = null;
       stations.forEach(s => {
-        values[s.stcd] = s.latestDrp == null || s.latestDrp === '' ? null : +s.latestDrp;
+        const dayVal = dayValues[s.stcd];
+        values[s.stcd] = (dayVal == null || dayVal === '') ? null : +dayVal;
         if (s.latestTm) {
           const t = String(s.latestTm);
           if (!latestTm || t > latestTm) latestTm = t;
@@ -914,7 +918,7 @@ async function loadResData() {
       });
       const nums = stations.map(s => values[s.stcd]).filter(v => v != null && Number.isFinite(v));
       const sum = nums.reduce((a, b) => a + b, 0);
-      const avg = nums.length ? sum / nums.length : 0;
+      const avg = days.length ? (+(days[0].avg) || 0) : (nums.length ? sum / nums.length : 0);
       const built = buildPivotAoa(stations, [{
         day: latestTm || '实时',
         values,

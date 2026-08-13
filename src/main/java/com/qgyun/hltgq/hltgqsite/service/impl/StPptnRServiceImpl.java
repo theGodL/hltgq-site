@@ -35,24 +35,27 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     @Autowired
     private StStinfoMapper stStinfoMapper;
 
-    /** 水库 12 个固定站点编号 */
-    private static final List<String> RESERVOIR_STCDS = Collections.unmodifiableList(Arrays.asList(
-            "00000001", "00000002", "00000003",
-            "00000005", "00000006", "00000007",
-            "00000008", "00000009", "00000010",
-            "00000011", "00000012", "00000013"
-    ));
-
     // ======================== 灌区接口-水库站点排除 ========================
-    // 后续所有 13 个站点 STCD 确认后，可全部移入 RESERVOIR_STCD_NEW，删除名称兜底
+    // 13 个水库站点新 STCD 已全部确认
 
-    /** 已知新表水库 STCD（待后续补全） */
+    /** 已确认的新表水库 STCD */
     private static final Set<String> RESERVOIR_STCD_NEW = new HashSet<>(Arrays.asList(
+            "3206400001",  // 周家河
+            "3206400002",  // 姜家寨
+            "3206400003",  // 九田
+            "3206400005",  // 牛镇
+            "3206400006",  // 马嘶铺
+            "3206400008",  // 寺前
+            "3206400009",  // 河图铺
+            "3206400004",  // 下前河
+            "320640000B",  // 鲤鱼墩
+            "320640000D",  // 白帽
             "3206400007",  // 花凉亭坝上
-            "320640000A"   // 花凉亭坝下
+            "320640000A",  // 花凉亭坝下
+            "320640000C"   // 弥陀
     ));
 
-    /** 花凉亭水库 13 站点名称（STCD 未知时按名称兜底排除） */
+    /** 花凉亭水库 13 站点名称（雨量记录 STCD 未迁移时按名称兜底排除） */
     private static final Set<String> RESERVOIR_STATION_NAMES = new HashSet<>(Arrays.asList(
             "周家河", "姜家寨", "九田", "牛镇", "马嘶铺", "寺前",
             "河图铺", "下前河", "鲤鱼墩", "弥陀", "白帽",
@@ -238,7 +241,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Override
     public ReservoirRainfallVO reservoirRainfall(LocalDate startDate, LocalDate endDate) {
-        // 1. 通过名称反查站点信息（替代旧 RESERVOIR_STCDS）
+        // 1. 通过名称反查站点信息
         Map<String, StStinfo> resolved = resolveReservoirStcds();
         List<String> reservoirStcds = new ArrayList<>(resolved.keySet());
 

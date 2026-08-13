@@ -92,7 +92,7 @@ public class StRiverRController {
 
     /**
      * 水库水位-河道水情数据（分页）
-     * 仅支持周家河(00000001)和花凉亭坝下(00000004)
+     * 仅支持周家河(3206400001)和花凉亭坝下(320640000A)
      */
     @GetMapping("/regime")
     public Page<RiverRegimeVO> regime(
@@ -106,7 +106,7 @@ public class StRiverRController {
 
     /**
      * 水库水位-水库水情数据（分页）
-     * 仅支持花凉亭坝上(00000007)
+     * 仅支持花凉亭坝上(3206400007)
      */
     @GetMapping("/reservoir-regime")
     public Page<ReservoirRegimeVO> reservoirRegime(

@@ -153,6 +153,19 @@ tbody tr:hover td{background:#fafafa}
 .chart-block + .chart-block{margin-top:20px;padding-top:16px;border-top:1px solid #f0f0f0}
 .chart-title{font-size:14px;font-weight:500;color:#333;margin-bottom:8px}
 .chart-box{width:100%;height:320px;position:relative}
+/* 流量计算参数弹窗 */
+#discharge-overlay .modal{width:640px}
+.dc-form{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px}
+.dc-item{display:flex;flex-direction:column;gap:6px}
+.dc-item label{color:#666;font-size:13px}
+.dc-item input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
+.dc-item input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.dc-item input.is-err{border-color:#ff4d4f}
+.dc-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid #f0f0f0}
+.dc-hint{font-size:12px;margin-top:8px;min-height:16px;color:#ff4d4f}
+.dc-hint.ok{color:#52c41a}
+.toast{position:fixed;left:50%;top:80px;transform:translateX(-50%);background:rgba(0,0,0,.72);color:#fff;font-size:14px;padding:10px 20px;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000}
+.toast.show{opacity:1}
 </style>
 </head>
 <body>
@@ -350,6 +363,54 @@ tbody tr:hover td{background:#fafafa}
           </table>
         </div>
         <div class="pg-bar" id="hist-pg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="discharge-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span id="dc-title">流量计算参数</span>
+      <div class="modal-actions">
+        <button type="button" class="modal-close" data-close="discharge-overlay">×</button>
+      </div>
+    </div>
+    <div class="modal-bd" style="padding-top:16px">
+      <div class="dc-form">
+        <div class="dc-item">
+          <label>流量系数（全开自由流）</label>
+          <input type="number" step="any" id="dc-full-open-free" placeholder="请输入">
+        </div>
+        <div class="dc-item">
+          <label>流量系数（全开淹没流）</label>
+          <input type="number" step="any" id="dc-submerged-flow" placeholder="请输入">
+        </div>
+        <div class="dc-item">
+          <label>流量系数（有闸控制自由流）</label>
+          <input type="number" step="any" id="dc-controlled-free" placeholder="请输入">
+        </div>
+        <div class="dc-item">
+          <label>流量系数（有闸控制淹没流）</label>
+          <input type="number" step="any" id="dc-orifice-submerged" placeholder="请输入">
+        </div>
+        <div class="dc-item">
+          <label>孔宽（m）</label>
+          <input type="number" step="any" id="dc-width" placeholder="请输入">
+        </div>
+        <div class="dc-item">
+          <label>孔高（m）</label>
+          <input type="number" step="any" id="dc-height" placeholder="请输入">
+        </div>
+        <div class="dc-item">
+          <label>闸底高程（m）</label>
+          <input type="number" step="any" id="dc-bottom-elevation" placeholder="请输入">
+        </div>
+      </div>
+      <div class="dc-hint" id="dc-hint"></div>
+      <div class="dc-foot">
+        <button class="btn btn-primary" id="dc-save-btn">保存</button>
+        <button class="btn btn-default" data-close="discharge-overlay">取消</button>
       </div>
     </div>
   </div>
@@ -669,7 +730,10 @@ function renderTable() {
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
       <td>${fmtTm(r.tm)}</td>
-      <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
+      <td>
+        <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>
+        ${isDischargeSite(r.siteName) ? `<button class="act-btn" data-action="discharge" data-idx="${i}" style="margin-left:10px">流量计算</button>` : ''}
+      </td>
     </tr>`).join('');
 }
 
@@ -1249,6 +1313,108 @@ function onTableClick(e) {
   if (!row) return;
   // 开度改为列表内直接展示，不再弹小框；openHolesModal 保留备用
   if (btn.dataset.action === 'detail') openDetail(row);
+  else if (btn.dataset.action === 'discharge') openDischarge(row);
+}
+
+/* ===== 流量计算参数（南山寺节制闸、渠首进水闸、渠首电站防洪闸、双庙湖节制闸） ===== */
+const DISCHARGE_SITES = ['南山寺节制闸', '渠首进水闸', '渠首电站防洪闸', '双庙湖节制闸'];
+const DISCHARGE = { row: null, latest: null };
+const DC_FIELDS = [
+  { id: 'dc-full-open-free', key: 'fullOpenFreeCoeff', label: '流量系数（全开自由流）' },
+  { id: 'dc-submerged-flow', key: 'submergedFlowCoeff', label: '流量系数（全开淹没流）' },
+  { id: 'dc-controlled-free', key: 'controlledFreeCoeff', label: '流量系数（有闸控制自由流）' },
+  { id: 'dc-orifice-submerged', key: 'orificeSubmergedCoeff', label: '流量系数（有闸控制淹没流）' },
+  { id: 'dc-width', key: 'width', label: '孔宽（m）' },
+  { id: 'dc-height', key: 'height', label: '孔高（m）' },
+  { id: 'dc-bottom-elevation', key: 'bottomElevation', label: '闸底高程（m）' },
+];
+
+function isDischargeSite(siteName) {
+  const n = String(siteName ?? '');
+  return DISCHARGE_SITES.some(s => n.includes(s));
+}
+
+function fillDischargeForm(data) {
+  DC_FIELDS.forEach(f => {
+    const v = data ? data[f.key] : null;
+    $(f.id).value = (v !== null && v !== undefined && v !== '') ? v : '';
+    $(f.id).classList.remove('is-err');
+  });
+}
+
+async function openDischarge(row) {
+  DISCHARGE.row = row;
+  DISCHARGE.latest = null;
+  $('dc-title').textContent = `${row.siteName || '站点'} · 流量计算参数`;
+  fillDischargeForm(null);
+  const hint = $('dc-hint');
+  hint.textContent = '';
+  hint.classList.remove('ok');
+  const saveBtn = $('dc-save-btn');
+  saveBtn.disabled = true;
+  saveBtn.classList.add('is-loading');
+  openModal('discharge-overlay');
+  try {
+    const res = await fetch(`${API}/sluice-discharge/latest?siteId=${encodeURIComponent(row.siteId)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    // 无数据时后端返回空 body（null），按无配置处理
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    DISCHARGE.latest = data || null;
+    fillDischargeForm(data);
+  } catch (e) {
+    console.error(e);
+    hint.textContent = '参数加载失败，请重试';
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.classList.remove('is-loading');
+  }
+}
+
+async function saveDischarge() {
+  if (!DISCHARGE.row || !DISCHARGE.row.siteId) return;
+  const hint = $('dc-hint');
+  hint.textContent = '';
+  hint.classList.remove('ok');
+  DC_FIELDS.forEach(f => $(f.id).classList.remove('is-err'));
+
+  const payload = { site: DISCHARGE.row.siteId };
+  for (const f of DC_FIELDS) {
+    const raw = $(f.id).value.trim();
+    const n = raw === '' ? NaN : Number(raw);
+    if (!Number.isFinite(n)) {
+      hint.textContent = `请填写有效的${f.label}`;
+      $(f.id).classList.add('is-err');
+      return;
+    }
+    payload[f.key] = n;
+  }
+
+  try {
+    const res = await fetch(`${API}/sluice-discharge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const saved = await res.json();
+    DISCHARGE.latest = saved;
+    closeModal('discharge-overlay');
+    showToast('保存成功');
+  } catch (e) {
+    console.error(e);
+    hint.textContent = '保存失败，请重试';
+  }
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = $('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
 /* ===== 麻塘湖灌区：同款 UI，接口暂空 ===== */
@@ -1356,6 +1522,7 @@ async function init() {
   bindAsyncClick($('mth-query-btn'), mthQuery);
   bindAsyncClick($('mth-reset-btn'), mthReset);
   $('tbl-body').addEventListener('click', onTableClick);
+  bindAsyncClick($('dc-save-btn'), saveDischarge);
   renderMthEmpty();
   await loadGateSites();
   await loadList();
@@ -1363,5 +1530,6 @@ async function init() {
 
 init();
 </script>
+<div class="toast" id="toast"></div>
 </body>
 </html>
