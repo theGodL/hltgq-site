@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.qgyun.hltgq.hltgqsite.entity.StPptnR;
+import com.qgyun.hltgq.hltgqsite.vo.GqDailyRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirExtremeRainfallVO;
@@ -48,6 +49,11 @@ public interface StPptnRService extends IService<StPptnR> {
      * 灌区雨量历史：单站点全部记录（含1h/3h/6h增量），支持时间范围筛选，分页
      */
     IPage<GqRainfallVO> gqRainfallHistoryPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime);
+
+    /**
+     * 灌区日雨情：非水库站点（排除水库 13 站），按水文日（8:00 切分）聚合逐日雨量透视表
+     */
+    GqDailyRainfallVO gqDailyRainfall(LocalDate startDate, LocalDate endDate);
 
     /**
      * 水库实时雨情：12 个固定站点，按水文日（8:00 切分）聚合日雨量

@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.StPptnR;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
+import com.qgyun.hltgq.hltgqsite.vo.GqDailyRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirExtremeRainfallVO;
@@ -165,6 +166,24 @@ public class StPptnRController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
         return stPptnRService.gqRainfallHistoryPage(page, size, stcd, startTime, endTime);
+    }
+
+    /**
+     * 灌区日雨情（非水库站点，双视角）
+     * stations[]: 实时雨情 — 各站点最新观测快照（latestTm = 实际观测时间，
+     *             latestDrp = 当前降雨量 = 最新观测所在水文日的 DYP 正向增量）
+     * days[]:    日雨情 — 按水文日（8:00 切分）聚合的逐日雨量透视表
+     * 站点集合 = 雨量表全部 STCD 排除水库 13 站（STCD + 名称双重排除）
+     * startDate/endDate 非必填，默认当天
+     */
+    @GetMapping("/gq-daily-rainfall")
+    public GqDailyRainfallVO gqDailyRainfall(
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate) {
+        LocalDate now = LocalDate.now();
+        if (startDate == null) startDate = now;
+        if (endDate == null) endDate = now;
+        return stPptnRService.gqDailyRainfall(startDate, endDate);
     }
 
     /**

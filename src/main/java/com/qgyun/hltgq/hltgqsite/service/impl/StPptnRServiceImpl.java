@@ -10,6 +10,7 @@ import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
+import com.qgyun.hltgq.hltgqsite.vo.GqDailyRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirExtremeRainfallVO;
@@ -276,43 +277,11 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
         // 4. 按站点 + 水文日聚合增量（对齐 hydro-monitor.html buildPptnPivot 逻辑）
         //    Map<水文日标签, Map<stcd, 累加增量>>
-        Map<String, Map<String, BigDecimal>> bucketMap = new LinkedHashMap<>();
-
-        // 按站点分组
-        Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
-        for (StPptnR r : records) {
-            String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
-            if (!resolved.containsKey(key)) continue;
-            byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
-        }
-
-        DateTimeFormatter bucketFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
-        for (Map.Entry<String, List<StPptnR>> entry : byStation.entrySet()) {
-            String stcd = entry.getKey();
-            List<StPptnR> stationRows = entry.getValue();
-            // 按时间升序
-            stationRows.sort(Comparator.comparing(StPptnR::getTm));
-            for (int i = 0; i < stationRows.size(); i++) {
-                StPptnR cur = stationRows.get(i);
-                BigDecimal inc;
-                if (i == 0) {
-                    inc = BigDecimal.ZERO; // 第一条记录无法确定增量
-                } else {
-                    StPptnR prev = stationRows.get(i - 1);
-                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
-                    BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
-                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
-                }
-                // 归属到水文日桶
-                String bucket = getHydroDayLabel(cur.getTm());
-                bucketMap.computeIfAbsent(bucket, k -> new LinkedHashMap<>())
-                        .merge(stcd, inc, BigDecimal::add);
-            }
-        }
+        Map<String, Map<String, BigDecimal>> bucketMap = aggregateHydroDay(resolved, records);
 
         // 5. 生成完整的水文日序列
         List<String> allBuckets = new ArrayList<>();
+        DateTimeFormatter bucketFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate d = startDate;
         while (!d.isAfter(endDate)) {
             allBuckets.add(d.format(bucketFmt) + " 08:00:00");
@@ -374,6 +343,125 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         vo.setStations(stations);
         vo.setDays(days);
         return vo;
+    }
+
+    /**
+     * 按站点 + 水文日聚合 DYP 正向增量（水库/灌区日雨情共用口径）
+     * <p>返回 Map<水文日标签, Map<stcd, 累加增量>>；站点集合以 resolved 为准，未收录的 STCD 记录忽略。
+     * 首条记录增量无法确定记为 0，后续取 max(0, cur - prev)。
+     */
+    private Map<String, Map<String, BigDecimal>> aggregateHydroDay(Map<String, StStinfo> resolved, List<StPptnR> records) {
+        Map<String, Map<String, BigDecimal>> bucketMap = new LinkedHashMap<>();
+
+        // 按站点分组
+        Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
+        for (StPptnR r : records) {
+            String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
+            if (!resolved.containsKey(key)) continue;
+            byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
+        }
+
+        for (Map.Entry<String, List<StPptnR>> entry : byStation.entrySet()) {
+            String stcd = entry.getKey();
+            List<StPptnR> stationRows = entry.getValue();
+            // 按时间升序
+            stationRows.sort(Comparator.comparing(StPptnR::getTm));
+            for (int i = 0; i < stationRows.size(); i++) {
+                StPptnR cur = stationRows.get(i);
+                BigDecimal inc;
+                if (i == 0) {
+                    inc = BigDecimal.ZERO; // 第一条记录无法确定增量
+                } else {
+                    StPptnR prev = stationRows.get(i - 1);
+                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                    BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
+                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                }
+                // 归属到水文日桶
+                String bucket = getHydroDayLabel(cur.getTm());
+                bucketMap.computeIfAbsent(bucket, k -> new LinkedHashMap<>())
+                        .merge(stcd, inc, BigDecimal::add);
+            }
+        }
+        return bucketMap;
+    }
+
+    @Override
+    public GqDailyRainfallVO gqDailyRainfall(LocalDate startDate, LocalDate endDate) {
+        // 1. 非水库雨量站点（STCD 匹配 + 名称匹配双重排除）
+        Map<String, StStinfo> resolved = resolveGqStcds();
+        List<String> gqStcds = new ArrayList<>(resolved.keySet());
+
+        // 2. 扩展查询范围（向前后各 1 天，确保水文日边界完整）
+        //    水文日：8:00 ~ 次日 7:59:59
+        LocalDateTime queryStart = startDate.atTime(8, 0).minusDays(1);
+        LocalDateTime queryEnd = endDate.atTime(7, 59, 59).plusDays(1);
+
+        // 3. 批量查询原始雨量记录（含 DRP 和 DYP）
+        List<StPptnR> records = gqStcds.isEmpty()
+                ? Collections.emptyList()
+                : baseMapper.selectByStcdsAndTimeRange(gqStcds, queryStart, queryEnd);
+
+        // 4. 水文日聚合（与水库日雨情同口径）
+        Map<String, Map<String, BigDecimal>> bucketMap = aggregateHydroDay(resolved, records);
+
+        // 5. 生成完整的水文日序列
+        List<String> allBuckets = new ArrayList<>();
+        DateTimeFormatter bucketFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDate d = startDate;
+        while (!d.isAfter(endDate)) {
+            allBuckets.add(d.format(bucketFmt) + " 08:00:00");
+            d = d.plusDays(1);
+        }
+
+        // 6. 组装站点信息（实时快照：最新观测时间 + 所在水文日累计雨量）
+        List<ReservoirRainfallVO.StationInfo> stations = buildStationInfos(resolved, records);
+
+        // 7. 组装逐日数据（日雨情视角）
+        List<ReservoirRainfallVO.DayRainfall> days = new ArrayList<>();
+        for (String bucket : allBuckets) {
+            ReservoirRainfallVO.DayRainfall dr = new ReservoirRainfallVO.DayRainfall();
+            dr.setDay(bucket);
+            Map<String, BigDecimal> values = bucketMap.getOrDefault(bucket, Collections.emptyMap());
+            // 补充缺失站点的 0 值，同时计算平均值
+            Map<String, BigDecimal> fullValues = new LinkedHashMap<>();
+            BigDecimal sum = BigDecimal.ZERO;
+            for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+                String stcd = entry.getKey();
+                BigDecimal val = values.getOrDefault(stcd, BigDecimal.ZERO);
+                fullValues.put(stcd, val);
+                sum = sum.add(val);
+            }
+            dr.setValues(fullValues);
+            dr.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
+                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
+            days.add(dr);
+        }
+
+        // 8. 组装结果（双视角：stations=实时 + days=日雨情）
+        GqDailyRainfallVO vo = new GqDailyRainfallVO();
+        vo.setStations(stations);
+        vo.setDays(days);
+        return vo;
+    }
+
+    /**
+     * 非水库雨量站点集合：雨量表 distinct STCD → 排除水库 STCD → 关联站点表排除水库名称。
+     * 返回 LinkedHashMap 保证迭代顺序稳定。
+     */
+    private Map<String, StStinfo> resolveGqStcds() {
+        List<String> allStcds = baseMapper.selectDistinctRainfallStcds();
+        Map<String, StStinfo> map = new LinkedHashMap<>();
+        for (String stcd : allStcds) {
+            if (stcd == null) continue;
+            String s = stcd.trim();
+            if (s.isEmpty() || RESERVOIR_STCD_NEW.contains(s)) continue;
+            StStinfo info = stStinfoMapper.selectById(s);
+            if (info == null) continue;
+            if (info.getStnm() != null && RESERVOIR_STATION_NAMES.contains(info.getStnm())) continue;
+            map.put(s, info);
+        }
+        return map;
     }
 
     /**

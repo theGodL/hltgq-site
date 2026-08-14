@@ -159,7 +159,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
   <div class="panel active" id="panel-irrigation">
     <div class="card filter-card">
       <div class="filter-bar">
-        <div class="filter-item">
+        <div class="filter-item" id="irr-site-filter">
           <label>站点</label>
           <div class="ss" id="irr-site-ss">
             <input type="text" class="ss-input" id="irr-site-input" placeholder="请选择或搜索站点" autocomplete="off">
@@ -168,7 +168,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
             <div class="ss-dd" id="irr-site-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
+        <div class="filter-item" id="irr-date-filter">
           <label>日期</label>
           <input type="date" id="irr-start">
           <span class="date-sep">—</span>
@@ -181,18 +181,23 @@ tbody tr.total-row:hover td{background:#e6f4ff}
       </div>
     </div>
 
-    <div class="card result-card">
+    <div class="card result-card res-result">
+      <div class="res-toolbar">
+        <div class="res-tabs" id="irr-res-tabs">
+          <div class="res-tab active" data-irr-res="realtime">实时雨情</div>
+          <div class="res-tab" data-irr-res="daily">日雨情</div>
+        </div>
+      </div>
       <div class="tbl-wrap" id="irr-tbl-wrap">
         <table>
           <thead>
             <tr>
               <th>站点</th>
               <th>监测时间</th>
-              <th>当前降雨量 (mm)</th>
               <th>1h降雨量 (mm)</th>
               <th>3h降雨量 (mm)</th>
               <th>6h降雨量 (mm)</th>
-              <th>累计雨量 (mm)</th>
+              <th>实时雨量</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -200,6 +205,13 @@ tbody tr.total-row:hover td{background:#e6f4ff}
         </table>
       </div>
       <div class="pg-bar" id="irr-pg"></div>
+      <!-- 灌区日雨情：透视表（参考水库日雨情） -->
+      <div class="tbl-wrap" id="irr-daily-wrap" style="display:none">
+        <table>
+          <thead id="irr-daily-thead"></thead>
+          <tbody id="irr-daily-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -249,7 +261,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
 
     <div class="card result-card res-result">
       <div class="res-toolbar">
-        <div class="res-tabs">
+        <div class="res-tabs" id="res-tabs">
           <div class="res-tab active" data-res="realtime">实时雨情</div>
           <div class="res-tab" data-res="period">时段雨情</div>
           <div class="res-tab" data-res="daily">日雨情</div>
@@ -409,6 +421,8 @@ let chart = null;
 let currentRow = null;
 
 const IRR = { page: 1, size: 20, total: 0, rows: [] };
+// 灌区子 Tab：实时雨情（列表）/ 日雨情（透视表）
+const IRR_RES = { tab: 'realtime' };
 const HIST = { page: 1, size: 20, total: 0, rows: [] };
 const RES = {
   tab: 'realtime',
@@ -730,11 +744,7 @@ function buildIrrParams() {
   p.set('page', IRR.page);
   p.set('size', IRR.size);
   const stcd = ($('irr-site-code').value || '').trim();
-  const s = dateToStart($('irr-start').value);
-  const e = dateToEnd($('irr-end').value);
   if (stcd) p.set('stcd', stcd);
-  if (s) p.set('startTime', s);
-  if (e) p.set('endTime', e);
   return p;
 }
 
@@ -757,7 +767,7 @@ async function loadIrrList() {
     console.error(e);
     IRR.rows = [];
     IRR.total = 0;
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">数据加载失败，请重试</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">数据加载失败，请重试</td></tr>';
     renderIrrPager();
   } finally {
     setLoading(wrap, false);
@@ -767,18 +777,17 @@ async function loadIrrList() {
 function renderIrrList() {
   const tbody = $('irr-tbody');
   if (!IRR.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = IRR.rows.map((r, i) => `
     <tr>
       <td>${fmtN(r.stnm)}</td>
       <td>${fmtTm(r.tm)}</td>
-      <td>${fmtN(r.drp)}</td>
       <td>${fmtN(r.rain1h)}</td>
       <td>${fmtN(r.rain3h)}</td>
       <td>${fmtN(r.rain6h)}</td>
-      <td>${fmtN(r.dyp)}</td>
+      <td>${fmtN(r.drp)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
     </tr>
   `).join('');
@@ -829,11 +838,89 @@ function renderIrrPager() {
   renderPager('irr-pg', IRR, loadIrrList, loadIrrList);
 }
 
+/* ===== 灌区子 Tab（实时雨情 / 日雨情） ===== */
+function bindIrrResTabs() {
+  document.querySelectorAll('#irr-res-tabs .res-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('#irr-res-tabs .res-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      IRR_RES.tab = tab.dataset.irrRes;
+      updateIrrResUI();
+      if (IRR_RES.tab === 'realtime') loadIrrList();
+      else loadIrrDaily();
+    });
+  });
+}
+
+/** 子 Tab 切换时控制筛选区与表格容器显隐：实时雨情仅站点筛选，日雨情仅日期筛选且不分页 */
+function updateIrrResUI() {
+  const daily = IRR_RES.tab === 'daily';
+  $('irr-site-filter').style.display = daily ? 'none' : '';
+  $('irr-date-filter').style.display = daily ? '' : 'none';
+  $('irr-tbl-wrap').style.display = daily ? 'none' : '';
+  $('irr-pg').style.display = daily ? 'none' : '';
+  $('irr-daily-wrap').style.display = daily ? '' : 'none';
+}
+
+/** 灌区日雨情：非水库站点水文日透视表（口径与水库日雨情一致） */
+async function loadIrrDaily() {
+  const wrap = $('irr-daily-wrap');
+  setLoading(wrap, true);
+  const thead = $('irr-daily-thead');
+  const tbody = $('irr-daily-tbody');
+  thead.innerHTML = '';
+  tbody.innerHTML = '';
+  try {
+    const p = new URLSearchParams();
+    const s = $('irr-start').value;
+    const e = $('irr-end').value;
+    if (s) p.set('startDate', s);
+    if (e) p.set('endDate', e);
+    const data = await fetchJson(`${API}/st-pptn-r/gq-daily-rainfall?${p}`);
+    const stations = data.stations || [];
+    const days = data.days || [];
+    const built = buildPivotAoa(stations, days, {
+      timeKey: 'day',
+      withSum: true,
+      withTotal: true,
+    });
+    renderIrrDailyTable(built);
+  } catch (e) {
+    console.error(e);
+    thead.innerHTML = '';
+    tbody.innerHTML = '<tr><td class="empty">数据加载失败，请重试</td></tr>';
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+/** 渲染灌区日雨情透视表（与水库 renderResTable 同构，目标容器不同） */
+function renderIrrDailyTable(built) {
+  const headers = built.headers;
+  const aoa = built.aoa;
+  if (!headers.length || aoa.length <= 1) {
+    $('irr-daily-thead').innerHTML = headers.length
+      ? `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`
+      : '';
+    $('irr-daily-tbody').innerHTML = `<tr><td colspan="${Math.max(headers.length, 1)}" class="empty">暂无数据</td></tr>`;
+    return;
+  }
+  $('irr-daily-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+  const bodyRows = aoa.slice(1);
+  $('irr-daily-tbody').innerHTML = bodyRows.map((row, idx) => {
+    const isTotal = built.hasTotal && idx === bodyRows.length - 1 && (row[0] === '总计' || row[0] === '合计');
+    return `<tr class="${isTotal ? 'total-row' : ''}">${row.map(v => {
+      const text = (v === null || v === undefined) ? '-' : v;
+      return `<td>${text}</td>`;
+    }).join('')}</tr>`;
+  }).join('');
+}
+
 /* ===== 水库 ===== */
 function bindResTabs() {
-  document.querySelectorAll('.res-tab').forEach(tab => {
+  document.querySelectorAll('#res-tabs .res-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.res-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('#res-tabs .res-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       RES.tab = tab.dataset.res;
       updateResFilterUI();
@@ -982,7 +1069,8 @@ async function loadResData() {
       p.set('interval', $('res-interval').value || '60');
       const data = await fetchJson(`${API}/st-pptn-r/reservoir-period-rainfall?${p}`);
       const stations = data.stations || [];
-      const buckets = data.buckets || [];
+      // 时段雨情倒序展示：最新时段在最上面（后端 buckets 为升序，前端反转）
+      const buckets = (data.buckets || []).slice().reverse();
       const built = buildPivotAoa(stations, buckets.map(b => ({ ...b, day: b.time })), {
         timeKey: 'day',
         withSum: true,
@@ -1363,14 +1451,21 @@ async function init() {
   bindResTabs();
   bindModal();
   bindIrrSiteSelect();
+  bindIrrResTabs();
+  updateIrrResUI();
   bindMthSiteSelect();
 
-  bindAsyncClick($('irr-query-btn'), async () => { IRR.page = 1; await loadIrrList(); });
+  bindAsyncClick($('irr-query-btn'), async () => {
+    IRR.page = 1;
+    if (IRR_RES.tab === 'realtime') await loadIrrList();
+    else await loadIrrDaily();
+  });
   bindAsyncClick($('irr-reset-btn'), async () => {
     clearIrrSite();
     setDefaultDates('irr');
     IRR.page = 1;
-    await loadIrrList();
+    if (IRR_RES.tab === 'realtime') await loadIrrList();
+    else await loadIrrDaily();
   }, { loadingText: '重置中...' });
   bindAsyncClick($('res-query-btn'), queryRes);
   bindAsyncClick($('res-reset-btn'), resetRes, { loadingText: '重置中...' });
