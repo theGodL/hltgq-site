@@ -12,6 +12,7 @@ import com.qgyun.hltgq.hltgqsite.vo.ReservoirPeriodRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallBriefVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirTenDayRainfallVO;
+import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -49,6 +50,11 @@ public interface StPptnRService extends IService<StPptnR> {
      * 灌区雨量历史：单站点全部记录（含1h/3h/6h增量），支持时间范围筛选，分页
      */
     IPage<GqRainfallVO> gqRainfallHistoryPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime);
+
+    /**
+     * 灌区雨量站点：非水库站点（排除水库 13 站），用于灌区站点下拉
+     */
+    List<StationSiteVO> gqRainfallSites();
 
     /**
      * 灌区日雨情：非水库站点（排除水库 13 站），按水文日（8:00 切分）聚合逐日雨量透视表

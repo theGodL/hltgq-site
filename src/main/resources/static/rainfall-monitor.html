@@ -37,6 +37,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .ss{position:relative;width:200px}
 .ss-input{width:100% !important;padding-right:28px !important}
 .ss-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #999;pointer-events:none}
+.ss-clear{position:absolute;right:26px;top:50%;transform:translateY(-50%);width:16px;height:16px;display:none;align-items:center;justify-content:center;border-radius:50%;background:#c4c4c4;cursor:pointer;user-select:none;z-index:21}
+.ss-clear:hover{background:#a6a6a6}
+.ss-clear.show{display:flex}
+.ss-clear svg{display:block}
 .ss-dd{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #d9d9d9;border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08)}
 .ss-dd.open{display:block}
 .ss-opt{padding:8px 12px;cursor:pointer;color:#333;line-height:1.4}
@@ -163,6 +167,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
           <label>站点</label>
           <div class="ss" id="irr-site-ss">
             <input type="text" class="ss-input" id="irr-site-input" placeholder="请选择或搜索站点" autocomplete="off">
+            <span class="ss-clear" id="irr-site-clear" title="清空"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg></span>
             <span class="ss-arrow"></span>
             <input type="hidden" id="irr-site-code" value="">
             <div class="ss-dd" id="irr-site-dd"></div>
@@ -292,6 +297,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
           <label>站点</label>
           <div class="ss" id="mth-site-ss">
             <input type="text" class="ss-input" id="mth-site-input" placeholder="请选择或搜索站点" autocomplete="off">
+            <span class="ss-clear" id="mth-site-clear" title="清空"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg></span>
             <span class="ss-arrow"></span>
             <input type="hidden" id="mth-site-code" value="">
             <div class="ss-dd" id="mth-site-dd"></div>
@@ -585,10 +591,16 @@ function bindTabs() {
 /* ===== 麻塘湖灌区：同款 UI，接口暂空 ===== */
 let MTH_SITES = [];
 
+/** 输入框有值时显示清空小叉 */
+function syncClear(input, clearBtn) {
+  clearBtn.classList.toggle('show', !!input.value);
+}
+
 function setMthSite(code, name) {
   $('mth-site-code').value = code || '';
   $('mth-site-input').value = name || '';
   $('mth-site-dd').classList.remove('open');
+  syncClear($('mth-site-input'), $('mth-site-clear'));
 }
 
 function clearMthSite() {
@@ -614,11 +626,25 @@ function bindMthSiteSelect() {
   const input = $('mth-site-input');
   const dd = $('mth-site-dd');
   const wrap = $('mth-site-ss');
-  input.addEventListener('focus', () => renderMthSiteDd(input.value));
-  input.addEventListener('click', () => renderMthSiteDd(input.value));
+  const clearBtn = $('mth-site-clear');
+  // 再次打开时展示全部站点；仅在用户输入时按关键字过滤
+  const openAll = () => {
+    input.select();
+    renderMthSiteDd('');
+  };
+  input.addEventListener('focus', openAll);
+  input.addEventListener('click', openAll);
   input.addEventListener('input', () => {
     $('mth-site-code').value = '';
     renderMthSiteDd(input.value);
+    syncClear(input, clearBtn);
+  });
+  // 清空小叉：清空文本并展示全部站点
+  clearBtn.addEventListener('mousedown', e => {
+    e.preventDefault();
+    setMthSite('', '');
+    renderMthSiteDd('');
+    input.focus();
   });
   dd.addEventListener('mousedown', e => {
     const opt = e.target.closest('.ss-opt');
@@ -684,6 +710,7 @@ function setIrrSite(code, name) {
   $('irr-site-code').value = code || '';
   $('irr-site-input').value = name || '';
   $('irr-site-dd').classList.remove('open');
+  syncClear($('irr-site-input'), $('irr-site-clear'));
 }
 
 function clearIrrSite() {
@@ -694,13 +721,27 @@ function bindIrrSiteSelect() {
   const input = $('irr-site-input');
   const dd = $('irr-site-dd');
   const wrap = $('irr-site-ss');
+  const clearBtn = $('irr-site-clear');
 
-  input.addEventListener('focus', () => renderIrrSiteDd(input.value));
-  input.addEventListener('click', () => renderIrrSiteDd(input.value));
+  // 再次打开时展示全部站点；仅在用户输入时按关键字过滤
+  const openAll = () => {
+    input.select();
+    renderIrrSiteDd('');
+  };
+  input.addEventListener('focus', openAll);
+  input.addEventListener('click', openAll);
   input.addEventListener('input', () => {
     // 手动改字后清空已选 code，避免 name/code 不一致
     $('irr-site-code').value = '';
     renderIrrSiteDd(input.value);
+    syncClear(input, clearBtn);
+  });
+  // 清空小叉：清空文本并展示全部站点
+  clearBtn.addEventListener('mousedown', e => {
+    e.preventDefault();
+    setIrrSite('', '');
+    renderIrrSiteDd('');
+    input.focus();
   });
   input.addEventListener('keydown', e => {
     if (e.key === 'Escape') dd.classList.remove('open');
@@ -725,7 +766,8 @@ function bindIrrSiteSelect() {
 
 async function loadIrrSites() {
   try {
-    const res = await fetch(`${API}/station-metrics/sites?type=rainfall`);
+    // 灌区站点下拉：非水库站点（后端已排除水库 13 站）
+    const res = await fetch(`${API}/station-metrics/sites?type=gq-rainfall`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     IRR_SITES = Array.isArray(data) ? data.map(x => ({

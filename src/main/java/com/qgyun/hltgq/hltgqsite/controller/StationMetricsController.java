@@ -57,7 +57,8 @@ public class StationMetricsController {
     /**
      * 全量站点分类查询
      *
-     * @param type 可选筛选：rainfall(雨量) / waterLevel(水位) / gate(闸门) / flow(流量)。
+     * @param type 可选筛选：rainfall(雨量) / waterLevel(水位) / gate(闸门) / flow(流量)
+     *             / gq-rainfall(灌区雨量，排除水库13站)。
      *             不传则返回全部分类，按 JSON key 分组。
      */
     @GetMapping("/sites")
@@ -76,6 +77,9 @@ public class StationMetricsController {
                         rainfall.add(s);
                     }
                     return rainfall;
+                case "gq-rainfall":
+                    // 灌区雨量：排除水库 13 站（STCD + 名称双重排除，见 StPptnRServiceImpl.resolveGqStcds）
+                    return stPptnRService.gqRainfallSites();
                 case "waterLevel":
                     return irrigationWaterLevelMapper.selectWaterLevelStations();
                 case "gate":
@@ -89,7 +93,7 @@ public class StationMetricsController {
                 case "flow":
                     return waterFlowMapper.selectFlowStations();
                 default:
-                    throw new IllegalArgumentException("无效的 type 值: " + type + "，可选: rainfall / waterLevel / gate / flow");
+                    throw new IllegalArgumentException("无效的 type 值: " + type + "，可选: rainfall / gq-rainfall / waterLevel / gate / flow");
             }
         }
 

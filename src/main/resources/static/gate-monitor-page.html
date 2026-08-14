@@ -38,6 +38,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .ss{position:relative;width:220px}
 .ss-input{width:100% !important;padding-right:28px !important}
 .ss-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #999;pointer-events:none}
+.ss-clear{position:absolute;right:26px;top:50%;transform:translateY(-50%);width:16px;height:16px;display:none;align-items:center;justify-content:center;border-radius:50%;background:#c4c4c4;cursor:pointer;user-select:none;z-index:21}
+.ss-clear:hover{background:#a6a6a6}
+.ss-clear.show{display:flex}
+.ss-clear svg{display:block}
 .ss-dd{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #d9d9d9;border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08)}
 .ss-dd.open{display:block}
 .ss-opt{padding:8px 12px;cursor:pointer;color:#333;line-height:1.4}
@@ -189,6 +193,7 @@ tbody tr:hover td{background:#fafafa}
           <label>站点</label>
           <div class="ss" id="dev-ss">
             <input type="text" class="ss-input" id="dev-input" placeholder="请选择或搜索设备" autocomplete="off">
+            <span class="ss-clear" id="dev-clear" title="清空"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg></span>
             <span class="ss-arrow"></span>
             <input type="hidden" id="dev-code" value="">
             <div class="ss-dd" id="dev-dd"></div>
@@ -235,6 +240,7 @@ tbody tr:hover td{background:#fafafa}
           <label>设备</label>
           <div class="ss" id="mth-dev-ss">
             <input type="text" class="ss-input" id="mth-dev-input" placeholder="请选择或搜索设备" autocomplete="off">
+            <span class="ss-clear" id="mth-dev-clear" title="清空"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg></span>
             <span class="ss-arrow"></span>
             <input type="hidden" id="mth-dev-code" value="">
             <div class="ss-dd" id="mth-dev-dd"></div>
@@ -553,6 +559,11 @@ function bindGateFilter() {
 /* ===== 设备可搜索下拉 ===== */
 let GATE_SITES = []; // [{code, name}]
 
+/** 输入框有值时显示清空小叉 */
+function syncClear(input, clearBtn) {
+  clearBtn.classList.toggle('show', !!input.value);
+}
+
 function fuzzyMatch(text, kw) {
   if (!kw) return true;
   const t = String(text || '').toLowerCase();
@@ -586,6 +597,7 @@ function setDev(code, name) {
   $('dev-code').value = code || '';
   $('dev-input').value = name || '';
   $('dev-dd').classList.remove('open');
+  syncClear($('dev-input'), $('dev-clear'));
 }
 
 function clearDev() {
@@ -596,6 +608,7 @@ function bindDevSelect() {
   const input = $('dev-input');
   const dd = $('dev-dd');
   const wrap = $('dev-ss');
+  const clearBtn = $('dev-clear');
 
   // 再次打开时展示全部设备；仅在用户输入时按关键字过滤
   const openAll = () => {
@@ -607,6 +620,14 @@ function bindDevSelect() {
   input.addEventListener('input', () => {
     $('dev-code').value = '';
     renderDevDd(input.value);
+    syncClear(input, clearBtn);
+  });
+  // 清空小叉：清空文本并展示全部设备
+  clearBtn.addEventListener('mousedown', e => {
+    e.preventDefault();
+    setDev('', '');
+    renderDevDd('');
+    input.focus();
   });
   input.addEventListener('keydown', e => {
     if (e.key === 'Escape') dd.classList.remove('open');
@@ -1432,6 +1453,7 @@ function setMthDev(code, name) {
   $('mth-dev-code').value = code || '';
   $('mth-dev-input').value = name || '';
   $('mth-dev-dd').classList.remove('open');
+  syncClear($('mth-dev-input'), $('mth-dev-clear'));
 }
 
 function clearMthDev() {
@@ -1457,6 +1479,7 @@ function bindMthDevSelect() {
   const input = $('mth-dev-input');
   const dd = $('mth-dev-dd');
   const wrap = $('mth-dev-ss');
+  const clearBtn = $('mth-dev-clear');
   const openAll = () => {
     input.select();
     renderMthDevDd('');
@@ -1466,6 +1489,14 @@ function bindMthDevSelect() {
   input.addEventListener('input', () => {
     $('mth-dev-code').value = '';
     renderMthDevDd(input.value);
+    syncClear(input, clearBtn);
+  });
+  // 清空小叉：清空文本并展示全部设备
+  clearBtn.addEventListener('mousedown', e => {
+    e.preventDefault();
+    setMthDev('', '');
+    renderMthDevDd('');
+    input.focus();
   });
   dd.addEventListener('mousedown', e => {
     const opt = e.target.closest('.ss-opt');

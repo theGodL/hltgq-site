@@ -18,6 +18,7 @@ import com.qgyun.hltgq.hltgqsite.vo.ReservoirPeriodRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallBriefVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirTenDayRainfallVO;
+import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -462,6 +463,21 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             map.put(s, info);
         }
         return map;
+    }
+
+    /**
+     * 灌区雨量站点：非水库站点（排除水库 13 站），用于灌区站点下拉
+     */
+    @Override
+    public List<StationSiteVO> gqRainfallSites() {
+        List<StationSiteVO> sites = new ArrayList<>();
+        for (Map.Entry<String, StStinfo> entry : resolveGqStcds().entrySet()) {
+            StationSiteVO s = new StationSiteVO();
+            s.setCode(entry.getKey());
+            s.setName(entry.getValue().getStnm());
+            sites.add(s);
+        }
+        return sites;
     }
 
     /**
