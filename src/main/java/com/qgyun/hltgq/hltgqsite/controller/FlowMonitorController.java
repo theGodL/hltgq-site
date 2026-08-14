@@ -71,7 +71,7 @@ public class FlowMonitorController {
      * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param page      页码，默认 1
-     * @param size      每页条数，默认 20
+     * @param size      每页条数，默认 10
      */
     @GetMapping("/history")
     public Page<FlowMonitoringVO> history(
@@ -79,7 +79,7 @@ public class FlowMonitorController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
             @RequestParam(defaultValue = "1") long page,
-            @RequestParam(defaultValue = "20") long size) {
+            @RequestParam(defaultValue = "10") long size) {
         return flowMonitorService.history(stcd, startTime, endTime, page, size);
     }
 

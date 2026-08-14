@@ -19,7 +19,7 @@ public class StationMetricsVO {
     /** 水位观测时间，无数据为 null */
     private LocalDateTime riverTm;
 
-    /** 当前降雨量 DRP（mm）— 水文日累计（8:00 ~ 当前），每日8:00归零；无数据为 null */
+    /** 当前降雨量（mm）— 最新观测所在水文日的 DYP 正向增量（花凉亭 DRP 恒 0，统一用 DYP 增量）；无数据为 null */
     private BigDecimal drp;
 
     /** 雨量观测日期，无数据为 null */

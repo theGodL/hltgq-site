@@ -14,11 +14,14 @@ import com.qgyun.hltgq.hltgqsite.mapper.WaterThresholdMapper;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRegimeVO;
 import com.qgyun.hltgq.hltgqsite.vo.RiverRegimeVO;
+import com.qgyun.hltgq.hltgqsite.vo.WaterBriefVO;
+import com.qgyun.hltgq.hltgqsite.vo.YearsRegimeVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -37,6 +40,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
 
     /** 水库水位站名称 */
     private static final Set<String> RESERVOIR_STATION_NAMES = new HashSet<>(Collections.singletonList("花凉亭坝上"));
+
+    /** 水情简报/多年同期水情覆盖的水情站（周家河、花凉亭坝下、花凉亭坝上），顺序即展示顺序 */
+    private static final List<String> WATER_STATION_STCDS = Arrays.asList("3206400001", "320640000A", "3206400007");
 
     /**
      * 旧 STCD → 新 STCD（过渡期兼容：客户端可能仍持有旧页面/旧缓存，收到旧编号时自动映射到新编号）
@@ -109,48 +115,116 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         return save(entity);
     }
 
-    @Override
-    public Page<RiverRegimeVO> riverRegime(String stcd, LocalDateTime startTime, LocalDateTime endTime, long page, long size) {
-        // 1. 查询站点信息（过渡期兼容：旧编号映射 + 站名反查兜底，数据查询用站点表真实主键）
-        String resolvedInput = LEGACY_TO_NEW_STCD.getOrDefault(stcd, stcd);
-        StStinfo stinfo = findStation(resolvedInput, RIVER_STATION_NAMES);
-        if (stinfo == null || stinfo.getStnm() == null || !RIVER_STATION_NAMES.contains(stinfo.getStnm())) {
-            throw new IllegalArgumentException("河道水位站仅支持: 周家河、花凉亭坝下（收到 stcd: " + stcd + "）");
+    /**
+     * 河道/水库水情站点解析：逐站旧编号映射 + 白名单校验 + 站名反查兜底。
+     * 返回 数据表STCD → StStinfo（保序），用于数据查询与站名/阈值映射。
+     */
+    private Map<String, StStinfo> resolveRegimeStations(List<String> stcds, Set<String> stationNames, String typeDesc) {
+        if (stcds == null || stcds.isEmpty()) {
+            throw new IllegalArgumentException("至少选择一个站点");
         }
-        String resolvedStcd = stinfo.getStcd();
-        String stnm = stinfo.getStnm();
+        Map<String, StStinfo> map = new LinkedHashMap<>();
+        for (String raw : stcds) {
+            String stcd = raw == null ? "" : raw.trim();
+            if (stcd.isEmpty()) continue;
+            String resolvedInput = LEGACY_TO_NEW_STCD.getOrDefault(stcd, stcd);
+            StStinfo stinfo = findStation(resolvedInput, stationNames);
+            if (stinfo == null || stinfo.getStnm() == null || !stationNames.contains(stinfo.getStnm())) {
+                throw new IllegalArgumentException(typeDesc + "（收到 stcd: " + stcd + "）");
+            }
+            map.put(stinfo.getStcd(), stinfo);
+        }
+        if (map.isEmpty()) {
+            throw new IllegalArgumentException("至少选择一个站点");
+        }
+        return map;
+    }
 
-        // 2. 查询站点阈值（警戒水位/保证水位）
-        BigDecimal[] ref = queryThreshold(stinfo.getId());
-        BigDecimal warningLevel = ref[0];
-        BigDecimal guaranteedLevel = ref[1];
+    /** 逐站查询水位阈值：数据表STCD → [警戒水位, 保证水位] */
+    private Map<String, BigDecimal[]> queryThresholdMap(Map<String, StStinfo> stations) {
+        Map<String, BigDecimal[]> map = new HashMap<>();
+        for (Map.Entry<String, StStinfo> e : stations.entrySet()) {
+            map.put(e.getKey(), queryThreshold(e.getValue().getId()));
+        }
+        return map;
+    }
 
-        // 3. 分页查询河道水位记录
-        QueryWrapper<StRiverR> wrapper = new QueryWrapper<StRiverR>().orderByAsc("TM");
-        wrapper.eq("STCD", resolvedStcd);
+    /** 河道记录 → VO（站名/阈值按记录所属站点映射） */
+    private RiverRegimeVO toRiverVO(StRiverR r, Map<String, StStinfo> stations, Map<String, BigDecimal[]> thresholds) {
+        String stcd = r.getStcd() != null ? r.getStcd().trim() : "";
+        StStinfo stinfo = stations.get(stcd);
+        BigDecimal[] ref = thresholds.get(stcd);
+        RiverRegimeVO vo = new RiverRegimeVO();
+        vo.setStcd(stcd);
+        vo.setStnm(stinfo != null ? stinfo.getStnm() : null);
+        vo.setTm(r.getTm());
+        vo.setWarningLevel(ref != null && ref[0] != null ? ref[0].setScale(2, java.math.RoundingMode.DOWN) : null);
+        vo.setGuaranteedLevel(ref != null && ref[1] != null ? ref[1].setScale(2, java.math.RoundingMode.DOWN) : null);
+        vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
+        vo.setWptn(mapWptn(r.getWptn()));
+        return vo;
+    }
+
+    /** 水库记录 → VO（站名/阈值按记录所属站点映射，入库/出库暂映射 Q 字段） */
+    private ReservoirRegimeVO toReservoirVO(StRiverR r, Map<String, StStinfo> stations, Map<String, BigDecimal[]> thresholds) {
+        String stcd = r.getStcd() != null ? r.getStcd().trim() : "";
+        StStinfo stinfo = stations.get(stcd);
+        BigDecimal[] ref = thresholds.get(stcd);
+        ReservoirRegimeVO vo = new ReservoirRegimeVO();
+        vo.setStcd(stcd);
+        vo.setStnm(stinfo != null ? stinfo.getStnm() : null);
+        vo.setTm(r.getTm());
+        vo.setWarningLevel(ref != null && ref[0] != null ? ref[0].setScale(2, java.math.RoundingMode.DOWN) : null);
+        vo.setGuaranteedLevel(ref != null && ref[1] != null ? ref[1].setScale(2, java.math.RoundingMode.DOWN) : null);
+        vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
+        vo.setWptn(mapWptn(r.getWptn()));
+        // 出入库流量：暂统一映射 Q 字段（待设备报文到位后区分字段映射），与接口文档十五节一致
+        BigDecimal q = r.getQ() != null ? r.getQ().setScale(3, java.math.RoundingMode.DOWN) : null;
+        vo.setInq(q);
+        vo.setOtq(q);
+        return vo;
+    }
+
+    @Override
+    public Page<RiverRegimeVO> riverRegime(List<String> stcds, LocalDateTime startTime, LocalDateTime endTime, long page, long size) {
+        // 1. 站点解析（过渡期兼容：旧编号映射 + 站名反查兜底）
+        Map<String, StStinfo> stations = resolveRegimeStations(stcds, RIVER_STATION_NAMES,
+                "河道水位站仅支持: 周家河、花凉亭坝下");
+        Map<String, BigDecimal[]> thresholds = queryThresholdMap(stations);
+
+        // 2. 多站合并分页查询（时间倒序，最新在前）
+        QueryWrapper<StRiverR> wrapper = new QueryWrapper<>();
+        wrapper.in("STCD", new ArrayList<>(stations.keySet()));
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
 
         Page<StRiverR> rawPage = (Page<StRiverR>) this.page(
-                new Page<StRiverR>(page, size).addOrder(OrderItem.asc("TM")), wrapper);
+                new Page<StRiverR>(page, size).addOrder(OrderItem.desc("TM")), wrapper);
 
-        // 4. 转换为 RiverRegimeVO
-        List<RiverRegimeVO> records = rawPage.getRecords().stream().map(r -> {
-            RiverRegimeVO vo = new RiverRegimeVO();
-            vo.setStcd(r.getStcd());
-            vo.setStnm(stnm);
-            vo.setTm(r.getTm());
-            vo.setWarningLevel(warningLevel != null ? warningLevel.setScale(2, java.math.RoundingMode.DOWN) : null);
-            vo.setGuaranteedLevel(guaranteedLevel != null ? guaranteedLevel.setScale(2, java.math.RoundingMode.DOWN) : null);
-            vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
-            vo.setWptn(mapWptn(r.getWptn()));
-            return vo;
-        }).collect(Collectors.toList());
+        // 3. 转换为 RiverRegimeVO
+        List<RiverRegimeVO> records = rawPage.getRecords().stream()
+                .map(r -> toRiverVO(r, stations, thresholds))
+                .collect(Collectors.toList());
 
         Page<RiverRegimeVO> result = new Page<>(page, size);
         result.setTotal(rawPage.getTotal());
         result.setRecords(records);
         return result;
+    }
+
+    @Override
+    public List<RiverRegimeVO> riverRegimeExport(List<String> stcds, LocalDateTime startTime, LocalDateTime endTime) {
+        Map<String, StStinfo> stations = resolveRegimeStations(stcds, RIVER_STATION_NAMES,
+                "河道水位站仅支持: 周家河、花凉亭坝下");
+        Map<String, BigDecimal[]> thresholds = queryThresholdMap(stations);
+        QueryWrapper<StRiverR> wrapper = new QueryWrapper<>();
+        wrapper.in("STCD", new ArrayList<>(stations.keySet()));
+        wrapper.orderByDesc("TM");
+        if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
+        if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        return this.list(wrapper).stream()
+                .map(r -> toRiverVO(r, stations, thresholds))
+                .collect(Collectors.toList());
     }
 
     /** 水势代码 → 中文 */
@@ -168,49 +242,245 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
     }
 
     @Override
-    public Page<ReservoirRegimeVO> reservoirRegime(String stcd, LocalDateTime startTime, LocalDateTime endTime, long page, long size) {
-        // 1. 查询站点信息（过渡期兼容：旧编号映射 + 站名反查兜底，数据查询用站点表真实主键）
-        String resolvedInput = LEGACY_TO_NEW_STCD.getOrDefault(stcd, stcd);
-        StStinfo stinfo = findStation(resolvedInput, RESERVOIR_STATION_NAMES);
-        if (stinfo == null || stinfo.getStnm() == null || !RESERVOIR_STATION_NAMES.contains(stinfo.getStnm())) {
-            throw new IllegalArgumentException("水库水位站仅支持: 花凉亭坝上（收到 stcd: " + stcd + "）");
-        }
-        String resolvedStcd = stinfo.getStcd();
-        String stnm = stinfo.getStnm();
+    public Page<ReservoirRegimeVO> reservoirRegime(List<String> stcds, LocalDateTime startTime, LocalDateTime endTime, long page, long size) {
+        // 1. 站点解析（过渡期兼容：旧编号映射 + 站名反查兜底）
+        Map<String, StStinfo> stations = resolveRegimeStations(stcds, RESERVOIR_STATION_NAMES,
+                "水库水位站仅支持: 花凉亭坝上");
+        Map<String, BigDecimal[]> thresholds = queryThresholdMap(stations);
 
-        // 2. 查询站点阈值（警戒水位/保证水位）
-        BigDecimal[] ref = queryThreshold(stinfo.getId());
-        BigDecimal warningLevel = ref[0];
-        BigDecimal guaranteedLevel = ref[1];
-
-        // 3. 分页查询水库水位记录
-        QueryWrapper<StRiverR> wrapper = new QueryWrapper<StRiverR>().orderByAsc("TM");
-        wrapper.eq("STCD", resolvedStcd);
+        // 2. 多站合并分页查询（时间倒序，最新在前）
+        QueryWrapper<StRiverR> wrapper = new QueryWrapper<>();
+        wrapper.in("STCD", new ArrayList<>(stations.keySet()));
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
 
         Page<StRiverR> rawPage = (Page<StRiverR>) this.page(
-                new Page<StRiverR>(page, size).addOrder(OrderItem.asc("TM")), wrapper);
+                new Page<StRiverR>(page, size).addOrder(OrderItem.desc("TM")), wrapper);
 
-        // 4. 转换为 ReservoirRegimeVO
-        List<ReservoirRegimeVO> records = rawPage.getRecords().stream().map(r -> {
-            ReservoirRegimeVO vo = new ReservoirRegimeVO();
-            vo.setStcd(r.getStcd());
-            vo.setStnm(stnm);
-            vo.setTm(r.getTm());
-            vo.setWarningLevel(warningLevel != null ? warningLevel.setScale(2, java.math.RoundingMode.DOWN) : null);
-            vo.setGuaranteedLevel(guaranteedLevel != null ? guaranteedLevel.setScale(2, java.math.RoundingMode.DOWN) : null);
-            vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
-            vo.setWptn(mapWptn(r.getWptn()));
-            // 出入库流量临时写死，待设备报文到位后改回字段映射
-            vo.setInq(new BigDecimal("21.80"));
-            vo.setOtq(new BigDecimal("28.95"));
-            return vo;
-        }).collect(Collectors.toList());
+        // 3. 转换为 ReservoirRegimeVO
+        List<ReservoirRegimeVO> records = rawPage.getRecords().stream()
+                .map(r -> toReservoirVO(r, stations, thresholds))
+                .collect(Collectors.toList());
 
         Page<ReservoirRegimeVO> result = new Page<>(page, size);
         result.setTotal(rawPage.getTotal());
         result.setRecords(records);
         return result;
+    }
+
+    @Override
+    public List<ReservoirRegimeVO> reservoirRegimeExport(List<String> stcds, LocalDateTime startTime, LocalDateTime endTime) {
+        Map<String, StStinfo> stations = resolveRegimeStations(stcds, RESERVOIR_STATION_NAMES,
+                "水库水位站仅支持: 花凉亭坝上");
+        Map<String, BigDecimal[]> thresholds = queryThresholdMap(stations);
+        QueryWrapper<StRiverR> wrapper = new QueryWrapper<>();
+        wrapper.in("STCD", new ArrayList<>(stations.keySet()));
+        wrapper.orderByDesc("TM");
+        if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
+        if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        return this.list(wrapper).stream()
+                .map(r -> toReservoirVO(r, stations, thresholds))
+                .collect(Collectors.toList());
+    }
+
+    // ======================== 水情简报 / 多年同期水情 ========================
+
+    /**
+     * 解析三个水情站（周家河、花凉亭坝下、花凉亭坝上）：
+     * 先按 STCD 精确查询；查不到时按名称反查（站点表接入过渡期主键可能未对齐）。
+     * 返回 LinkedHashMap 保证顺序稳定。
+     */
+    private Map<String, StStinfo> resolveWaterStations() {
+        Map<String, StStinfo> map = new LinkedHashMap<>();
+        for (String stcd : WATER_STATION_STCDS) {
+            StStinfo info = stStinfoMapper.selectById(stcd);
+            if (info == null || info.getStnm() == null) {
+                String stnm = STCD_TO_STNM.get(stcd);
+                if (stnm != null) {
+                    QueryWrapper<StStinfo> wrapper = new QueryWrapper<>();
+                    wrapper.eq("zzkaec", stnm);
+                    wrapper.last("LIMIT 1");
+                    info = stStinfoMapper.selectOne(wrapper);
+                }
+            }
+            if (info != null && info.getStcd() != null) {
+                map.put(info.getStcd(), info);
+            }
+        }
+        return map;
+    }
+
+    /** 水位值统一截断 2 位小数 */
+    private BigDecimal zScale2(BigDecimal v) {
+        return v != null ? v.setScale(2, java.math.RoundingMode.DOWN) : null;
+    }
+
+    /**
+     * 整点水位取值（业主口径）：取 (slotTime-1h, slotTime] 左开右闭内 z 非空的最后一条采集。
+     * 整点之前的最后一条采集作为该整点值，整点之后的采集归下一整点；
+     * 一旦进入下一时段，本整点数值固定不再变动。
+     */
+    private StRiverR latestUpTo(List<StRiverR> rowsAsc, LocalDateTime slotTime) {
+        LocalDateTime floor = slotTime.minusHours(1);
+        StRiverR best = null;
+        for (StRiverR r : rowsAsc) {
+            LocalDateTime tm = r.getTm();
+            if (tm == null) continue;
+            if (tm.isAfter(floor) && !tm.isAfter(slotTime)) {
+                if (r.getZ() != null) best = r;  // rowsAsc 升序，后扫到的即最新
+            }
+        }
+        return best;
+    }
+
+    /** Map 中取出 LocalDateTime（兼容 Timestamp 驱动返回值） */
+    private LocalDateTime toLocalDateTime(Object obj) {
+        if (obj instanceof Timestamp) {
+            return ((Timestamp) obj).toLocalDateTime();
+        }
+        if (obj instanceof LocalDateTime) {
+            return (LocalDateTime) obj;
+        }
+        return null;
+    }
+
+    @Override
+    public List<WaterBriefVO> waterBrief(LocalDate date) {
+        Map<String, StStinfo> resolved = resolveWaterStations();
+        List<WaterBriefVO> result = new ArrayList<>();
+        if (resolved.isEmpty()) {
+            return result;
+        }
+
+        // 8 点/20 点水位的整点时刻（查询日 2026-08-14 → 昨日=08-13）
+        // 业主口径：整点值取整点之前最后一条采集，即 (整点-1h, 整点] 左开右闭内的最新记录
+        LocalDateTime y8At = date.minusDays(1).atTime(8, 0);
+        LocalDateTime y20At = date.minusDays(1).atTime(20, 0);
+        LocalDateTime t8At = date.atTime(8, 0);
+
+        // 1. 查询窗口内原始记录：昨日 00:00 ~ 查询日 23:59:59
+        QueryWrapper<StRiverR> wrapper = new QueryWrapper<StRiverR>().orderByAsc("TM");
+        wrapper.in("STCD", new ArrayList<>(resolved.keySet()));
+        wrapper.ge("TM", Timestamp.valueOf(date.minusDays(1).atStartOfDay()));
+        wrapper.le("TM", Timestamp.valueOf(date.atTime(23, 59, 59)));
+        List<StRiverR> records = this.list(wrapper);
+
+        Map<String, List<StRiverR>> byStation = new LinkedHashMap<>();
+        for (StRiverR r : records) {
+            String key = r.getStcd() != null ? r.getStcd().trim() : "";
+            if (!resolved.containsKey(key)) continue;
+            byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
+        }
+        for (List<StRiverR> rows : byStation.values()) {
+            rows.sort(Comparator.comparing(StRiverR::getTm));
+        }
+
+        // 2. 逐站组装
+        for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+            String stcd = entry.getKey();
+            StStinfo stinfo = entry.getValue();
+            List<StRiverR> rows = byStation.getOrDefault(stcd, Collections.emptyList());
+
+            StRiverR y8Rec = latestUpTo(rows, y8At);
+            StRiverR y20Rec = latestUpTo(rows, y20At);
+            StRiverR t8Rec = latestUpTo(rows, t8At);
+
+            WaterBriefVO vo = new WaterBriefVO();
+            vo.setStcd(stcd);
+            vo.setStnm(stinfo.getStnm());
+
+            // 阈值：threshold → 警戒水位，guarantee → 设防水位
+            BigDecimal[] ref = queryThreshold(stinfo.getId());
+            vo.setWrz(zScale2(ref[0]));
+            vo.setDsflz(zScale2(ref[1]));
+
+            vo.setY8(y8Rec != null ? zScale2(y8Rec.getZ()) : null);
+            vo.setY20(y20Rec != null ? zScale2(y20Rec.getZ()) : null);
+            vo.setT8(t8Rec != null ? zScale2(t8Rec.getZ()) : null);
+
+            // 水势：优先今天 8 点记录，其次当日最新记录
+            StRiverR wptnRec = t8Rec != null ? t8Rec : (rows.isEmpty() ? null : rows.get(rows.size() - 1));
+            vo.setWptn(mapWptn(wptnRec != null ? wptnRec.getWptn() : null));
+
+            // 与昨日 8 点比 = t8 - y8
+            if (t8Rec != null && y8Rec != null && t8Rec.getZ() != null && y8Rec.getZ() != null) {
+                vo.setCmp(t8Rec.getZ().subtract(y8Rec.getZ()).setScale(2, java.math.RoundingMode.DOWN));
+            }
+
+            // 流量取今天 8 点记录 Q
+            vo.setQ(t8Rec != null && t8Rec.getQ() != null
+                    ? t8Rec.getQ().setScale(2, java.math.RoundingMode.DOWN) : null);
+
+            // 蓄水量：暂无数据源，恒为 null
+            vo.setW(null);
+
+            // 当年最高水位（1 月 1 日以来，截至查询日）
+            Map<String, Object> maxRow = baseMapper.selectMaxZInRange(stcd,
+                    date.withDayOfYear(1).atStartOfDay(), date.atTime(23, 59, 59));
+            if (maxRow != null && maxRow.get("z") != null) {
+                Object zObj = maxRow.get("z");
+                vo.setMaxz(zScale2(zObj instanceof BigDecimal
+                        ? (BigDecimal) zObj : new BigDecimal(zObj.toString())));
+                vo.setMaxTm(toLocalDateTime(maxRow.get("tm")));
+            }
+
+            result.add(vo);
+        }
+        return result;
+    }
+
+    @Override
+    public YearsRegimeVO yearsRegime(int startYear, int endYear, int month) {
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("月份必须在 1-12 之间");
+        }
+        if (startYear > endYear) {
+            throw new IllegalArgumentException("起始年份不能大于结束年份");
+        }
+
+        Map<String, StStinfo> resolved = resolveWaterStations();
+        List<String> stations = new ArrayList<>();
+        for (StStinfo info : resolved.values()) {
+            stations.add(info.getStnm());
+        }
+
+        YearsRegimeVO vo = new YearsRegimeVO();
+        vo.setStations(stations);
+        List<YearsRegimeVO.YearRow> rows = new ArrayList<>();
+        vo.setRows(rows);
+        if (resolved.isEmpty()) {
+            return vo;
+        }
+
+        // 1. 一次性查询年份区间内各站按年月的平均水位
+        List<Map<String, Object>> avgs = baseMapper.selectMonthlyAvgZ(
+                new ArrayList<>(resolved.keySet()),
+                LocalDateTime.of(startYear, 1, 1, 0, 0),
+                LocalDateTime.of(endYear, 12, 31, 23, 59, 59));
+
+        Map<String, BigDecimal> avgMap = new HashMap<>();
+        for (Map<String, Object> row : avgs) {
+            Object stcdObj = row.get("stcd");
+            Object yrObj = row.get("yr");
+            Object monObj = row.get("mon");
+            Object zObj = row.get("avgz");
+            if (stcdObj == null || yrObj == null || monObj == null || zObj == null) continue;
+            BigDecimal avgz = zObj instanceof BigDecimal
+                    ? (BigDecimal) zObj : new BigDecimal(zObj.toString());
+            avgMap.put(stcdObj.toString().trim() + "|" + yrObj + "|" + monObj, avgz);
+        }
+
+        // 2. 组装：每年一行，值顺序与 stations 对齐
+        for (int year = startYear; year <= endYear; year++) {
+            YearsRegimeVO.YearRow row = new YearsRegimeVO.YearRow();
+            row.setTm(String.format("%04d-%02d", year, month));
+            List<BigDecimal> values = new ArrayList<>();
+            for (String stcd : resolved.keySet()) {
+                values.add(avgMap.get(stcd + "|" + year + "|" + month));
+            }
+            row.setValues(values);
+            rows.add(row);
+        }
+        return vo;
     }
 }

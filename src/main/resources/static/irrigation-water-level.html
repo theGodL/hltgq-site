@@ -226,11 +226,36 @@ tbody tr:hover td{background:#fafafa}
   <div class="panel active" id="panel-reservoir">
     <div class="card filter-card">
       <div class="filter-bar" id="res-filter-bar">
-        <div class="filter-item">
+        <div class="filter-item" id="range-date-wrap">
           <label>日期</label>
           <input type="date" id="res-start">
           <span class="date-sep">—</span>
           <input type="date" id="res-end">
+        </div>
+        <div class="filter-item" id="river-cks-wrap">
+          <label>站点</label>
+          <div class="cks" id="river-cks">
+            <label class="ck"><input type="checkbox" value="3206400001" onchange="onRiverCk(this)">周家河</label>
+            <label class="ck"><input type="checkbox" value="320640000A" onchange="onRiverCk(this)">花凉亭坝下</label>
+          </div>
+        </div>
+        <div class="filter-item" id="reservoir-cks-wrap" style="display:none">
+          <label>站点</label>
+          <div class="cks" id="reservoir-cks">
+            <label class="ck"><input type="checkbox" value="3206400007" onchange="onReservoirCk(this)">花凉亭坝上</label>
+          </div>
+        </div>
+        <div class="filter-item" id="brief-date-wrap" style="display:none">
+          <label>日期</label>
+          <input type="date" id="res-brief-date">
+        </div>
+        <div class="filter-item" id="years-filter-wrap" style="display:none">
+          <label>年份</label>
+          <input type="number" id="years-start-year" min="1900" max="2100" style="width:90px">
+          <span class="date-sep">—</span>
+          <input type="number" id="years-end-year" min="1900" max="2100" style="width:90px">
+          <label style="margin-left:8px">月份</label>
+          <select id="years-month" style="width:72px"></select>
         </div>
         <div class="filter-actions">
           <button class="btn btn-primary" id="res-query-btn">查询</button>
@@ -399,6 +424,11 @@ const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 const pad = n => String(n).padStart(2, '0');
 const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
 const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (+v).toFixed(2);
+const fmtCmp = v => {
+  if (v === null || v === undefined || v === '') return '-';
+  const n = +v;
+  return isNaN(n) ? v : (n > 0 ? '+' : '') + n.toFixed(2);
+};
 const fmtAuto = v => {
   if (v === null || v === undefined || v === '') return '-';
   const n = +v;
@@ -442,35 +472,15 @@ function waitTick(ms = 200) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-const S = { page: 1, size: 20, total: 0, rows: [], current: null, resTab: 'river', resRows: { river: [], reservoir: [] },
-  periodInterval: 1, periodStcds: ['320640000A','3206400007'], resPeriodRows: [] };
+const S = { page: 1, size: 20, total: 0, rows: [], current: null, resTab: 'river',
+  resRows: { river: [], reservoir: [], brief: [] },
+  resRiverStcds: ['3206400001', '320640000A'], resReservoirStcds: ['3206400007'],
+  resYearsRows: [], resYearsStations: [],
+  periodInterval: 1, periodStcds: ['320640000A','3206400007'], resPeriodRows: [],
+  resPager: { river: { page: 1, total: 0 }, reservoir: { page: 1, total: 0 } }, resSize: 20 };
 let chart = null;
 
-/* ===== 水库站点（接口限定） ===== */
-const RES_RIVER_STCDS = [
-  { stcd: '3206400001', stnm: '周家河' },
-  { stcd: '320640000A', stnm: '花凉亭坝下' },
-];
-const RES_RESERVOIR_STCD = { stcd: '3206400007', stnm: '花凉亭坝上' };
-
-/* ===== 水库假数据（日时段/简报/多年同期暂无接口，保留） ===== */
-const RES_STATIONS = ['周家河', '姜家寨', '九田', '牛镇', '马厮铺'];
-
-const RES_MOCK = {
-  brief: [
-    { stnm: '周家河', wrz: 88.50, y8: 87.93, y20: 87.93, t8: 88.93, wptn: '落', cmp: '+1', q: 162.5, w: 162.5, maxz: 162.5, maxTm: '2026-06-03', dsflz: 88.93 },
-    { stnm: '李家村', wrz: 92.30, y8: 91.75, y20: 91.80, t8: 87.75, wptn: '涨', cmp: '-4', q: 165.0, w: 165.0, maxz: 165.0, maxTm: '2026-06-02', dsflz: 92.00 },
-    { stnm: '王家屯', wrz: 85.20, y8: 84.75, y20: 84.90, t8: 87.75, wptn: '平', cmp: '=3', q: 160.0, w: 160.0, maxz: 160.0, maxTm: '2026-06-01', dsflz: 85.50 },
-  ],
-  years: {
-    stations: RES_STATIONS,
-    rows: [
-      { tm: '2026-06', values: [5.8, 6.0, 6.2, 6.4, 5.8] },
-      { tm: '2026-05', values: [5.6, 5.9, 6.1, 6.3, 5.7] },
-      { tm: '2026-04', values: [5.4, 5.7, 5.9, 6.1, 5.5] },
-    ],
-  },
-};
+/* ===== 水库站点（勾选控件承载，见 #river-cks / #reservoir-cks） ===== */
 
 const RES_META = {
   river: {
@@ -492,13 +502,15 @@ const RES_META = {
   },
   brief: {
     name: '水情简报',
+    // 对齐 /st-river-r/water-brief
     headers: ['站点名称', '警戒水位m', '昨日8点水位m', '昨日20点水位m', '今天8点水位m', '水势', '与昨日8点比(m)', '流量 m³/s', '蓄水量 百万m³', '最高水位 m', '设防水位m'],
-    rowToArr: r => [r.stnm, r.wrz, r.y8, r.y20, r.t8, r.wptn, r.cmp, r.q, r.w, `${r.maxz} ${r.maxTm}`, r.dsflz],
+    rowToArr: r => [r.stnm, fmtN2(r.wrz), fmtN2(r.y8), fmtN2(r.y20), fmtN2(r.t8), r.wptn, fmtCmp(r.cmp), fmtN(r.q), fmtN(r.w), `${fmtN2(r.maxz)} ${fmtTm(r.maxTm)}`, fmtN2(r.dsflz)],
   },
   years: {
     name: '多年同期水情',
-    headers: () => ['监测日期', ...RES_MOCK.years.stations],
-    rowToArr: r => [r.tm, ...r.values],
+    // 对齐 /st-river-r/years-regime，站点列由接口返回
+    headers: () => ['监测日期', ...(S.resYearsStations || [])],
+    rowToArr: r => [r.tm, ...(r.values || [])],
   },
 };
 
@@ -534,6 +546,10 @@ function setDefaultDates() {
   $('res-start').value = s;
   $('res-end').value = e;
   $('period-date').value = fmtDate(now);
+  $('res-brief-date').value = fmtDate(now);
+  $('years-start-year').value = now.getFullYear();
+  $('years-end-year').value = now.getFullYear();
+  $('years-month').value = now.getMonth() + 1;
 }
 
 function setModalDefaultDates() {
@@ -1019,10 +1035,16 @@ function bindResTabs() {
       document.querySelectorAll('.res-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       S.resTab = tab.dataset.res;
-      // 切换筛选栏显隐
+      // 切换筛选栏显隐：period 用专用筛选栏，其余用通用筛选栏按 Tab 显示对应筛选项
       const isPeriod = S.resTab === 'period';
       $('res-filter-bar').style.display = isPeriod ? 'none' : '';
       $('period-filter').style.display = isPeriod ? '' : 'none';
+      // 日期区间仅河道/水库水情表使用；简报用单日期、多年同期用年份+月份
+      $('range-date-wrap').style.display = (S.resTab === 'river' || S.resTab === 'reservoir') ? '' : 'none';
+      $('river-cks-wrap').style.display = S.resTab === 'river' ? '' : 'none';
+      $('reservoir-cks-wrap').style.display = S.resTab === 'reservoir' ? '' : 'none';
+      $('brief-date-wrap').style.display = S.resTab === 'brief' ? '' : 'none';
+      $('years-filter-wrap').style.display = S.resTab === 'years' ? '' : 'none';
       await loadResData();
     });
   });
@@ -1033,8 +1055,9 @@ function getResRows() {
     return S.resRows[S.resTab] || [];
   }
   if (S.resTab === 'period') return S.resPeriodRows;
-  if (S.resTab === 'years') return RES_MOCK.years.rows;
-  return RES_MOCK[S.resTab] || [];
+  if (S.resTab === 'brief') return S.resRows.brief || [];
+  if (S.resTab === 'years') return S.resYearsRows;
+  return [];
 }
 
 function getResHeaders() {
@@ -1042,14 +1065,21 @@ function getResHeaders() {
   return typeof meta.headers === 'function' ? meta.headers() : meta.headers;
 }
 
+/**
+ * 河道/水库水情时间参数（水文日口径）：
+ * 选中 [start, end] → 查询窗口 [start 08:00:00, end+1 07:59:59]，
+ * 与雨情页、日时段水情表、水情简报的 8 点日界保持一致。
+ */
 function buildResTimeParams() {
   const p = new URLSearchParams();
-  const s = dateToStart($('res-start').value);
-  const e = dateToEnd($('res-end').value);
-  if (s) p.set('startTime', s);
-  if (e) p.set('endTime', e);
-  p.set('page', '1');
-  p.set('size', '500');
+  const s = $('res-start').value;
+  const e = $('res-end').value;
+  if (s) p.set('startTime', `${s} 08:00:00`);
+  if (e) {
+    const d = new Date(e + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    p.set('endTime', `${fmtDate(d)} 07:59:59`);
+  }
   return p;
 }
 
@@ -1057,33 +1087,33 @@ async function fetchRegimePage(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + url);
   const data = await res.json();
-  return Array.isArray(data.records) ? data.records : [];
+  return { records: Array.isArray(data.records) ? data.records : [], total: data.total || 0 };
 }
 
-/** 河道水情：并行拉周家河 + 花凉亭坝下，合并后按时间倒序；单站失败不连累整表 */
+/** 河道水情：多站合并分页查询（时间倒序，最新在前） */
 async function loadRiverRegime() {
-  const base = buildResTimeParams();
-  const results = await Promise.allSettled(
-    RES_RIVER_STCDS.map(async ({ stcd }) => {
-      const p = new URLSearchParams(base);
-      p.set('stcd', stcd);
-      return fetchRegimePage(`${API}/st-river-r/regime?${p}`);
-    })
-  );
-  const merged = results
-    .filter(r => r.status === 'fulfilled')
-    .flatMap(r => r.value);
-  merged.sort((a, b) => String(b.tm || '').localeCompare(String(a.tm || '')));
-  S.resRows.river = merged;
+  const stcd = S.resRiverStcds.join(',');
+  if (!stcd) { S.resRows.river = []; S.resPager.river = { page: 1, total: 0 }; return; }
+  const p = buildResTimeParams();
+  p.set('stcd', stcd);
+  p.set('page', String(S.resPager.river.page));
+  p.set('size', String(S.resSize));
+  const { records, total } = await fetchRegimePage(`${API}/st-river-r/regime?${p}`);
+  S.resRows.river = records;
+  S.resPager.river.total = total;
 }
 
-/** 水库水情：花凉亭坝上 */
+/** 水库水情：多站合并分页查询（时间倒序，最新在前） */
 async function loadReservoirRegime() {
+  const stcd = S.resReservoirStcds.join(',');
+  if (!stcd) { S.resRows.reservoir = []; S.resPager.reservoir = { page: 1, total: 0 }; return; }
   const p = buildResTimeParams();
-  p.set('stcd', RES_RESERVOIR_STCD.stcd);
-  const records = await fetchRegimePage(`${API}/st-river-r/reservoir-regime?${p}`);
-  records.sort((a, b) => String(b.tm || '').localeCompare(String(a.tm || '')));
+  p.set('stcd', stcd);
+  p.set('page', String(S.resPager.reservoir.page));
+  p.set('size', String(S.resSize));
+  const { records, total } = await fetchRegimePage(`${API}/st-river-r/reservoir-regime?${p}`);
   S.resRows.reservoir = records;
+  S.resPager.reservoir.total = total;
 }
 
 /** 日时段水情表：按日期+时段+站点查询，后端返回完整槽位填数 */
@@ -1102,6 +1132,31 @@ async function loadPeriodRegime() {
   S.resPeriodRows = await res.json();
 }
 
+/** 水情简报：按单日期查询三个水情站（后端 /st-river-r/water-brief） */
+async function loadWaterBrief() {
+  const date = $('res-brief-date').value;
+  const p = new URLSearchParams();
+  if (date) p.set('date', date);
+  const res = await fetch(`${API}/st-river-r/water-brief?${p}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  S.resRows.brief = Array.isArray(data) ? data : [];
+}
+
+/** 多年同期水情：年份区间 + 月份，各站月平均水位（后端 /st-river-r/years-regime） */
+async function loadYearsRegime() {
+  const sy = +$('years-start-year').value;
+  const ey = +$('years-end-year').value;
+  const m = +$('years-month').value;
+  if (!sy || !ey || !m) { S.resYearsRows = []; S.resYearsStations = []; return; }
+  const p = new URLSearchParams({ startYear: sy, endYear: ey, month: m });
+  const res = await fetch(`${API}/st-river-r/years-regime?${p}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  S.resYearsStations = Array.isArray(data.stations) ? data.stations : [];
+  S.resYearsRows = Array.isArray(data.rows) ? data.rows : [];
+}
+
 async function loadResData() {
   const wrap = $('res-tbl-wrap');
   const keepH = wrap.offsetHeight;
@@ -1114,15 +1169,21 @@ async function loadResData() {
       await loadReservoirRegime();
     } else if (S.resTab === 'period') {
       await loadPeriodRegime();
+    } else if (S.resTab === 'brief') {
+      await loadWaterBrief();
+    } else if (S.resTab === 'years') {
+      await loadYearsRegime();
     }
-    // brief / years 暂无接口，继续用假数据
     renderResTable();
   } catch (e) {
     console.error(e);
     if (S.resTab === 'river' || S.resTab === 'reservoir') {
       S.resRows[S.resTab] = [];
+      S.resPager[S.resTab] = { page: 1, total: 0 };
     }
     if (S.resTab === 'period') S.resPeriodRows = [];
+    if (S.resTab === 'brief') S.resRows.brief = [];
+    if (S.resTab === 'years') { S.resYearsRows = []; S.resYearsStations = []; }
     const headers = getResHeaders();
     $('res-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
     $('res-tbody').innerHTML = `<tr><td colspan="${headers.length}" class="empty">数据加载失败，请重试</td></tr>`;
@@ -1136,14 +1197,15 @@ function renderResTable() {
   const headers = getResHeaders();
   const rows = getResRows();
   const meta = RES_META[S.resTab];
+  const paginated = S.resTab === 'river' || S.resTab === 'reservoir';
   $('res-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
 
-  // period 无分页，清空分页条
-  $('res-pg-bar').innerHTML = '';
+  // 分页栏：river/reservoir 始终显示（含无数据时），其余 Tab 不显示
+  $('res-pg-bar').innerHTML = paginated ? buildResPagerHtml() : '';
 
   if (!rows.length) {
     $('res-tbody').innerHTML = `<tr><td colspan="${headers.length}" class="empty">暂无数据</td></tr>`;
-    if (S.resTab !== 'period') $('res-pg-bar').innerHTML = '';
+    if (paginated) bindResPagerEvents();
     return;
   }
 
@@ -1156,10 +1218,10 @@ function renderResTable() {
         <td>${fmtN2(r.y20)}</td>
         <td>${fmtN2(r.t8)}</td>
         <td>${fmtN(r.wptn)}</td>
-        <td>${fmtN(r.cmp)}</td>
+        <td>${fmtCmp(r.cmp)}</td>
         <td>${fmtN(r.q)}</td>
         <td>${fmtN(r.w)}</td>
-        <td><div class="cell-stack"><span>${fmtN2(r.maxz)}</span><span class="sub">${fmtN(r.maxTm)}</span></div></td>
+        <td><div class="cell-stack"><span>${fmtN2(r.maxz)}</span><span class="sub">${fmtTm(r.maxTm)}</span></div></td>
         <td>${fmtN2(r.dsflz)}</td>
       </tr>
     `).join('');
@@ -1170,9 +1232,61 @@ function renderResTable() {
     const arr = meta.rowToArr(r);
     return `<tr>${arr.map(v => `<td>${fmtAuto(v)}</td>`).join('')}</tr>`;
   }).join('');
+  if (paginated) bindResPagerEvents();
+}
+
+/** 分页栏 HTML（river/reservoir 共用，状态在 S.resPager[当前Tab]） */
+function buildResPagerHtml() {
+  const pager = S.resPager[S.resTab];
+  const size = S.resSize;
+  const pages = Math.max(1, Math.ceil(pager.total / size) || 1);
+  if (pager.page > pages) pager.page = pages;
+
+  let html = `<span class="pg-info">共 ${pager.total} 条</span>`;
+  html += `<select class="pg-size" id="res-pg-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${pager.page - 1}" ${pager.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+  const maxShow = 5;
+  let from = Math.max(1, pager.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === pager.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${pager.page + 1}" ${pager.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  return html;
+}
+
+/** 分页栏事件（翻页/改每页条数只重拉数据，不重置勾选站点与日期） */
+function bindResPagerEvents() {
+  const bar = $('res-pg-bar');
+  const pager = S.resPager[S.resTab];
+  const pages = Math.max(1, Math.ceil(pager.total / S.resSize) || 1);
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === pager.page || p < 1 || p > pages) return;
+      pager.page = p;
+      loadResData();
+    });
+  });
+  const sizeSel = $('res-pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      S.resSize = +sizeSel.value;
+      pager.page = 1;
+      loadResData();
+    });
+  }
 }
 
 async function queryRes() {
+  const pager = S.resPager[S.resTab];
+  if (pager) pager.page = 1;
   await loadResData();
 }
 
@@ -1182,9 +1296,18 @@ async function resetRes() {
   $('res-end').value = fmtDate(now);
   $('period-date').value = fmtDate(now);
   $('period-interval').value = '1';
+  $('res-brief-date').value = fmtDate(now);
+  $('years-start-year').value = now.getFullYear();
+  $('years-end-year').value = now.getFullYear();
+  $('years-month').value = now.getMonth() + 1;
   S.periodInterval = 1;
   S.periodStcds = ['320640000A', '3206400007'];
+  S.resRiverStcds = ['3206400001', '320640000A'];
+  S.resReservoirStcds = ['3206400007'];
+  S.resPager = { river: { page: 1, total: 0 }, reservoir: { page: 1, total: 0 } };
+  S.resSize = 20;
   initPeriodCks();
+  initResCks();
   await loadResData();
 }
 
@@ -1204,10 +1327,60 @@ function initPeriodCks() {
   });
 }
 
-function exportResExcel() {
+/* ===== 河道/水库水情多选框 ===== */
+function onRiverCk(cb) {
+  const stcd = cb.value;
+  if (cb.checked) {
+    if (!S.resRiverStcds.includes(stcd)) S.resRiverStcds.push(stcd);
+  } else {
+    S.resRiverStcds = S.resRiverStcds.filter(s => s !== stcd);
+  }
+}
+
+function onReservoirCk(cb) {
+  const stcd = cb.value;
+  if (cb.checked) {
+    if (!S.resReservoirStcds.includes(stcd)) S.resReservoirStcds.push(stcd);
+  } else {
+    S.resReservoirStcds = S.resReservoirStcds.filter(s => s !== stcd);
+  }
+}
+
+function initResCks() {
+  document.querySelectorAll('#river-cks input[type=checkbox]').forEach(cb => {
+    cb.checked = S.resRiverStcds.includes(cb.value);
+  });
+  document.querySelectorAll('#reservoir-cks input[type=checkbox]').forEach(cb => {
+    cb.checked = S.resReservoirStcds.includes(cb.value);
+  });
+}
+
+/** 多年同期月份下拉：01-12 */
+function initYearsMonth() {
+  $('years-month').innerHTML = Array.from({ length: 12 }, (_, i) =>
+    `<option value="${i + 1}">${pad(i + 1)}</option>`).join('');
+}
+
+async function exportResExcel() {
   const meta = RES_META[S.resTab];
   const headers = getResHeaders();
-  const rows = getResRows();
+  let rows;
+  if (S.resTab === 'river' || S.resTab === 'reservoir') {
+    // 分页表格导出：调后端全量导出接口，避免只导出当前页
+    const stcd = S.resTab === 'river' ? S.resRiverStcds.join(',') : S.resReservoirStcds.join(',');
+    if (!stcd) { alert('暂无数据可导出'); return; }
+    const p = buildResTimeParams();
+    p.set('stcd', stcd);
+    const url = S.resTab === 'river'
+      ? `${API}/st-river-r/regime/export?${p}`
+      : `${API}/st-river-r/reservoir-regime/export?${p}`;
+    const res = await fetch(url);
+    if (!res.ok) { alert('导出失败：HTTP ' + res.status); return; }
+    const data = await res.json();
+    rows = Array.isArray(data) ? data : [];
+  } else {
+    rows = getResRows();
+  }
   if (!rows.length) { alert('暂无数据可导出'); return; }
 
   const aoa = [headers, ...rows.map(r => meta.rowToArr(r))];
@@ -1216,7 +1389,19 @@ function exportResExcel() {
   XLSX.utils.book_append_sheet(wb, ws, meta.name);
   const s = $('res-start').value || '';
   const e = $('res-end').value || '';
-  const range = s && e ? `_${s}~${e}` : '';
+  let range = '';
+  if (S.resTab === 'years') {
+    const sy = $('years-start-year').value || '';
+    const ey = $('years-end-year').value || '';
+    const m = $('years-month').value || '';
+    range = sy && ey && m ? `_${sy}~${ey}_${pad(+m)}月` : '';
+  } else if (S.resTab === 'brief') {
+    range = $('res-brief-date').value ? `_${$('res-brief-date').value}` : '';
+  } else if (S.resTab === 'period') {
+    range = $('period-date').value ? `_${$('period-date').value}` : '';
+  } else {
+    range = s && e ? `_${s}~${e}` : '';
+  }
   XLSX.writeFile(wb, `${meta.name}${range}.xlsx`);
 }
 
@@ -1240,6 +1425,8 @@ async function init() {
   bindAsyncClick($('mth-reset-btn'), mthReset);
   renderMthEmpty();
   initPeriodCks();
+  initResCks();
+  initYearsMonth();
   await loadWlSites();
   loadIrrList();
   await loadResData();

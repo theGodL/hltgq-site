@@ -470,7 +470,7 @@ function waitTick(ms = 200) {
 
 const S = { page: 1, size: 20, total: 0, rows: [], allRows: [], current: null };
 const DETAIL = { holeNos: [], selected: [] }; // holeNos 原始 gateNo
-const HIST = { page: 1, size: 20, total: 0, rows: [], histType: 'waterLevel', openCols: [] };
+const HIST = { page: 1, size: 10, total: 0, rows: [], histType: 'waterLevel', openCols: [] };
 let HIST_DEVICES = []; // [{id, gateNo, deviceName}] 备用
 let chart = null;
 let openChart = null;

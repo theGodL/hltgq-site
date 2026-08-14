@@ -22,8 +22,11 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -107,11 +110,23 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Override
     public IPage<GqRainfallVO> gqRainfallHistoryPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> rows = baseMapper.selectGqRainfallHistory(stcd, startTime, endTime);
+        // 分页下推：count + 当前页行（基线子查询仅对当前页行执行，避免全量行 × 4 次子查询导致接口慢）
+        long total = baseMapper.countGqRainfallHistory(stcd, startTime, endTime);
+        if (total == 0) {
+            Page<GqRainfallVO> empty = new Page<>(page, size);
+            empty.setTotal(0);
+            empty.setRecords(Collections.emptyList());
+            return empty;
+        }
+        int offset = (int) ((page - 1) * size);
+        List<Map<String, Object>> rows = baseMapper.selectGqRainfallHistoryPage(stcd, startTime, endTime, (int) size, offset);
         List<GqRainfallVO> vos = rows.stream()
                 .filter(row -> !isReservoirStation(row))
                 .map(this::toGqRainfallVO).collect(Collectors.toList());
-        return toPage(vos, page, size);
+        Page<GqRainfallVO> result = new Page<>(page, size);
+        result.setTotal(total);
+        result.setRecords(vos);
+        return result;
     }
 
     private GqRainfallVO toGqRainfallVO(Map<String, Object> row) {
@@ -127,8 +142,6 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         } else if (tmObj instanceof Timestamp) {
             vo.setTm(((Timestamp) tmObj).toLocalDateTime());
         }
-        BigDecimal drp = toBigDecimal(row.get("drp"));
-        vo.setDrp(drp);
         vo.setDyp(toBigDecimal(row.get("dyp")));
         // 时段增量计算：当前DYP - 历史DYP（DYP永不归零，计算结果准确）
         BigDecimal dypVal = toBigDecimal(row.get("dyp"));
@@ -138,6 +151,10 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         vo.setRain1h(subtractOrNull(dypVal, dyp1h));
         vo.setRain3h(subtractOrNull(dypVal, dyp3h));
         vo.setRain6h(subtractOrNull(dypVal, dyp6h));
+        // 当前降雨量 = 当前水文日累计（DYP 增量：最新DYP - 水文本日起点前基线DYP）
+        // 花凉亭 DRP 恒 0、灌区站 DRP 每日 8:00 归零不可靠，统一用 DYP 增量
+        BigDecimal dypDay = toBigDecimal(row.get("dyp_day"));
+        vo.setDrp(subtractOrNull(dypVal, dypDay));
         return vo;
     }
 
@@ -302,8 +319,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             d = d.plusDays(1);
         }
 
-        // 6. 组装站点信息（含最新 DRP — 实时雨情视角）
+        // 6. 组装站点信息（实时雨情视角：当前降雨量 = 最新观测所在水文日的 DYP 累计增量）
         List<ReservoirRainfallVO.StationInfo> stations = new ArrayList<>();
+        Map<String, BigDecimal> latestRain = latestHydroDayRain(resolved.keySet(), records);
         Map<String, StPptnR> latestPerStcd = new HashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
@@ -322,7 +340,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             StPptnR latest = latestPerStcd.get(stcd);
             if (latest != null) {
                 si.setLatestTm(latest.getTm());
-                si.setLatestDrp(latest.getDrp());
+                si.setLatestDrp(latestRain.get(stcd));
             } else {
                 // 无数据时返回当前时间，表示"截至此刻无测量值"，便于前端区分"无数据"与"接口异常"
                 si.setLatestTm(LocalDateTime.now());
@@ -358,13 +376,70 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         return vo;
     }
 
-    /** 水文日标签：早 8 点切分，标签日期为水文日结束日 */
+    /**
+     * 水文日标签：标签 D 的水文日区间为 (D-1日 08:00:00, D日 08:00:00]（左开右闭）
+     * <p>8 点整（08:00:00）属于当日标签（区间右端点）；08:00:01 起才归入次日标签。
+     * 实现：先把时刻回退 1 秒，再按 8 点左闭右开切分。
+     */
     private String getHydroDayLabel(LocalDateTime tm) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        if (tm.getHour() >= 8) {
-            return tm.toLocalDate().plusDays(1).format(fmt) + " 08:00:00";
+        LocalDateTime t = tm.minusSeconds(1);
+        if (t.getHour() >= 8) {
+            return t.toLocalDate().plusDays(1).format(fmt) + " 08:00:00";
         }
-        return tm.toLocalDate().format(fmt) + " 08:00:00";
+        return t.toLocalDate().format(fmt) + " 08:00:00";
+    }
+
+    /**
+     * 各站点最新观测所在水文日的累计降雨量（DYP 正向增量之和）
+     * <p>花凉亭雨量报文 DRP 恒为 0，仅 DYP 有值且持续累加，“当前降雨量”必须用 DYP 增量表示。
+     */
+    private Map<String, BigDecimal> latestHydroDayRain(Set<String> validStcds, List<StPptnR> records) {
+        Map<String, BigDecimal> result = new HashMap<>();
+        Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
+        for (StPptnR r : records) {
+            String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
+            if (!validStcds.contains(key)) continue;
+            byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
+        }
+        for (Map.Entry<String, List<StPptnR>> entry : byStation.entrySet()) {
+            List<StPptnR> rows = entry.getValue();
+            rows.sort(Comparator.comparing(StPptnR::getTm));
+            StPptnR latest = rows.get(rows.size() - 1);
+            String label = getHydroDayLabel(latest.getTm());
+            BigDecimal sum = null;
+            for (int i = 0; i < rows.size(); i++) {
+                StPptnR cur = rows.get(i);
+                if (!label.equals(getHydroDayLabel(cur.getTm()))) continue;
+                BigDecimal inc = BigDecimal.ZERO;
+                if (i > 0) {
+                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                    BigDecimal prevDyp = rows.get(i - 1).getDyp() != null ? rows.get(i - 1).getDyp() : BigDecimal.ZERO;
+                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                }
+                sum = (sum == null ? BigDecimal.ZERO : sum).add(inc);
+            }
+            if (sum != null) {
+                result.put(entry.getKey(), sum);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Map<String, BigDecimal> currentHydroDayRainfall() {
+        List<String> stcds = baseMapper.selectDistinctRainfallStcds();
+        if (stcds == null || stcds.isEmpty()) return Collections.emptyMap();
+        Set<String> valid = new HashSet<>();
+        for (String s : stcds) {
+            if (s != null) valid.add(s.trim());
+        }
+        if (valid.isEmpty()) return Collections.emptyMap();
+        // 查近 4 天数据，覆盖各站最新观测所在水文日的完整增量（含基线记录）
+        LocalDateTime now = LocalDateTime.now();
+        List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(
+                new ArrayList<>(valid), now.minusDays(4), now);
+        return latestHydroDayRain(valid, records);
     }
 
     @Override
@@ -408,7 +483,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
                     inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
-                // floorToInterval：分钟取整到间隔边界
+                // floorToInterval：水文日对齐的时段取整（8:00:00 整点归 07:00 桶，防止增量丢失）
                 String bucket = floorToInterval(cur.getTm(), intervalMinutes);
                 bucketMap.computeIfAbsent(bucket, k -> new LinkedHashMap<>())
                         .merge(stcd, inc, BigDecimal::add);
@@ -427,8 +502,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             t = t.plusMinutes(intervalMinutes);
         }
 
-        // 6. 组装站点信息
+        // 6. 组装站点信息（当前降雨量 = 最新观测所在水文日的 DYP 累计增量）
         List<ReservoirRainfallVO.StationInfo> stations = new ArrayList<>();
+        Map<String, BigDecimal> latestRain = latestHydroDayRain(resolved.keySet(), records);
         Map<String, StPptnR> latestPerStcd = new HashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
@@ -447,7 +523,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             StPptnR latest = latestPerStcd.get(stcd);
             if (latest != null) {
                 si.setLatestTm(latest.getTm());
-                si.setLatestDrp(latest.getDrp());
+                si.setLatestDrp(latestRain.get(stcd));
             }
             stations.add(si);
         }
@@ -480,31 +556,39 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         return vo;
     }
 
-    /** 分钟取整到间隔边界，对齐 floorToInterval */
+    /**
+     * 时段桶取整（水文日对齐）：
+     * 1. 先回退 1 秒，与 getHydroDayLabel 口径一致（8:00:00 整点归当日标签）
+     * 2. 以当日 08:00 为桶起点按 interval 向下取整
+     * 效果：8:00:00 整点增量归 07:00 时段桶（不再落出桶序列而丢失），
+     * 每个时段桶内记录同属一个水文日标签，时段合计与日雨情一致
+     */
     private String floorToInterval(LocalDateTime tm, int intervalMinutes) {
-        int totalMinutes = tm.getHour() * 60 + tm.getMinute();
-        int floored = (totalMinutes / intervalMinutes) * intervalMinutes;
-        int h = floored / 60;
-        int m = floored % 60;
-        return String.format("%s %02d:%02d",
-                tm.toLocalDate().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")), h, m);
+        LocalDateTime base = tm.minusSeconds(1);
+        LocalDateTime hydroStart = base.toLocalDate().atTime(LocalTime.of(8, 0));
+        long diffMinutes = Duration.between(hydroStart, base).toMinutes();
+        long floored = Math.floorDiv(diffMinutes, (long) intervalMinutes) * intervalMinutes;
+        LocalDateTime bucket = hydroStart.plusMinutes(floored);
+        return bucket.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
     }
 
     // ======================== 旬月雨情 ========================
 
     @Override
-    public ReservoirTenDayRainfallVO reservoirTenDayRainfall(String yearMonth) {
-        // 解析年月
-        LocalDate monthStart = LocalDate.parse(yearMonth + "-01");
-        LocalDate monthEnd = monthStart.plusMonths(1).minusDays(1);
+    public ReservoirTenDayRainfallVO reservoirTenDayRainfall(int year, int startMonth, int endMonth) {
+        // 月份区间归一化（支持 08 月 ~ 08 月 单月或跨月区间）
+        int m1 = Math.min(startMonth, endMonth);
+        int m2 = Math.max(startMonth, endMonth);
+        YearMonth firstMonth = YearMonth.of(year, m1);
+        YearMonth lastMonth = YearMonth.of(year, m2);
 
         // 通过名称反查站点信息
         Map<String, StStinfo> resolved = resolveReservoirStcds();
         List<String> reservoirStcds = new ArrayList<>(resolved.keySet());
 
-        // 扩展查询范围（水文日边界）
-        LocalDateTime queryStart = monthStart.atTime(8, 0).minusDays(1);
-        LocalDateTime queryEnd = monthEnd.plusDays(1).atTime(7, 59, 59);
+        // 扩展查询范围（水文日边界：首月前一天 08:00 ~ 末月最后一天次日 07:59:59）
+        LocalDateTime queryStart = firstMonth.atDay(1).atTime(8, 0).minusDays(1);
+        LocalDateTime queryEnd = lastMonth.atEndOfMonth().plusDays(1).atTime(7, 59, 59);
 
         List<StPptnR> records = reservoirStcds.isEmpty()
                 ? Collections.emptyList()
@@ -538,39 +622,45 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             }
         }
 
-        // 按旬聚合：上旬(1-10)、中旬(11-20)、下旬(21+)
-        String[][] tenDays = {{"上旬", "1", "10"}, {"中旬", "11", "20"}, {"下旬", "21", String.valueOf(monthEnd.getDayOfMonth())}};
+        // 逐月按旬聚合：上旬(1-10)、中旬(11-20)、下旬(21-月末)
         List<ReservoirTenDayRainfallVO.TenDayRow> periods = new ArrayList<>();
+        DateTimeFormatter ymFmt = DateTimeFormatter.ofPattern("yyyy-MM");
+        for (int month = m1; month <= m2; month++) {
+            YearMonth ym = YearMonth.of(year, month);
+            String yearMonth = ym.format(ymFmt);
+            String[][] tenDays = {{"上旬", "1", "10"}, {"中旬", "11", "20"},
+                    {"下旬", "21", String.valueOf(ym.lengthOfMonth())}};
 
-        for (String[] td : tenDays) {
-            String name = td[0];
-            int dStart = Integer.parseInt(td[1]);
-            int dEnd = Integer.parseInt(td[2]);
+            for (String[] td : tenDays) {
+                String name = td[0];
+                int dStart = Integer.parseInt(td[1]);
+                int dEnd = Integer.parseInt(td[2]);
 
-            Map<String, BigDecimal> tenDayValues = new LinkedHashMap<>();
-            BigDecimal sum = BigDecimal.ZERO;
-            for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
-                String stcd = entry.getKey();
-                BigDecimal stcdSum = BigDecimal.ZERO;
-                for (int day = dStart; day <= dEnd; day++) {
-                    String hydroKey = String.format("%s-%02d-%02d 08:00:00",
-                            monthStart.getYear(), monthStart.getMonthValue(), day);
-                    Map<String, BigDecimal> dayValues = dailyRainfall.get(hydroKey);
-                    if (dayValues != null) {
-                        stcdSum = stcdSum.add(dayValues.getOrDefault(stcd, BigDecimal.ZERO));
+                Map<String, BigDecimal> tenDayValues = new LinkedHashMap<>();
+                BigDecimal sum = BigDecimal.ZERO;
+                for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
+                    String stcd = entry.getKey();
+                    BigDecimal stcdSum = BigDecimal.ZERO;
+                    for (int day = dStart; day <= dEnd; day++) {
+                        String hydroKey = String.format("%s-%02d-%02d 08:00:00",
+                                ym.getYear(), ym.getMonthValue(), day);
+                        Map<String, BigDecimal> dayValues = dailyRainfall.get(hydroKey);
+                        if (dayValues != null) {
+                            stcdSum = stcdSum.add(dayValues.getOrDefault(stcd, BigDecimal.ZERO));
+                        }
                     }
+                    tenDayValues.put(stcd, stcdSum);
+                    sum = sum.add(stcdSum);
                 }
-                tenDayValues.put(stcd, stcdSum);
-                sum = sum.add(stcdSum);
-            }
 
-            ReservoirTenDayRainfallVO.TenDayRow row = new ReservoirTenDayRainfallVO.TenDayRow();
-            row.setYearMonth(yearMonth);
-            row.setTenDay(name);
-            row.setValues(tenDayValues);
-            row.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
-                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
-            periods.add(row);
+                ReservoirTenDayRainfallVO.TenDayRow row = new ReservoirTenDayRainfallVO.TenDayRow();
+                row.setYearMonth(yearMonth);
+                row.setTenDay(name);
+                row.setValues(tenDayValues);
+                row.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
+                        : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
+                periods.add(row);
+            }
         }
 
         // 组装站点信息
@@ -590,9 +680,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         Map<String, StStinfo> resolved = resolveReservoirStcds();
         List<String> reservoirStcds = new ArrayList<>(resolved.keySet());
 
-        // 扩展查询范围（向前多取几天确保窗口完整）
-        LocalDateTime queryStart = startDate.atTime(8, 0).minusDays(8);
-        LocalDateTime queryEnd = endDate.atTime(7, 59, 59);
+        // 扩展查询范围（水文日边界：前扩 9 天覆盖 max7d 窗口及其基线，后扩 1 天覆盖 endDate 08:00 整点记录）
+        LocalDateTime queryStart = startDate.atTime(8, 0).minusDays(9);
+        LocalDateTime queryEnd = endDate.plusDays(1).atTime(7, 59, 59);
 
         List<StPptnR> records = reservoirStcds.isEmpty()
                 ? Collections.emptyList()
@@ -613,8 +703,11 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             List<StPptnR> stationRows = byStation.getOrDefault(stcd, Collections.emptyList());
             stationRows.sort(Comparator.comparing(StPptnR::getTm));
 
-            // 计算小时增量序列
+            // 计算小时增量序列（水文日对齐：小时桶用 floorToInterval 取整，
+            // 8:00:00 整点增量归 07:00 桶，与时段雨情口径一致；
+            // 日雨量直接按水文日标签聚合，与日雨情口径一致）
             Map<String, BigDecimal> hourlyInc = new LinkedHashMap<>();
+            Map<String, BigDecimal> dailyInc = new LinkedHashMap<>();
             for (int i = 0; i < stationRows.size(); i++) {
                 StPptnR cur = stationRows.get(i);
                 BigDecimal inc = BigDecimal.ZERO;
@@ -624,26 +717,20 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
                     inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
-                String hourKey = cur.getTm().truncatedTo(ChronoUnit.HOURS)
-                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));
-                hourlyInc.merge(hourKey, inc, BigDecimal::add);
+                hourlyInc.merge(floorToInterval(cur.getTm(), 60), inc, BigDecimal::add);
+                dailyInc.merge(getHydroDayLabel(cur.getTm()), inc, BigDecimal::add);
             }
 
             // 生成完整小时序列
             List<Map.Entry<String, BigDecimal>> hourList = new ArrayList<>(hourlyInc.entrySet());
             hourList.sort(Map.Entry.comparingByKey());
 
-            // 滑动窗口求极值
+            // 滑动窗口求极值（小时桶已水文日对齐，max24h 与水文日日雨量口径一致）
             BigDecimal max3h = slidingMax(hourList, 3);
             BigDecimal max6h = slidingMax(hourList, 6);
             BigDecimal max24h = slidingMax(hourList, 24);
 
-            // 日雨量序列
-            Map<String, BigDecimal> dailyInc = new LinkedHashMap<>();
-            for (Map.Entry<String, BigDecimal> h : hourList) {
-                String dayKey = h.getKey().substring(0, 10);
-                dailyInc.merge(dayKey, h.getValue(), BigDecimal::add);
-            }
+            // 日雨量序列（水文日标签排序）
             List<Map.Entry<String, BigDecimal>> dayList = new ArrayList<>(dailyInc.entrySet());
             dayList.sort(Map.Entry.comparingByKey());
 
@@ -789,6 +876,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     /** 提取公共站点信息组装 */
     private List<ReservoirRainfallVO.StationInfo> buildStationInfos(Map<String, StStinfo> resolved, List<StPptnR> records) {
         List<ReservoirRainfallVO.StationInfo> stations = new ArrayList<>();
+        Map<String, BigDecimal> latestRain = latestHydroDayRain(resolved.keySet(), records);
         Map<String, StPptnR> latestPerStcd = new HashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
@@ -807,7 +895,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             StPptnR latest = latestPerStcd.get(stcd);
             if (latest != null) {
                 si.setLatestTm(latest.getTm());
-                si.setLatestDrp(latest.getDrp());
+                si.setLatestDrp(latestRain.get(stcd));
             } else {
                 si.setLatestTm(LocalDateTime.now());
             }

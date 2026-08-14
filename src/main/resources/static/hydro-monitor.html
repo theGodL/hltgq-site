@@ -323,21 +323,28 @@ async function queryPeriod() {
   try {
     const p = new URLSearchParams({ startTime: startDate + ' 08:00:00', endTime: endDate + ' 07:59:59' });
     const rows = await fetch(`/hltgq-site/st-pptn-r/export?${p}`).then(r => r.json());
-    // 只保留所选水文日内的时段
-    const periodBuckets = generatePptnBuckets(s, e);
-    const bucketSet = new Set(periodBuckets);
-    const filtered = (rows || []).filter(r => bucketSet.has(getHydroDayLabel(r.tm)));
+    // 不做水文日标签预过滤：增量计算需要跨标签的前一条基线记录，
+    // 若先按标签过滤会把基线滤掉，导致标签首条记录被当成窗口第一条（inc=0）而丢失增量。
+    // floorToInterval 已按水文日对齐归桶，渲染只遍历 fullBuckets 序列内的桶，
+    // 相邻标签的时段桶不在序列中，自然不会被显示。
     const fullBuckets = generatePeriodBuckets(s, e, interval);
-    S.periodData = buildPeriodPivot(filtered, interval, fullBuckets);
+    S.periodData = buildPeriodPivot(rows || [], interval, fullBuckets);
     renderPivot('period', S.periodData, false);
   } catch(err) { setPivotState('period', 'error'); console.error(err); }
 }
 
 function floorToInterval(tmStr, intervalMinutes) {
   const s = String(tmStr).slice(0, 19);
-  const datePart = s.slice(0, 10), h = +s.slice(11, 13), m = +s.slice(14, 16);
-  const floored = Math.floor((h * 60 + m) / intervalMinutes) * intervalMinutes;
-  return `${datePart} ${pad(Math.floor(floored / 60))}:${pad(floored % 60)}:00`;
+  // 水文日对齐：先回退 1 秒（8 点整归当日标签，与 getHydroDayLabel 一致），
+  // 再以当日 08:00 为桶起点向下取整，8:00:00 整点增量归 07:00 桶不再丢失
+  const d = new Date(s.replace(' ', 'T'));
+  d.setSeconds(d.getSeconds() - 1);
+  const hydroStart = new Date(d);
+  hydroStart.setHours(8, 0, 0, 0);
+  const diffMin = Math.floor((d - hydroStart) / 60000);
+  const floored = Math.floor(diffMin / intervalMinutes) * intervalMinutes;
+  const bucket = new Date(hydroStart.getTime() + floored * 60000);
+  return `${fmtDate(bucket)} ${pad(bucket.getHours())}:${pad(bucket.getMinutes())}:00`;
 }
 
 function generatePeriodBuckets(startDate, endDate, intervalMinutes) {
@@ -415,11 +422,14 @@ async function queryDaily() {
 
 function getHydroDayLabel(tmStr) {
   const s = String(tmStr).slice(0, 19);
-  const datePart = s.slice(0, 10), h = +s.slice(11, 13);
-  if (h >= 8) {
-    const d = new Date(datePart + 'T08:00:00');
-    d.setDate(d.getDate() + 1);
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} 08:00:00`;
+  // 8 点整（08:00:00）属于当日标签，08:00:01 起归次日 → 先回退 1 秒再按 8 点切分
+  const d = new Date(s.replace(' ', 'T'));
+  d.setSeconds(d.getSeconds() - 1);
+  const datePart = fmtDate(d);
+  if (d.getHours() >= 8) {
+    const e = new Date(datePart + 'T08:00:00');
+    e.setDate(e.getDate() + 1);
+    return `${fmtDate(e)} 08:00:00`;
   }
   return `${datePart} 08:00:00`;
 }

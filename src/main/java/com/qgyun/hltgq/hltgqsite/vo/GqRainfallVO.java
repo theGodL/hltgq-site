@@ -30,7 +30,7 @@ public class GqRainfallVO {
     /** 监测日期（最新数据时间） */
     private LocalDateTime tm;
 
-    /** 当前降雨量 DRP（mm）— 水文日累计（8:00 ~ 当前） */
+    /** 当前降雨量（mm）— 当前水文日累计（DYP 增量：最新DYP - 水文本日起点前基线DYP） */
     private BigDecimal drp;
 
     /** 累计雨量 DYP（mm）— RTU安装至今的总累计，永不归零 */

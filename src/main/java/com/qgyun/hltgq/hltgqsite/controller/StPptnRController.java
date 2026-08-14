@@ -21,7 +21,10 @@ import org.springframework.web.bind.annotation.*;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/st-pptn-r")
@@ -30,6 +33,11 @@ public class StPptnRController {
     @Autowired
     private StPptnRService stPptnRService;
 
+    /**
+     * 每站最新水文日聚合（原始 DRP 直接聚合，非业务雨量口径）
+     * 注意：花凉亭水库报文 DRP 恒为 0，该接口返回 0 属真实入库值；
+     * 业务雨量请用 /reservoir-rainfall 等 reservoir 系列接口（基于 DYP 增量）。
+     */
     @GetMapping("/latest")
     public List<StPptnR> latest() {
         return stPptnRService.latestPerStation();
@@ -42,6 +50,10 @@ public class StPptnRController {
         return stPptnRService.list(wrapper);
     }
 
+    /**
+     * 雨量原始数据每日聚合分页（原始 DRP 直接聚合，非业务雨量口径）
+     * 注意：花凉亭水库报文 DRP 恒为 0，业务雨量请用 /reservoir-rainfall（基于 DYP 增量）。
+     */
     @GetMapping("/page-daily")
     public IPage<StPptnR> pageDaily(
             @RequestParam(defaultValue = "1") int page,
@@ -157,8 +169,9 @@ public class StPptnRController {
 
     /**
      * 水库实时雨情 / 水库日雨情（双视角）
-     * stations[]: 实时雨情 — 各站点最新观测快照（latestTm = 实际观测时间，latestDrp = 当前降雨量 DRP）
-     * days[]:    日雨情 — 按水文日（8:00 切分）聚合的逐日雨量透视表
+     * stations[]: 实时雨情 — 各站点最新观测快照（latestTm = 实际观测时间，
+     *             latestDrp = 当前降雨量 = 最新观测所在水文日的 DYP 正向增量）
+     * days[]:    日雨情 — 按水文日（8:00 切分，8 点整归当日标签）聚合的逐日雨量透视表
      * startDate/endDate 非必填，默认当天
      */
     @GetMapping("/reservoir-rainfall")
@@ -175,11 +188,18 @@ public class StPptnRController {
      * 水库时段雨情：12 个固定站点，按可配时间间隔聚合时段雨量
      * startDate/endDate 非必填默认当天，interval 默认 60（可选 15/30/45/60/120/180/240/360/480/720/1440）
      */
+    private static final Set<Integer> VALID_INTERVALS = new HashSet<>(Arrays.asList(
+            15, 30, 45, 60, 120, 180, 240, 360, 480, 720, 1440));
+
     @GetMapping("/reservoir-period-rainfall")
     public ReservoirPeriodRainfallVO reservoirPeriodRainfall(
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
             @RequestParam(defaultValue = "60") int interval) {
+        if (!VALID_INTERVALS.contains(interval)) {
+            throw new IllegalArgumentException("interval 不合法: " + interval
+                    + "（可选 15/30/45/60/120/180/240/360/480/720/1440 分钟）");
+        }
         LocalDate now = LocalDate.now();
         if (startDate == null) startDate = now;
         if (endDate == null) endDate = now;
@@ -188,12 +208,27 @@ public class StPptnRController {
 
     /**
      * 水库旬月雨情：12 个固定站点，按旬（上/中/下旬）聚合雨量 + 平均值
-     * yearMonth 必填，格式 yyyy-MM
+     * 支持年份 + 月份区间（如 year=2026&startMonth=8&endMonth=8 单月或跨月区间）
+     * 兼容旧参数 yearMonth（yyyy-MM，单月），year 默认当年
      */
     @GetMapping("/reservoir-ten-day-rainfall")
     public ReservoirTenDayRainfallVO reservoirTenDayRainfall(
-            @RequestParam String yearMonth) {
-        return stPptnRService.reservoirTenDayRainfall(yearMonth);
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) String yearMonth,
+            @RequestParam(defaultValue = "1") int startMonth,
+            @RequestParam(defaultValue = "12") int endMonth) {
+        int y = (year != null) ? year : LocalDate.now().getYear();
+        if (yearMonth != null && !yearMonth.isEmpty()) {
+            // 旧参数兼容：yearMonth=yyyy-MM 视为单月区间
+            y = Integer.parseInt(yearMonth.substring(0, 4));
+            int month = Integer.parseInt(yearMonth.substring(5, 7));
+            startMonth = month;
+            endMonth = month;
+        }
+        if (startMonth < 1 || startMonth > 12 || endMonth < 1 || endMonth > 12) {
+            throw new IllegalArgumentException("月份区间不合法: startMonth=" + startMonth + ", endMonth=" + endMonth);
+        }
+        return stPptnRService.reservoirTenDayRainfall(y, startMonth, endMonth);
     }
 
     /**

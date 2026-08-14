@@ -11,8 +11,11 @@ import java.time.LocalDateTime;
 @Data
 public class FlowMonitoringVO {
 
-    /** 站点编号 */
+    /** 站点编号（MQTT 站点无编号时为 null，前端留空显示） */
     private String stcd;
+
+    /** 站点标识（stcd 或 site UUID，无编号站点查询/筛选用，不用于展示） */
+    private String site;
 
     /** 站点名称 */
     private String stnm;

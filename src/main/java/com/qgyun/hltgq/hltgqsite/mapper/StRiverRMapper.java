@@ -3,11 +3,14 @@ package com.qgyun.hltgq.hltgqsite.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.qgyun.hltgq.hltgqsite.entity.StRiverR;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;
 import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface StRiverRMapper extends BaseMapper<StRiverR> {
@@ -36,4 +39,38 @@ public interface StRiverRMapper extends BaseMapper<StRiverR> {
             @Result(column = "wptn", property = "wptn")
     })
     List<StRiverR> selectLatestPerStation();
+
+    /**
+     * 水情简报：站点在时间窗口内的最高水位及出现时间（Z 非空，同高取最早）
+     * 注意：非 <script> 注解 SQL 必须直接使用 >= / <=，不能写 &gt; / &lt;（不会解码，会报 column "gt" does not exist）
+     */
+    @Select("SELECT TRUNC(r.Z, 2) AS z, r.TM AS tm " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
+            "WHERE r.STCD = #{stcd} " +
+            "AND r.TM >= #{startTime} " +
+            "AND r.TM <= #{endTime} " +
+            "AND r.Z IS NOT NULL " +
+            "ORDER BY r.Z DESC, r.TM ASC LIMIT 1")
+    Map<String, Object> selectMaxZInRange(
+            @Param("stcd") String stcd,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 多年同期水情：各站点按自然年月的平均水位（截断 2 位小数）
+     */
+    @Select("<script>" +
+            "SELECT r.STCD AS stcd, CAST(EXTRACT(YEAR FROM r.TM) AS INTEGER) AS yr, " +
+            "CAST(EXTRACT(MONTH FROM r.TM) AS INTEGER) AS mon, TRUNC(AVG(r.Z), 2) AS avgz " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
+            "WHERE r.STCD IN " +
+            "<foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach> " +
+            "AND r.TM &gt;= #{startTime} " +
+            "AND r.TM &lt;= #{endTime} " +
+            "GROUP BY r.STCD, EXTRACT(YEAR FROM r.TM), EXTRACT(MONTH FROM r.TM)" +
+            "</script>")
+    List<Map<String, Object>> selectMonthlyAvgZ(
+            @Param("stcds") List<String> stcds,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
 }

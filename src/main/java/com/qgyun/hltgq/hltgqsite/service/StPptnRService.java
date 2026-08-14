@@ -12,9 +12,11 @@ import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallBriefVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirTenDayRainfallVO;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public interface StPptnRService extends IService<StPptnR> {
 
@@ -25,6 +27,12 @@ public interface StPptnRService extends IService<StPptnR> {
     IPage<StPptnR> dailyPage(IPage<StPptnR> page, QueryWrapper<StPptnR> wrapper);
 
     List<StPptnR> todaySumPerStation(LocalDateTime start, LocalDateTime end);
+
+    /**
+     * 各雨量站最新观测所在水文日的累计降雨量（DYP 正向增量之和，mm）
+     * <p>花凉亭雨量报文 DRP 恒为 0，仅 DYP 有值；灌区站 DRP 每日 8:00 归零亦不可靠，统一用 DYP 增量。
+     */
+    Map<String, BigDecimal> currentHydroDayRainfall();
 
     /**
      * 灌区雨量分页查询：每站点最新一条，含1h/3h/6h时段增量
@@ -53,8 +61,9 @@ public interface StPptnRService extends IService<StPptnR> {
 
     /**
      * 水库旬月雨情：12 个固定站点，按旬（上/中/下旬）聚合雨量
+     * 支持年份 + 月份区间（如 08 月 ~ 08 月 单月或跨月区间）
      */
-    ReservoirTenDayRainfallVO reservoirTenDayRainfall(String yearMonth);
+    ReservoirTenDayRainfallVO reservoirTenDayRainfall(int year, int startMonth, int endMonth);
 
     /**
      * 水库极值雨情：12 个站点各时间窗口（3h/6h/24h/2d/3d/7d）最大雨量

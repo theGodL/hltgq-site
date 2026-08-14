@@ -40,6 +40,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
      */
     private static final Map<String, String> LEGACY_TO_NEW_STCD = new HashMap<>();
     static {
+        LEGACY_TO_NEW_STCD.put("00000001", "3206400001");
         LEGACY_TO_NEW_STCD.put("00000004", "320640000A");
         LEGACY_TO_NEW_STCD.put("00000007", "3206400007");
     }
@@ -195,6 +196,10 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
     @Override
     public List<PeriodRegimeVO> periodRegime(LocalDate date, int interval, List<String> stcds) {
+        // 防御：interval 非法（<=0）会导致槽位生成死循环
+        if (interval <= 0) {
+            throw new IllegalArgumentException("时段间隔必须为正整数（1/2/3/6/12）");
+        }
         // 1. 解析站点（过渡期按站名反查），建立真实 stcd → stnm 映射
         Map<String, String> stcdToName = new LinkedHashMap<>();
         for (String raw : stcds) {
@@ -223,23 +228,28 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         }
 
         // 3. 批量查询所有选中站点在时间窗口内的原始水位记录（按 stcd, tm 升序）
+        // 业主口径：整点水位取「整点之前的最后一条采集」（如 11 点值 = 10:00~11:00 间最新一条），
+        // 整点之后的采集归下一整点，一旦进入下一时段，前一时段数值固定不再变动。
+        // 因此窗口从首个槽位的前一时刻 slotStart-interval 开始，到 slotEnd 止（多取无害，
+        // 恰好等于首槽位前一整点的记录会被槽位匹配的左开右闭规则忽略）
         List<Map<String, Object>> rawRecords = waterFlowMapper.selectPeriodRawRecords(
-                resolvedStcds, slotStart, slotEnd);
+                resolvedStcds, slotStart.minusHours(interval), slotEnd);
 
         // 4. 构建结果：N站 × M槽 = 完整 VO 列表
-        // 槽位匹配策略：记录 tm ∈ [slot_i, nextSlot) → 归属 slot_i；同槽位多条取 tm 最大的
+        // 槽位匹配策略（业主口径）：记录 tm ∈ (prevSlot, slot] 左开右闭 → 归属 slot；
+        // 同槽位多条取 tm 最大的（最新）。整点整点的记录归该整点槽位（如 11:00:00 归 11 点），
+        // 整点之后归下一整点，保证前一时段数值在进入下一时段后固定不动
         List<PeriodRegimeVO> result = new ArrayList<>();
         for (Map.Entry<String, String> entry : stcdToName.entrySet()) {
             String stcd = entry.getKey();
             String stnm = entry.getValue();
 
-            // 为该站点构建：槽位 → 最新 z 值
-            Map<LocalDateTime, BigDecimal> slotZ = new LinkedHashMap<>();
+            // 为该站点构建：槽位 → 最新有效记录（z/wptn/q）
+            Map<LocalDateTime, SlotVal> slotBest = new LinkedHashMap<>();
             for (Map<String, Object> row : rawRecords) {
                 if (!stcd.equals(String.valueOf(row.get("stcd")))) continue;
 
                 Object tmObj = row.get("tm");
-                Object zObj = row.get("z");
                 if (tmObj == null) continue;
 
                 LocalDateTime recordTm;
@@ -251,19 +261,17 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
                     continue;
                 }
 
-                // 找到该记录归属的槽位
+                // 找到该记录归属的槽位：(prevSlot, slot] 左开右闭
                 for (int i = 0; i < slots.size(); i++) {
                     LocalDateTime slot = slots.get(i);
-                    LocalDateTime nextSlot = (i + 1 < slots.size()) ? slots.get(i + 1) : slotEnd.plusHours(1);
-                    if (!recordTm.isBefore(slot) && recordTm.isBefore(nextSlot)) {
-                        BigDecimal z = null;
-                        if (zObj instanceof BigDecimal) {
-                            z = (BigDecimal) zObj;
-                        } else if (zObj != null) {
-                            z = new BigDecimal(zObj.toString());
-                        }
+                    LocalDateTime prevSlot = slot.minusHours(interval);
+                    if (recordTm.isAfter(prevSlot) && !recordTm.isAfter(slot)) {
+                        SlotVal v = new SlotVal();
+                        v.z = toBigDecimal(row.get("z"));
+                        v.wptn = row.get("wptn") != null ? String.valueOf(row.get("wptn")) : null;
+                        v.q = toBigDecimal(row.get("q"));
                         // 同槽位多条时，后扫描的（tm 更大）覆盖前者
-                        slotZ.put(slot, z);
+                        slotBest.put(slot, v);
                         break;
                     }
                 }
@@ -275,13 +283,48 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
                 vo.setStcd(stcd);
                 vo.setStnm(stnm);
                 vo.setTm(slot);
-                vo.setZ(slotZ.get(slot));
-                // wptn/q/msqmt/msamt/msvmt 留空
+                SlotVal v = slotBest.get(slot);
+                vo.setZ(v != null ? v.z : null);
+                vo.setWptn(v != null ? mapWptn(v.wptn) : null);
+                vo.setQ(v != null ? v.q : null);
+                // msqmt/msamt/msvmt 无数据源，留空
                 result.add(vo);
             }
         }
 
         return result;
+    }
+
+    /** 槽位内最新有效记录（z/wptn/q） */
+    private static class SlotVal {
+        BigDecimal z;
+        String wptn;
+        BigDecimal q;
+    }
+
+    /** Map 值 → BigDecimal（null 安全） */
+    private BigDecimal toBigDecimal(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof BigDecimal) return (BigDecimal) obj;
+        try {
+            return new BigDecimal(obj.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** 水势代码 → 中文 */
+    private String mapWptn(String wptn) {
+        if (wptn == null || wptn.isEmpty()) return "无涨落信息";
+        switch (wptn.trim()) {
+            case "4":
+            case "涨": return "涨";
+            case "5":
+            case "落": return "落";
+            case "6":
+            case "平": return "平";
+            default:  return "无涨落信息";
+        }
     }
 
 }

@@ -354,7 +354,7 @@ async function fetchJson(url) {
 }
 
 const S = { page: 1, size: 20, total: 0, rows: [], allRows: [], current: null };
-const HIST = { page: 1, size: 20, total: 0, rows: [] };
+const HIST = { page: 1, size: 10, total: 0, rows: [] };
 let qChart = null;
 let FLOW_SITES = []; // [{code, name}]
 
@@ -471,7 +471,7 @@ function buildListParams() {
 
 function applySiteFilter(list) {
   const stcd = ($('st-code').value || '').trim();
-  if (stcd) return list.filter(r => String(r.stcd) === stcd);
+  if (stcd) return list.filter(r => String(r.site ?? r.stcd) === stcd);
   // 未点选站点但输入了关键字时，按名称/编号模糊过滤
   const kw = ($('st-input').value || '').trim();
   if (!kw) return list;
@@ -529,7 +529,7 @@ function renderTable() {
   tbody.innerHTML = S.rows.map((r, i) => `
     <tr>
       <td>${fmtN(r.stnm)}</td>
-      <td>${fmtN(r.stcd)}</td>
+      <td>${r.stcd ? fmtN(r.stcd) : ''}</td>
       <td>${fmtN2(r.q)}</td>
       <td>${fmtN2(r.tf)}</td>
       <td>${fmtTm(r.tm)}</td>
@@ -689,11 +689,11 @@ function renderChart(hours) {
 }
 
 async function reloadChart() {
-  if (!S.current?.stcd) return;
+  if (!S.current || (!S.current.stcd && !S.current.site)) return;
   setLoading($('q-chart'), true);
   try {
     const p = new URLSearchParams();
-    p.set('stcd', S.current.stcd);
+    p.set('stcd', S.current.site || S.current.stcd);
     const s = dateToStart($('chart-start').value);
     const e = dateToEnd($('chart-end').value);
     if (s) p.set('startTime', s);
@@ -765,12 +765,12 @@ function renderHistPager() {
 }
 
 async function reloadHistory() {
-  if (!S.current?.stcd) return;
+  if (!S.current || (!S.current.stcd && !S.current.site)) return;
   const wrap = $('hist-tbl-wrap');
   setLoading(wrap, true);
   try {
     const p = new URLSearchParams();
-    p.set('stcd', S.current.stcd);
+    p.set('stcd', S.current.site || S.current.stcd);
     p.set('page', String(HIST.page));
     p.set('size', String(HIST.size));
     const s = dateToStart($('hist-start').value);

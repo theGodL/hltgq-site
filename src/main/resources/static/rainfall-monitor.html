@@ -235,7 +235,10 @@ tbody tr.total-row:hover td{background:#e6f4ff}
         </div>
         <div class="filter-item" id="res-month-wrap" style="display:none">
           <label>月份</label>
-          <input type="month" id="res-month">
+          <select id="res-year"></select>
+          <select id="res-start-month"></select>
+          <span class="date-sep">—</span>
+          <select id="res-end-month"></select>
         </div>
         <div class="filter-actions" id="res-filter-actions">
           <button class="btn btn-primary" id="res-query-btn">查询</button>
@@ -401,7 +404,6 @@ const fmtAvg = v => {
   return n.toFixed(2);
 };
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const fmtMonth = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 
 let chart = null;
 let currentRow = null;
@@ -496,8 +498,33 @@ function setDefaultDates(prefix) {
 function setResDefaultFilters() {
   setDefaultDates('res');
   $('res-brief-date').value = fmtDate(new Date());
-  $('res-month').value = fmtMonth(new Date());
+  const now = new Date();
+  $('res-year').value = now.getFullYear();
+  const m = now.getMonth() + 1;
+  $('res-start-month').value = m;
+  $('res-end-month').value = m;
   $('res-interval').value = '60';
+}
+
+// 旬月雨情筛选：年份下拉（当年往前 10 年）+ 起止月份下拉（1~12 月）
+function initResMonthSelects() {
+  const now = new Date();
+  const yearSel = $('res-year');
+  for (let y = now.getFullYear(); y >= now.getFullYear() - 10; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y + '年';
+    yearSel.appendChild(opt);
+  }
+  ['res-start-month', 'res-end-month'].forEach(id => {
+    const sel = $(id);
+    for (let m = 1; m <= 12; m++) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = pad(m) + '月';
+      sel.appendChild(opt);
+    }
+  });
 }
 
 function setModalDefaultDates() {
@@ -926,7 +953,7 @@ async function loadResData() {
       }], {
         timeKey: 'day',
         withSum: true,
-        withTotal: true,
+        withTotal: false, // 实时雨情仅一行数据，总计行冗余无意义，不显示
         showEmpty: true,
       });
       headers = built.headers;
@@ -965,8 +992,11 @@ async function loadResData() {
       aoa = built.aoa;
       hasTotal = built.hasTotal;
     } else if (RES.tab === 'tenday') {
-      const ym = $('res-month').value || fmtMonth(new Date());
-      const data = await fetchJson(`${API}/st-pptn-r/reservoir-ten-day-rainfall?yearMonth=${encodeURIComponent(ym)}`);
+      const p = new URLSearchParams();
+      p.set('year', $('res-year').value || new Date().getFullYear());
+      p.set('startMonth', $('res-start-month').value || '1');
+      p.set('endMonth', $('res-end-month').value || '12');
+      const data = await fetchJson(`${API}/st-pptn-r/reservoir-ten-day-rainfall?${p}`);
       const stations = data.stations || [];
       headers = ['监测日期', '旬段', ...stations.map(s => s.stnm), '平均值 (mm)'];
       aoa = [headers];
@@ -1068,10 +1098,14 @@ function exportResExcel() {
   XLSX.utils.book_append_sheet(wb, ws, RES.name);
   const s = $('res-start').value || '';
   const e = $('res-end').value || '';
-  const ym = $('res-month').value || '';
   const brief = $('res-brief-date').value || '';
   let range = '';
-  if (RES.tab === 'tenday' || RES.tab === 'sameperiod') range = ym ? `_${ym}` : '';
+  if (RES.tab === 'tenday' || RES.tab === 'sameperiod') {
+    const y = $('res-year').value || '';
+    const sm = $('res-start-month').value || '';
+    const em = $('res-end-month').value || '';
+    range = y ? `_${y}-${pad(+sm)}~${y}-${pad(+em)}` : '';
+  }
   else if (RES.tab === 'brief') range = brief ? `_${brief}` : '';
   else if (s && e) range = `_${s}~${e}`;
   XLSX.writeFile(wb, `${RES.name}${range}.xlsx`);
@@ -1322,6 +1356,7 @@ function onIrrTableClick(e) {
 async function init() {
   setDefaultDates('irr');
   setDefaultDates('mth');
+  initResMonthSelects();
   setResDefaultFilters();
   updateResFilterUI();
   bindTabs();
