@@ -128,6 +128,8 @@ public class StPptnRController {
     /**
      * 灌区雨量监测：每站点最新一条，含1h/3h/6h时段降雨增量
      * 支持按站点编号、监测日期范围筛选，自定义分页
+     * 站点口径：未传 stcd 时返回灌区站点（排除水库 13 站）；
+     *          显式传 stcd 时返回该站数据（含水库站点，支持单独查询库上站点）
      */
     @GetMapping("/gq-rainfall")
     public IPage<GqRainfallVO> gqRainfall(
@@ -142,6 +144,7 @@ public class StPptnRController {
     /**
      * 灌区雨量变化图表：单站点小时级增量+累计雨量
      * stcd 必填；startTime/endTime 非必填，默认近 7 天
+     * 小时序列起点对齐查询起始日当天 8:00（早8点开始，而非0点）
      */
     @GetMapping("/gq-rainfall-chart")
     public GqRainfallChartVO gqRainfallChart(
@@ -156,7 +159,7 @@ public class StPptnRController {
 
     /**
      * 灌区雨量历史：单站点全部记录（含1h/3h/6h时段增量），支持时间范围筛选
-     * stcd 必填
+     * stcd 必填（显式指定站点即返回该站数据，含水库站点）
      */
     @GetMapping("/gq-rainfall-history")
     public IPage<GqRainfallVO> gqRainfallHistory(

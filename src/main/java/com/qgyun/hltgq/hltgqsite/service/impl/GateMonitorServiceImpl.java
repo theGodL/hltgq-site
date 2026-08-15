@@ -3,7 +3,9 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
+import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +21,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     @Autowired
     private GateMonitorMapper gateMonitorMapper;
+
+    @Autowired
+    private WaterFlowMapper waterFlowMapper;
 
     @Override
     public List<GateMonitoringVO> monitoring(String site, LocalDateTime startTime, LocalDateTime endTime) {
@@ -89,6 +94,11 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     @Override
     public Page<Map<String, Object>> history(String siteId, String type, LocalDateTime startTime, LocalDateTime endTime,
                                               long page, long size) {
+        // 流量：数据来自流量表 t_auto_hltgq_water_wt_nfo（site=闸站UUID），与闸门表分页口径不同，单独处理
+        if ("flow".equals(type)) {
+            return flowHistory(siteId, startTime, endTime, page, size);
+        }
+
         long total = gateMonitorMapper.selectHistoryTmCount(siteId, startTime, endTime);
 
         Page<Map<String, Object>> result = new Page<>(page, size);
@@ -118,6 +128,35 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             result.setRecords(Collections.emptyList());
         }
 
+        return result;
+    }
+
+    /**
+     * 流量历史：数据来自流量表 t_auto_hltgq_water_wt_nfo（site=闸站UUID，stcd 或 site 匹配）
+     * 每行返回 tm（监测日期）+ q（瞬时流量 m³/s）+ tf（累计流量 m³）
+     */
+    private Page<Map<String, Object>> flowHistory(String siteId, LocalDateTime startTime, LocalDateTime endTime,
+                                                  long page, long size) {
+        Page<Map<String, Object>> result = new Page<>(page, size);
+        long total = waterFlowMapper.selectHistoryCount(siteId, startTime, endTime);
+        result.setTotal(total);
+        if (total == 0) {
+            result.setRecords(Collections.emptyList());
+            return result;
+        }
+        int offset = (int) ((page - 1) * size);
+        List<FlowMonitoringVO> rows = waterFlowMapper.selectHistoryPage(
+                siteId, startTime, endTime, (int) size, offset);
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        List<Map<String, Object>> records = new ArrayList<>();
+        for (FlowMonitoringVO r : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("tm", r.getTm() != null ? r.getTm().format(fmt) : null);
+            m.put("q", r.getQ());
+            m.put("tf", r.getTf());
+            records.add(m);
+        }
+        result.setRecords(records);
         return result;
     }
 

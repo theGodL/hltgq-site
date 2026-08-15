@@ -11,6 +11,7 @@ import org.apache.ibatis.annotations.Select;
 /**
  * 闸站流量计算参数 Mapper（t_auto_hltgq_water_sluice_discharge）
  * <p>每次修改新增一条数据，回显与使用始终取该站点最新一条（version 最大）。
+ * <p>新增/修改由 Controller 层写保护开关控制（sluice-discharge.write-enabled）。
  */
 @Mapper
 public interface SluiceDischargeMapper extends BaseMapper<SluiceDischarge> {

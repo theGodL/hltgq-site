@@ -94,10 +94,11 @@ public class GateMonitorController {
      * <ul>
      *   <li>开度：每行包含 tm + 各闸孔开度（open1, open2...）</li>
      *   <li>水位：每行包含 tm + 闸前水位（upZ）、闸后水位（downZ）</li>
+     *   <li>流量：每行包含 tm + 瞬时流量（q）、累计流量（tf），数据来自流量表 t_auto_hltgq_water_wt_nfo</li>
      * </ul>
      *
      * @param siteId    站点 UUID（可选，不传=全部站点）
-     * @param type      数据类型："opening"（开度）或 "waterLevel"（水位）
+     * @param type      数据类型："opening"（开度）、"waterLevel"（水位）或 "flow"（流量）
      * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param page      页码，默认 1

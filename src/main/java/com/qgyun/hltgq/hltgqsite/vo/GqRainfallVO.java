@@ -44,4 +44,8 @@ public class GqRainfallVO {
 
     /** 6h 降雨量（mm）= 当前DYP - 6h前DYP */
     private BigDecimal rain6h;
+
+    /** 昨日雨量（mm）— 最近一个完整水文日的累计雨量（DYP 正向增量）：
+     *  当前时间 < 8 点 → 前日 08:00 ~ 昨日 08:00；当前时间 >= 8 点 → 昨日 08:00 ~ 今日 08:00 */
+    private BigDecimal dailyDyp;
 }

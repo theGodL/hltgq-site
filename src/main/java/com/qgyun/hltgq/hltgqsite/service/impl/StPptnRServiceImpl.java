@@ -104,9 +104,12 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     @Override
     public IPage<GqRainfallVO> gqRainfallPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime) {
         List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(stcd, startTime, endTime);
+        // 未指定 stcd 时按灌区口径排除水库 13 站；显式指定 stcd 时放行该站（含水库站）
         List<GqRainfallVO> vos = rows.stream()
-                .filter(row -> !isReservoirStation(row))
+                .filter(row -> gqStationVisible(row, stcd))
                 .map(this::toGqRainfallVO).collect(Collectors.toList());
+        // 填充昨日雨量 dailyDyp（分页前一次批量查询，避免翻页重复计算）
+        fillDailyDyp(vos);
         return toPage(vos, page, size);
     }
 
@@ -122,8 +125,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         }
         int offset = (int) ((page - 1) * size);
         List<Map<String, Object>> rows = baseMapper.selectGqRainfallHistoryPage(stcd, startTime, endTime, (int) size, offset);
+        // stcd 必填时放行该站（含水库站）；未指定 stcd 时按灌区口径排除水库 13 站
         List<GqRainfallVO> vos = rows.stream()
-                .filter(row -> !isReservoirStation(row))
+                .filter(row -> gqStationVisible(row, stcd))
                 .map(this::toGqRainfallVO).collect(Collectors.toList());
         Page<GqRainfallVO> result = new Page<>(page, size);
         result.setTotal(total);
@@ -186,6 +190,18 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         return false;
     }
 
+    /**
+     * 灌区雨情接口站点可见性：
+     * 未指定 stcd（全量查询）时排除水库 13 站，保持灌区口径；
+     * 显式指定 stcd 时放行该站（含水库站），支持按站点编号单独查询库上站点数据。
+     */
+    private boolean gqStationVisible(Map<String, Object> row, String requestedStcd) {
+        if (requestedStcd != null && !requestedStcd.trim().isEmpty()) {
+            return true;
+        }
+        return !isReservoirStation(row);
+    }
+
     private IPage<GqRainfallVO> toPage(List<GqRainfallVO> list, long page, long size) {
         long total = list.size();
         int start = (int) ((page - 1) * size);
@@ -201,8 +217,10 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         // 1. 查询站点名称
         StStinfo stinfo = stStinfoMapper.selectById(stcd);
 
-        // 2. 扩展查询范围（向前2h，确保首小时有基线数据可对比）
-        LocalDateTime queryStart = startTime.minusHours(2);
+        // 2. 序列起点对齐查询起始日当天 8:00（早8点开始，而非0点）
+        LocalDateTime hourStart = startTime.toLocalDate().atTime(8, 0);
+        // 扩展查询范围（向前2h，确保首小时有基线数据可对比）
+        LocalDateTime queryStart = hourStart.minusHours(2);
 
         // 3. 查询原始记录
         List<StPptnR> records = baseMapper.selectByStcdAndTimeRange(stcd, queryStart, endTime);
@@ -229,11 +247,11 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             }
         }
 
-        // 5. 生成完整小时序列 + 累计值
+        // 5. 生成完整小时序列 + 累计值（起点为水文日 8:00）
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00");
         List<GqRainfallChartVO.HourPoint> hours = new ArrayList<>();
         BigDecimal cumulative = BigDecimal.ZERO;
-        LocalDateTime hour = startTime.truncatedTo(ChronoUnit.HOURS);
+        LocalDateTime hour = hourStart;
         LocalDateTime endHour = endTime.truncatedTo(ChronoUnit.HOURS);
 
         while (!hour.isAfter(endHour)) {
@@ -492,6 +510,71 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             return t.toLocalDate().plusDays(1).format(fmt) + " 08:00:00";
         }
         return t.toLocalDate().format(fmt) + " 08:00:00";
+    }
+
+    /**
+     * 为每站填充昨日雨量 dailyDyp（分页前调用，批量查询一次）
+     */
+    private void fillDailyDyp(List<GqRainfallVO> vos) {
+        if (vos == null || vos.isEmpty()) return;
+        List<String> stcds = vos.stream()
+                .map(GqRainfallVO::getStcd)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+        Map<String, BigDecimal> sums = yesterdayHydroDayRain(stcds);
+        for (GqRainfallVO vo : vos) {
+            vo.setDailyDyp(sums.getOrDefault(vo.getStcd(), BigDecimal.ZERO));
+        }
+    }
+
+    /**
+     * 昨日雨量：最近一个完整水文日的累计雨量（DYP 正向增量之和）
+     * <p>口径：当前时刻 < 8 点 → 前日 08:00 ~ 昨日 08:00；当前时刻 >= 8 点 → 昨日 08:00 ~ 今日 08:00。
+     * 等价于"当前所属水文日标签的前一天标签"对应区间。
+     * 增量归属与日雨情聚合口径一致（时间升序、首条 inc=0、后续 max(0, cur-prev)、按记录所属水文日标签归属）。
+     */
+    private Map<String, BigDecimal> yesterdayHydroDayRain(List<String> stcds) {
+        Map<String, BigDecimal> result = new HashMap<>();
+        if (stcds == null || stcds.isEmpty()) return result;
+        DateTimeFormatter labelFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        // 昨日水文日区间右端点（标签时刻）：当前所属水文日标签 - 1 天
+        String curLabel = getHydroDayLabel(LocalDateTime.now());
+        LocalDateTime yEnd = LocalDateTime.parse(curLabel, labelFmt).minusDays(1);
+        String yLabel = getHydroDayLabel(yEnd);
+        // 查询范围前后各扩 1 天，确保首条记录有基线可对比
+        List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(
+                stcds, yEnd.minusDays(2), yEnd.plusDays(1));
+        Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
+        for (StPptnR r : records) {
+            String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
+            byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
+        }
+        for (Map.Entry<String, List<StPptnR>> entry : byStation.entrySet()) {
+            List<StPptnR> rows = entry.getValue();
+            rows.sort(Comparator.comparing(StPptnR::getTm));
+            BigDecimal sum = null;
+            for (int i = 0; i < rows.size(); i++) {
+                StPptnR cur = rows.get(i);
+                BigDecimal inc;
+                if (i == 0) {
+                    inc = BigDecimal.ZERO;
+                } else {
+                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                    BigDecimal prevDyp = rows.get(i - 1).getDyp() != null ? rows.get(i - 1).getDyp() : BigDecimal.ZERO;
+                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                }
+                if (yLabel.equals(getHydroDayLabel(cur.getTm()))) {
+                    sum = (sum == null ? BigDecimal.ZERO : sum).add(inc);
+                }
+            }
+            if (sum != null) {
+                result.put(entry.getKey(), sum);
+            }
+        }
+        return result;
     }
 
     /**

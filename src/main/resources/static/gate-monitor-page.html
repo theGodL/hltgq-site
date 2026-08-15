@@ -164,6 +164,8 @@ tbody tr:hover td{background:#fafafa}
 .dc-item label{color:#666;font-size:13px}
 .dc-item input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
 .dc-item input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.dc-item input[readonly]{background:#f5f5f5;color:#666;cursor:default}
+.dc-item input[readonly]:focus{border-color:#d9d9d9;box-shadow:none}
 .dc-item input.is-err{border-color:#ff4d4f}
 .dc-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid #f0f0f0}
 .dc-hint{font-size:12px;margin-top:8px;min-height:16px;color:#ff4d4f}
@@ -351,6 +353,7 @@ tbody tr:hover td{background:#fafafa}
             <select id="hist-type-select" style="min-width:200px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;background:#fff;cursor:pointer">
               <option value="waterLevel">水位</option>
               <option value="opening">开度</option>
+              <option value="flow">流量</option>
             </select>
 
             <label style="color:#666;white-space:nowrap">日期</label>
@@ -386,37 +389,37 @@ tbody tr:hover td{background:#fafafa}
       <div class="dc-form">
         <div class="dc-item">
           <label>流量系数（全开自由流）</label>
-          <input type="number" step="any" id="dc-full-open-free" placeholder="请输入">
+          <input type="number" step="any" id="dc-full-open-free" placeholder="请输入" readonly>
         </div>
         <div class="dc-item">
           <label>流量系数（全开淹没流）</label>
-          <input type="number" step="any" id="dc-submerged-flow" placeholder="请输入">
+          <input type="number" step="any" id="dc-submerged-flow" placeholder="请输入" readonly>
         </div>
         <div class="dc-item">
           <label>流量系数（有闸控制自由流）</label>
-          <input type="number" step="any" id="dc-controlled-free" placeholder="请输入">
+          <input type="number" step="any" id="dc-controlled-free" placeholder="请输入" readonly>
         </div>
         <div class="dc-item">
           <label>流量系数（有闸控制淹没流）</label>
-          <input type="number" step="any" id="dc-orifice-submerged" placeholder="请输入">
+          <input type="number" step="any" id="dc-orifice-submerged" placeholder="请输入" readonly>
         </div>
         <div class="dc-item">
           <label>孔宽（m）</label>
-          <input type="number" step="any" id="dc-width" placeholder="请输入">
+          <input type="number" step="any" id="dc-width" placeholder="请输入" readonly>
         </div>
         <div class="dc-item">
           <label>孔高（m）</label>
-          <input type="number" step="any" id="dc-height" placeholder="请输入">
+          <input type="number" step="any" id="dc-height" placeholder="请输入" readonly>
         </div>
         <div class="dc-item">
           <label>闸底高程（m）</label>
-          <input type="number" step="any" id="dc-bottom-elevation" placeholder="请输入">
+          <input type="number" step="any" id="dc-bottom-elevation" placeholder="请输入" readonly>
         </div>
       </div>
       <div class="dc-hint" id="dc-hint"></div>
       <div class="dc-foot">
-        <button class="btn btn-primary" id="dc-save-btn">保存</button>
-        <button class="btn btn-default" data-close="discharge-overlay">取消</button>
+        <button class="btn btn-primary" id="dc-save-btn" hidden>保存</button>
+        <button class="btn btn-default" data-close="discharge-overlay">关闭</button>
       </div>
     </div>
   </div>
@@ -1045,14 +1048,15 @@ function renderOpenChart(labels, openSeries) {
   openChart.resize();
 }
 
-/** 弹窗类型下拉：选项文案 = 外层站点名 + 水位/开度；入参 type=waterLevel|opening */
+/** 弹窗类型下拉：选项文案 = 外层站点名 + 水位/开度/流量；入参 type=waterLevel|opening|flow */
 function initHistTypeSelect(row) {
   const siteName = (row && row.siteName) ? String(row.siteName) : '站点';
   const sel = $('hist-type-select');
-  const cur = sel.value === 'opening' ? 'opening' : 'waterLevel';
+  const cur = (sel.value === 'opening' || sel.value === 'flow') ? sel.value : 'waterLevel';
   sel.innerHTML = `
     <option value="waterLevel">${esc(siteName)}水位</option>
     <option value="opening">${esc(siteName)}开度</option>
+    <option value="flow">${esc(siteName)}流量</option>
   `;
   sel.value = cur;
   HIST.histType = cur;
@@ -1084,7 +1088,8 @@ function collectOpenColsFromRecords(records) {
 }
 
 function getHistType() {
-  return ($('hist-type-select')?.value || 'waterLevel') === 'opening' ? 'opening' : 'waterLevel';
+  const v = $('hist-type-select')?.value || 'waterLevel';
+  return (v === 'opening' || v === 'flow') ? v : 'waterLevel';
 }
 
 
@@ -1101,6 +1106,12 @@ function renderHistHead() {
     thead.innerHTML = `<tr>
       <th>监测日期</th>
       ${cols.map(n => `<th>开度${esc(n)}</th>`).join('')}
+    </tr>`;
+  } else if (HIST.histType === 'flow') {
+    thead.innerHTML = `<tr>
+      <th>监测日期</th>
+      <th>瞬时流量 (m³/s)</th>
+      <th>累计流量 (m³)</th>
     </tr>`;
   } else {
     thead.innerHTML = `<tr>
@@ -1124,6 +1135,14 @@ function renderHistory() {
       <tr>
         <td>${fmtTm(r.tm)}</td>
         ${cols.map(n => `<td>${fmtOpen(r['open' + n])}</td>`).join('')}
+      </tr>
+    `).join('');
+  } else if (HIST.histType === 'flow') {
+    tbody.innerHTML = HIST.rows.map(r => `
+      <tr>
+        <td>${fmtTm(r.tm)}</td>
+        <td>${fmtN2(r.q)}</td>
+        <td>${fmtN2(r.tf)}</td>
       </tr>
     `).join('');
   } else {
@@ -1189,7 +1208,7 @@ async function loadHistory() {
   try {
     const p = new URLSearchParams();
     p.set('siteId', S.current.siteId);
-    p.set('type', HIST.histType); // waterLevel | opening
+    p.set('type', HIST.histType); // waterLevel | opening | flow
     p.set('page', String(HIST.page));
     p.set('size', String(HIST.size));
     const s = dateToStart($('hist-start').value);
@@ -1339,7 +1358,9 @@ function onTableClick(e) {
 
 /* ===== 流量计算参数（南山寺节制闸、渠首进水闸、渠首电站防洪闸、双庙湖节制闸） ===== */
 const DISCHARGE_SITES = ['南山寺节制闸', '渠首进水闸', '渠首电站防洪闸', '双庙湖节制闸'];
-const DISCHARGE = { row: null, latest: null };
+/* 编辑开关：当前全角色只读（输入框只读样式 + 保存按钮隐藏）；后续接入权限功能后按角色动态开启 */
+const DISCHARGE_EDITABLE = false;
+const DISCHARGE = { row: null }; // 当前弹窗站点（保存时使用）
 const DC_FIELDS = [
   { id: 'dc-full-open-free', key: 'fullOpenFreeCoeff', label: '流量系数（全开自由流）' },
   { id: 'dc-submerged-flow', key: 'submergedFlowCoeff', label: '流量系数（全开淹没流）' },
@@ -1358,20 +1379,22 @@ function isDischargeSite(siteName) {
 function fillDischargeForm(data) {
   DC_FIELDS.forEach(f => {
     const v = data ? data[f.key] : null;
-    $(f.id).value = (v !== null && v !== undefined && v !== '') ? v : '';
-    $(f.id).classList.remove('is-err');
+    const input = $(f.id);
+    input.value = (v !== null && v !== undefined && v !== '') ? v : '';
+    input.readOnly = !DISCHARGE_EDITABLE;
+    input.classList.remove('is-err');
   });
 }
 
 async function openDischarge(row) {
   DISCHARGE.row = row;
-  DISCHARGE.latest = null;
   $('dc-title').textContent = `${row.siteName || '站点'} · 流量计算参数`;
   fillDischargeForm(null);
   const hint = $('dc-hint');
   hint.textContent = '';
   hint.classList.remove('ok');
   const saveBtn = $('dc-save-btn');
+  saveBtn.hidden = !DISCHARGE_EDITABLE; // 无编辑权限时不展示保存按钮
   saveBtn.disabled = true;
   saveBtn.classList.add('is-loading');
   openModal('discharge-overlay');
@@ -1381,7 +1404,6 @@ async function openDischarge(row) {
     // 无数据时后端返回空 body（null），按无配置处理
     const text = await res.text();
     const data = text ? JSON.parse(text) : null;
-    DISCHARGE.latest = data || null;
     fillDischargeForm(data);
   } catch (e) {
     console.error(e);
@@ -1393,6 +1415,7 @@ async function openDischarge(row) {
 }
 
 async function saveDischarge() {
+  if (!DISCHARGE_EDITABLE) return; // 只读保护：无编辑权限时不提交
   if (!DISCHARGE.row || !DISCHARGE.row.siteId) return;
   const hint = $('dc-hint');
   hint.textContent = '';
@@ -1419,7 +1442,7 @@ async function saveDischarge() {
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const saved = await res.json();
-    DISCHARGE.latest = saved;
+    fillDischargeForm(saved);
     closeModal('discharge-overlay');
     showToast('保存成功');
   } catch (e) {
