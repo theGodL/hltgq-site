@@ -485,15 +485,15 @@ let chart = null;
 const RES_META = {
   river: {
     name: '河道水情表',
-    // 对齐 /st-river-r/regime
-    headers: ['站点名称', '时间', '警戒水位m', '保证水位m', '水位m', '水势'],
-    rowToArr: r => [r.stnm, fmtTm(r.tm), r.warningLevel, r.guaranteedLevel, r.z, r.wptn],
+    // 对齐 /st-river-r/regime；水位列紧跟时间（第 3 列），便于第一时间看到水位
+    headers: ['站点名称', '时间', '水位m', '警戒水位m', '保证水位m', '水势'],
+    rowToArr: r => [r.stnm, fmtTm(r.tm), r.z, r.warningLevel, r.guaranteedLevel, r.wptn],
   },
   reservoir: {
     name: '水库水情表',
-    // 对齐 /st-river-r/reservoir-regime
-    headers: ['站点名称', '时间', '警戒水位m', '保证水位m', '水位m', '水势', '入库流量 m³/s', '出库流量 m³/s'],
-    rowToArr: r => [r.stnm, fmtTm(r.tm), r.warningLevel, r.guaranteedLevel, r.z, r.wptn, r.inq, r.otq],
+    // 对齐 /st-river-r/reservoir-regime；水位列紧跟时间（第 3 列）
+    headers: ['站点名称', '时间', '水位m', '警戒水位m', '保证水位m', '水势', '入库流量 m³/s', '出库流量 m³/s'],
+    rowToArr: r => [r.stnm, fmtTm(r.tm), r.z, r.warningLevel, r.guaranteedLevel, r.wptn, r.inq, r.otq],
   },
   period: {
     name: '日时段水情表',
