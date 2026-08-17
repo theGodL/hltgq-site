@@ -2,15 +2,19 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
+import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -19,11 +23,22 @@ import java.util.stream.Collectors;
 @Service
 public class GateMonitorServiceImpl implements GateMonitorService {
 
+    /**
+     * 闸站图表固定七站（按展示顺序）：
+     * 渠首进水闸、双庙湖节制闸、南山寺节制闸、毕岭节制闸、汪元节制闸、北干渠进水闸、南干渠进水闸
+     * 值为站点表主键 iofhpi（测站编码）
+     */
+    private static final List<String> GATE_STATION_STCDS = Arrays.asList(
+            "QSJSZ", "SMH", "NSS", "9000000005", "9000000006", "9000000001", "9000000002");
+
     @Autowired
     private GateMonitorMapper gateMonitorMapper;
 
     @Autowired
     private WaterFlowMapper waterFlowMapper;
+
+    @Autowired
+    private StStinfoMapper stStinfoMapper;
 
     @Override
     public List<GateMonitoringVO> monitoring(String site, LocalDateTime startTime, LocalDateTime endTime) {
@@ -205,5 +220,57 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             }
         }
         return new ArrayList<>(grouped.values());
+    }
+
+    @Override
+    public List<GateStationWaterLevelVO> stationWaterLevel(LocalDateTime time) {
+        // 1. 固定七站站点信息（站点表主键 iofhpi = 测站编码）
+        List<StStinfo> stations = stStinfoMapper.selectBatchIds(GATE_STATION_STCDS);
+        Map<String, StStinfo> infoMap = stations.stream()
+                .collect(Collectors.toMap(StStinfo::getStcd, s -> s, (a, b) -> a));
+
+        // 2. 闸门表查询各站在 [time-30min, time+30min] 内距 time 最近的入库水位（每站一条）
+        List<String> siteIds = GATE_STATION_STCDS.stream()
+                .map(infoMap::get)
+                .filter(Objects::nonNull)
+                .map(StStinfo::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        List<Map<String, Object>> rows = siteIds.isEmpty() ? Collections.emptyList()
+                : gateMonitorMapper.selectClosestWaterLevelBySites(siteIds, time,
+                        time.minusMinutes(30), time.plusMinutes(30));
+        Map<String, Map<String, Object>> rowBySite = rows.stream()
+                .filter(r -> r.get("site") != null)
+                .collect(Collectors.toMap(r -> String.valueOf(r.get("site")), r -> r, (a, b) -> a));
+
+        // 3. 按固定顺序组装；半小时内无入库数据的水位为 null（该时间点无报文）
+        List<GateStationWaterLevelVO> result = new ArrayList<>();
+        for (String stcd : GATE_STATION_STCDS) {
+            GateStationWaterLevelVO vo = new GateStationWaterLevelVO();
+            vo.setStcd(stcd);
+            StStinfo info = infoMap.get(stcd);
+            if (info != null) {
+                vo.setId(info.getId());
+                vo.setName(info.getStnm());
+            }
+            Map<String, Object> row = info != null && info.getId() != null ? rowBySite.get(info.getId()) : null;
+            if (row != null) {
+                vo.setUpZ(toBigDecimal(row.get("up_z")));
+                vo.setDownZ(toBigDecimal(row.get("down_z")));
+            }
+            result.add(vo);
+        }
+        return result;
+    }
+
+    /** Map 值 → BigDecimal（null 安全；-999 透传由前端展示 '--'） */
+    private BigDecimal toBigDecimal(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof BigDecimal) return (BigDecimal) obj;
+        try {
+            return new BigDecimal(obj.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

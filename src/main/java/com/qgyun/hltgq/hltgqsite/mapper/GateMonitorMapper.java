@@ -11,6 +11,7 @@ import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
@@ -231,4 +232,32 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     })
     List<GateMonitor> selectHistoryDetail(@Param("siteId") String siteId,
                                            @Param("tms") List<LocalDateTime> tms);
+
+    /**
+     * 闸站图表：各站在选中时间点 ±30 分钟内距时间点最近的入库水位（每站一条）
+     * <p>DISTINCT ON (g.site) + ORDER BY g.site, 时间距离 保证每站取距 time 最近的一条；
+     * 至少有一个水位值（含 -999 设备异常，透传由前端展示 '--'）的记录才视为命中；
+     * 半小时内无入库数据则该站不返回行（前端水位展示 '-'）。
+     *
+     * @param siteIds   站点 UUID 列表（固定七站）
+     * @param time      选中时间点（半小时粒度）
+     * @param startTime 命中窗口起点 = time - 30 分钟
+     * @param endTime   命中窗口终点 = time + 30 分钟
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT ON (g.site) g.site, " +
+            "TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
+            "WHERE g.site IN " +
+            "<foreach collection='siteIds' item='s' open='(' separator=',' close=')'>#{s}</foreach> " +
+            "AND g.tm &gt;= #{startTime} " +
+            "AND g.tm &lt;= #{endTime} " +
+            "AND (g.up_z IS NOT NULL OR g.down_z IS NOT NULL) " +
+            "ORDER BY g.site, ABS(EXTRACT(EPOCH FROM CAST(g.tm AS TIMESTAMP)) - EXTRACT(EPOCH FROM #{time}::timestamp))" +
+            "</script>")
+    List<Map<String, Object>> selectClosestWaterLevelBySites(
+            @Param("siteIds") List<String> siteIds,
+            @Param("time") LocalDateTime time,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
 }

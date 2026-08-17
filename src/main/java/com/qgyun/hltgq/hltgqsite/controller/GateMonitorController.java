@@ -6,6 +6,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.GateDeviceVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -113,5 +114,19 @@ public class GateMonitorController {
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
         return gateMonitorService.history(siteId, type, startTime, endTime, page, size);
+    }
+
+    /**
+     * 闸站图表-固定七站闸前/闸后水位（按日期时间点查询）
+     * <p>返回固定顺序七站（渠首进水闸、双庙湖节制闸、南山寺节制闸、毕岭节制闸、
+     * 汪元节制闸、北干渠进水闸、南干渠进水闸），每站取距选中时间点最近（±30 分钟内）
+     * 的闸门入库数据的水位；半小时内无入库数据则该站水位为 null（该时间点无报文）。
+     *
+     * @param time 选中时间点，格式 yyyy-MM-dd HH:mm（半小时粒度，如 2026-08-16 17:30）
+     */
+    @GetMapping("/station-water-level")
+    public List<GateStationWaterLevelVO> stationWaterLevel(
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm") LocalDateTime time) {
+        return gateMonitorService.stationWaterLevel(time);
     }
 }
