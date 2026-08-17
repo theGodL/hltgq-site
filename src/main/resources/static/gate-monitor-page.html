@@ -346,6 +346,10 @@ tbody tr:hover td{background:#fafafa}
           <div class="chart-title">开度</div>
           <div id="open-chart-box" class="chart-box"></div>
         </div>
+        <div class="chart-block">
+          <div class="chart-title" id="flow-chart-title">累计流量</div>
+          <div id="flow-chart-box" class="chart-box"></div>
+        </div>
       </div>
 
       <div class="modal-pane" id="mpane-history">
@@ -484,6 +488,7 @@ const HIST = { page: 1, size: 10, total: 0, rows: [], histType: 'waterLevel', op
 let HIST_DEVICES = []; // [{id, gateNo, deviceName}] 备用
 let chart = null;
 let openChart = null;
+let flowChart = null;
 
 const OPEN_COLORS = ['#FA8C16', '#1677FF', '#52C41A', '#722ED1', '#EB2F96', '#13C2C2', '#2F54EB', '#A0D911'];
 
@@ -836,6 +841,7 @@ function closeModal(id) {
   if (id === 'detail-overlay') {
     if (chart) { chart.dispose(); chart = null; }
     if (openChart) { openChart.dispose(); openChart = null; }
+    if (flowChart) { flowChart.dispose(); flowChart = null; }
   }
 }
 
@@ -877,6 +883,7 @@ function processExportRows(list) {
   const tmSet = new Set();
   const byGate = {};
   const waterByTm = {}; // tm -> {upZ, downZ}
+  const flowByTm = {};  // tm -> {tf, q}（站点级，与闸孔无关）
 
   rows.forEach(r => {
     const tm = r.tm;
@@ -887,6 +894,9 @@ function processExportRows(list) {
     if (!waterByTm[tm]) waterByTm[tm] = { upZ: null, downZ: null };
     if (waterByTm[tm].upZ == null && r.upZ != null) waterByTm[tm].upZ = r.upZ;
     if (waterByTm[tm].downZ == null && r.downZ != null) waterByTm[tm].downZ = r.downZ;
+    if (!flowByTm[tm]) flowByTm[tm] = { tf: null, q: null };
+    if (flowByTm[tm].tf == null && r.tf != null) flowByTm[tm].tf = r.tf;
+    if (flowByTm[tm].q == null && r.q != null) flowByTm[tm].q = r.q;
   });
 
   const times = [...tmSet].sort((a, b) => String(a).localeCompare(String(b)));
@@ -901,8 +911,10 @@ function processExportRows(list) {
       return (v === null || v === undefined || v === '') ? null : +v;
     }),
   }));
+  const tfData = times.map(t => (flowByTm[t]?.tf == null) ? null : +flowByTm[t].tf);
+  const qData = times.map(t => (flowByTm[t]?.q == null) ? null : +flowByTm[t].q);
 
-  return { labels, upData, downData, openSeries };
+  return { labels, upData, downData, openSeries, tfData, qData };
 }
 
 function emptyChart(inst, box, tip) {
@@ -1048,6 +1060,77 @@ function renderOpenChart(labels, openSeries) {
     }),
   }, true);
   openChart.resize();
+}
+
+/** 累计流量折线图（样式对齐水位/开度图）。
+ *  兜底：累计流量 tf 全为 NULL 时切换为瞬时流量 q，标题、Y 轴单位、Tooltip 同步调整为"流量 (m³/s)"；两者皆无则显示空态 */
+function renderFlowChart(labels, tfData, qData) {
+  const box = $('flow-chart-box');
+  const titleEl = $('flow-chart-title');
+  if (!flowChart) flowChart = echarts.init(box);
+  if (titleEl) titleEl.textContent = '累计流量';
+  const hasTf = tfData.some(v => v != null && Number.isFinite(v));
+  const hasQ = qData.some(v => v != null && Number.isFinite(v));
+  const data = hasTf ? tfData : (hasQ ? qData : null);
+  if (!labels.length || !data) {
+    flowChart = emptyChart(flowChart, box, '暂无流量数据');
+    return;
+  }
+  const useTf = !!hasTf;
+  const unit = useTf ? 'm³' : 'm³/s';
+  if (!useTf && titleEl) titleEl.textContent = '流量';
+  const color = '#52C41A';
+  flowChart.setOption({
+    title: { show: false },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e8e8e8',
+      textStyle: { color: '#333', fontSize: 13 },
+      valueFormatter: v => (v == null || !Number.isFinite(+v)) ? '-' : fmtN2(v) + ' ' + unit,
+    },
+    legend: {
+      data: [useTf ? '累计流量' : '瞬时流量'],
+      top: 4,
+      textStyle: { fontSize: 12, color: '#666' },
+    },
+    grid: { left: 12, right: 28, top: 40, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      boundaryGap: false,
+      axisLabel: { fontSize: 11, color: '#888', rotate: 30 },
+      axisLine: { lineStyle: { color: '#e8e8e8' } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: `单位: ${unit}`,
+      scale: true,
+      nameTextStyle: { color: '#999', fontSize: 12 },
+      axisLabel: { fontSize: 12, color: '#888' },
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+    },
+    series: [
+      {
+        name: useTf ? '累计流量' : '瞬时流量',
+        type: 'line',
+        data,
+        smooth: true,
+        showSymbol: false,
+        connectNulls: true,
+        lineStyle: { color, width: 2 },
+        itemStyle: { color },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(82,196,26,0.28)' },
+            { offset: 1, color: 'rgba(82,196,26,0.02)' },
+          ]),
+        },
+      },
+    ],
+  }, true);
+  flowChart.resize();
 }
 
 /** 弹窗类型下拉：选项文案 = 外层站点名 + 水位/开度/流量；入参 type=waterLevel|opening|flow */
@@ -1263,27 +1346,33 @@ async function reloadDetail() {
   if (!S.current || !S.current.siteId) return;
   const waterBox = $('chart-box');
   const openBox = $('open-chart-box');
+  const flowBox = $('flow-chart-box');
   setLoading(waterBox, true);
   setLoading(openBox, true);
+  setLoading(flowBox, true);
   try {
     if (!DETAIL.selected.length) {
       chart = emptyChart(chart, waterBox, '请选择闸孔');
       openChart = emptyChart(openChart, openBox, '请选择闸孔');
+      flowChart = emptyChart(flowChart, flowBox, '请选择闸孔');
       return;
     }
     const res = await fetch(`${API}/gate-monitor/export?${buildExportParams()}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    const { labels, upData, downData, openSeries } = processExportRows(Array.isArray(data) ? data : []);
+    const { labels, upData, downData, openSeries, tfData, qData } = processExportRows(Array.isArray(data) ? data : []);
     renderWaterChart(labels, upData, downData);
     renderOpenChart(labels, openSeries);
+    renderFlowChart(labels, tfData, qData);
   } catch (e) {
     console.error(e);
     chart = emptyChart(chart, waterBox, '数据加载失败');
     openChart = emptyChart(openChart, openBox, '数据加载失败');
+    flowChart = emptyChart(flowChart, flowBox, '数据加载失败');
   } finally {
     setLoading(waterBox, false);
     setLoading(openBox, false);
+    setLoading(flowBox, false);
   }
 }
 
@@ -1303,6 +1392,7 @@ function bindModal() {
       requestAnimationFrame(() => {
         if (chart) chart.resize();
         if (openChart) openChart.resize();
+        if (flowChart) flowChart.resize();
       });
     });
   });
@@ -1317,6 +1407,7 @@ function bindModal() {
         requestAnimationFrame(() => {
           if (chart) chart.resize();
           if (openChart) openChart.resize();
+          if (flowChart) flowChart.resize();
         });
       }
     });
@@ -1335,7 +1426,9 @@ function bindModal() {
   }, { loadingText: '重置中...' });
   bindAsyncClick($('hist-reset-btn'), async () => {
     if (S.current) initHistTypeSelect(S.current);
-    else $('hist-type-select').value = 'waterLevel';
+    // 类型下拉强制恢复默认值"水位"（重置语义：类型/日期全部复位）
+    $('hist-type-select').value = 'waterLevel';
+    HIST.histType = 'waterLevel';
     setModalDefaultDates();
 
     HIST.page = 1;
@@ -1345,6 +1438,7 @@ function bindModal() {
   window.addEventListener('resize', () => {
     if (chart) chart.resize();
     if (openChart) openChart.resize();
+    if (flowChart) flowChart.resize();
   });
 }
 
