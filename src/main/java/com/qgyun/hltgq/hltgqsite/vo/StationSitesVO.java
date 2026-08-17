@@ -21,4 +21,7 @@ public class StationSitesVO {
 
     /** 流量监测站点 */
     private List<StationSiteVO> flow;
+
+    /** 墒情监测站点 */
+    private List<StationSiteVO> moisture;
 }

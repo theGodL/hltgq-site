@@ -5,6 +5,7 @@ import com.qgyun.hltgq.hltgqsite.entity.StRiverR;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.IrrigationWaterLevelMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.SoilMoistureMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
@@ -54,6 +55,9 @@ public class StationMetricsController {
     @Autowired
     private WaterFlowMapper waterFlowMapper;
 
+    @Autowired
+    private SoilMoistureMapper soilMoistureMapper;
+
     /**
      * 全量站点分类查询
      *
@@ -92,8 +96,10 @@ public class StationMetricsController {
                     }).collect(Collectors.toList());
                 case "flow":
                     return waterFlowMapper.selectFlowStations();
+                case "moisture":
+                    return soilMoistureMapper.selectMoistureStations();
                 default:
-                    throw new IllegalArgumentException("无效的 type 值: " + type + "，可选: rainfall / gq-rainfall / waterLevel / gate / flow");
+                    throw new IllegalArgumentException("无效的 type 值: " + type + "，可选: rainfall / gq-rainfall / waterLevel / gate / flow / moisture");
             }
         }
 
@@ -114,6 +120,7 @@ public class StationMetricsController {
             return s;
         }).collect(Collectors.toList()));
         vo.setFlow(waterFlowMapper.selectFlowStations());
+        vo.setMoisture(soilMoistureMapper.selectMoistureStations());
         return vo;
     }
 
