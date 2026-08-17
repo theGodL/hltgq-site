@@ -107,7 +107,8 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
      * 各闸孔最新一条数据（按站点 + 闸孔分组，取最新 TM）
      * <p>使用 PostgreSQL DISTINCT ON 对 (site, gate_no) 去重，每组取 tm 最大的一条。
      * <p>性能注意：流量 q 不能用相关子查询（每输出行执行一次全表扫描，接口会慢到 30 秒），
-     * 改为 LEFT JOIN 预聚合子查询（流量表仅扫描一次）。
+     * 改为 LEFT JOIN 预聚合子查询（流量表仅扫描一次）；电压 vol 同样用预聚合子查询
+     * 关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID，取最新一条）。
      * <p>数据清洗：库中存在 gate_no='0' 且开度为 NULL 的采集占位行，
      * 直接映射为 '1' 会与真实闸孔 1 撞号（holes 中出现重复编号），
      * 因此先过滤该类脏行，再将 gate_no 归一化（'0'→'1'）后在子查询输出列上分组，
@@ -119,11 +120,11 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     @Select("<script>" +
             "SELECT DISTINCT ON (t.site, t.gate_no) " +
             "t.site, t.site_name, t.lon, t.lat, t.gate_no, t.tm, " +
-            "t.open_degree, t.up_z, t.down_z, t.status, TRUNC(t.q, 2) AS q " +
+            "t.open_degree, t.up_z, t.down_z, t.status, TRUNC(t.q, 2) AS q, t.vol " +
             "FROM ( " +
             "  SELECT g.site, s.zzkaec AS site_name, s.bviiio_x AS lon, s.bviiio_y AS lat, " +
             "  CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, g.tm, " +
-            "  TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status, fq.q " +
+            "  TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status, fq.q, fv.vol " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "  INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
             "  LEFT JOIN ( " +
@@ -134,6 +135,14 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "    <if test='endTime != null'>AND f.tm &lt;= #{endTime} </if>" +
             "    ORDER BY f.site, f.tm DESC " +
             "  ) fq ON fq.site = g.site " +
+            "  LEFT JOIN ( " +
+            "    SELECT DISTINCT ON (v.site) v.site, v.vol " +
+            "    FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
+            "    WHERE 1=1 " +
+            "    <if test='startTime != null'>AND v.tm &gt;= #{startTime} </if>" +
+            "    <if test='endTime != null'>AND v.tm &lt;= #{endTime} </if>" +
+            "    ORDER BY v.site, v.tm DESC " +
+            "  ) fv ON fv.site = g.site " +
             "  WHERE 1=1 " +
             "  AND NOT (g.gate_no = '0' AND g.open_degree IS NULL) " +
             "  <if test='site != null and site != \"\"'>AND g.site = #{site} </if>" +
@@ -153,7 +162,8 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             @Result(column = "up_z", property = "upZ"),
             @Result(column = "down_z", property = "downZ"),
             @Result(column = "status", property = "status"),
-            @Result(column = "q", property = "q")
+            @Result(column = "q", property = "q"),
+            @Result(column = "vol", property = "vol")
     })
     List<GateMonitor> selectLatestPerHole(@Param("site") String site,
                                            @Param("startTime") LocalDateTime startTime,

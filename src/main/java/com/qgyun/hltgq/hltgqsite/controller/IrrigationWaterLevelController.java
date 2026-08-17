@@ -5,6 +5,7 @@ import com.qgyun.hltgq.hltgqsite.service.IrrigationWaterLevelService;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelVO;
+import com.qgyun.hltgq.hltgqsite.vo.WaterLevelTrendVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -62,6 +63,18 @@ public class IrrigationWaterLevelController {
         if (endTime == null) endTime = now;
         if (startTime == null) startTime = now.minusDays(7);
         return irrigationWaterLevelService.waterLevelChart(stcd, startTime, endTime);
+    }
+
+    /**
+     * 水位趋势图表：单站点小时级水位曲线（用于水位监测-详情趋势图）
+     * stcd 必填；startTime/endTime 非必填，默认近 7 天
+     */
+    @GetMapping("/trend")
+    public WaterLevelTrendVO trend(
+            @RequestParam String stcd,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+        return irrigationWaterLevelService.waterLevelTrend(stcd, startTime, endTime);
     }
 
     /**

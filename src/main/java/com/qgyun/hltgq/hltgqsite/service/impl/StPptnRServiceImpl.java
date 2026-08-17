@@ -176,6 +176,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         // 花凉亭 DRP 恒 0、灌区站 DRP 每日 8:00 归零不可靠，统一用 DYP 增量
         BigDecimal dypDay = toBigDecimal(row.get("dyp_day"));
         vo.setDrp(subtractOrNull(dypVal, dypDay));
+        // 电压：取电压表最新一条（SQL 已关联）
+        vo.setVol(toBigDecimal(row.get("vol")));
         return vo;
     }
 

@@ -49,4 +49,7 @@ public class GqRainfallVO {
     /** 昨日雨量（mm）— 最近一个完整水文日的累计雨量（DYP 正向增量）：
      *  当前时间 < 8 点 → 前日 08:00 ~ 昨日 08:00；当前时间 >= 8 点 → 昨日 08:00 ~ 今日 08:00 */
     private BigDecimal dailyDyp;
+
+    /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
+    private BigDecimal vol;
 }

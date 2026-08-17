@@ -62,6 +62,7 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
     @Select("<script>"
             + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
             + "  s.zzkaec AS stnm, s.id AS id, s.bviiio_x AS lon, s.bviiio_y AS lat, "
+            + "  fv.vol AS vol, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_1h, "
@@ -90,6 +91,11 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
             + "  ORDER BY STCD, TM DESC "
             + ") t "
             + "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON s.iofhpi = t.STCD "
+            + "LEFT JOIN ( "
+            + "  SELECT DISTINCT ON (v.site) v.site, v.vol "
+            + "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v "
+            + "  ORDER BY v.site, v.tm DESC "
+            + ") fv ON fv.site = s.id "
             + "ORDER BY t.STCD"
             + "</script>")
     List<Map<String, Object>> selectGqRainfallList(@Param("stcd") String stcd,

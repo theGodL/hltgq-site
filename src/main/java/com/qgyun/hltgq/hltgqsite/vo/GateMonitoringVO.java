@@ -32,6 +32,9 @@ public class GateMonitoringVO {
     /** 流量 (m³/s)，取关联流量表 t_auto_hltgq_water_wt_nfo 最新值 */
     private BigDecimal q;
 
+    /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
+    private BigDecimal vol;
+
     /** 站点经度（站点表 bviiio_x） */
     private BigDecimal lon;
 

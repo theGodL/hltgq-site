@@ -280,6 +280,7 @@ tbody tr:hover td{background:#fafafa}
         <div class="filter-item">
           <label>站点</label>
           <div class="cks" id="period-cks">
+            <label class="ck"><input type="checkbox" value="3206400001" onchange="onPeriodCk(this)">周家河</label>
             <label class="ck"><input type="checkbox" value="320640000A" onchange="onPeriodCk(this)">花凉亭坝下</label>
             <label class="ck"><input type="checkbox" value="3206400007" onchange="onPeriodCk(this)">花凉亭坝上</label>
           </div>
@@ -439,7 +440,6 @@ const fmtTm = v => {
   return String(v).replace('T', ' ').replace(/\.\d+$/, '');
 };
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const fmtMd = d => `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const API = '/hltgq-site';
 const dateToStart = v => v ? `${v} 00:00:00` : null;
 const dateToEnd = v => v ? `${v} 23:59:59` : null;
@@ -476,7 +476,7 @@ const S = { page: 1, size: 20, total: 0, rows: [], current: null, resTab: 'river
   resRows: { river: [], reservoir: [], brief: [] },
   resRiverStcds: ['3206400001', '320640000A'], resReservoirStcds: ['3206400007'],
   resYearsRows: [], resYearsStations: [],
-  periodInterval: 1, periodStcds: ['320640000A','3206400007'], resPeriodRows: [],
+  periodInterval: 1, periodStcds: ['3206400001','320640000A','3206400007'], resPeriodRows: [],
   resPager: { river: { page: 1, total: 0 }, reservoir: { page: 1, total: 0 } }, resSize: 20 };
 let chart = null;
 
@@ -514,28 +514,7 @@ const RES_META = {
   },
 };
 
-/** 生成站点详情占位数据（后续对接接口后替换） */
-function buildMockDetail(stnm) {
-  const start = new Date();
-  start.setDate(start.getDate() - 7);
-  const list = [];
-  let z = 3.2 + Math.random() * 0.6;
-  for (let i = 0; i < 8; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const prev = z;
-    z = +(z + (Math.random() - 0.45) * 0.35).toFixed(2);
-    z = Math.max(2.5, Math.min(5.2, z));
-    list.push({
-      stnm,
-      tm: `${fmtDate(d)} 08:00:00`,
-      dateLabel: fmtMd(d),
-      z,
-      rise1h: +((z - prev) * 100).toFixed(2),
-    });
-  }
-  return list;
-}
+/** 站点详情数据已接入真实接口：趋势图 /irrigation-water-level/trend，历史表 /irrigation-water-level/history */
 
 function setDefaultDates() {
   const now = new Date();
@@ -554,7 +533,8 @@ function setDefaultDates() {
 
 function setModalDefaultDates() {
   const now = new Date();
-  const s = fmtDate(new Date(now - 7 * 24 * 3600e3));
+  // 默认近 7 天（含今天，与后端 /trend 默认口径一致）
+  const s = fmtDate(new Date(now - 6 * 24 * 3600e3));
   const e = fmtDate(now);
   ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
   ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
@@ -870,7 +850,6 @@ function closeModal(id) {
 
 function openDetail(row) {
   S.current = row;
-  S.detailRows = buildMockDetail(row.stnm);
   $('detail-title').textContent = row.stnm || '站点详情';
   setModalDefaultDates();
 
@@ -881,10 +860,7 @@ function openDetail(row) {
 
   openModal('detail-overlay');
   // 等弹窗显示后再画图，避免宽高为 0
-  requestAnimationFrame(() => {
-    renderChart(S.detailRows);
-    renderHistory(S.detailRows);
-  });
+  requestAnimationFrame(() => reloadDetail());
 }
 
 function renderChart(rows) {
@@ -892,8 +868,13 @@ function renderChart(rows) {
   if (!chart) chart = echarts.init(box);
   const xData = rows.map(r => r.dateLabel);
   const yData = rows.map(r => r.z);
-  const yMin = Math.min(...yData);
-  const yMax = Math.max(...yData);
+  const validY = yData.filter(v => v !== null && v !== undefined && v !== '');
+  if (!validY.length) {
+    chart.clear();
+    return;
+  }
+  const yMin = Math.min(...validY);
+  const yMax = Math.max(...validY);
   const padY = Math.max((yMax - yMin) * 0.2, 0.3);
 
   chart.setOption({
@@ -912,7 +893,7 @@ function renderChart(rows) {
       type: 'category',
       data: xData,
       boundaryGap: false,
-      axisLabel: { fontSize: 12, color: '#888' },
+      axisLabel: { fontSize: 12, color: '#888', interval: Math.max(0, Math.floor(xData.length / 14)) },
       axisLine: { lineStyle: { color: '#e8e8e8' } },
       axisTick: { show: false },
     },
@@ -967,10 +948,34 @@ async function reloadDetail() {
   setLoading(chartBox, true);
   try {
     await waitTick();
-    // TODO: 按日期区间请求详情接口
-    S.detailRows = buildMockDetail(S.current.stnm);
-    renderChart(S.detailRows);
-    renderHistory(S.detailRows);
+    const stcd = S.current.stcd;
+
+    // 趋势图：小时级水位曲线（/irrigation-water-level/trend）
+    const tp = new URLSearchParams({ stcd });
+    const ts = dateToStart($('chart-start').value);
+    const te = dateToEnd($('chart-end').value);
+    if (ts) tp.set('startTime', ts);
+    if (te) tp.set('endTime', te);
+    const trend = await fetch(`${API}/irrigation-water-level/trend?${tp}`).then(r => r.json());
+    renderChart((trend?.hours || []).map(h => ({
+      dateLabel: String(h.hour).slice(5, 16),
+      z: h.waterLevel,
+    })));
+
+    // 历史表：小时级水位 + 1h 涨幅（/irrigation-water-level/history）
+    const hp = new URLSearchParams({ stcd, page: '1', size: '500' });
+    const hs = dateToStart($('hist-start').value);
+    const he = dateToEnd($('hist-end').value);
+    if (hs) hp.set('startTime', hs);
+    if (he) hp.set('endTime', he);
+    const hist = await fetch(`${API}/irrigation-water-level/history?${hp}`).then(r => r.json());
+    renderHistory((hist?.records || []).map(r => ({
+      tm: r.hour,
+      z: r.waterLevel,
+      rise1h: r.change,
+    })));
+  } catch (err) {
+    console.error('详情数据加载失败', err);
   } finally {
     setLoading(chartBox, false);
   }
@@ -1301,7 +1306,7 @@ async function resetRes() {
   $('years-end-year').value = now.getFullYear();
   $('years-month').value = now.getMonth() + 1;
   S.periodInterval = 1;
-  S.periodStcds = ['320640000A', '3206400007'];
+  S.periodStcds = ['3206400001', '320640000A', '3206400007'];
   S.resRiverStcds = ['3206400001', '320640000A'];
   S.resReservoirStcds = ['3206400007'];
   S.resPager = { river: { page: 1, total: 0 }, reservoir: { page: 1, total: 0 } };

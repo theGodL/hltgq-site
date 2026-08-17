@@ -50,6 +50,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
      */
     private static final Map<String, String> STCD_TO_STNM = new HashMap<>();
     static {
+        STCD_TO_STNM.put("3206400001", "周家河");
         STCD_TO_STNM.put("320640000A", "花凉亭坝下");
         STCD_TO_STNM.put("3206400007", "花凉亭坝上");
     }

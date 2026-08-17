@@ -28,4 +28,7 @@ public class IrrigationWaterLevelVO {
 
     /** 1h水位涨幅 (cm) */
     private BigDecimal rise1h;
+
+    /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
+    private BigDecimal vol;
 }

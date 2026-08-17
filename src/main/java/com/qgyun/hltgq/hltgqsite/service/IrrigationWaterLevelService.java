@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelVO;
+import com.qgyun.hltgq.hltgqsite.vo.WaterLevelTrendVO;
 
 import java.time.LocalDateTime;
 
@@ -35,6 +36,16 @@ public interface IrrigationWaterLevelService {
      * @return 水位变化图表数据
      */
     IrrigationWaterLevelChartVO waterLevelChart(String stcd, LocalDateTime startTime, LocalDateTime endTime);
+
+    /**
+     * 水位趋势图表：单站点小时级水位曲线（用于水位监测-详情趋势图）
+     *
+     * @param stcd      站点编号/站点主键（必填）
+     * @param startTime 起始时间（可选，默认 7 天前整点）
+     * @param endTime   截止时间（可选，默认当前整点）
+     * @return 水位趋势图表数据
+     */
+    WaterLevelTrendVO waterLevelTrend(String stcd, LocalDateTime startTime, LocalDateTime endTime);
 
     /**
      * 水位历史数据（分页）：单站点小时级水位值 + 1h涨幅

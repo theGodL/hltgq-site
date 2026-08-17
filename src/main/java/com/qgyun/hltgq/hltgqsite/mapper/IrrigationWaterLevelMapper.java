@@ -30,7 +30,8 @@ public interface IrrigationWaterLevelMapper {
             "  SELECT r2.Z FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r2 " +
             "  WHERE r2.STCD = r.STCD AND r2.TM <= r.TM - INTERVAL '1 hour' " +
             "  ORDER BY r2.TM DESC LIMIT 1" +
-            ")) * 100, 0), 2) AS rise1h " +
+            ")) * 100, 0), 2) AS rise1h, " +
+            "fv.vol AS vol " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "INNER JOIN (" +
             "  SELECT STCD, MAX(TM) AS MaxTM " +
@@ -39,6 +40,13 @@ public interface IrrigationWaterLevelMapper {
             "  GROUP BY STCD" +
             ") rm ON r.STCD = rm.STCD AND r.TM = rm.MaxTM " +
             "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON r.STCD = s.iofhpi " +
+            "LEFT JOIN (" +
+            "  SELECT DISTINCT ON (v.site) v.site, v.vol " +
+            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
+            "  WHERE 1=1 " +
+            "  ${ew.customSqlSegment} " +
+            "  ORDER BY v.site, v.tm DESC " +
+            ") fv ON fv.site = s.id " +
             "${ew2.customSqlSegment} " +
             "ORDER BY r.STCD " +
             "LIMIT #{limit} OFFSET #{offset}")
@@ -48,7 +56,8 @@ public interface IrrigationWaterLevelMapper {
             @Result(column = "id", property = "id"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "z", property = "z"),
-            @Result(column = "rise1h", property = "rise1h")
+            @Result(column = "rise1h", property = "rise1h"),
+            @Result(column = "vol", property = "vol")
     })
     List<IrrigationWaterLevelVO> selectPage(
             @Param("ew") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> dateWrapper,

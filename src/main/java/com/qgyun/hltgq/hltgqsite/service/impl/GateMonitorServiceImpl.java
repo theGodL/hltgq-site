@@ -78,8 +78,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             vo.setTm(latestTm);
             vo.setUpZ(latestWithZ != null && latestWithZ.getUpZ() != null ? latestWithZ.getUpZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setDownZ(latestWithZ != null && latestWithZ.getDownZ() != null ? latestWithZ.getDownZ().setScale(2, java.math.RoundingMode.DOWN) : null);
-            // 流量与经纬度为站点级数据，各孔子查询结果相同，取第一条非空值
+            // 流量、电压与经纬度为站点级数据，各孔子查询结果相同，取第一条非空值
             vo.setQ(holes.stream().map(GateMonitor::getQ).filter(Objects::nonNull).findFirst().orElse(null));
+            vo.setVol(holes.stream().map(GateMonitor::getVol).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setLon(holes.stream().map(GateMonitor::getLon).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setLat(holes.stream().map(GateMonitor::getLat).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setHoles(holeDataList);

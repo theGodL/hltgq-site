@@ -7,6 +7,7 @@ import com.qgyun.hltgq.hltgqsite.service.IrrigationWaterLevelService;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelVO;
+import com.qgyun.hltgq.hltgqsite.vo.WaterLevelTrendVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -161,6 +162,90 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
 
         // 6. 组装结果
         IrrigationWaterLevelChartVO vo = new IrrigationWaterLevelChartVO();
+        vo.setStcd(stcd);
+        vo.setStnm(stnm);
+        vo.setStartTime(startTime);
+        vo.setEndTime(endTime);
+        vo.setHours(hours);
+        return vo;
+    }
+
+    @Override
+    public WaterLevelTrendVO waterLevelTrend(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+        // 1. 默认时间范围：近 7 天（与 FlowMonitorServiceImpl.trend 口径一致，服务内兜底）
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.HOURS);
+        if (endTime == null) {
+            endTime = now;
+        }
+        if (startTime == null) {
+            startTime = endTime.minusDays(7);
+        }
+
+        // 2. 查询站点名称（站点表查不到时回退为 stcd）
+        String stnm = stcd;
+        List<IrrigationWaterLevelVO> siteRecords = irrigationWaterLevelMapper.selectPage(
+                new QueryWrapper<>(), new QueryWrapper<Object>().eq("r.STCD", stcd), 1, 0);
+        if (!siteRecords.isEmpty() && siteRecords.get(0).getStnm() != null) {
+            stnm = siteRecords.get(0).getStnm();
+        }
+
+        // 3. 查询原始记录
+        String startStr = startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String endStr = endTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        List<Map<String, Object>> rawRecords = irrigationWaterLevelMapper.selectHistoryRaw(stcd, startStr, endStr);
+
+        // 4. 按小时聚合：取整点小时桶内的最新一条水位值
+        Map<String, BigDecimal> hourWaterLevel = new LinkedHashMap<>();
+        Map<String, LocalDateTime> hourLatestTm = new LinkedHashMap<>();
+        for (Map<String, Object> row : rawRecords) {
+            Object tmObj = row.get("TM");
+            Object zObj = row.get("Z");
+            if (tmObj == null || zObj == null) continue;
+
+            LocalDateTime tm;
+            if (tmObj instanceof Timestamp) {
+                tm = ((Timestamp) tmObj).toLocalDateTime();
+            } else if (tmObj instanceof LocalDateTime) {
+                tm = (LocalDateTime) tmObj;
+            } else {
+                continue;
+            }
+
+            BigDecimal z;
+            if (zObj instanceof BigDecimal) {
+                z = (BigDecimal) zObj;
+            } else {
+                z = new BigDecimal(zObj.toString());
+            }
+
+            String hourKey = tm.truncatedTo(ChronoUnit.HOURS)
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));
+
+            LocalDateTime prev = hourLatestTm.get(hourKey);
+            if (prev == null || tm.isAfter(prev)) {
+                hourLatestTm.put(hourKey, tm);
+                hourWaterLevel.put(hourKey, z);
+            }
+        }
+
+        // 5. 生成完整小时序列（严格 1h 步长，无数据小时水位为 null）
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00");
+        List<WaterLevelTrendVO.HourPoint> hours = new ArrayList<>();
+        LocalDateTime hour = startTime.truncatedTo(ChronoUnit.HOURS);
+        LocalDateTime endHour = endTime.truncatedTo(ChronoUnit.HOURS);
+
+        while (!hour.isAfter(endHour)) {
+            String key = hour.format(fmt);
+            BigDecimal level = hourWaterLevel.get(key);
+            WaterLevelTrendVO.HourPoint point = new WaterLevelTrendVO.HourPoint();
+            point.setHour(key);
+            point.setWaterLevel(level != null ? level.setScale(2, RoundingMode.DOWN) : null);
+            hours.add(point);
+            hour = hour.plusHours(1);
+        }
+
+        // 6. 组装结果
+        WaterLevelTrendVO vo = new WaterLevelTrendVO();
         vo.setStcd(stcd);
         vo.setStnm(stnm);
         vo.setStartTime(startTime);
