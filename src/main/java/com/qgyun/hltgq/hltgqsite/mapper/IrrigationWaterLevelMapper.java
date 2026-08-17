@@ -21,16 +21,18 @@ public interface IrrigationWaterLevelMapper {
      * 分页查询：每个站点最新一条水位数据
      *
      * @param dateWrapper 监测日期过滤条件（作用于确定"最新"的子查询）
-     * @param stcdWrapper 站点编号过滤条件（作用于外层结果）
+     * @param stcd        站点编号过滤（直接参数绑定，作用于外层结果），null 表示不过滤
      * @param limit       每页条数
      * @param offset      偏移量
      */
-    @Select("SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, TRUNC(r.Z, 2) AS z, " +
+    @Select("<script>" +
+            "SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, TRUNC(r.Z, 2) AS z, " +
+            "CASE WHEN r.Z = -999 THEN NULL ELSE " +
             "TRUNC(COALESCE((r.Z - (" +
             "  SELECT r2.Z FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r2 " +
-            "  WHERE r2.STCD = r.STCD AND r2.TM <= r.TM - INTERVAL '1 hour' " +
+            "  WHERE r2.STCD = r.STCD AND r2.TM &lt;= r.TM - INTERVAL '1 hour' AND r2.Z != -999 " +
             "  ORDER BY r2.TM DESC LIMIT 1" +
-            ")) * 100, 0), 2) AS rise1h, " +
+            ")) * 100, 0), 2) END AS rise1h, " +
             "fv.vol AS vol " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "INNER JOIN (" +
@@ -43,13 +45,12 @@ public interface IrrigationWaterLevelMapper {
             "LEFT JOIN (" +
             "  SELECT DISTINCT ON (v.site) v.site, v.vol " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
-            "  WHERE 1=1 " +
-            "  ${ew.customSqlSegment} " +
             "  ORDER BY v.site, v.tm DESC " +
             ") fv ON fv.site = s.id " +
-            "${ew2.customSqlSegment} " +
+            "<if test='stcd != null'>WHERE r.STCD = #{stcd} </if>" +
             "ORDER BY r.STCD " +
-            "LIMIT #{limit} OFFSET #{offset}")
+            "LIMIT #{limit} OFFSET #{offset}" +
+            "</script>")
     @Results({
             @Result(column = "stcd", property = "stcd"),
             @Result(column = "stnm", property = "stnm"),
@@ -61,14 +62,15 @@ public interface IrrigationWaterLevelMapper {
     })
     List<IrrigationWaterLevelVO> selectPage(
             @Param("ew") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> dateWrapper,
-            @Param("ew2") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> stcdWrapper,
+            @Param("stcd") String stcd,
             @Param("limit") int limit,
             @Param("offset") int offset);
 
     /**
      * 计数查询：符合条件的站点总数
      */
-    @Select("SELECT COUNT(*) FROM (" +
+    @Select("<script>" +
+            "SELECT COUNT(*) FROM (" +
             "  SELECT r.STCD " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "  INNER JOIN (" +
@@ -77,17 +79,18 @@ public interface IrrigationWaterLevelMapper {
             "    ${ew.customSqlSegment} " +
             "    GROUP BY STCD" +
             "  ) rm ON r.STCD = rm.STCD AND r.TM = rm.MaxTM " +
-            "  ${ew2.customSqlSegment} " +
-            ") t")
+            "  <if test='stcd != null'>WHERE r.STCD = #{stcd} </if>" +
+            ") t" +
+            "</script>")
     long selectCount(
             @Param("ew") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> dateWrapper,
-            @Param("ew2") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> stcdWrapper);
+            @Param("stcd") String stcd);
 
     /**
      * 查询站点水位历史数据（用于水位变化图表）
      * 按时间升序返回 TM, Z
      */
-    @Select("SELECT r.TM AS tm, TRUNC(r.Z, 2) AS z " +
+    @Select("SELECT r.TM AS \"TM\", TRUNC(r.Z, 2) AS \"Z\" " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "WHERE r.STCD = #{stcd} " +
             "AND r.TM >= #{startTime}::timestamp " +

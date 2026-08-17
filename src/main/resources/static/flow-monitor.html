@@ -304,13 +304,18 @@ tbody tr:hover td{background:#fafafa}
 <script>
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
-const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
+// -999 = 设备异常 → 展示 '--'；null/undefined/'' → '-'
+const isErr = v => v !== null && v !== undefined && v !== '' && +v === -999;
+const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isErr(v) ? '--' : v);
 const fmtN2 = v => {
   if (v === null || v === undefined || v === '') return '-';
+  if (isErr(v)) return '--';
   const n = +v;
   if (!Number.isFinite(n)) return '-';
   return n.toFixed(2);
 };
+/** 图表数值：-999 设备异常与空值一律转 null（ECharts 断线） */
+const toChartNum = v => (v === null || v === undefined || v === '') ? null : (+v === -999 ? null : +v);
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const fmtTm = v => {
   if (v == null || v === '') return '-';
@@ -700,7 +705,7 @@ function makeAreaOption(xData, yData, unit) {
 function renderChart(hours) {
   const list = Array.isArray(hours) ? hours : [];
   const xData = list.map(h => fmtAxisTm(h.hour));
-  const qData = list.map(h => (h.flow == null || h.flow === '' ? null : +h.flow));
+  const qData = list.map(h => toChartNum(h.flow));
 
   if (!qChart) qChart = echarts.init($('q-chart'));
   if (!list.length) {

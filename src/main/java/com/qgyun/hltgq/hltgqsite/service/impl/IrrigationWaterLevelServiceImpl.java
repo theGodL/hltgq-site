@@ -2,7 +2,9 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.IrrigationWaterLevelMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.service.IrrigationWaterLevelService;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelHistoryVO;
@@ -28,6 +30,9 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
     @Autowired
     private IrrigationWaterLevelMapper irrigationWaterLevelMapper;
 
+    @Autowired
+    private StStinfoMapper stStinfoMapper;
+
     @Override
     public Page<IrrigationWaterLevelVO> page(Page<IrrigationWaterLevelVO> page,
                                               String stcd,
@@ -42,14 +47,11 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
             dateWrapper.le("TM", Timestamp.valueOf(endTime));
         }
 
-        // ew2: 站点编号过滤（作用于外层结果）
-        QueryWrapper<?> stcdWrapper = new QueryWrapper<>();
-        if (stcd != null && !stcd.trim().isEmpty()) {
-            stcdWrapper.eq("r.STCD", stcd.trim());
-        }
+        // stcd 过滤（作用于外层结果，直接参数绑定）
+        String stcdFilter = (stcd != null && !stcd.trim().isEmpty()) ? stcd.trim() : null;
 
         // 查询总数
-        long total = irrigationWaterLevelMapper.selectCount(dateWrapper, stcdWrapper);
+        long total = irrigationWaterLevelMapper.selectCount(dateWrapper, stcdFilter);
         page.setTotal(total);
 
         if (total == 0) {
@@ -62,7 +64,7 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
 
         // 分页查询
         List<IrrigationWaterLevelVO> records = irrigationWaterLevelMapper.selectPage(
-                dateWrapper, stcdWrapper, limit, offset);
+                dateWrapper, stcdFilter, limit, offset);
         page.setRecords(records);
 
         return page;
@@ -70,12 +72,11 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
 
     @Override
     public IrrigationWaterLevelChartVO waterLevelChart(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
-        // 1. 查询站点名称
+        // 1. 查询站点名称（站点表主键 = stcd，查不到时为 null）
         String stnm = null;
-        List<IrrigationWaterLevelVO> siteRecords = irrigationWaterLevelMapper.selectPage(
-                new QueryWrapper<>(), new QueryWrapper<Object>().eq("r.STCD", stcd), 1, 0);
-        if (!siteRecords.isEmpty()) {
-            stnm = siteRecords.get(0).getStnm();
+        StStinfo site = stStinfoMapper.selectById(stcd);
+        if (site != null && site.getStnm() != null) {
+            stnm = site.getStnm();
         }
 
         // 2. 扩展查询范围（向前 1h，确保首小时有前值可对比）
@@ -109,6 +110,8 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
             } else {
                 z = new BigDecimal(zObj.toString());
             }
+            // -999 设备异常，视为缺失不参与聚合
+            if (z.compareTo(new BigDecimal("-999")) == 0) continue;
 
             String hourKey = tm.truncatedTo(ChronoUnit.HOURS)
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));
@@ -181,12 +184,11 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
             startTime = endTime.minusDays(7);
         }
 
-        // 2. 查询站点名称（站点表查不到时回退为 stcd）
+        // 2. 查询站点名称（站点表主键 = stcd，查不到时回退为 stcd）
         String stnm = stcd;
-        List<IrrigationWaterLevelVO> siteRecords = irrigationWaterLevelMapper.selectPage(
-                new QueryWrapper<>(), new QueryWrapper<Object>().eq("r.STCD", stcd), 1, 0);
-        if (!siteRecords.isEmpty() && siteRecords.get(0).getStnm() != null) {
-            stnm = siteRecords.get(0).getStnm();
+        StStinfo site = stStinfoMapper.selectById(stcd);
+        if (site != null && site.getStnm() != null) {
+            stnm = site.getStnm();
         }
 
         // 3. 查询原始记录
@@ -217,6 +219,8 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
             } else {
                 z = new BigDecimal(zObj.toString());
             }
+            // -999 设备异常，视为缺失不参与聚合
+            if (z.compareTo(new BigDecimal("-999")) == 0) continue;
 
             String hourKey = tm.truncatedTo(ChronoUnit.HOURS)
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));
@@ -287,6 +291,8 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
             } else {
                 z = new BigDecimal(zObj.toString());
             }
+            // -999 设备异常，视为缺失不参与聚合
+            if (z.compareTo(new BigDecimal("-999")) == 0) continue;
 
             String hourKey = tm.truncatedTo(ChronoUnit.HOURS)
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));

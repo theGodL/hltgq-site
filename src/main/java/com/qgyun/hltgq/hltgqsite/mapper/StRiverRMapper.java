@@ -50,6 +50,7 @@ public interface StRiverRMapper extends BaseMapper<StRiverR> {
             "AND r.TM >= #{startTime} " +
             "AND r.TM <= #{endTime} " +
             "AND r.Z IS NOT NULL " +
+            "AND r.Z != -999 " +
             "ORDER BY r.Z DESC, r.TM ASC LIMIT 1")
     Map<String, Object> selectMaxZInRange(
             @Param("stcd") String stcd,
@@ -67,6 +68,7 @@ public interface StRiverRMapper extends BaseMapper<StRiverR> {
             "<foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach> " +
             "AND r.TM &gt;= #{startTime} " +
             "AND r.TM &lt;= #{endTime} " +
+            "AND r.Z != -999 " +
             "GROUP BY r.STCD, EXTRACT(YEAR FROM r.TM), EXTRACT(MONTH FROM r.TM)" +
             "</script>")
     List<Map<String, Object>> selectMonthlyAvgZ(

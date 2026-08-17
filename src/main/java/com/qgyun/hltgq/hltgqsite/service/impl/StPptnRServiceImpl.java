@@ -187,11 +187,31 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         return new BigDecimal(val.toString());
     }
 
-    /** 计算增量，结果不小于0；任一为null则返回null */
+    /**
+     * -999 表示设备异常，此类数值一律视为缺失，不参与展示与计算
+     */
+    private boolean isDeviceError(BigDecimal v) {
+        return v != null && v.compareTo(DEVICE_ERROR) == 0;
+    }
+
+    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-999");
+
+    /** 计算增量，结果不小于0；任一为null则返回null，任一为-999（设备异常）则返回-999透传标记 */
     private BigDecimal subtractOrNull(BigDecimal current, BigDecimal prev) {
         if (current == null || prev == null) return null;
+        if (isDeviceError(current) || isDeviceError(prev)) return DEVICE_ERROR;
         BigDecimal diff = current.subtract(prev);
         return diff.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : diff;
+    }
+
+    /**
+     * DYP 增量：max(0, cur - prev)；任一为 null 或 -999（设备异常）时按 0 处理，
+     * 避免异常值污染时段/日雨量累计
+     */
+    private BigDecimal safeDypIncrement(BigDecimal curDyp, BigDecimal prevDyp) {
+        if (curDyp == null || prevDyp == null) return BigDecimal.ZERO;
+        if (isDeviceError(curDyp) || isDeviceError(prevDyp)) return BigDecimal.ZERO;
+        return curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
     }
 
     /** 判断行是否属于水库站点（STCD 匹配 或 名称匹配） */
@@ -255,7 +275,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     StPptnR prev = records.get(i - 1);
                     BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
-                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                    inc = safeDypIncrement(curDyp, prevDyp);
                 }
                 // 归属到小时桶
                 String hourKey = cur.getTm().truncatedTo(ChronoUnit.HOURS)
@@ -411,7 +431,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     StPptnR prev = stationRows.get(i - 1);
                     BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
-                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                    inc = safeDypIncrement(curDyp, prevDyp);
                 }
                 // 归属到水文日桶
                 String bucket = getHydroDayLabel(cur.getTm());
@@ -581,7 +601,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 } else {
                     BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
                     BigDecimal prevDyp = rows.get(i - 1).getDyp() != null ? rows.get(i - 1).getDyp() : BigDecimal.ZERO;
-                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                    inc = safeDypIncrement(curDyp, prevDyp);
                 }
                 if (yLabel.equals(getHydroDayLabel(cur.getTm()))) {
                     sum = (sum == null ? BigDecimal.ZERO : sum).add(inc);
@@ -619,7 +639,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 if (i > 0) {
                     BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
                     BigDecimal prevDyp = rows.get(i - 1).getDyp() != null ? rows.get(i - 1).getDyp() : BigDecimal.ZERO;
-                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                    inc = safeDypIncrement(curDyp, prevDyp);
                 }
                 sum = (sum == null ? BigDecimal.ZERO : sum).add(inc);
             }
@@ -685,7 +705,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     StPptnR prev = stationRows.get(i - 1);
                     BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
-                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                    inc = safeDypIncrement(curDyp, prevDyp);
                 }
                 // ceilToIntervalEnd：时段终点标注（左开右闭），11:06 的增量归 "12:00" 桶（区间 (11:00, 12:00]），
                 // 与时段雨量报表惯例一致；桶内记录同属一个水文日标签，时段合计与日雨情一致
@@ -817,7 +837,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     StPptnR prev = stationRows.get(i - 1);
                     BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
-                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                    inc = safeDypIncrement(curDyp, prevDyp);
                 }
                 String dayKey = getHydroDayLabel(cur.getTm());
                 dailyRainfall.computeIfAbsent(dayKey, k -> new LinkedHashMap<>())
@@ -918,7 +938,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     StPptnR prev = stationRows.get(i - 1);
                     BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
-                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                    inc = safeDypIncrement(curDyp, prevDyp);
                 }
                 hourlyInc.merge(ceilToIntervalEnd(cur.getTm(), 60), inc, BigDecimal::add);
                 dailyInc.merge(getHydroDayLabel(cur.getTm()), inc, BigDecimal::add);
@@ -1014,7 +1034,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     StPptnR prev = stationRows.get(i - 1);
                     BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
-                    inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
+                    inc = safeDypIncrement(curDyp, prevDyp);
                 }
                 String dayKey = getHydroDayLabel(cur.getTm());
                 dailyByStation.computeIfAbsent(stcd, k -> new LinkedHashMap<>())

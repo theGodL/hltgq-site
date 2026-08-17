@@ -423,18 +423,24 @@ tbody tr:hover td{background:#fafafa}
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const pad = n => String(n).padStart(2, '0');
-const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
-const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (+v).toFixed(2);
+// -999 = 设备异常 → 展示 '--'；null/undefined/'' → '-'
+const isErr = v => v !== null && v !== undefined && v !== '' && +v === -999;
+const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isErr(v) ? '--' : v);
+const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (isErr(v) ? '--' : (+v).toFixed(2));
 const fmtCmp = v => {
   if (v === null || v === undefined || v === '') return '-';
+  if (isErr(v)) return '--';
   const n = +v;
   return isNaN(n) ? v : (n > 0 ? '+' : '') + n.toFixed(2);
 };
 const fmtAuto = v => {
   if (v === null || v === undefined || v === '') return '-';
+  if (isErr(v)) return '--';
   const n = +v;
   return isNaN(n) ? v : n.toFixed(2);
 };
+/** 图表数值：-999 设备异常与空值一律转 null（ECharts 断线） */
+const toChartNum = v => (v === null || v === undefined || v === '') ? null : (+v === -999 ? null : +v);
 const fmtTm = v => {
   if (v === null || v === undefined || v === '') return '-';
   return String(v).replace('T', ' ').replace(/\.\d+$/, '');
@@ -867,7 +873,7 @@ function renderChart(rows) {
   const box = $('chart-box');
   if (!chart) chart = echarts.init(box);
   const xData = rows.map(r => r.dateLabel);
-  const yData = rows.map(r => r.z);
+  const yData = rows.map(r => toChartNum(r.z));
   const validY = yData.filter(v => v !== null && v !== undefined && v !== '');
   if (!validY.length) {
     chart.clear();
@@ -1388,7 +1394,9 @@ async function exportResExcel() {
   }
   if (!rows.length) { alert('暂无数据可导出'); return; }
 
-  const aoa = [headers, ...rows.map(r => meta.rowToArr(r))];
+  // 导出：-999 设备异常统一转 '--'
+  const aoa = [headers, ...rows.map(r => meta.rowToArr(r).map(v =>
+    (v !== null && v !== undefined && v !== '' && +v === -999) ? '--' : v))];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, meta.name);

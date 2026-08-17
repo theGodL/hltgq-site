@@ -134,8 +134,10 @@ const S = {
 // ===== 工具 =====
 const $ = id => document.getElementById(id);
 const fmtDt  = v => v ? String(v).replace('T',' ').slice(0,19) : '-';
-const fmtN   = v => (v === null || v === undefined) ? '-' : v;
-const fmtN2  = v => (v === null || v === undefined) ? '-' : (+v).toFixed(2);
+// -999 = 设备异常 → 展示 '--'；null/undefined → '-'
+const isErr = v => v !== null && v !== undefined && v !== '' && +v === -999;
+const fmtN   = v => (v === null || v === undefined) ? '-' : (isErr(v) ? '--' : v);
+const fmtN2  = v => (v === null || v === undefined) ? '-' : (isErr(v) ? '--' : (+v).toFixed(2));
 const pad    = n => String(n).padStart(2, '0');
 const dtToApi = v => v ? v.replace('T',' ') + ':00' : null;
 
@@ -302,7 +304,11 @@ async function doExport() {
     const res = await fetch(`/hltgq-site/st-river-r/export?${buildParams(false)}`);
     const rows = await res.json();
     const headers = ['测站编码','测站名称','观测时间','水位(m)','流量(m³/s)','水流特征码','测点编号'];
-    const data = rows.map(r => [(r.stcd||'').trim(), stName(r.stcd), fmtDt(r.tm), r.z, r.q, r.flwchrcd, r.wptn]);
+    // 导出：-999 设备异常统一转 '--'
+    const data = rows.map(r => [(r.stcd||'').trim(), stName(r.stcd), fmtDt(r.tm),
+      (r.z != null && +r.z === -999) ? '--' : r.z,
+      (r.q != null && +r.q === -999) ? '--' : r.q,
+      r.flwchrcd, r.wptn]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '水位数据');

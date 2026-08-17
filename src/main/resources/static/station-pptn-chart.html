@@ -195,7 +195,8 @@ function drawChart(records) {
     if (i === 0) { inc = 0; }
     else {
       const prev = records[i - 1].dyp != null ? +records[i - 1].dyp : 0;
-      inc = cur > prev ? cur - prev : 0;
+      // -999 设备异常：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+      inc = (cur !== -999 && prev !== -999 && cur > prev) ? cur - prev : 0;
     }
     const hour = fmtDt(records[i].tm).slice(0, 13) + ':00';
     hourMap[hour] = +(((hourMap[hour] || 0) + inc).toFixed(2));

@@ -269,7 +269,8 @@ function drawRiver(records) {
   if (!riverChart) riverChart = echarts.init($('river-chart'));
 
   const xData = records.map(r => fmtDt(r.tm).slice(5, 16));  // MM-DD HH:mm
-  const yData = records.map(r => r.z != null ? +r.z : null);
+  // -999 设备异常 → 图表断线（null）
+  const yData = records.map(r => r.z != null && +r.z !== -999 ? +r.z : null);
   const alarmz = stationInfo?.alarmz;
 
   const validY = yData.filter(v => v != null);
@@ -368,7 +369,8 @@ function drawPptn(records) {
     if (i === 0) { inc = 0; }
     else {
       const prev = records[i - 1].dyp != null ? +records[i - 1].dyp : 0;
-      inc = cur > prev ? cur - prev : 0;
+      // -999 设备异常：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+      inc = (cur !== -999 && prev !== -999 && cur > prev) ? cur - prev : 0;
     }
     const hour = fmtDt(records[i].tm).slice(0, 13) + ':00';
     hourMap[hour] = +(((hourMap[hour] || 0) + inc).toFixed(2));

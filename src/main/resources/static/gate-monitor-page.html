@@ -434,18 +434,23 @@ tbody tr:hover td{background:#fafafa}
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const pad = n => String(n).padStart(2, '0');
-const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
-const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (+v).toFixed(2);
+// -999 = 设备异常 → 展示 '--'；null/undefined/'' → '-'
+const isErr = v => v !== null && v !== undefined && v !== '' && +v === -999;
+const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isErr(v) ? '--' : v);
+const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (isErr(v) ? '--' : (+v).toFixed(2));
 const fmtTm = v => {
   if (v === null || v === undefined || v === '') return '-';
   return String(v).replace('T', ' ').replace(/\.\d+$/, '');
 };
 const fmtOpen = v => {
   if (v === null || v === undefined || v === '') return '-';
+  if (isErr(v)) return '--';
   const n = +v;
   if (!Number.isFinite(n)) return '-';
   return n.toFixed(2);
 };
+/** 图表数值：-999 设备异常与空值一律转 null（ECharts 断线），其余转数字 */
+const toChartNum = v => (v === null || v === undefined || v === '') ? null : (+v === -999 ? null : +v);
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const API = '/hltgq-site';
 const holeName = no => {
@@ -901,18 +906,15 @@ function processExportRows(list) {
 
   const times = [...tmSet].sort((a, b) => String(a).localeCompare(String(b)));
   const labels = times.map(fmtAxisTm);
-  const upData = times.map(t => waterByTm[t]?.upZ ?? null);
-  const downData = times.map(t => waterByTm[t]?.downZ ?? null);
+  const upData = times.map(t => toChartNum(waterByTm[t]?.upZ));
+  const downData = times.map(t => toChartNum(waterByTm[t]?.downZ));
   const openSeries = DETAIL.selected.map(g => ({
     gateNo: g,
     name: holeName(g),
-    data: times.map(t => {
-      const v = byGate[g]?.[t];
-      return (v === null || v === undefined || v === '') ? null : +v;
-    }),
+    data: times.map(t => toChartNum(byGate[g]?.[t])),
   }));
-  const tfData = times.map(t => (flowByTm[t]?.tf == null) ? null : +flowByTm[t].tf);
-  const qData = times.map(t => (flowByTm[t]?.q == null) ? null : +flowByTm[t].q);
+  const tfData = times.map(t => toChartNum(flowByTm[t]?.tf));
+  const qData = times.map(t => toChartNum(flowByTm[t]?.q));
 
   return { labels, upData, downData, openSeries, tfData, qData };
 }
@@ -1020,7 +1022,7 @@ function renderOpenChart(labels, openSeries) {
       backgroundColor: 'rgba(255,255,255,0.95)',
       borderColor: '#e8e8e8',
       textStyle: { color: '#333', fontSize: 13 },
-      valueFormatter: v => (v == null || !Number.isFinite(+v)) ? '-' : fmtOpen(v) + ' m',
+      valueFormatter: v => (v == null || !Number.isFinite(+v)) ? '-' : (+v === -999 ? '--' : fmtOpen(v) + ' m'),
     },
     legend: {
       data: legend,
@@ -1087,7 +1089,7 @@ function renderFlowChart(labels, tfData, qData) {
       backgroundColor: 'rgba(255,255,255,0.95)',
       borderColor: '#e8e8e8',
       textStyle: { color: '#333', fontSize: 13 },
-      valueFormatter: v => (v == null || !Number.isFinite(+v)) ? '-' : fmtN2(v) + ' ' + unit,
+      valueFormatter: v => (v == null || !Number.isFinite(+v)) ? '-' : (+v === -999 ? '--' : fmtN2(v) + ' ' + unit),
     },
     legend: {
       data: [useTf ? '累计流量' : '瞬时流量'],

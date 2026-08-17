@@ -66,14 +66,14 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "date_trunc('hour', g.tm) AS tm, " +
             "g.site, " +
             "CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, " +
-            "TRUNC(AVG(g.open_degree), 2) AS open_degree, " +
-            "TRUNC(AVG(g.up_z), 2) AS up_z, " +
-            "TRUNC(AVG(g.down_z), 2) AS down_z, " +
+            "TRUNC(AVG(g.open_degree) FILTER (WHERE g.open_degree != -999), 2) AS open_degree, " +
+            "TRUNC(AVG(g.up_z) FILTER (WHERE g.up_z != -999), 2) AS up_z, " +
+            "TRUNC(AVG(g.down_z) FILTER (WHERE g.down_z != -999), 2) AS down_z, " +
             "TRUNC(fq.q, 2) AS q, " +
             "TRUNC(fq.tf, 2) AS tf " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "LEFT JOIN (" +
-            "  SELECT f.site, date_trunc('hour', f.tm) AS hour, AVG(f.q) AS q, MAX(f.tf) AS tf " +
+            "  SELECT f.site, date_trunc('hour', f.tm) AS hour, AVG(f.q) FILTER (WHERE f.q != -999) AS q, MAX(f.tf) FILTER (WHERE f.tf != -999) AS tf " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  WHERE f.tm &gt;= #{startTime}::timestamp AND f.tm &lt;= #{endTime}::timestamp " +
             "  GROUP BY f.site, date_trunc('hour', f.tm)" +
