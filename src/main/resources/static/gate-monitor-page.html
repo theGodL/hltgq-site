@@ -223,6 +223,7 @@ tbody tr:hover td{background:#fafafa}
               <th>闸门开度 (m)</th>
               <th>闸前水位 (m)</th>
               <th>闸后水位 (m)</th>
+              <th>瞬时流量 (m³/s)</th>
               <th>采集时间</th>
               <th>操作</th>
             </tr>
@@ -705,7 +706,7 @@ async function loadList() {
     S.allRows = [];
     S.total = 0;
     S.rows = [];
-    $('tbl-body').innerHTML = '<tr><td colspan="6" class="empty">数据加载失败，请重试</td></tr>';
+    $('tbl-body').innerHTML = '<tr><td colspan="7" class="empty">数据加载失败，请重试</td></tr>';
     renderPager();
   } finally {
     setLoading(wrap, false);
@@ -744,7 +745,7 @@ function fmtHolesOpen(holes) {
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = S.rows.map((r, i) => `
@@ -753,6 +754,7 @@ function renderTable() {
       <td>${esc(fmtHolesOpen(r.holes))}</td>
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
+      <td>${fmtN2(r.q)}</td>
       <td>${fmtTm(r.tm)}</td>
       <td>
         <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>

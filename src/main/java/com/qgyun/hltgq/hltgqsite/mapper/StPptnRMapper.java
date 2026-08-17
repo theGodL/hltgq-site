@@ -54,6 +54,10 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
      * <p>性能：用 DISTINCT ON 替代 ROW_NUMBER 窗口（配合 (STCD, TM DESC) 索引，
      * 每组直接取最新行，无需全量窗口排序）；基线子查询仅对每站最新一行执行。
      * 支持按站点编号、监测日期范围筛选
+     * <p>drp 基线（dyp_day）口径：
+     * 未带时间筛选（实时列表）→ 服务器当前水文日 8 点起点（hydroBase），
+     * "当前雨量"始终表示当前水文日累计，最新报文停留在上一水文日时不会与"昨日雨量"重合；
+     * 带时间筛选（历史视图）→ 该行记录所属水文日 8 点起点，保证每行 drp 自洽。
      */
     @Select("<script>"
             + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
@@ -68,7 +72,13 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
             + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '6 hours' + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_6h, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
-            + "            WHERE STCD = t.STCD AND TM &lt;= ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours') "
+            + "            WHERE STCD = t.STCD AND TM &lt;= "
+            + "            <choose>"
+            + "              <when test=\"startTime != null or endTime != null\">"
+            + "                ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours') "
+            + "              </when>"
+            + "              <otherwise>#{hydroBase} </otherwise>"
+            + "            </choose>"
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_day "
             + "FROM ( "
             + "  SELECT DISTINCT ON (STCD) STCD, TM, DRP, DYP "
@@ -84,7 +94,8 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
             + "</script>")
     List<Map<String, Object>> selectGqRainfallList(@Param("stcd") String stcd,
                                                     @Param("startTime") LocalDateTime startTime,
-                                                    @Param("endTime") LocalDateTime endTime);
+                                                    @Param("endTime") LocalDateTime endTime,
+                                                    @Param("hydroBase") LocalDateTime hydroBase);
 
     /**
      * 灌区雨情历史：单站点分页记录（TM 倒序），每一条含1h/3h/6h前DYP值（用于计算时段增量）

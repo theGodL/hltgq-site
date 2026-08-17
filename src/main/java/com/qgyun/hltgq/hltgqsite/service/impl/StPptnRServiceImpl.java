@@ -60,12 +60,21 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             "320640000C"   // 弥陀
     ));
 
-    /** 花凉亭水库 13 站点名称（雨量记录 STCD 未迁移时按名称兜底排除） */
+    /** 花凉亭水库 13 站点名称（雨量记录 STCD 未迁移时按名称兜底排除；含水情站花凉亭坝下，用于灌区接口排除） */
     private static final Set<String> RESERVOIR_STATION_NAMES = new HashSet<>(Arrays.asList(
             "周家河", "姜家寨", "九田", "牛镇", "马嘶铺", "寺前",
             "河图铺", "下前河", "鲤鱼墩", "弥陀", "白帽",
             "花凉亭坝上", "花凉亭坝下"
     ));
+
+    /**
+     * 水库雨量站点（按上线顺序排列）。
+     * <p>花凉亭坝下为水情站、非雨量站，不参与雨情页面展示，故不在此列（13 水情/雨量站 - 坝下 = 12 雨量站）。
+     */
+    private static final List<String> RESERVOIR_RAIN_STATION_ORDER = Arrays.asList(
+            "周家河", "姜家寨", "九田", "牛镇", "马嘶铺", "花凉亭坝上",
+            "寺前", "河图铺", "下前河", "鲤鱼墩", "弥陀", "白帽"
+    );
 
     @Override
     public List<StPptnR> latestPerStation() {
@@ -103,7 +112,12 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Override
     public IPage<GqRainfallVO> gqRainfallPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(stcd, startTime, endTime);
+        // drp 基线 = 服务器当前所属水文日的 8 点起点（与 dailyDyp 同用 LocalDateTime.now() 时钟口径）：
+        // "当前雨量"始终表示当前水文日累计，最新报文停留在上一水文日（如 8 点整点报文）时不会与"昨日雨量"重合
+        String curLabel = getHydroDayLabel(LocalDateTime.now());
+        LocalDateTime hydroBase = LocalDateTime.parse(curLabel,
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).minusDays(1);
+        List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(stcd, startTime, endTime, hydroBase);
         // 未指定 stcd 时按灌区口径排除水库 13 站；显式指定 stcd 时放行该站（含水库站）
         List<GqRainfallVO> vos = rows.stream()
                 .filter(row -> gqStationVisible(row, stcd))
@@ -157,7 +171,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         vo.setRain1h(subtractOrNull(dypVal, dyp1h));
         vo.setRain3h(subtractOrNull(dypVal, dyp3h));
         vo.setRain6h(subtractOrNull(dypVal, dyp6h));
-        // 当前降雨量 = 当前水文日累计（DYP 增量：最新DYP - 水文本日起点前基线DYP）
+        // 当前降雨量 = 当前水文日累计（DYP 增量：最新DYP - 当前水文日 8 点起点前基线DYP）
+        // 基线随服务器当前时刻滑动（实时列表口径），与 dailyDyp（昨日雨量）错开，避免报文滞后时两值重合
         // 花凉亭 DRP 恒 0、灌区站 DRP 每日 8:00 归零不可靠，统一用 DYP 增量
         BigDecimal dypDay = toBigDecimal(row.get("dyp_day"));
         vo.setDrp(subtractOrNull(dypVal, dypDay));
@@ -353,7 +368,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             }
             dr.setValues(fullValues);
             dr.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
-                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
+                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_EVEN)); // 平均值保留两位小数、银行家舍入（老系统口径：0.625→0.62、0.1667→0.17）
             days.add(dr);
         }
 
@@ -453,7 +468,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             }
             dr.setValues(fullValues);
             dr.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
-                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
+                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_EVEN)); // 平均值保留两位小数、银行家舍入（老系统口径：0.625→0.62、0.1667→0.17）
             days.add(dr);
         }
 
@@ -670,22 +685,23 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
                     inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
-                // floorToInterval：水文日对齐的时段取整（8:00:00 整点归 07:00 桶，防止增量丢失）
-                String bucket = floorToInterval(cur.getTm(), intervalMinutes);
+                // ceilToIntervalEnd：时段终点标注（左开右闭），11:06 的增量归 "12:00" 桶（区间 (11:00, 12:00]），
+                // 与时段雨量报表惯例一致；桶内记录同属一个水文日标签，时段合计与日雨情一致
+                String bucket = ceilToIntervalEnd(cur.getTm(), intervalMinutes);
                 bucketMap.computeIfAbsent(bucket, k -> new LinkedHashMap<>())
                         .merge(stcd, inc, BigDecimal::add);
             }
         }
 
-        // 5. 生成完整时段序列（对齐 generatePeriodBuckets）
-        //    起点 = (startDate - 1) 08:00，终点 = endDate 08:00（不含）
+        // 5. 生成完整时段序列（桶标签为时段终点，对齐时段雨量报表口径）
+        //    覆盖区间 (startDate-1 08:00, endDate 08:00]，桶标签从 (startDate-1) 09:00 到 endDate 08:00
         List<String> allBuckets = new ArrayList<>();
         LocalDateTime bucketStart = startDate.minusDays(1).atTime(8, 0);
         LocalDateTime bucketEnd = endDate.atTime(8, 0);
         DateTimeFormatter bucketFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
         LocalDateTime t = bucketStart;
         while (t.isBefore(bucketEnd)) {
-            allBuckets.add(t.format(bucketFmt));
+            allBuckets.add(t.plusMinutes(intervalMinutes).format(bucketFmt));
             t = t.plusMinutes(intervalMinutes);
         }
 
@@ -732,7 +748,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             }
             row.setValues(fullValues);
             row.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
-                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
+                    : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_EVEN)); // 平均值保留两位小数、银行家舍入（老系统口径：0.625→0.62、0.1667→0.17）
             buckets.add(row);
         }
 
@@ -744,19 +760,17 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     /**
-     * 时段桶取整（水文日对齐）：
-     * 1. 先回退 1 秒，与 getHydroDayLabel 口径一致（8:00:00 整点归当日标签）
-     * 2. 以当日 08:00 为桶起点按 interval 向下取整
-     * 效果：8:00:00 整点增量归 07:00 时段桶（不再落出桶序列而丢失），
-     * 每个时段桶内记录同属一个水文日标签，时段合计与日雨情一致
+     * 时段桶标签（时段终点标注、左开右闭，与水文日标签口径一致）：
+     * 记录 tm 归入区间 (T - interval, T]，桶标签为 T。
+     * 例：11:06 的增量 → "12:00" 桶；08:00:00 整点 → "08:00" 桶（与 getHydroDayLabel 右端点归属一致）。
+     * 每个时段桶内记录同属一个水文日标签，时段合计与日雨情一致。
      */
-    private String floorToInterval(LocalDateTime tm, int intervalMinutes) {
-        LocalDateTime base = tm.minusSeconds(1);
-        LocalDateTime hydroStart = base.toLocalDate().atTime(LocalTime.of(8, 0));
-        long diffMinutes = Duration.between(hydroStart, base).toMinutes();
-        long floored = Math.floorDiv(diffMinutes, (long) intervalMinutes) * intervalMinutes;
-        LocalDateTime bucket = hydroStart.plusMinutes(floored);
-        return bucket.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+    private String ceilToIntervalEnd(LocalDateTime tm, int intervalMinutes) {
+        LocalDateTime hydroStart = tm.toLocalDate().atTime(LocalTime.of(8, 0));
+        long diffSeconds = ChronoUnit.SECONDS.between(hydroStart, tm);
+        long ceilSlots = (long) Math.ceil(diffSeconds / (intervalMinutes * 60.0));
+        LocalDateTime bucketEnd = hydroStart.plusMinutes(ceilSlots * intervalMinutes);
+        return bucketEnd.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
     }
 
     // ======================== 旬月雨情 ========================
@@ -845,7 +859,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 row.setTenDay(name);
                 row.setValues(tenDayValues);
                 row.setAvg(resolved.isEmpty() ? BigDecimal.ZERO
-                        : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_UP));
+                        : sum.divide(new BigDecimal(resolved.size()), 2, BigDecimal.ROUND_HALF_EVEN)); // 平均值保留两位小数、银行家舍入（老系统口径：0.625→0.62、0.1667→0.17）
                 periods.add(row);
             }
         }
@@ -890,8 +904,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             List<StPptnR> stationRows = byStation.getOrDefault(stcd, Collections.emptyList());
             stationRows.sort(Comparator.comparing(StPptnR::getTm));
 
-            // 计算小时增量序列（水文日对齐：小时桶用 floorToInterval 取整，
-            // 8:00:00 整点增量归 07:00 桶，与时段雨情口径一致；
+            // 计算小时增量序列（水文日对齐：小时桶用 ceilToIntervalEnd 时段终点标注，
+            // 8:00:00 整点增量归 08:00 桶，与时段雨情口径一致；
             // 日雨量直接按水文日标签聚合，与日雨情口径一致）
             Map<String, BigDecimal> hourlyInc = new LinkedHashMap<>();
             Map<String, BigDecimal> dailyInc = new LinkedHashMap<>();
@@ -904,7 +918,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                     BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
                     inc = curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
                 }
-                hourlyInc.merge(floorToInterval(cur.getTm(), 60), inc, BigDecimal::add);
+                hourlyInc.merge(ceilToIntervalEnd(cur.getTm(), 60), inc, BigDecimal::add);
                 dailyInc.merge(getHydroDayLabel(cur.getTm()), inc, BigDecimal::add);
             }
 
@@ -1043,18 +1057,25 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     /**
-     * 通过 13 个水库站点名称反查 station_info 表，获取真实 STCD 及站点信息。
-     * 返回 LinkedHashMap 保证迭代顺序稳定。
+     * 通过水库雨量站点名称反查 station_info 表，获取真实 STCD 及站点信息。
+     * <p>站点集合为 12 个水库雨量站（不含水情站花凉亭坝下），按上线顺序排列（RESERVOIR_RAIN_STATION_ORDER）。
+     * 返回 LinkedHashMap 保证迭代顺序稳定（前端透视表列序依赖此顺序）。
      */
     private Map<String, StStinfo> resolveReservoirStcds() {
         QueryWrapper<StStinfo> wrapper = new QueryWrapper<>();
-        wrapper.in("zzkaec", RESERVOIR_STATION_NAMES);
+        wrapper.in("zzkaec", RESERVOIR_RAIN_STATION_ORDER);
         List<StStinfo> list = stStinfoMapper.selectList(wrapper);
-        Map<String, StStinfo> map = new LinkedHashMap<>();
+        Map<String, StStinfo> byName = new HashMap<>();
         for (StStinfo s : list) {
-            String stcd = s.getStcd();
-            if (stcd != null) {
-                map.put(stcd, s);
+            if (s.getStnm() != null) {
+                byName.put(s.getStnm(), s);
+            }
+        }
+        Map<String, StStinfo> map = new LinkedHashMap<>();
+        for (String name : RESERVOIR_RAIN_STATION_ORDER) {
+            StStinfo s = byName.get(name);
+            if (s != null && s.getStcd() != null) {
+                map.put(s.getStcd(), s);
             }
         }
         return map;
