@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.vo;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -28,4 +29,19 @@ public class FlowMonitoringVO {
 
     /** 累计流量 (万 m³) */
     private BigDecimal tf;
+
+    /** 累计流量 (m³)：默认（无起始时间）= 末行年累计 ytf；指定起始时间 = ttf(末行) − ttf(起点前一行) */
+    private BigDecimal cumulativeFlow;
+
+    /** 年累计流量（内部计算用，不出 JSON） */
+    @JsonIgnore
+    private BigDecimal ytf;
+
+    /** 总累计流量（内部计算用，不出 JSON） */
+    @JsonIgnore
+    private BigDecimal ttf;
+
+    /** 起始时间前最近一条 ttf 非空行的总累计（内部计算用，不出 JSON） */
+    @JsonIgnore
+    private BigDecimal prevTtf;
 }

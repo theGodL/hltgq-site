@@ -95,6 +95,21 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         rows.forEach(r -> {
             r.setQ(nullIfMissing(r.getQ()));
             r.setTf(nullIfMissing(r.getTf()));
+            // 累计流量（站点级，与闸门监测同口径）：默认（无起始时间）= 末行 ytf（当年 1月1日 0点起至最新数据时间）；
+            // 指定起始时间 = 时间框范围累计 = ttf(范围内末行) − ttf(起点前最近一行)，起点前无积分行基准按 0
+            BigDecimal ytf = nullIfMissing(r.getYtf());
+            BigDecimal ttf = nullIfMissing(r.getTtf());
+            BigDecimal prevTtf = nullIfMissing(r.getPrevTtf());
+            BigDecimal cumulativeFlow;
+            if (startTime == null) {
+                cumulativeFlow = ytf;
+            } else if (ttf == null) {
+                cumulativeFlow = null;
+            } else {
+                cumulativeFlow = ttf.subtract(prevTtf != null ? prevTtf : BigDecimal.ZERO);
+            }
+            r.setCumulativeFlow(cumulativeFlow != null
+                    ? cumulativeFlow.setScale(2, RoundingMode.DOWN) : null);
         });
         return rows;
     }

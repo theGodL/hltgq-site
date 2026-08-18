@@ -48,6 +48,18 @@ public class GateMonitor {
     @TableField(exist = false)
     private BigDecimal q;
 
+    /** 年累计流量 (m³)，流量表末行 ytf（当年 1月1日 0点起，非本表字段） */
+    @TableField(exist = false)
+    private BigDecimal ytf;
+
+    /** 总累计流量 (m³)，流量表末行 ttf（接入以来单调不减，非本表字段） */
+    @TableField(exist = false)
+    private BigDecimal ttf;
+
+    /** 起始时间前一行的总累计流量 (m³)，用于范围累计相减（非本表字段） */
+    @TableField(exist = false)
+    private BigDecimal prevTtf;
+
     /** 电压 (V)，关联电压表 t_auto_hltgq_water_vol_info 的 vol（非本表字段） */
     @TableField(exist = false)
     private BigDecimal vol;
@@ -124,6 +136,15 @@ public class GateMonitor {
 
     public BigDecimal getQ() { return q; }
     public void setQ(BigDecimal q) { this.q = q; }
+
+    public BigDecimal getYtf() { return ytf; }
+    public void setYtf(BigDecimal ytf) { this.ytf = ytf; }
+
+    public BigDecimal getTtf() { return ttf; }
+    public void setTtf(BigDecimal ttf) { this.ttf = ttf; }
+
+    public BigDecimal getPrevTtf() { return prevTtf; }
+    public void setPrevTtf(BigDecimal prevTtf) { this.prevTtf = prevTtf; }
 
     public BigDecimal getVol() { return vol; }
     public void setVol(BigDecimal vol) { this.vol = vol; }

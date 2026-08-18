@@ -25,6 +25,9 @@ public interface WaterFlowMapper {
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，不能直接用 COALESCE 函数表达式
      * （PG 会报 "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"），
      * 故先在子查询中物化出 skey，外层按 skey 去重排序。
+     * <p>累计流量取数（与闸门监测同口径）：内层直接取末行 ytf/ttf；
+     * fq_prev（仅指定起始时间时拼接）返回起始时间前最近一条 ttf 非空行的 ttf，
+     * 供 Service 层相减计算时间框范围累计流量。
      *
      * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部
      * @param startTime 起始时间（可选）
@@ -32,9 +35,9 @@ public interface WaterFlowMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.stnm, t.tm, t.q, t.tf " +
+            "t.stcd, t.skey AS site, t.stnm, t.tm, t.q, t.tf, t.ytf, t.ttf<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
             "FROM ( " +
-            "  SELECT f.stcd, COALESCE(f.stcd, f.site) AS skey, COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 2) AS q, TRUNC(f.tf, 2) AS tf " +
+            "  SELECT f.stcd, COALESCE(f.stcd, f.site) AS skey, COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf, f.ytf, f.ttf " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
             "  WHERE 1=1 " +
@@ -48,6 +51,17 @@ public interface WaterFlowMapper {
             "  <if test='startTime != null'>AND f.tm &gt;= #{startTime} </if>" +
             "  <if test='endTime != null'>AND f.tm &lt;= #{endTime} </if>" +
             ") t " +
+            "  <if test='startTime != null'>" +
+            "  LEFT JOIN ( " +
+            "    SELECT DISTINCT ON (t2.skey) t2.skey, t2.ttf AS prev_ttf " +
+            "    FROM ( " +
+            "      SELECT COALESCE(f.stcd, f.site) AS skey, f.tm, f.ttf " +
+            "      FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "      WHERE f.tm &lt; #{startTime} AND f.ttf IS NOT NULL " +
+            "    ) t2 " +
+            "    ORDER BY t2.skey, t2.tm DESC " +
+            "  ) fq_prev ON fq_prev.skey = t.skey " +
+            "  </if>" +
             "ORDER BY t.skey, t.tm DESC" +
             "</script>")
     @Results({
@@ -56,7 +70,10 @@ public interface WaterFlowMapper {
             @Result(column = "stnm", property = "stnm"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "q", property = "q"),
-            @Result(column = "tf", property = "tf")
+            @Result(column = "tf", property = "tf"),
+            @Result(column = "ytf", property = "ytf"),
+            @Result(column = "ttf", property = "ttf"),
+            @Result(column = "prev_ttf", property = "prevTtf")
     })
     List<FlowMonitoringVO> selectLatestPerStation(
             @Param("stcds") List<String> stcds,
@@ -67,7 +84,7 @@ public interface WaterFlowMapper {
      * 查询原始流量记录（用于图表 + 历史数据，按时间升序）
      */
     @Select("<script>" +
-            "SELECT f.tm, TRUNC(f.q, 2) AS q, TRUNC(f.tf, 2) AS tf " +
+            "SELECT f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "WHERE (f.stcd = #{stcd} OR f.site = #{stcd}) " +
             "<if test='startTime != null'>AND f.tm &gt;= #{startTime} </if>" +
@@ -84,7 +101,7 @@ public interface WaterFlowMapper {
      * <p>stcd 输出原值（MQTT 站为 null），site 输出站点标识（stcd 或 site UUID）供查询/筛选。
      */
     @Select("<script>" +
-            "SELECT f.stcd AS stcd, COALESCE(f.stcd, f.site) AS site, COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 2) AS q, TRUNC(f.tf, 2) AS tf " +
+            "SELECT f.stcd AS stcd, COALESCE(f.stcd, f.site) AS site, COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
             "WHERE (f.stcd = #{stcd} OR f.site = #{stcd}) " +

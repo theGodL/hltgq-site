@@ -32,6 +32,9 @@ public class GateMonitoringVO {
     /** 流量 (m³/s)，取关联流量表 t_auto_hltgq_water_wt_nfo 最新值 */
     private BigDecimal q;
 
+    /** 累计流量 (m³)；默认=最新行 ytf（当年 1月1日 0点起），指定起始时间时=时间框范围累计 */
+    private BigDecimal cumulativeFlow;
+
     /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
     private BigDecimal vol;
 

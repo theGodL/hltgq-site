@@ -236,6 +236,7 @@ tbody tr:hover td{background:#fafafa}
               <th>闸前水位 (m)</th>
               <th>闸后水位 (m)</th>
               <th>瞬时流量 (m³/s)</th>
+              <th>累计流量 (m³)</th>
               <th>采集时间</th>
               <th>操作</th>
             </tr>
@@ -477,6 +478,7 @@ const isErr = v => v !== null && v !== undefined && v !== '' && +v === -9991;
 const isMissing = v => v !== null && v !== undefined && v !== '' && +v === -999;
 const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isMissing(v) ? '' : (isErr(v) ? '--' : v));
 const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (isMissing(v) ? '' : (isErr(v) ? '--' : (+v).toFixed(2)));
+const fmtN3 = v => (v === null || v === undefined || v === '') ? '-' : (isMissing(v) ? '' : (isErr(v) ? '--' : (+v).toFixed(3)));
 const fmtTm = v => {
   if (v === null || v === undefined || v === '') return '-';
   return String(v).replace('T', ' ').replace(/\.\d+$/, '');
@@ -749,7 +751,7 @@ async function loadList() {
     S.allRows = [];
     S.total = 0;
     S.rows = [];
-    $('tbl-body').innerHTML = '<tr><td colspan="7" class="empty">数据加载失败，请重试</td></tr>';
+    $('tbl-body').innerHTML = '<tr><td colspan="8" class="empty">数据加载失败，请重试</td></tr>';
     renderPager();
   } finally {
     setLoading(wrap, false);
@@ -790,7 +792,7 @@ function fmtHolesOpen(holes) {
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = S.rows.map((r, i) => `
@@ -799,7 +801,8 @@ function renderTable() {
       <td>${esc(fmtHolesOpen(r.holes))}</td>
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
-      <td>${fmtN2(r.q)}</td>
+      <td>${fmtN3(r.q)}</td>
+      <td>${fmtN2(r.cumulativeFlow)}</td>
       <td>${fmtTm(r.tm)}</td>
       <td>
         <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>
@@ -994,7 +997,8 @@ function renderWaterChart(labels, upData, downData, qData) {
           const v = +p.value;
           if (!Number.isFinite(v)) return `${p.marker}${p.seriesName}：-`;
           const unit = p.seriesName === '瞬时流量' ? ' m³/s' : ' m';
-          return `${p.marker}${p.seriesName}：${v.toFixed(2)}${unit}`;
+          const dec = p.seriesName === '瞬时流量' ? 3 : 2;
+          return `${p.marker}${p.seriesName}：${v.toFixed(dec)}${unit}`;
         });
         return `${params[0].axisValue}<br/>` + rows.join('<br/>');
       },
@@ -1235,7 +1239,7 @@ function renderHistory() {
     tbody.innerHTML = HIST.rows.map(r => `
       <tr>
         <td>${fmtTm(r.tm)}</td>
-        <td>${fmtN2(r.q)}</td>
+        <td>${fmtN3(r.q)}</td>
         <td>${fmtN2(r.tf)}</td>
       </tr>
     `).join('');

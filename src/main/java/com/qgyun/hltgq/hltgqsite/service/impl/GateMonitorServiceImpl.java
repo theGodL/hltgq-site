@@ -117,6 +117,24 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                     .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null));
             vo.setVol(holes.stream().map(GateMonitor::getVol)
                     .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null));
+            // 累计流量（站点级）：默认（无起始时间）= 末行 ytf（当年 1月1日 0点起至最新数据时间）；
+            // 指定起始时间 = 时间框范围累计 = ttf(范围内末行) − ttf(起点前最近一行)，起点前无积分行基准按 0
+            BigDecimal ytf = holes.stream().map(GateMonitor::getYtf)
+                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null);
+            BigDecimal ttf = holes.stream().map(GateMonitor::getTtf)
+                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null);
+            BigDecimal prevTtf = holes.stream().map(GateMonitor::getPrevTtf)
+                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null);
+            BigDecimal cumulativeFlow;
+            if (startTime == null) {
+                cumulativeFlow = ytf;
+            } else if (ttf == null) {
+                cumulativeFlow = null;
+            } else {
+                cumulativeFlow = ttf.subtract(prevTtf != null ? prevTtf : BigDecimal.ZERO);
+            }
+            vo.setCumulativeFlow(cumulativeFlow != null
+                    ? cumulativeFlow.setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setLon(holes.stream().map(GateMonitor::getLon).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setLat(holes.stream().map(GateMonitor::getLat).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setHoles(holeDataList);
