@@ -329,8 +329,8 @@ function drawChart(records, dim) {
   if (!chart) chart = echarts.init($('chart-box'));
 
   const xData = records.map(r => fmtTm(r.tm, dim));
-  // -999 设备异常 → 图表断线（null）
-  const yData = records.map(r => r.value != null && +r.value !== -999 ? +r.value : null);
+  // -9991 设备异常、-999 设备不存在 → 图表断线（null）
+  const yData = records.map(r => r.value != null && +r.value !== -999 && +r.value !== -9991 ? +r.value : null);
 
   const validY = yData.filter(v => v != null);
   const yMax   = validY.length ? Math.max(...validY) : 100;
@@ -428,7 +428,7 @@ function renderTable() {
     <td>${r.mpNm || '-'}</td>
     <td>${r.mpCd || '-'}</td>
     <td>${fmtTm(r.tm, dim)}</td>
-    <td>${r.value != null ? (+r.value === -999 ? '--' : Number(r.value).toLocaleString()) : '-'}</td>
+    <td>${r.value == null ? '-' : (+r.value === -9991 ? '--' : (+r.value === -999 ? '' : Number(r.value).toLocaleString()))}</td>
   </tr>`).join('') : `<tr><td colspan="4" class="empty">暂无数据</td></tr>`;
 
   renderPg(total, tp);
@@ -469,8 +469,8 @@ function exportExcel() {
   const headers  = ['监测点', '站码', '时间', '水量(m³)'];
   const data = sortedRecords().map(r => [
     r.mpNm || '', r.mpCd || '', fmtTm(r.tm, dim),
-    // -999 设备异常导出为 '--'
-    r.value == null ? '' : (+r.value === -999 ? '--' : r.value)
+    // -9991 设备异常导出为 '--'；-999 设备不存在导出为空白
+    r.value == null ? '' : (+r.value === -9991 ? '--' : (+r.value === -999 ? '' : r.value))
   ]);
   const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
   const wb = XLSX.utils.book_new();

@@ -263,7 +263,7 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         return result;
     }
 
-    /** Map 值 → BigDecimal（null 安全；-999 透传由前端展示 '--'） */
+    /** Map 值 → BigDecimal（null 安全；-9991/-999 透传由前端分别展示 '--'/不展示） */
     private BigDecimal toBigDecimal(Object obj) {
         if (obj == null) return null;
         if (obj instanceof BigDecimal) return (BigDecimal) obj;

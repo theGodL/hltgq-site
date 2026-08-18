@@ -25,7 +25,7 @@ public interface SoilMoistureMapper {
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，不能直接用 COALESCE 函数表达式
      * （PG 会报 "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"），
      * 故先在子查询中物化出 skey，外层按 skey 去重排序。
-     * <p>-999（设备异常）透传，由前端展示 '--'。
+     * <p>-9991（设备异常）透传由前端展示 '--'；-999（设备不存在）透传由前端不展示。
      * <p>电压 vol 关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID = n.site），
      * 取筛选时间范围内最新一条，无数据为 null。
      *
@@ -86,7 +86,7 @@ public interface SoilMoistureMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 小时级墒情趋势聚合（每个深度字段取小时平均，-999 设备异常不参与聚合）
+     * 小时级墒情趋势聚合（每个深度字段取小时平均，-9991 设备异常/-999 设备不存在不参与聚合）
      *
      * @param stcd      站点编号或 site UUID（必填）
      * @param startTime 起始时间（含，必填，Service 层已默认近七天）
@@ -94,14 +94,14 @@ public interface SoilMoistureMapper {
      */
     @Select("<script>" +
             "SELECT date_trunc('hour', n.tm) AS tm, " +
-            "TRUNC(AVG(n.mten) FILTER (WHERE n.mten != -999), 2) AS mten, " +
-            "TRUNC(AVG(n.mtwenty) FILTER (WHERE n.mtwenty != -999), 2) AS mtwenty, " +
-            "TRUNC(AVG(n.mthirty) FILTER (WHERE n.mthirty != -999), 2) AS mthirty, " +
-            "TRUNC(AVG(n.mforty) FILTER (WHERE n.mforty != -999), 2) AS mforty, " +
-            "TRUNC(AVG(n.mfifty) FILTER (WHERE n.mfifty != -999), 2) AS mfifty, " +
-            "TRUNC(AVG(n.msixty) FILTER (WHERE n.msixty != -999), 2) AS msixty, " +
-            "TRUNC(AVG(n.meighty) FILTER (WHERE n.meighty != -999), 2) AS meighty, " +
-            "TRUNC(AVG(n.mhundred) FILTER (WHERE n.mhundred != -999), 2) AS mhundred " +
+            "TRUNC(AVG(n.mten) FILTER (WHERE n.mten NOT IN (-999, -9991)), 2) AS mten, " +
+            "TRUNC(AVG(n.mtwenty) FILTER (WHERE n.mtwenty NOT IN (-999, -9991)), 2) AS mtwenty, " +
+            "TRUNC(AVG(n.mthirty) FILTER (WHERE n.mthirty NOT IN (-999, -9991)), 2) AS mthirty, " +
+            "TRUNC(AVG(n.mforty) FILTER (WHERE n.mforty NOT IN (-999, -9991)), 2) AS mforty, " +
+            "TRUNC(AVG(n.mfifty) FILTER (WHERE n.mfifty NOT IN (-999, -9991)), 2) AS mfifty, " +
+            "TRUNC(AVG(n.msixty) FILTER (WHERE n.msixty NOT IN (-999, -9991)), 2) AS msixty, " +
+            "TRUNC(AVG(n.meighty) FILTER (WHERE n.meighty NOT IN (-999, -9991)), 2) AS meighty, " +
+            "TRUNC(AVG(n.mhundred) FILTER (WHERE n.mhundred NOT IN (-999, -9991)), 2) AS mhundred " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +
             "AND n.tm &gt;= #{startTime} " +
@@ -115,7 +115,7 @@ public interface SoilMoistureMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 历史墒情数据分页查询（按监测时间倒序，-999 透传）
+     * 历史墒情数据分页查询（按监测时间倒序，-9991/-999 透传）
      *
      * @param stcd      站点编号或 site UUID（必填）
      * @param startTime 起始时间（含，可选）

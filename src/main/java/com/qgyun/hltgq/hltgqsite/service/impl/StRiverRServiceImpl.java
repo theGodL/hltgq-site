@@ -65,10 +65,11 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
     }
 
     /**
-     * -999 表示设备异常，此类数值一律视为缺失，不参与展示与计算
+     * -9991 表示设备异常、-999 表示设备不存在，此类数值一律视为缺失，不参与展示与计算
      */
     private static boolean isDeviceError(BigDecimal v) {
-        return v != null && v.compareTo(new BigDecimal("-999")) == 0;
+        return v != null && (v.compareTo(new BigDecimal("-9991")) == 0
+                || v.compareTo(new BigDecimal("-999")) == 0);
     }
 
     /**
@@ -409,7 +410,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
             StRiverR wptnRec = t8Rec != null ? t8Rec : (rows.isEmpty() ? null : rows.get(rows.size() - 1));
             vo.setWptn(mapWptn(wptnRec != null ? wptnRec.getWptn() : null));
 
-            // 与昨日 8 点比 = t8 - y8（任一为 -999 设备异常时不比较）
+            // 与昨日 8 点比 = t8 - y8（任一为 -9991 设备异常或 -999 设备不存在时不比较）
             if (t8Rec != null && y8Rec != null
                     && t8Rec.getZ() != null && y8Rec.getZ() != null
                     && !isDeviceError(t8Rec.getZ()) && !isDeviceError(y8Rec.getZ())) {

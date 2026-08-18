@@ -195,8 +195,8 @@ function drawChart(records) {
     if (i === 0) { inc = 0; }
     else {
       const prev = records[i - 1].dyp != null ? +records[i - 1].dyp : 0;
-      // -999 设备异常：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
-      inc = (cur !== -999 && prev !== -999 && cur > prev) ? cur - prev : 0;
+      // -9991 设备异常、-999 设备不存在：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+      inc = (cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
     }
     const hour = fmtDt(records[i].tm).slice(0, 13) + ':00';
     hourMap[hour] = +(((hourMap[hour] || 0) + inc).toFixed(2));

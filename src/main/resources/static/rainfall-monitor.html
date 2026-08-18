@@ -404,15 +404,17 @@ tbody tr.total-row:hover td{background:#e6f4ff}
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const pad = n => String(n).padStart(2, '0');
-// -999 = 设备异常 → 展示 '--'；null/undefined/'' → '-'
-const isErr = v => v !== null && v !== undefined && v !== '' && +v === -999;
-const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isErr(v) ? '--' : v);
+// -9991 = 设备异常 → 展示 '--'；-999 = 设备不存在 → 不展示（空白）；null/undefined/'' → '-'
+const isErr = v => v !== null && v !== undefined && v !== '' && +v === -9991;
+const isMissing = v => v !== null && v !== undefined && v !== '' && +v === -999;
+const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isMissing(v) ? '' : (isErr(v) ? '--' : v));
 const fmtTm = v => {
   if (v === null || v === undefined || v === '') return '-';
   return String(v).replace('T', ' ').replace(/\.\d+$/, '');
 };
 const fmtRain = v => {
   if (v === null || v === undefined || v === '') return '';
+  if (isMissing(v)) return '';
   if (isErr(v)) return '--';
   const n = +v;
   if (!Number.isFinite(n) || n === 0) return '';
@@ -420,6 +422,7 @@ const fmtRain = v => {
 };
 const fmtAvg = v => {
   if (v === null || v === undefined || v === '') return '';
+  if (isMissing(v)) return '';
   if (isErr(v)) return '--';
   const n = +v;
   if (!Number.isFinite(n)) return '';
@@ -999,13 +1002,13 @@ function buildPivotAoa(stations, rows, opts) {
       const n = +v;
       return Number.isFinite(n) ? n : null;
     });
-    // -999 设备异常：保留数值用于单元格显示 '--'，但不参与合计/平均累加
-    vals.forEach((v, i) => { colSums[i] += (v == null || v === -999 ? 0 : v); });
-    const sum = vals.reduce((a, b) => a + (b == null || b === -999 ? 0 : b), 0);
+    // -9991 设备异常、-999 设备不存在：不参与合计/平均累加；-9991 单元格显示 '--'，-999 不展示
+    vals.forEach((v, i) => { colSums[i] += (v == null || v === -999 || v === -9991 ? 0 : v); });
+    const sum = vals.reduce((a, b) => a + (b == null || b === -999 || b === -9991 ? 0 : b), 0);
     const avg = r.avg != null ? +r.avg : (stations.length ? sum / stations.length : 0);
     sumTotal += sum;
     avgTotal += avg;
-    const displayVals = vals.map(v => (v == null ? (showEmpty ? '-' : '') : (v === -999 ? '--' : (showEmpty ? v : fmtRain(v)))));
+    const displayVals = vals.map(v => (v == null ? (showEmpty ? '-' : '') : (v === -9991 ? '--' : (v === -999 ? '' : (showEmpty ? v : fmtRain(v))))));
     if (withSum) {
       const sumDisp = showEmpty ? sum : (fmtRain(sum) || '0');
       const avgDisp = fmtAvg(avg) || (showEmpty ? '0.00' : '');
@@ -1361,8 +1364,8 @@ function renderChart(hours) {
   }
 
   const xData = hours.map(h => String(h.hour || '').slice(5, 16));
-  // -999 设备异常 → 图表断线（null）
-  const rainData = hours.map(h => (h.rainfall == null || h.rainfall === '' || +h.rainfall === -999 ? null : +h.rainfall));
+  // -9991 设备异常、-999 设备不存在 → 图表断线（null）
+  const rainData = hours.map(h => (h.rainfall == null || h.rainfall === '' || +h.rainfall === -999 || +h.rainfall === -9991 ? null : +h.rainfall));
 
   chart.setOption({
     tooltip: {

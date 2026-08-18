@@ -56,7 +56,7 @@ public class SoilMoistureServiceImpl implements SoilMoistureService {
             stnm = stationInfo.get(0).getStnm();
         }
 
-        // 3. 查询小时级聚合（SQL 内已完成 -999 排除与 AVG）
+        // 3. 查询小时级聚合（SQL 内已完成 -9991/-999 排除与 AVG）
         List<Map<String, Object>> rows = soilMoistureMapper.selectHourlyTrend(stcd, startTime, endTime);
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00");
         Map<String, Map<String, Object>> hourMap = new LinkedHashMap<>();

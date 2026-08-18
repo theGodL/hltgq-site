@@ -110,8 +110,9 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
             } else {
                 z = new BigDecimal(zObj.toString());
             }
-            // -999 设备异常，视为缺失不参与聚合
-            if (z.compareTo(new BigDecimal("-999")) == 0) continue;
+            // -9991 设备异常、-999 设备不存在，均视为缺失不参与聚合
+            if (z.compareTo(new BigDecimal("-9991")) == 0
+                    || z.compareTo(new BigDecimal("-999")) == 0) continue;
 
             String hourKey = tm.truncatedTo(ChronoUnit.HOURS)
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));
@@ -219,8 +220,9 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
             } else {
                 z = new BigDecimal(zObj.toString());
             }
-            // -999 设备异常，视为缺失不参与聚合
-            if (z.compareTo(new BigDecimal("-999")) == 0) continue;
+            // -9991 设备异常、-999 设备不存在，均视为缺失不参与聚合
+            if (z.compareTo(new BigDecimal("-9991")) == 0
+                    || z.compareTo(new BigDecimal("-999")) == 0) continue;
 
             String hourKey = tm.truncatedTo(ChronoUnit.HOURS)
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));
@@ -291,8 +293,9 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
             } else {
                 z = new BigDecimal(zObj.toString());
             }
-            // -999 设备异常，视为缺失不参与聚合
-            if (z.compareTo(new BigDecimal("-999")) == 0) continue;
+            // -9991 设备异常、-999 设备不存在，均视为缺失不参与聚合
+            if (z.compareTo(new BigDecimal("-9991")) == 0
+                    || z.compareTo(new BigDecimal("-999")) == 0) continue;
 
             String hourKey = tm.truncatedTo(ChronoUnit.HOURS)
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));

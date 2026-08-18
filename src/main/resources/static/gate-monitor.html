@@ -267,9 +267,9 @@ function drawWater(data){
   data.forEach(r=>{const k=fmtDt(r.tm);if(!map.has(k))map.set(k,r)});
   const uniq=[...map.values()].sort((a,b)=>fmtDt(a.tm)>fmtDt(b.tm)?1:-1);
   const xData=uniq.map(r=>fmtDt(r.tm).slice(5,16));
-  // -999 设备异常 → 图表断线（null）
-  const upData=uniq.map(r=>r.upZ!=null&&+r.upZ!==-999?+r.upZ:null);
-  const dnData=uniq.map(r=>r.downZ!=null&&+r.downZ!==-999?+r.downZ:null);
+  // -9991 设备异常、-999 设备不存在 → 图表断线（null）
+  const upData=uniq.map(r=>r.upZ!=null&&+r.upZ!==-999&&+r.upZ!==-9991?+r.upZ:null);
+  const dnData=uniq.map(r=>r.downZ!=null&&+r.downZ!==-999&&+r.downZ!==-9991?+r.downZ:null);
   const all=[...upData,...dnData].filter(v=>v!=null);
   const yMin=all.length?Math.min(...all):0;
   const yMax=all.length?Math.max(...all):1;
@@ -303,7 +303,7 @@ function drawOpen(data){
 
   const series=gates.map((gate,idx)=>{
     const map=new Map();
-    groups[gate].forEach(r=>map.set(fmtDt(r.tm),r.openDegree!=null&&+r.openDegree!==-999?+(r.openDegree).toFixed(2):null));
+    groups[gate].forEach(r=>map.set(fmtDt(r.tm),r.openDegree!=null&&+r.openDegree!==-999&&+r.openDegree!==-9991?+(r.openDegree).toFixed(2):null));
     const vals=allTimes.map(t=>map.get(t)??null);
     return {
       name:`闸孔 ${gate}`,type:'line',data:vals,smooth:0.3,symbol:'none',

@@ -180,8 +180,8 @@ function drawChart(records){
   setStatus('chart');
   chart=echarts.init($('chart-box'));
   const xData=records.map(r=>fmtDt(r.tm).slice(5,16));
-  // -999 设备异常 → 图表断线（null）
-  const yData=records.map(r=>r.z!=null&&+r.z!==-999?+r.z:null);
+  // -9991 设备异常、-999 设备不存在 → 图表断线（null）
+  const yData=records.map(r=>r.z!=null&&+r.z!==-999&&+r.z!==-9991?+r.z:null);
   const alarmz=stationInfo?.alarmz;
 
   const validY=yData.filter(v=>v!=null);

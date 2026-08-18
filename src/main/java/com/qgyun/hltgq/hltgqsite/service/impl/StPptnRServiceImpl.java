@@ -188,29 +188,39 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     /**
-     * -999 表示设备异常，此类数值一律视为缺失，不参与展示与计算
+     * -9991 表示设备异常，此类数值一律视为缺失，不参与展示与计算；
+     * -999 表示设备不存在（报文原生），同样视为缺失
      */
     private boolean isDeviceError(BigDecimal v) {
         return v != null && v.compareTo(DEVICE_ERROR) == 0;
     }
 
-    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-999");
+    private boolean isDeviceMissing(BigDecimal v) {
+        return v != null && v.compareTo(DEVICE_MISSING) == 0;
+    }
 
-    /** 计算增量，结果不小于0；任一为null则返回null，任一为-999（设备异常）则返回-999透传标记 */
+    /** 设备异常标记（原 -999 语义迁移为 -9991） */
+    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
+    /** 设备不存在标记（报文原生 -999，前端不展示） */
+    private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
+
+    /** 计算增量，结果不小于0；任一为null则返回null；任一为-9991（设备异常）则返回-9991透传标记；任一为-999（设备不存在）则返回-999由前端不展示 */
     private BigDecimal subtractOrNull(BigDecimal current, BigDecimal prev) {
         if (current == null || prev == null) return null;
         if (isDeviceError(current) || isDeviceError(prev)) return DEVICE_ERROR;
+        if (isDeviceMissing(current) || isDeviceMissing(prev)) return DEVICE_MISSING;
         BigDecimal diff = current.subtract(prev);
         return diff.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : diff;
     }
 
     /**
-     * DYP 增量：max(0, cur - prev)；任一为 null 或 -999（设备异常）时按 0 处理，
+     * DYP 增量：max(0, cur - prev)；任一为 null、-9991（设备异常）或 -999（设备不存在）时按 0 处理，
      * 避免异常值污染时段/日雨量累计
      */
     private BigDecimal safeDypIncrement(BigDecimal curDyp, BigDecimal prevDyp) {
         if (curDyp == null || prevDyp == null) return BigDecimal.ZERO;
         if (isDeviceError(curDyp) || isDeviceError(prevDyp)) return BigDecimal.ZERO;
+        if (isDeviceMissing(curDyp) || isDeviceMissing(prevDyp)) return BigDecimal.ZERO;
         return curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
     }
 

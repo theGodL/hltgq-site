@@ -304,18 +304,20 @@ tbody tr:hover td{background:#fafafa}
 <script>
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
-// -999 = 设备异常 → 展示 '--'；null/undefined/'' → '-'
-const isErr = v => v !== null && v !== undefined && v !== '' && +v === -999;
-const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isErr(v) ? '--' : v);
+// -9991 = 设备异常 → 展示 '--'；-999 = 设备不存在 → 不展示（空白）；null/undefined/'' → '-'
+const isErr = v => v !== null && v !== undefined && v !== '' && +v === -9991;
+const isMissing = v => v !== null && v !== undefined && v !== '' && +v === -999;
+const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isMissing(v) ? '' : (isErr(v) ? '--' : v));
 const fmtN2 = v => {
   if (v === null || v === undefined || v === '') return '-';
+  if (isMissing(v)) return '';
   if (isErr(v)) return '--';
   const n = +v;
   if (!Number.isFinite(n)) return '-';
   return n.toFixed(2);
 };
-/** 图表数值：-999 设备异常与空值一律转 null（ECharts 断线） */
-const toChartNum = v => (v === null || v === undefined || v === '') ? null : (+v === -999 ? null : +v);
+/** 图表数值：-9991 设备异常、-999 设备不存在与空值一律转 null（ECharts 断线） */
+const toChartNum = v => (v === null || v === undefined || v === '') ? null : ((+v === -999 || +v === -9991) ? null : +v);
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const fmtTm = v => {
   if (v == null || v === '') return '-';

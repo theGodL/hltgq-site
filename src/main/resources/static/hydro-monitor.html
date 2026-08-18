@@ -292,8 +292,8 @@ function buildPptnPivot(rows, fullBuckets) {
         inc = 0; // 第一条记录，无法确定增量，不计入
       } else {
         const prev = stationRows[i-1].dyp != null ? +stationRows[i-1].dyp : 0;
-        // -999 设备异常：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
-        inc = (cur !== -999 && prev !== -999 && cur > prev) ? cur - prev : 0;
+        // -9991 设备异常、-999 设备不存在：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+        inc = (cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
       }
       m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
     }
@@ -385,8 +385,8 @@ function buildPeriodPivot(rows, intervalMinutes, fullBuckets) {
         inc = 0; // 第一条记录，无法确定增量，不计入
       } else {
         const prev = stationRows[i-1].dyp != null ? +stationRows[i-1].dyp : 0;
-        // -999 设备异常：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
-        inc = (cur !== -999 && prev !== -999 && cur > prev) ? cur - prev : 0;
+        // -9991 设备异常、-999 设备不存在：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+        inc = (cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
       }
       m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
     }
@@ -470,8 +470,8 @@ function buildDailyPivot(rows, fullBuckets) {
         inc = 0; // 第一条记录，无法确定增量，不计入
       } else {
         const prev = stationRows[i-1].dyp != null ? +stationRows[i-1].dyp : 0;
-        // -999 设备异常：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
-        inc = (cur !== -999 && prev !== -999 && cur > prev) ? cur - prev : 0;
+        // -9991 设备异常、-999 设备不存在：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+        inc = (cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
       }
       m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
     }

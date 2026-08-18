@@ -27,10 +27,10 @@ public interface IrrigationWaterLevelMapper {
      */
     @Select("<script>" +
             "SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, TRUNC(r.Z, 2) AS z, " +
-            "CASE WHEN r.Z = -999 THEN NULL ELSE " +
+            "CASE WHEN r.Z IN (-999, -9991) THEN NULL ELSE " +
             "TRUNC(COALESCE((r.Z - (" +
             "  SELECT r2.Z FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r2 " +
-            "  WHERE r2.STCD = r.STCD AND r2.TM &lt;= r.TM - INTERVAL '1 hour' AND r2.Z != -999 " +
+            "  WHERE r2.STCD = r.STCD AND r2.TM &lt;= r.TM - INTERVAL '1 hour' AND r2.Z NOT IN (-999, -9991) " +
             "  ORDER BY r2.TM DESC LIMIT 1" +
             ")) * 100, 0), 2) END AS rise1h, " +
             "fv.vol AS vol " +
