@@ -160,7 +160,7 @@ tbody tr:hover td{background:#fafafa}
 .chart-box-lg{height:420px}
 #stats-overlay .modal{width:1000px;height:min(680px,90vh)}
 .result-toolbar{display:flex;align-items:center;gap:12px;padding:0 0 12px;flex-shrink:0}
-.stats-legend{display:flex;align-items:center;justify-content:center;gap:20px;padding:8px 0 4px;font-size:13px;color:#666}
+.stats-legend{display:flex;align-items:center;justify-content:center;gap:20px;padding:4px 0 8px;font-size:13px;color:#666}
 .stats-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .stats-legend .dot-up i{background:#FA8C16}
 .stats-legend .dot-down i{background:#1677FF}
@@ -411,11 +411,11 @@ tbody tr:hover td{background:#fafafa}
         <button class="btn btn-primary" id="stats-query-btn">查询</button>
         <button class="btn btn-default" id="stats-reset-btn">重置</button>
       </div>
-      <div id="stats-chart-box" class="chart-box chart-box-lg"></div>
       <div class="stats-legend">
         <span class="dot-up"><i></i>闸前水位</span>
         <span class="dot-down"><i></i>闸后水位</span>
       </div>
+      <div id="stats-chart-box" class="chart-box chart-box-lg"></div>
     </div>
   </div>
 </div>
@@ -1730,6 +1730,63 @@ function buildStatsChartData(stations) {
   return { stationNames, lineData, pointMeta };
 }
 
+/** 同站闸前/闸后接近时避免标签重叠：极近合并、较近左右错开、否则上下分开 */
+const LABEL_MERGE_DIFF = 0.35;
+const LABEL_OFFSET_DIFF = 1.2;
+
+function getStatsLabelMode(st) {
+  if (st.upZ == null || st.downZ == null) return 'single';
+  const diff = Math.abs(st.upZ - st.downZ);
+  if (diff < LABEL_MERGE_DIFF) return 'merge';
+  if (diff < LABEL_OFFSET_DIFF) return 'offset';
+  return 'split';
+}
+
+function buildStatsPointLabel(stations, meta, y) {
+  const st = stations[meta.xIdx];
+  const mode = getStatsLabelMode(st);
+  const fmt = (v) => (+v).toFixed(1);
+
+  if (mode === 'merge') {
+    if (meta.type === 'down') return { show: false };
+    return {
+      show: true,
+      position: 'top',
+      distance: 8,
+      lineHeight: 14,
+      formatter: `{up|${fmt(st.upZ)}}\n{down|${fmt(st.downZ)}}`,
+      rich: {
+        up: { color: UP_COLOR, fontSize: 11, fontWeight: 600, align: 'center' },
+        down: { color: DOWN_COLOR, fontSize: 11, fontWeight: 600, align: 'center' },
+      },
+    };
+  }
+
+  const isUp = meta.type === 'up';
+  if (mode === 'offset') {
+    return {
+      show: true,
+      position: isUp ? 'top' : 'bottom',
+      distance: 6,
+      offset: isUp ? [-18, -2] : [18, 2],
+      color: isUp ? UP_COLOR : DOWN_COLOR,
+      fontSize: 11,
+      fontWeight: 600,
+      formatter: fmt(y),
+    };
+  }
+
+  return {
+    show: true,
+    position: isUp ? 'top' : 'bottom',
+    distance: 6,
+    color: isUp ? UP_COLOR : DOWN_COLOR,
+    fontSize: 11,
+    fontWeight: 600,
+    formatter: fmt(y),
+  };
+}
+
 async function fetchMainGateStats() {
   const date = $('stats-date').value;
   const time = $('stats-time').value;
@@ -1753,9 +1810,11 @@ function renderStatsChart(stations) {
     });
     return;
   }
-  const minV = Math.floor(Math.min(...vals) / 3) * 3 - 3;
-  const maxV = Math.ceil(Math.max(...vals) / 3) * 3 + 3;
-  const xMax = Math.max(0, stationNames.length - 1);
+  const rawMin = Math.min(...vals);
+  const rawMax = Math.max(...vals);
+  let minV = Math.max(0, +(rawMin - 0.5).toFixed(1));
+  let maxV = +(rawMax + 0.5).toFixed(1);
+  if (maxV <= minV) maxV = +(minV + 1).toFixed(1);
 
   statsChart.setOption({
     title: { show: false },
@@ -1773,19 +1832,15 @@ function renderStatsChart(stations) {
         return `${meta.station}<br/>${label}：${(+y).toFixed(2)} m`;
       },
     },
-    grid: { left: 16, right: 24, top: 36, bottom: 36, containLabel: true },
+    grid: { left: 16, right: 24, top: 44, bottom: 40, containLabel: true },
     xAxis: {
-      type: 'value',
-      min: 0,
-      max: xMax,
-      interval: 1,
+      type: 'category',
+      data: stationNames,
+      boundaryGap: true,
       axisLabel: {
         fontSize: 12,
         color: '#666',
-        formatter(val) {
-          const i = Math.round(val);
-          return stationNames[i] ?? '';
-        },
+        interval: 0,
       },
       axisLine: { lineStyle: { color: '#e8e8e8' } },
       axisTick: { show: false },
@@ -1796,7 +1851,7 @@ function renderStatsChart(stations) {
       name: '水位 (m)',
       min: minV,
       max: maxV,
-      interval: 3,
+      splitNumber: 5,
       nameTextStyle: { color: '#999', fontSize: 12 },
       axisLabel: { fontSize: 12, color: '#888' },
       axisLine: { show: false, onZero: false },
@@ -1806,28 +1861,19 @@ function renderStatsChart(stations) {
       name: '水位',
       type: 'line',
       data: lineData.map(([x, y], i) => ({
-        value: [x, y],
+        value: [stationNames[x], y],
         itemStyle: {
           color: pointMeta[i].type === 'down' ? DOWN_COLOR : UP_COLOR,
           borderColor: '#fff',
           borderWidth: 2,
         },
+        label: buildStatsPointLabel(stations, pointMeta[i], y),
       })),
       connectNulls: false,
       smooth: false,
       symbol: 'circle',
       symbolSize: 10,
       lineStyle: { color: DOWN_COLOR, width: 2 },
-      label: {
-        show: true,
-        position: 'top',
-        fontSize: 11,
-        color: '#666',
-        formatter(p) {
-          const y = Array.isArray(p.value) ? p.value[1] : p.value;
-          return y == null ? '' : (+y).toFixed(1);
-        },
-      },
     }],
   }, true);
   statsChart.resize();
