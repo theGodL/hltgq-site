@@ -8,6 +8,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
@@ -15,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -317,5 +319,41 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    @Override
+    public GateCumulativeFlowVO cumulativeFlow(String siteId, LocalDateTime monthStart) {
+        // 月累计起点默认当月 1日 0点（与年累计口径对称：当年 1月1日 0点起）
+        if (monthStart == null) {
+            monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        }
+        Map<String, Object> row = waterFlowMapper.selectCumulativeFlow(siteId, monthStart);
+        GateCumulativeFlowVO vo = new GateCumulativeFlowVO();
+        vo.setSiteId(siteId);
+        if (row != null && row.get("site_name") != null) {
+            vo.setSiteName(String.valueOf(row.get("site_name")));
+        }
+        // 累计流量取值（-999 设备不存在 → null；-9991 异常保留透传由前端展示）
+        BigDecimal yearFlow = flowValue(row, "year_flow");
+        BigDecimal totalFlow = flowValue(row, "total_flow");
+        BigDecimal monthPrev = flowValue(row, "month_prev_ttf");
+        // 年累计 = ytf（当年 1月1日 0点起至最新数据时间，改造前无数据为 null）
+        vo.setYearCumulativeFlow(scale2(yearFlow));
+        // 月累计 = ttf(最新) − ttf(monthStart 前最近行)，起点前无积分行基准按 0
+        BigDecimal monthFlow = totalFlow == null ? null
+                : totalFlow.subtract(monthPrev != null ? monthPrev : BigDecimal.ZERO);
+        vo.setMonthCumulativeFlow(scale2(monthFlow));
+        return vo;
+    }
+
+    /** 累计流量 Map 值 → BigDecimal（null 安全；-999 设备不存在 → null） */
+    private BigDecimal flowValue(Map<String, Object> row, String key) {
+        BigDecimal v = toBigDecimal(row != null ? row.get(key) : null);
+        return isMissing(v) ? null : v;
+    }
+
+    /** 2 位小数截断（null 安全，累计流量统一 2 位精度） */
+    private BigDecimal scale2(BigDecimal v) {
+        return v != null ? v.setScale(2, java.math.RoundingMode.DOWN) : null;
     }
 }

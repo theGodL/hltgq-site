@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
+import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateDeviceVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
@@ -128,5 +129,20 @@ public class GateMonitorController {
     public List<GateStationWaterLevelVO> stationWaterLevel(
             @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm") LocalDateTime time) {
         return gateMonitorService.stationWaterLevel(time);
+    }
+
+    /**
+     * 闸站累计流量（月累计 + 年累计）
+     * <p>月累计 = 当月 1日 0点起至最新数据时间 = ttf(最新) − ttf(monthStart 前最近行)；
+     * 年累计 = 当年 1月1日 0点起至最新数据时间（流量表 ytf）。
+     *
+     * @param siteId     站点 UUID（必填），如渠首进水闸 CAYQ739MiBWMg9gQvyi
+     * @param monthStart 月累计起点（可选，默认当月 1日 0点），格式 yyyy-MM-dd HH:mm:ss
+     */
+    @GetMapping("/cumulative-flow")
+    public GateCumulativeFlowVO cumulativeFlow(
+            @RequestParam String siteId,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime monthStart) {
+        return gateMonitorService.cumulativeFlow(siteId, monthStart);
     }
 }

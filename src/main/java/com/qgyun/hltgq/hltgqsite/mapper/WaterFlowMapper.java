@@ -141,6 +141,40 @@ public interface WaterFlowMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
+     * 闸站累计流量取数（月累计 + 年累计，单站单行）
+     * <p>year_flow = 最新非空 ytf（当年 1月1日 0点起累计）；
+     * total_flow = 最新非空 ttf（总累计）；
+     * month_prev_ttf = monthStart 前最近一条 ttf 非空行的 ttf，
+     * 供 Service 层相减计算月累计（当月 1日 0点起累计）。
+     * <p>主表为站点表，站点存在即返回一行（子查询全空时各值为 null）。
+     * 三个 LIMIT 1 子查询走 (site, tm) 索引，单站查询无性能问题。
+     *
+     * @param siteId     站点 UUID（必填）
+     * @param monthStart 月累计起点（当月 1日 0点）
+     */
+    @Select("SELECT s.zzkaec AS site_name, " +
+            "fq.ytf AS year_flow, " +
+            "fcur.ttf AS total_flow, " +
+            "fprev.ttf AS month_prev_ttf " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s " +
+            "LEFT JOIN ( " +
+            "  SELECT f.site, f.ytf FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE f.site = #{siteId} AND f.ytf IS NOT NULL ORDER BY f.tm DESC LIMIT 1 " +
+            ") fq ON fq.site = s.id " +
+            "LEFT JOIN ( " +
+            "  SELECT f.site, f.ttf FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE f.site = #{siteId} AND f.ttf IS NOT NULL ORDER BY f.tm DESC LIMIT 1 " +
+            ") fcur ON fcur.site = s.id " +
+            "LEFT JOIN ( " +
+            "  SELECT f.site, f.ttf FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE f.site = #{siteId} AND f.ttf IS NOT NULL AND f.tm < #{monthStart} ORDER BY f.tm DESC LIMIT 1 " +
+            ") fprev ON fprev.site = s.id " +
+            "WHERE s.id = #{siteId}")
+    Map<String, Object> selectCumulativeFlow(
+            @Param("siteId") String siteId,
+            @Param("monthStart") LocalDateTime monthStart);
+
+    /**
      * 流量监测全部站点（站点标识 = COALESCE(stcd, site)，MQTT 站点无 stcd 时以 site UUID 兜底）
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，函数表达式（COALESCE）会报
      * "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"，故子查询先物化 skey。
