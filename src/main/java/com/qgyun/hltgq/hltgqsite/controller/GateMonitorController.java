@@ -7,6 +7,7 @@ import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateDeviceVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -144,5 +145,21 @@ public class GateMonitorController {
             @RequestParam String siteId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime monthStart) {
         return gateMonitorService.cumulativeFlow(siteId, monthStart);
+    }
+
+    /**
+     * 闸站月度累计取水量趋势（近 months 个月，含当月，供月度趋势图表）
+     * <p>月累计口径同 cumulativeFlow：当月 1日 0点 ≤ tm < 下月 1日 0点
+     * = ttf(月内最新) − ttf(月初前最近)，当月累计截至最新数据时间。
+     *
+     * @param siteId 站点 UUID（必填），如渠首进水闸 CAYQ739MiBWMg9gQvyi
+     * @param months 月数（默认 12，上限 24），当前月为最后一个月
+     * @return 每月一个数据点（时间升序，最早在前），月内无 ttf 数据时累计为 null
+     */
+    @GetMapping("/monthly-cumulative-flow")
+    public List<GateMonthCumulativeFlowVO> monthlyCumulativeFlow(
+            @RequestParam String siteId,
+            @RequestParam(defaultValue = "12") int months) {
+        return gateMonitorService.monthlyCumulativeFlow(siteId, months);
     }
 }

@@ -175,6 +175,30 @@ public interface WaterFlowMapper {
             @Param("monthStart") LocalDateTime monthStart);
 
     /**
+     * 闸站近 N 个月月累计流量趋势：generate_series 生成每月起点（含当月），
+     * 每月 2 个 LIMIT 1 子查询走 (site, tm) 索引取月内最新 ttf（end_ttf）与月初前最近 ttf（start_ttf），
+     * 单站 2×N 次索引点查无性能问题。月累计口径与 selectCumulativeFlow 一致。
+     *
+     * @param siteId          站点 UUID（必填）
+     * @param firstMonthStart 最早月起点（最早月 1日 0点）
+     * @param curMonthStart   当前月起点（当月 1日 0点）
+     * @return 每月一行：month_start（月起点）、end_ttf（月内最新 ttf）、start_ttf（月初前最近 ttf），按月升序
+     */
+    @Select("SELECT gs AS month_start, " +
+            "(SELECT f.ttf FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE f.site = #{siteId} AND f.ttf IS NOT NULL AND f.tm < gs + INTERVAL '1 month' " +
+            "  ORDER BY f.tm DESC LIMIT 1) AS end_ttf, " +
+            "(SELECT f.ttf FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE f.site = #{siteId} AND f.ttf IS NOT NULL AND f.tm < gs " +
+            "  ORDER BY f.tm DESC LIMIT 1) AS start_ttf " +
+            "FROM generate_series(#{firstMonthStart}::timestamp, #{curMonthStart}::timestamp, INTERVAL '1 month') gs " +
+            "ORDER BY gs")
+    List<Map<String, Object>> selectMonthlyCumulativeFlow(
+            @Param("siteId") String siteId,
+            @Param("firstMonthStart") LocalDateTime firstMonthStart,
+            @Param("curMonthStart") LocalDateTime curMonthStart);
+
+    /**
      * 流量监测全部站点（站点标识 = COALESCE(stcd, site)，MQTT 站点无 stcd 时以 site UUID 兜底）
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，函数表达式（COALESCE）会报
      * "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"，故子查询先物化 skey。

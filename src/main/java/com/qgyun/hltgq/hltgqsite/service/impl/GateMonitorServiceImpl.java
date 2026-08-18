@@ -11,11 +11,13 @@ import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -350,6 +352,44 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     private BigDecimal flowValue(Map<String, Object> row, String key) {
         BigDecimal v = toBigDecimal(row != null ? row.get(key) : null);
         return isMissing(v) ? null : v;
+    }
+
+    @Override
+    public List<GateMonthCumulativeFlowVO> monthlyCumulativeFlow(String siteId, int months) {
+        // 月份数防御：非法值抛参数异常，超上限截断
+        if (months <= 0) {
+            throw new IllegalArgumentException("月份数必须为正整数");
+        }
+        if (months > 24) {
+            months = 24;
+        }
+        // 近 months 个月：当前月为最后一个月（当月累计截至最新数据时间），最早月起点 = 当前月 − (months−1)
+        LocalDate now = LocalDate.now();
+        LocalDateTime curMonthStart = now.withDayOfMonth(1).atStartOfDay();
+        LocalDateTime firstMonthStart = curMonthStart.minusMonths(months - 1L);
+
+        List<Map<String, Object>> rows = waterFlowMapper.selectMonthlyCumulativeFlow(
+                siteId, firstMonthStart, curMonthStart);
+
+        DateTimeFormatter monthFmt = DateTimeFormatter.ofPattern("yyyy-MM");
+        List<GateMonthCumulativeFlowVO> result = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            GateMonthCumulativeFlowVO vo = new GateMonthCumulativeFlowVO();
+            Object ms = row.get("month_start");
+            LocalDateTime msLdt = ms instanceof Timestamp
+                    ? ((Timestamp) ms).toLocalDateTime()
+                    : ms instanceof LocalDateTime ? (LocalDateTime) ms : null;
+            vo.setMonth(msLdt != null ? msLdt.format(monthFmt) : null);
+            // 月累计 = ttf(月内最新) − ttf(月初前最近)，与 cumulativeFlow 接口月累计口径一致；
+            // 月初前无积分行（最早月无历史数据）基准按 0；月内无 ttf 数据 → null
+            BigDecimal endTtf = flowValue(row, "end_ttf");
+            BigDecimal startTtf = flowValue(row, "start_ttf");
+            BigDecimal monthFlow = endTtf == null ? null
+                    : endTtf.subtract(startTtf != null ? startTtf : BigDecimal.ZERO);
+            vo.setCumulativeFlow(scale2(monthFlow));
+            result.add(vo);
+        }
+        return result;
     }
 
     /** 2 位小数截断（null 安全，累计流量统一 2 位精度） */

@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
 
@@ -58,4 +59,15 @@ public interface GateMonitorService {
      * @return 月累计与年累计（改造前无 ytf/ttf 数据时为 null）
      */
     GateCumulativeFlowVO cumulativeFlow(String siteId, LocalDateTime monthStart);
+
+    /**
+     * 闸站月度累计取水量趋势（近 months 个月，含当月）
+     * <p>月累计口径同 cumulativeFlow：当月 1日 0点 ≤ tm < 下月 1日 0点
+     * = ttf(月内最新) − ttf(月初前最近)，当月累计截至最新数据时间。
+     *
+     * @param siteId 站点 UUID（必填）
+     * @param months 月数（默认 12，上限 24），当前月为最后一个月
+     * @return 每月一个数据点（时间升序，最早在前），月内无 ttf 数据时累计为 null
+     */
+    List<GateMonthCumulativeFlowVO> monthlyCumulativeFlow(String siteId, int months);
 }
