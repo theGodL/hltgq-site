@@ -162,7 +162,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         } else if (tmObj instanceof Timestamp) {
             vo.setTm(((Timestamp) tmObj).toLocalDateTime());
         }
-        vo.setDyp(toBigDecimal(row.get("dyp")));
+        // -999 = 设备不存在：转 null 返回（-9991 设备异常保留透传由前端展示 '--'）
+        vo.setDyp(nullIfMissing(toBigDecimal(row.get("dyp"))));
         // 时段增量计算：当前DYP - 历史DYP（DYP永不归零，计算结果准确）
         BigDecimal dypVal = toBigDecimal(row.get("dyp"));
         BigDecimal dyp1h = toBigDecimal(row.get("dyp_1h"));
@@ -204,11 +205,16 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     /** 设备不存在标记（报文原生 -999，前端不展示） */
     private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
 
-    /** 计算增量，结果不小于0；任一为null则返回null；任一为-9991（设备异常）则返回-9991透传标记；任一为-999（设备不存在）则返回-999由前端不展示 */
+    /** -999 = 设备不存在：转 null 返回（-9991 设备异常保留透传由前端展示 '--'） */
+    private BigDecimal nullIfMissing(BigDecimal v) {
+        return isDeviceMissing(v) ? null : v;
+    }
+
+    /** 计算增量，结果不小于0；任一为null则返回null；任一为-9991（设备异常）则返回-9991透传标记；任一为-999（设备不存在）则返回null（前端不展示） */
     private BigDecimal subtractOrNull(BigDecimal current, BigDecimal prev) {
         if (current == null || prev == null) return null;
         if (isDeviceError(current) || isDeviceError(prev)) return DEVICE_ERROR;
-        if (isDeviceMissing(current) || isDeviceMissing(prev)) return DEVICE_MISSING;
+        if (isDeviceMissing(current) || isDeviceMissing(prev)) return null;
         BigDecimal diff = current.subtract(prev);
         return diff.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : diff;
     }

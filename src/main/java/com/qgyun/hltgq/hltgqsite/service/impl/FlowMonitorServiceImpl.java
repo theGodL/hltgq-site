@@ -45,6 +45,13 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         LEGACY_TO_NEW_STCD.put("00000007", "3206400007");
     }
 
+    /** -999 = 设备不存在：视为缺失转 null 返回（-9991 设备异常保留，透传由前端展示 '--'） */
+    private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
+
+    private static BigDecimal nullIfMissing(BigDecimal v) {
+        return (v != null && v.compareTo(DEVICE_MISSING) == 0) ? null : v;
+    }
+
     /**
      * 新 STCD → 站点名称（站点表接入过渡期，STCD 查不到时按名称反查）
      */
@@ -83,7 +90,13 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
     @Override
     public List<FlowMonitoringVO> monitoring(List<String> stcds, LocalDateTime startTime, LocalDateTime endTime) {
-        return waterFlowMapper.selectLatestPerStation(stcds, startTime, endTime);
+        List<FlowMonitoringVO> rows = waterFlowMapper.selectLatestPerStation(stcds, startTime, endTime);
+        // -999 = 设备不存在：转 null 返回（-9991 设备异常保留，透传由前端展示 '--'）
+        rows.forEach(r -> {
+            r.setQ(nullIfMissing(r.getQ()));
+            r.setTf(nullIfMissing(r.getTf()));
+        });
+        return rows;
     }
 
     @Override
@@ -190,10 +203,14 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             return result;
         }
 
-        // 分页查询
+        // 分页查询（-999 = 设备不存在：转 null 返回；-9991 设备异常保留透传）
         int offset = (int) ((page - 1) * size);
         int limit = (int) size;
         List<FlowMonitoringVO> records = waterFlowMapper.selectHistoryPage(stcd, startTime, endTime, limit, offset);
+        records.forEach(r -> {
+            r.setQ(nullIfMissing(r.getQ()));
+            r.setTf(nullIfMissing(r.getTf()));
+        });
         result.setRecords(records);
 
         return result;
@@ -272,9 +289,10 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
                     LocalDateTime prevSlot = slot.minusHours(interval);
                     if (recordTm.isAfter(prevSlot) && !recordTm.isAfter(slot)) {
                         SlotVal v = new SlotVal();
-                        v.z = toBigDecimal(row.get("z"));
+                        // -999 = 设备不存在：转 null 返回（-9991 设备异常保留透传由前端展示 '--'）
+                        v.z = nullIfMissing(toBigDecimal(row.get("z")));
                         v.wptn = row.get("wptn") != null ? String.valueOf(row.get("wptn")) : null;
-                        v.q = toBigDecimal(row.get("q"));
+                        v.q = nullIfMissing(toBigDecimal(row.get("q")));
                         // 同槽位多条时，后扫描的（tm 更大）覆盖前者
                         slotBest.put(slot, v);
                         break;

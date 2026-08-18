@@ -342,7 +342,8 @@ async function loadPptn() {
   try {
     const p = new URLSearchParams({ stcd: currentStcd, startTime: `${s} 00:00:00`, endTime: `${e} 23:59:59` });
     const data = await fetch(`/hltgq-site/st-pptn-r/export?${p}`).then(r => r.json());
-    drawPptn(data || []);
+    if (!data?.length) { setStatus('pptn', 'empty'); return; }
+    drawPptn(data);
   } catch {
     setStatus('pptn', 'error');
   }
@@ -368,9 +369,10 @@ function drawPptn(records) {
     let inc;
     if (i === 0) { inc = 0; }
     else {
-      const prev = records[i - 1].dyp != null ? +records[i - 1].dyp : 0;
-      // -9991 设备异常、-999 设备不存在：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
-      inc = (cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
+      const prevRaw = records[i - 1].dyp;
+      const prev = prevRaw != null ? +prevRaw : 0;
+      // -9991 设备异常、-999 设备不存在、prev 为 null（基线缺失）：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+      inc = (prevRaw != null && cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
     }
     const hour = fmtDt(records[i].tm).slice(0, 13) + ':00';
     hourMap[hour] = +(((hourMap[hour] || 0) + inc).toFixed(2));

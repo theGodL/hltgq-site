@@ -157,6 +157,15 @@ tbody tr:hover td{background:#fafafa}
 .chart-block + .chart-block{margin-top:20px;padding-top:16px;border-top:1px solid #f0f0f0}
 .chart-title{font-size:14px;font-weight:500;color:#333;margin-bottom:8px}
 .chart-box{width:100%;height:320px;position:relative}
+.chart-box-lg{height:420px}
+#stats-overlay .modal{width:1000px;height:min(680px,90vh)}
+.result-toolbar{display:flex;align-items:center;gap:12px;padding:0 0 12px;flex-shrink:0}
+.stats-legend{display:flex;align-items:center;justify-content:center;gap:20px;padding:8px 0 4px;font-size:13px;color:#666}
+.stats-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.stats-legend .dot-up i{background:#FA8C16}
+.stats-legend .dot-down i{background:#1677FF}
+.modal-filter select{min-width:160px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;background:#fff;cursor:pointer;outline:none}
+.modal-filter select:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 /* 流量计算参数弹窗 */
 #discharge-overlay .modal{width:640px}
 .dc-form{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px}
@@ -215,6 +224,9 @@ tbody tr:hover td{background:#fafafa}
     </div>
 
     <div class="card result-card">
+      <div class="result-toolbar">
+        <button type="button" class="btn btn-primary" id="main-gate-stats-btn">主要闸站水位统计图</button>
+      </div>
       <div class="tbl-wrap" id="list-tbl-wrap">
         <table>
           <thead>
@@ -377,6 +389,36 @@ tbody tr:hover td{background:#fafafa}
           </table>
         </div>
         <div class="pg-bar" id="hist-pg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="stats-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span>主要闸站水位统计图</span>
+      <div class="modal-actions">
+        <button type="button" class="modal-max" title="最大化" aria-label="最大化">
+          <svg class="icon-max" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.5V2h3.5M11.5 2H15v3.5M15 11.5V15h-3.5M5.5 15H2v-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="icon-restore" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 5h9v9H5V5z" stroke="currentColor" stroke-width="1.4"/><path d="M2 11V2h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="modal-close" data-close="stats-overlay">×</button>
+      </div>
+    </div>
+    <div class="modal-bd" style="padding-top:16px">
+      <div class="modal-filter">
+        <label style="color:#666;white-space:nowrap">日期</label>
+        <input type="date" id="stats-date">
+        <label style="color:#666;white-space:nowrap">时间点</label>
+        <select id="stats-time"></select>
+        <button class="btn btn-primary" id="stats-query-btn">查询</button>
+        <button class="btn btn-default" id="stats-reset-btn">重置</button>
+      </div>
+      <div id="stats-chart-box" class="chart-box chart-box-lg"></div>
+      <div class="stats-legend">
+        <span class="dot-up"><i></i>闸前水位</span>
+        <span class="dot-down"><i></i>闸后水位</span>
       </div>
     </div>
   </div>
@@ -765,7 +807,7 @@ function renderTable() {
   }
   tbody.innerHTML = S.rows.map((r, i) => `
     <tr>
-      <td>${fmtN(r.siteName)}</td>
+      <td>${esc(fmtN(r.siteName))}</td>
       <td>${esc(fmtHolesOpen(r.holes))}</td>
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
@@ -855,6 +897,9 @@ function closeModal(id) {
     if (openChart) { openChart.dispose(); openChart = null; }
     if (flowChart) { flowChart.dispose(); flowChart = null; }
   }
+  if (id === 'stats-overlay') {
+    if (statsChart) { statsChart.dispose(); statsChart = null; }
+  }
 }
 
 function openDetail(row) {
@@ -913,15 +958,18 @@ function processExportRows(list) {
 
   const times = [...tmSet].sort((a, b) => String(a).localeCompare(String(b)));
   const labels = times.map(fmtAxisTm);
-  const upData = times.map(t => toChartNum(waterByTm[t]?.upZ));
-  const downData = times.map(t => toChartNum(waterByTm[t]?.downZ));
+  const upData = times.map(t => waterByTm[t]?.upZ ?? null);
+  const downData = times.map(t => waterByTm[t]?.downZ ?? null);
   const openSeries = DETAIL.selected.map(g => ({
     gateNo: g,
     name: holeName(g),
-    data: times.map(t => toChartNum(byGate[g]?.[t])),
+    data: times.map(t => {
+      const v = byGate[g]?.[t];
+      return (v === null || v === undefined || v === '') ? null : +v;
+    }),
   }));
-  const tfData = times.map(t => toChartNum(flowByTm[t]?.tf));
-  const qData = times.map(t => toChartNum(flowByTm[t]?.q));
+  const tfData = times.map(t => (flowByTm[t]?.tf == null) ? null : +flowByTm[t].tf);
+  const qData = times.map(t => (flowByTm[t]?.q == null) ? null : +flowByTm[t].q);
 
   return { labels, upData, downData, openSeries, tfData, qData };
 }
@@ -1404,6 +1452,7 @@ function bindModal() {
         if (chart) chart.resize();
         if (openChart) openChart.resize();
         if (flowChart) flowChart.resize();
+        if (statsChart) statsChart.resize();
       });
     });
   });
@@ -1450,6 +1499,7 @@ function bindModal() {
     if (chart) chart.resize();
     if (openChart) openChart.resize();
     if (flowChart) flowChart.resize();
+    if (statsChart) statsChart.resize();
   });
 }
 
@@ -1671,6 +1721,212 @@ function bindDistrictTabs() {
   });
 }
 
+/* ===== 主要闸站水位统计图 ===== */
+const UP_COLOR = '#FA8C16';
+const DOWN_COLOR = '#1677FF';
+let statsChart = null;
+
+function shortStationName(name) {
+  return String(name || '')
+    .replace(/节制闸$/, '')
+    .replace(/进水闸$/, '');
+}
+
+function normalizeStationWaterLevel(list) {
+  // -9991 设备异常、-999 设备不存在 → 转 null 不绘制（否则 -999 会拉伸 Y 轴、tooltip 显示 -999.00 m）
+  const ok = v => v != null && v !== '' && Number.isFinite(+v) && +v !== -999 && +v !== -9991;
+  return (Array.isArray(list) ? list : []).map(r => ({
+    id: r.id,
+    stcd: r.stcd,
+    name: r.name,
+    shortName: shortStationName(r.name),
+    upZ: ok(r.upZ) ? +r.upZ : null,
+    downZ: ok(r.downZ) ? +r.downZ : null,
+  }));
+}
+
+function buildHalfHourOptions() {
+  const sel = $('stats-time');
+  if (!sel) return;
+  let html = '';
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 30]) {
+      const hh = pad(h);
+      const mm = pad(m);
+      const val = `${hh}:${mm}`;
+      html += `<option value="${val}">${val}（半小时）</option>`;
+    }
+  }
+  sel.innerHTML = html;
+}
+
+function setStatsDefaultFilters() {
+  const now = new Date();
+  $('stats-date').value = fmtDate(now);
+  const mins = now.getMinutes();
+  const slot = mins < 30 ? '00' : '30';
+  $('stats-time').value = `${pad(now.getHours())}:${slot}`;
+}
+
+/** 构建折线点位：同站点闸前/闸后共用 X 坐标（垂直连线），再连至下一站点 */
+function buildStatsChartData(stations) {
+  const stationNames = stations.map(st => st.shortName || st.name);
+  const lineData = [];
+  const pointMeta = [];
+
+  stations.forEach((st, xIdx) => {
+    const label = st.name;
+    if (st.upZ != null) {
+      lineData.push([xIdx, st.upZ]);
+      pointMeta.push({ type: 'up', station: label, xIdx });
+    }
+    if (st.downZ != null) {
+      lineData.push([xIdx, st.downZ]);
+      pointMeta.push({ type: 'down', station: label, xIdx });
+    }
+  });
+
+  return { stationNames, lineData, pointMeta };
+}
+
+async function fetchMainGateStats() {
+  const date = $('stats-date').value;
+  const time = $('stats-time').value;
+  if (!date || !time) throw new Error('请选择日期和时间');
+  const timeParam = `${date} ${time}`;
+  const res = await fetch(`${API}/gate-monitor/station-water-level?time=${encodeURIComponent(timeParam)}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return normalizeStationWaterLevel(data);
+}
+
+function renderStatsChart(stations) {
+  const box = $('stats-chart-box');
+  if (!statsChart) statsChart = echarts.init(box);
+  const { stationNames, lineData, pointMeta } = buildStatsChartData(stations);
+  const vals = lineData.map(p => p[1]).filter(v => v != null && Number.isFinite(+v));
+  if (!vals.length) {
+    statsChart.clear();
+    statsChart.setOption({
+      title: { text: '暂无数据', left: 'center', top: 'middle', textStyle: { color: '#bbb', fontSize: 14, fontWeight: 'normal' } },
+    });
+    return;
+  }
+  const minV = Math.floor(Math.min(...vals) / 3) * 3 - 3;
+  const maxV = Math.ceil(Math.max(...vals) / 3) * 3 + 3;
+  const xMax = Math.max(0, stationNames.length - 1);
+
+  statsChart.setOption({
+    title: { show: false },
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e8e8e8',
+      textStyle: { color: '#333', fontSize: 13 },
+      formatter(p) {
+        if (!p || !p.value) return '';
+        const meta = pointMeta[p.dataIndex];
+        if (!meta) return '';
+        const y = Array.isArray(p.value) ? p.value[1] : p.value;
+        const label = meta.type === 'down' ? '闸后水位' : '闸前水位';
+        return `${meta.station}<br/>${label}：${(+y).toFixed(2)} m`;
+      },
+    },
+    grid: { left: 16, right: 24, top: 36, bottom: 36, containLabel: true },
+    xAxis: {
+      type: 'value',
+      min: 0,
+      max: xMax,
+      interval: 1,
+      axisLabel: {
+        fontSize: 12,
+        color: '#666',
+        formatter(val) {
+          const i = Math.round(val);
+          return stationNames[i] ?? '';
+        },
+      },
+      axisLine: { lineStyle: { color: '#e8e8e8' } },
+      axisTick: { show: false },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: '水位 (m)',
+      min: minV,
+      max: maxV,
+      interval: 3,
+      nameTextStyle: { color: '#999', fontSize: 12 },
+      axisLabel: { fontSize: 12, color: '#888' },
+      axisLine: { show: false, onZero: false },
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+    },
+    series: [{
+      name: '水位',
+      type: 'line',
+      data: lineData.map(([x, y], i) => ({
+        value: [x, y],
+        itemStyle: {
+          color: pointMeta[i].type === 'down' ? DOWN_COLOR : UP_COLOR,
+          borderColor: '#fff',
+          borderWidth: 2,
+        },
+      })),
+      connectNulls: false,
+      smooth: false,
+      symbol: 'circle',
+      symbolSize: 10,
+      lineStyle: { color: DOWN_COLOR, width: 2 },
+      label: {
+        show: true,
+        position: 'top',
+        fontSize: 11,
+        color: '#666',
+        formatter(p) {
+          const y = Array.isArray(p.value) ? p.value[1] : p.value;
+          return y == null ? '' : (+y).toFixed(1);
+        },
+      },
+    }],
+  }, true);
+  statsChart.resize();
+}
+
+async function reloadStatsChart() {
+  const box = $('stats-chart-box');
+  setLoading(box, true);
+  try {
+    const data = await fetchMainGateStats();
+    renderStatsChart(data);
+  } catch (e) {
+    console.error(e);
+    if (statsChart) {
+      statsChart.clear();
+      statsChart.setOption({
+        title: { text: '数据加载失败', left: 'center', top: 'middle', textStyle: { color: '#bbb', fontSize: 14, fontWeight: 'normal' } },
+      });
+    }
+  } finally {
+    setLoading(box, false);
+  }
+}
+
+function openStatsModal() {
+  setStatsDefaultFilters();
+  openModal('stats-overlay');
+  requestAnimationFrame(() => reloadStatsChart());
+}
+
+function bindStatsModal() {
+  buildHalfHourOptions();
+  $('main-gate-stats-btn')?.addEventListener('click', openStatsModal);
+  bindAsyncClick($('stats-query-btn'), reloadStatsChart);
+  bindAsyncClick($('stats-reset-btn'), async () => {
+    setStatsDefaultFilters();
+    await reloadStatsChart();
+  });
+}
+
 async function init() {
   setDefaultDates();
   setMthDefaultDates();
@@ -1678,6 +1934,7 @@ async function init() {
   bindDevSelect();
   bindMthDevSelect();
   bindDistrictTabs();
+  bindStatsModal();
   bindAsyncClick($('query-btn'), query);
   bindAsyncClick($('reset-btn'), reset, { loadingText: '重置中...' });
   bindAsyncClick($('mth-query-btn'), mthQuery);

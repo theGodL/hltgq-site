@@ -15,7 +15,10 @@ import java.util.Map;
 @Mapper
 public interface StRiverRMapper extends BaseMapper<StRiverR> {
 
-    @Select("SELECT r.STCD AS stcd, r.TM AS tm, COALESCE(r.Z, r.Z1) AS z, r.Z2 AS z2, TRUNC(w.Q, 3) AS q, " +
+    // -999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'
+    @Select("SELECT r.STCD AS stcd, r.TM AS tm, " +
+            "CASE WHEN COALESCE(r.Z, r.Z1) = -999 THEN NULL ELSE COALESCE(r.Z, r.Z1) END AS z, " +
+            "r.Z2 AS z2, CASE WHEN w.Q = -999 THEN NULL ELSE TRUNC(w.Q, 3) END AS q, " +
             "r.XSA AS xsa, r.XSAVV AS xsavv, r.XSMXV AS xsmxv, r.FLWCHRCD AS flwchrcd, r.WPTN AS wptn " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "INNER JOIN (SELECT STCD, MAX(TM) AS MaxTM FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info GROUP BY STCD) rm " +

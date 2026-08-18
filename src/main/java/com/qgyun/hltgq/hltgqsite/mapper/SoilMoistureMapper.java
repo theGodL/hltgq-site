@@ -25,7 +25,7 @@ public interface SoilMoistureMapper {
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，不能直接用 COALESCE 函数表达式
      * （PG 会报 "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"），
      * 故先在子查询中物化出 skey，外层按 skey 去重排序。
-     * <p>-9991（设备异常）透传由前端展示 '--'；-999（设备不存在）透传由前端不展示。
+     * <p>-999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'。
      * <p>电压 vol 关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID = n.site），
      * 取筛选时间范围内最新一条，无数据为 null。
      *
@@ -39,9 +39,14 @@ public interface SoilMoistureMapper {
             "t.mten, t.mtwenty, t.mthirty, t.mforty, t.mfifty, t.msixty, t.meighty, t.mhundred " +
             "FROM ( " +
             "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, fv.vol, " +
-            "  TRUNC(n.mten, 2) AS mten, TRUNC(n.mtwenty, 2) AS mtwenty, TRUNC(n.mthirty, 2) AS mthirty, " +
-            "  TRUNC(n.mforty, 2) AS mforty, TRUNC(n.mfifty, 2) AS mfifty, TRUNC(n.msixty, 2) AS msixty, " +
-            "  TRUNC(n.meighty, 2) AS meighty, TRUNC(n.mhundred, 2) AS mhundred " +
+            "  CASE WHEN n.mten = -999 THEN NULL ELSE TRUNC(n.mten, 2) END AS mten, " +
+            "  CASE WHEN n.mtwenty = -999 THEN NULL ELSE TRUNC(n.mtwenty, 2) END AS mtwenty, " +
+            "  CASE WHEN n.mthirty = -999 THEN NULL ELSE TRUNC(n.mthirty, 2) END AS mthirty, " +
+            "  CASE WHEN n.mforty = -999 THEN NULL ELSE TRUNC(n.mforty, 2) END AS mforty, " +
+            "  CASE WHEN n.mfifty = -999 THEN NULL ELSE TRUNC(n.mfifty, 2) END AS mfifty, " +
+            "  CASE WHEN n.msixty = -999 THEN NULL ELSE TRUNC(n.msixty, 2) END AS msixty, " +
+            "  CASE WHEN n.meighty = -999 THEN NULL ELSE TRUNC(n.meighty, 2) END AS meighty, " +
+            "  CASE WHEN n.mhundred = -999 THEN NULL ELSE TRUNC(n.mhundred, 2) END AS mhundred " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
             "  LEFT JOIN ( " +
@@ -115,7 +120,8 @@ public interface SoilMoistureMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 历史墒情数据分页查询（按监测时间倒序，-9991/-999 透传）
+     * 历史墒情数据分页查询（按监测时间倒序）
+     * <p>-999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'。
      *
      * @param stcd      站点编号或 site UUID（必填）
      * @param startTime 起始时间（含，可选）
@@ -124,9 +130,14 @@ public interface SoilMoistureMapper {
     @Select("<script>" +
             "SELECT n.stcd AS stcd, COALESCE(n.stcd, n.site) AS site, " +
             "COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, " +
-            "TRUNC(n.mten, 2) AS mten, TRUNC(n.mtwenty, 2) AS mtwenty, TRUNC(n.mthirty, 2) AS mthirty, " +
-            "TRUNC(n.mforty, 2) AS mforty, TRUNC(n.mfifty, 2) AS mfifty, TRUNC(n.msixty, 2) AS msixty, " +
-            "TRUNC(n.meighty, 2) AS meighty, TRUNC(n.mhundred, 2) AS mhundred " +
+            "CASE WHEN n.mten = -999 THEN NULL ELSE TRUNC(n.mten, 2) END AS mten, " +
+            "CASE WHEN n.mtwenty = -999 THEN NULL ELSE TRUNC(n.mtwenty, 2) END AS mtwenty, " +
+            "CASE WHEN n.mthirty = -999 THEN NULL ELSE TRUNC(n.mthirty, 2) END AS mthirty, " +
+            "CASE WHEN n.mforty = -999 THEN NULL ELSE TRUNC(n.mforty, 2) END AS mforty, " +
+            "CASE WHEN n.mfifty = -999 THEN NULL ELSE TRUNC(n.mfifty, 2) END AS mfifty, " +
+            "CASE WHEN n.msixty = -999 THEN NULL ELSE TRUNC(n.msixty, 2) END AS msixty, " +
+            "CASE WHEN n.meighty = -999 THEN NULL ELSE TRUNC(n.meighty, 2) END AS meighty, " +
+            "CASE WHEN n.mhundred = -999 THEN NULL ELSE TRUNC(n.mhundred, 2) END AS mhundred " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
             "WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +

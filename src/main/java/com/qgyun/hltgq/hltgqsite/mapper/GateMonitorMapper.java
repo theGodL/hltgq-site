@@ -236,8 +236,8 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     /**
      * 闸站图表：各站在选中时间点 ±30 分钟内距时间点最近的入库水位（每站一条）
      * <p>DISTINCT ON (g.site) + ORDER BY g.site, 时间距离 保证每站取距 time 最近的一条；
-     * 至少有一个水位值（含 -9991 设备异常，透传由前端展示 '--'）的记录才视为命中；
-     * 半小时内无入库数据则该站不返回行（前端水位展示 '-'）。
+     * 至少有一个有效水位值（-9991 设备异常、-999 设备不存在视为无效）的记录才视为命中，
+     * 否则取窗口中次近的有效记录；半小时内无有效入库数据则该站不返回行（前端水位展示 '-'）。
      *
      * @param siteIds   站点 UUID 列表（固定七站）
      * @param time      选中时间点（半小时粒度）
@@ -252,7 +252,8 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "<foreach collection='siteIds' item='s' open='(' separator=',' close=')'>#{s}</foreach> " +
             "AND g.tm &gt;= #{startTime} " +
             "AND g.tm &lt;= #{endTime} " +
-            "AND (g.up_z IS NOT NULL OR g.down_z IS NOT NULL) " +
+            "AND ((g.up_z IS NOT NULL AND g.up_z NOT IN (-999, -9991)) " +
+            "  OR (g.down_z IS NOT NULL AND g.down_z NOT IN (-999, -9991))) " +
             "ORDER BY g.site, ABS(EXTRACT(EPOCH FROM CAST(g.tm AS TIMESTAMP)) - EXTRACT(EPOCH FROM #{time}::timestamp))" +
             "</script>")
     List<Map<String, Object>> selectClosestWaterLevelBySites(

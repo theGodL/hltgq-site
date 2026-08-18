@@ -26,7 +26,8 @@ public interface IrrigationWaterLevelMapper {
      * @param offset      偏移量
      */
     @Select("<script>" +
-            "SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, TRUNC(r.Z, 2) AS z, " +
+            "SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, " +
+            "CASE WHEN r.Z = -999 THEN NULL ELSE TRUNC(r.Z, 2) END AS z, " +
             "CASE WHEN r.Z IN (-999, -9991) THEN NULL ELSE " +
             "TRUNC(COALESCE((r.Z - (" +
             "  SELECT r2.Z FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r2 " +

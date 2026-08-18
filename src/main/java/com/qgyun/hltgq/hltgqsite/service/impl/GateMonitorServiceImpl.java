@@ -31,6 +31,13 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     private static final List<String> GATE_STATION_STCDS = Arrays.asList(
             "QSJSZ", "SMH", "NSS", "9000000005", "9000000006", "9000000001", "9000000002");
 
+    /** -999 = 设备不存在：视为缺失不返回（-9991 设备异常保留，透传由前端展示 '--'） */
+    private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
+
+    private static boolean isMissing(BigDecimal v) {
+        return v != null && v.compareTo(DEVICE_MISSING) == 0;
+    }
+
     @Autowired
     private GateMonitorMapper gateMonitorMapper;
 
@@ -57,7 +64,13 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         List<GateMonitoringVO> result = new ArrayList<>();
         for (Map.Entry<String, List<GateMonitor>> entry : siteGroup.entrySet()) {
             String siteId = entry.getKey();
-            List<GateMonitor> holes = entry.getValue();
+            // -999 = 闸孔不存在：过滤后不参与返回（-9991 设备异常保留，透传由前端展示 '--'）
+            List<GateMonitor> holes = entry.getValue().stream()
+                    .filter(h -> h.getOpenDegree() == null || !isMissing(h.getOpenDegree()))
+                    .collect(Collectors.toList());
+            if (holes.isEmpty()) {
+                continue;
+            }
 
             // 站点名称（取第一条记录的 siteName，各孔相同）
             String siteName = holes.get(0).getSiteName();
@@ -69,10 +82,16 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                     .max(LocalDateTime::compareTo)
                     .orElse(null);
 
-            // 闸前/闸后水位：取最新一条有值记录
-            GateMonitor latestWithZ = holes.stream()
-                    .filter(h -> h.getUpZ() != null || h.getDownZ() != null)
-                    .max(Comparator.comparing(GateMonitor::getTm, Comparator.nullsLast(LocalDateTime::compareTo)))
+            // 闸前/闸后水位：分别取最新一条有效值（-999 设备不存在视为无值跳过；-9991 设备异常保留）
+            Comparator<GateMonitor> byTmDesc = Comparator.comparing(GateMonitor::getTm,
+                    Comparator.nullsLast(LocalDateTime::compareTo));
+            GateMonitor latestUpZ = holes.stream()
+                    .filter(h -> h.getUpZ() != null && !isMissing(h.getUpZ()))
+                    .max(byTmDesc)
+                    .orElse(null);
+            GateMonitor latestDownZ = holes.stream()
+                    .filter(h -> h.getDownZ() != null && !isMissing(h.getDownZ()))
+                    .max(byTmDesc)
                     .orElse(null);
 
             // 各闸孔开度与状态（按闸孔号排序）
@@ -91,11 +110,13 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             vo.setSiteId(siteId);
             vo.setSiteName(siteName);
             vo.setTm(latestTm);
-            vo.setUpZ(latestWithZ != null && latestWithZ.getUpZ() != null ? latestWithZ.getUpZ().setScale(2, java.math.RoundingMode.DOWN) : null);
-            vo.setDownZ(latestWithZ != null && latestWithZ.getDownZ() != null ? latestWithZ.getDownZ().setScale(2, java.math.RoundingMode.DOWN) : null);
-            // 流量、电压与经纬度为站点级数据，各孔子查询结果相同，取第一条非空值
-            vo.setQ(holes.stream().map(GateMonitor::getQ).filter(Objects::nonNull).findFirst().orElse(null));
-            vo.setVol(holes.stream().map(GateMonitor::getVol).filter(Objects::nonNull).findFirst().orElse(null));
+            vo.setUpZ(latestUpZ != null ? latestUpZ.getUpZ().setScale(2, java.math.RoundingMode.DOWN) : null);
+            vo.setDownZ(latestDownZ != null ? latestDownZ.getDownZ().setScale(2, java.math.RoundingMode.DOWN) : null);
+            // 流量、电压与经纬度为站点级数据，各孔子查询结果相同，取第一条有效值（-999 设备不存在跳过；-9991 设备异常保留）
+            vo.setQ(holes.stream().map(GateMonitor::getQ)
+                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null));
+            vo.setVol(holes.stream().map(GateMonitor::getVol)
+                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null));
             vo.setLon(holes.stream().map(GateMonitor::getLon).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setLat(holes.stream().map(GateMonitor::getLat).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setHoles(holeDataList);
@@ -168,8 +189,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         for (FlowMonitoringVO r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("tm", r.getTm() != null ? r.getTm().format(fmt) : null);
-            m.put("q", r.getQ());
-            m.put("tf", r.getTf());
+            // -999 = 设备不存在：转 null 返回（-9991 设备异常保留透传由前端展示 '--'）
+            m.put("q", isMissing(r.getQ()) ? null : r.getQ());
+            m.put("tf", isMissing(r.getTf()) ? null : r.getTf());
             records.add(m);
         }
         result.setRecords(records);
@@ -188,9 +210,13 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                 m.put("tm", k.format(fmt));
                 return m;
             });
-            record.put("open" + r.getGateNo(), r.getOpenDegree());
-            // 流量为站点级数据，同一时刻各孔相同，仅放入一次
-            if (!record.containsKey("q") && r.getQ() != null) {
+            // -999 = 闸孔不存在：该时刻该孔不返回列（-9991 设备异常保留透传由前端展示 '--'）
+            BigDecimal od = r.getOpenDegree();
+            if (od == null || !isMissing(od)) {
+                record.put("open" + r.getGateNo(), od);
+            }
+            // 流量为站点级数据，同一时刻各孔相同，仅放入一次（-999 设备不存在跳过）
+            if (!record.containsKey("q") && r.getQ() != null && !isMissing(r.getQ())) {
                 record.put("q", r.getQ());
             }
         }
@@ -209,13 +235,14 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                 m.put("tm", k.format(fmt));
                 return m;
             });
-            if (!record.containsKey("upZ") && r.getUpZ() != null) {
+            // -999 = 设备不存在视为无值跳过（-9991 设备异常保留透传由前端展示 '--'），取首个有效值
+            if (!record.containsKey("upZ") && r.getUpZ() != null && !isMissing(r.getUpZ())) {
                 record.put("upZ", r.getUpZ());
             }
-            if (!record.containsKey("downZ") && r.getDownZ() != null) {
+            if (!record.containsKey("downZ") && r.getDownZ() != null && !isMissing(r.getDownZ())) {
                 record.put("downZ", r.getDownZ());
             }
-            if (!record.containsKey("q") && r.getQ() != null) {
+            if (!record.containsKey("q") && r.getQ() != null && !isMissing(r.getQ())) {
                 record.put("q", r.getQ());
             }
         }
@@ -263,7 +290,7 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         return result;
     }
 
-    /** Map 值 → BigDecimal（null 安全；-9991/-999 透传由前端分别展示 '--'/不展示） */
+    /** Map 值 → BigDecimal（null 安全；-9991 设备异常/-999 设备不存在由前端转 null 不绘制） */
     private BigDecimal toBigDecimal(Object obj) {
         if (obj == null) return null;
         if (obj instanceof BigDecimal) return (BigDecimal) obj;

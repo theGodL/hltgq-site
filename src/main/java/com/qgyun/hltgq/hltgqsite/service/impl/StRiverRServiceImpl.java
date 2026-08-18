@@ -65,11 +65,17 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
     }
 
     /**
-     * -9991 表示设备异常、-999 表示设备不存在，此类数值一律视为缺失，不参与展示与计算
+     * -9991 设备异常、-999 设备不存在：仅用于比较类计算的排除判定（如与昨日 8 点差值）。
+     * 展示口径：-999 后端转 null 不返回；-9991 保留透传由前端展示 '--'。
      */
     private static boolean isDeviceError(BigDecimal v) {
         return v != null && (v.compareTo(new BigDecimal("-9991")) == 0
                 || v.compareTo(new BigDecimal("-999")) == 0);
+    }
+
+    /** -999（设备不存在）→ null；-9991（设备异常）保留透传由前端展示 '--' */
+    private static BigDecimal nullIfMissing(BigDecimal v) {
+        return (v != null && v.compareTo(new BigDecimal("-999")) == 0) ? null : v;
     }
 
     /**
@@ -168,7 +174,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         vo.setTm(r.getTm());
         vo.setWarningLevel(ref != null && ref[0] != null ? ref[0].setScale(2, java.math.RoundingMode.DOWN) : null);
         vo.setGuaranteedLevel(ref != null && ref[1] != null ? ref[1].setScale(2, java.math.RoundingMode.DOWN) : null);
-        vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
+        // -999（设备不存在）转 null 不返回；-9991（设备异常）保留透传由前端展示 '--'
+        BigDecimal z = nullIfMissing(r.getZ());
+        vo.setZ(z != null ? z.setScale(2, java.math.RoundingMode.DOWN) : null);
         vo.setWptn(mapWptn(r.getWptn()));
         return vo;
     }
@@ -184,10 +192,13 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         vo.setTm(r.getTm());
         vo.setWarningLevel(ref != null && ref[0] != null ? ref[0].setScale(2, java.math.RoundingMode.DOWN) : null);
         vo.setGuaranteedLevel(ref != null && ref[1] != null ? ref[1].setScale(2, java.math.RoundingMode.DOWN) : null);
-        vo.setZ(r.getZ() != null ? r.getZ().setScale(2, java.math.RoundingMode.DOWN) : null);
+        // -999（设备不存在）转 null 不返回；-9991（设备异常）保留透传由前端展示 '--'
+        BigDecimal z = nullIfMissing(r.getZ());
+        vo.setZ(z != null ? z.setScale(2, java.math.RoundingMode.DOWN) : null);
         vo.setWptn(mapWptn(r.getWptn()));
         // 出入库流量：暂统一映射 Q 字段（待设备报文到位后区分字段映射），与接口文档十五节一致
-        BigDecimal q = r.getQ() != null ? r.getQ().setScale(3, java.math.RoundingMode.DOWN) : null;
+        BigDecimal q = nullIfMissing(r.getQ());
+        q = q != null ? q.setScale(3, java.math.RoundingMode.DOWN) : null;
         vo.setInq(q);
         vo.setOtq(q);
         return vo;
@@ -327,6 +338,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
      * 整点水位取值（业主口径）：取 (slotTime-1h, slotTime] 左开右闭内 z 非空的最后一条采集。
      * 整点之前的最后一条采集作为该整点值，整点之后的采集归下一整点；
      * 一旦进入下一时段，本整点数值固定不再变动。
+     * -999（设备不存在）视为无采集跳过继续向前找；-9991（设备异常）保留透传由前端展示 '--'。
      */
     private StRiverR latestUpTo(List<StRiverR> rowsAsc, LocalDateTime slotTime) {
         LocalDateTime floor = slotTime.minusHours(1);
@@ -335,7 +347,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
             LocalDateTime tm = r.getTm();
             if (tm == null) continue;
             if (tm.isAfter(floor) && !tm.isAfter(slotTime)) {
-                if (r.getZ() != null) best = r;  // rowsAsc 升序，后扫到的即最新
+                if (r.getZ() != null && r.getZ().compareTo(new BigDecimal("-999")) != 0) best = r;  // rowsAsc 升序，后扫到的即最新
             }
         }
         return best;
@@ -402,9 +414,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
             vo.setWrz(zScale2(ref[0]));
             vo.setDsflz(zScale2(ref[1]));
 
-            vo.setY8(y8Rec != null ? zScale2(y8Rec.getZ()) : null);
-            vo.setY20(y20Rec != null ? zScale2(y20Rec.getZ()) : null);
-            vo.setT8(t8Rec != null ? zScale2(t8Rec.getZ()) : null);
+            vo.setY8(y8Rec != null ? zScale2(nullIfMissing(y8Rec.getZ())) : null);
+            vo.setY20(y20Rec != null ? zScale2(nullIfMissing(y20Rec.getZ())) : null);
+            vo.setT8(t8Rec != null ? zScale2(nullIfMissing(t8Rec.getZ())) : null);
 
             // 水势：优先今天 8 点记录，其次当日最新记录
             StRiverR wptnRec = t8Rec != null ? t8Rec : (rows.isEmpty() ? null : rows.get(rows.size() - 1));
@@ -417,9 +429,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
                 vo.setCmp(t8Rec.getZ().subtract(y8Rec.getZ()).setScale(2, java.math.RoundingMode.DOWN));
             }
 
-            // 流量取今天 8 点记录 Q
-            vo.setQ(t8Rec != null && t8Rec.getQ() != null
-                    ? t8Rec.getQ().setScale(2, java.math.RoundingMode.DOWN) : null);
+            // 流量取今天 8 点记录 Q（-999 设备不存在转 null；-9991 设备异常保留透传）
+            BigDecimal q = t8Rec != null ? nullIfMissing(t8Rec.getQ()) : null;
+            vo.setQ(q != null ? q.setScale(2, java.math.RoundingMode.DOWN) : null);
 
             // 蓄水量：暂无数据源，恒为 null
             vo.setW(null);

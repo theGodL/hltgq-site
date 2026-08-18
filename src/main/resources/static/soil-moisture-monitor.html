@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>墒情监测</title>
+<script src="./lib/echarts.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:12px}
+.breadcrumb{color:#999;font-size:13px}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+
+.tab-bar{display:flex;gap:10px;align-items:center}
+.tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 108px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent}
+.tab-item:hover{color:#1677ff}
+.tab-item.active{color:#1677ff;font-weight:500;border-color:#1677ff;box-shadow:0 1px 4px rgba(22,119,255,.12)}
+.panel{display:none}
+.panel.active{display:flex;flex-direction:column;gap:12px;flex:1}
+
+.filter-card{padding:16px 20px}
+.filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
+.filter-item{display:flex;align-items:center;gap:8px}
+.filter-item label{color:#666;font-size:14px;white-space:nowrap}
+.filter-bar input,.filter-bar select,.modal-filter input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
+.filter-bar input:focus,.filter-bar select:focus,.modal-filter input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.filter-bar input[type=date],.modal-filter input[type=date]{width:140px}
+.date-sep{color:#bbb}
+
+.ss{position:relative;width:220px}
+.ss-input{width:100% !important;padding-right:28px !important}
+.ss-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #999;pointer-events:none}
+.ss-clear{position:absolute;right:26px;top:50%;transform:translateY(-50%);width:16px;height:16px;display:none;align-items:center;justify-content:center;border-radius:50%;background:#c4c4c4;cursor:pointer;user-select:none;z-index:21}
+.ss-clear:hover{background:#a6a6a6}
+.ss-clear.show{display:flex}
+.ss-clear svg{display:block}
+.ss-dd{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #d9d9d9;border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08)}
+.ss-dd.open{display:block}
+.ss-opt{padding:8px 12px;cursor:pointer;color:#333;line-height:1.4}
+.ss-opt:hover,.ss-opt.active{background:#e6f4ff;color:#1677ff}
+.ss-empty{padding:12px;color:#bbb;text-align:center;font-size:13px}
+
+.filter-actions{display:flex;gap:8px;margin-left:112px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important;position:relative}
+.btn.is-loading::after{
+  content:'';
+  box-sizing:border-box;
+  position:absolute;left:50%;top:50%;
+  width:16px;height:16px;margin:-8px 0 0 -8px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,.35);
+  border-top-color:#fff;
+  animation:spin .6s linear infinite;
+}
+.btn-default.is-loading::after{
+  border-color:rgba(22,119,255,.2);
+  border-top-color:#1677ff;
+}
+
+.result-card{padding:16px 20px 12px;flex:1;display:flex;flex-direction:column;min-height:360px}
+.tbl-wrap{overflow-x:auto;position:relative;flex:none}
+.tbl-wrap.is-loading,.chart-box.is-loading{pointer-events:none}
+.tbl-wrap.is-loading::before,.chart-box.is-loading::before{
+  content:'';
+  position:absolute;inset:0;z-index:5;
+  background:rgba(255,255,255,.55);
+}
+.tbl-wrap.is-loading::after,.chart-box.is-loading::after{
+  content:'';
+  box-sizing:border-box;
+  position:absolute;left:50%;top:50%;z-index:6;
+  width:36px;height:36px;margin:-18px 0 0 -18px;
+  border-radius:50%;
+  border:3px solid rgba(22,119,255,.15);
+  border-top-color:#1677ff;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid #e8e8e8}
+thead tr{background:#fafafa}
+th{padding:12px 16px;text-align:left;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
+td{padding:12px 16px;border:1px solid #e8e8e8;color:#000000d9;white-space:nowrap}
+tbody tr:hover td{background:#fafafa}
+.empty{text-align:center;color:#bbb;padding:48px;font-size:14px}
+.act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s}
+.act-btn:hover{opacity:.7}
+.status-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;line-height:1.6}
+.status-normal{background:#f6ffed;color:#52c41a;border:1px solid #b7eb8f}
+.status-warn{background:#fff7e6;color:#fa8c16;border:1px solid #ffd591}
+.status-error{background:#fff1f0;color:#ff4d4f;border:1px solid #ffa39e}
+
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:12px 0 0;gap:4px;flex-shrink:0}
+.pg-info{color:#666;font-size:13px;margin-right:8px}
+.pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
+.pg-ellipsis{padding:0 4px;color:#999;font-size:13px}
+.pg-size{height:28px;border:1px solid #d9d9d9;border-radius:4px;padding:0 6px;font-size:13px;outline:none;background:#fff;margin-right:4px;cursor:pointer}
+
+.overlay{display:none;position:fixed;inset:0;background:transparent;z-index:1000;align-items:center;justify-content:center;padding:20px}
+.overlay.show{display:flex}
+.modal{background:#fff;border-radius:10px;width:1100px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;border:1px solid #e8e8e8;box-shadow:0 8px 28px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06)}
+#detail-overlay .modal{width:1100px;height:min(820px,90vh);max-width:95vw;max-height:90vh}
+.modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#fff}
+.modal-hd span{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
+.modal-actions{display:inline-flex;align-items:center;gap:2px}
+.modal-max,.modal-close{background:none;border:none;cursor:pointer;color:#8c8c8c;font-size:18px;line-height:1;width:28px;height:28px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:color .2s,background .2s}
+.modal-max:hover,.modal-close:hover{color:#262626;background:#f5f5f5}
+.modal-max svg{display:block}
+.modal-max .icon-restore{display:none}
+.modal.is-max .modal-max .icon-max{display:none}
+.modal.is-max .modal-max .icon-restore{display:block}
+.modal.is-max{width:calc(100vw - 40px)!important;height:calc(100vh - 40px)!important;max-width:none!important;max-height:none!important}
+.modal-bd{padding:0 20px 20px;overflow-y:auto;flex:1;min-height:0;background:#fff}
+.modal-tabs{display:flex;border-bottom:1px solid #f0f0f0;margin-bottom:16px;flex-shrink:0}
+.modal-tab{padding:12px 16px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none}
+.modal-tab:hover{color:#1677ff}
+.modal-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
+.modal-pane{display:none}
+.modal-pane.active{display:block}
+.modal-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px}
+.chart-block{margin-top:4px}
+.chart-block + .chart-block{margin-top:20px;padding-top:16px;border-top:1px solid #f0f0f0}
+.chart-title{font-size:14px;font-weight:500;color:#333;margin-bottom:8px}
+.chart-box{width:100%;height:320px;position:relative}
+.chart-box-lg{height:420px}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>水资源调度</span><span class="sep">/</span>
+    <span>数据统计</span><span class="sep">/</span>
+    <span class="cur">墒情监测</span>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab-item active" data-tab="hlt">花凉亭灌区</div>
+    <div class="tab-item" data-tab="mth">麻塘湖灌区</div>
+  </div>
+
+  <!-- 花凉亭灌区 -->
+  <div class="panel active" id="panel-hlt">
+    <div class="card filter-card">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>设备</label>
+          <div class="ss" id="hlt-dev-ss">
+            <input type="text" class="ss-input" id="hlt-dev-input" placeholder="请选择或搜索设备" autocomplete="off">
+            <span class="ss-clear" id="hlt-dev-clear" title="清空"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+            <span class="ss-arrow"></span>
+            <input type="hidden" id="hlt-dev-code" value="">
+            <div class="ss-dd" id="hlt-dev-dd"></div>
+          </div>
+        </div>
+        <div class="filter-item">
+          <label>日期</label>
+          <input type="date" id="hlt-date">
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="hlt-query-btn">查询</button>
+          <button class="btn btn-default" id="hlt-reset-btn">重置</button>
+        </div>
+      </div>
+    </div>
+    <div class="card result-card">
+      <div class="tbl-wrap" id="hlt-list-tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>站点名称</th>
+              <th>最新监测时间</th>
+              <th>水位 (m)</th>
+              <th>10cm含水量</th>
+              <th>20cm含水量</th>
+              <th>30cm含水量</th>
+              <th>40cm含水量</th>
+              <th>50cm含水量</th>
+              <th>60cm含水量</th>
+              <th>80cm含水量</th>
+              <th>100cm含水量</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="hlt-tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="hlt-tbl-pg"></div>
+    </div>
+  </div>
+
+  <!-- 麻塘湖灌区 -->
+  <div class="panel" id="panel-mth">
+    <div class="card filter-card">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>设备</label>
+          <div class="ss" id="mth-dev-ss">
+            <input type="text" class="ss-input" id="mth-dev-input" placeholder="请选择或搜索设备" autocomplete="off">
+            <span class="ss-clear" id="mth-dev-clear" title="清空"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+            <span class="ss-arrow"></span>
+            <input type="hidden" id="mth-dev-code" value="">
+            <div class="ss-dd" id="mth-dev-dd"></div>
+          </div>
+        </div>
+        <div class="filter-item">
+          <label>日期</label>
+          <input type="date" id="mth-start-date">
+          <span class="date-sep">—</span>
+          <input type="date" id="mth-end-date">
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" id="mth-query-btn">查询</button>
+          <button class="btn btn-default" id="mth-reset-btn">重置</button>
+        </div>
+      </div>
+    </div>
+    <div class="card result-card">
+      <div class="tbl-wrap" id="mth-list-tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>站点名称</th>
+              <th>最新监测时间</th>
+              <th>水位 (m)</th>
+              <th>10cm含水量</th>
+              <th>20cm含水量</th>
+              <th>30cm含水量</th>
+              <th>40cm含水量</th>
+              <th>50cm含水量</th>
+              <th>60cm含水量</th>
+              <th>80cm含水量</th>
+              <th>100cm含水量</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="mth-tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="mth-tbl-pg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 详情弹窗 -->
+<div class="overlay" id="detail-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span id="detail-title">站点详情</span>
+      <div class="modal-actions">
+        <button type="button" class="modal-max" title="最大化" aria-label="最大化">
+          <svg class="icon-max" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.5V2h3.5M11.5 2H15v3.5M15 11.5V15h-3.5M5.5 15H2v-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="icon-restore" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 5h9v9H5V5z" stroke="currentColor" stroke-width="1.4"/><path d="M2 11V2h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="modal-close" data-close="detail-overlay">×</button>
+      </div>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-tabs">
+        <div class="modal-tab active" data-mtab="chart">墒情趋势</div>
+        <div class="modal-tab" data-mtab="history">历史数据</div>
+      </div>
+      <div class="modal-pane active" id="mpane-chart">
+        <div class="modal-filter">
+          <label style="color:#666;white-space:nowrap">日期</label>
+          <input type="date" id="chart-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="chart-end">
+          <button class="btn btn-primary" id="chart-query-btn">查询</button>
+          <button class="btn btn-default" id="chart-reset-btn">重置</button>
+        </div>
+        <div id="moisture-chart-box" class="chart-box chart-box-lg"></div>
+      </div>
+      <div class="modal-pane" id="mpane-history">
+        <div class="modal-filter">
+          <label style="color:#666;white-space:nowrap">日期</label>
+          <input type="date" id="hist-start">
+          <span class="date-sep">—</span>
+          <input type="date" id="hist-end">
+          <button class="btn btn-primary" id="hist-query-btn">查询</button>
+          <button class="btn btn-default" id="hist-reset-btn">重置</button>
+        </div>
+        <div class="tbl-wrap" id="hist-tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>最新监测时间</th>
+                <th>10cm含水量</th>
+                <th>20cm含水量</th>
+                <th>30cm含水量</th>
+                <th>40cm含水量</th>
+                <th>50cm含水量</th>
+                <th>60cm含水量</th>
+                <th>80cm含水量</th>
+                <th>100cm含水量</th>
+              </tr>
+            </thead>
+            <tbody id="hist-body"></tbody>
+          </table>
+        </div>
+        <div class="pg-bar" id="hist-pg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const pad = n => String(n).padStart(2, '0');
+const fmtN = v => (v === null || v === undefined || v === '') ? '-' : v;
+const fmtN1 = v => (v === null || v === undefined || v === '') ? '-' : (+v).toFixed(1);
+const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (+v).toFixed(2);
+const fmtPct = v => (v === null || v === undefined || v === '') ? '-' : (+v).toFixed(1) + '%';
+const fmtTm = v => {
+  if (v === null || v === undefined || v === '') return '-';
+  return String(v).replace('T', ' ').replace(/\.\d+$/, '').slice(0, 16);
+};
+const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const API = '/hltgq-site';
+const DEPTHS = [10, 20, 30, 40, 50, 60, 80, 100];
+const MOISTURE_FIELDS = {
+  10: 'mten', 20: 'mtwenty', 30: 'mthirty', 40: 'mforty',
+  50: 'mfifty', 60: 'msixty', 80: 'meighty', 100: 'mhundred',
+};
+const COL_SPAN = 13;
+const MOISTURE_COLORS = ['#9254DE', '#FF7875', '#69C0FF', '#FFA940', '#597EF7', '#73D13D', '#13C2C2', '#FFC069'];
+const HIST_COL_SPAN = 9;
+
+const dateToStart = v => v ? `${v} 00:00:00` : null;
+const dateToEnd = v => v ? `${v} 23:59:59` : null;
+
+function moistureField(d) { return MOISTURE_FIELDS[d]; }
+
+function fmtMoisture(v) {
+  if (v === null || v === undefined || v === '') return '-';
+  // -9991 设备异常 → '--'；-999 设备不存在 → 不展示（空白）
+  if (+v === -9991) return '--';
+  if (+v === -999) return '';
+  return (+v).toFixed(2) + '%';
+}
+
+function chartMoistureValue(v) {
+  if (v === null || v === undefined || v === '') return null;
+  // -9991 设备异常、-999 设备不存在 → 图表断线（null）
+  if (+v === -999 || +v === -9991) return null;
+  const n = +v;
+  return Number.isFinite(n) ? n : null;
+}
+
+function resolveMoistureStatus(row) {
+  // -9991 设备异常、-999 设备不存在均视为异常状态
+  return DEPTHS.some(d => {
+    const v = row[moistureField(d)];
+    return v != null && (+v === -9991 || +v === -999);
+  }) ? '异常' : '正常';
+}
+
+function normalizeMoistureRow(r) {
+  const siteCode = String(r.stcd || r.site || '');
+  const row = {
+    stcd: r.stcd,
+    site: r.site,
+    siteCode,
+    siteName: r.stnm || siteCode,
+    tm: r.tm,
+  };
+  DEPTHS.forEach(d => { row[moistureField(d)] = r[moistureField(d)]; });
+  row.status = resolveMoistureStatus(row);
+  return row;
+}
+
+function fmtAxisTm(v) {
+  const s = fmtTm(v);
+  if (s === '-') return s;
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : s;
+}
+
+/** 图表 X 轴：07/14 04:01 */
+function fmtChartAxisTm(v) {
+  const s = fmtTm(v);
+  if (s === '-') return s;
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  return m ? `${m[2]}/${m[3]} ${m[4]}:${m[5]}` : s;
+}
+
+function statusTag(status) {
+  const s = String(status || '正常');
+  let cls = 'status-normal';
+  if (/异常|故障|离线/.test(s)) cls = 'status-error';
+  else if (/偏高|偏低|预警|警告/.test(s)) cls = 'status-warn';
+  return `<span class="status-tag ${cls}">${esc(s)}</span>`;
+}
+
+function setLoading(el, on) {
+  if (!el) return;
+  el.classList.toggle('is-loading', !!on);
+}
+
+function bindAsyncClick(el, asyncFn) {
+  if (!el) return;
+  let pending = false;
+  let last = 0;
+  el.addEventListener('click', async () => {
+    const now = Date.now();
+    if (pending || now - last < 800) return;
+    last = now;
+    pending = true;
+    el.disabled = true;
+    el.classList.add('is-loading');
+    try { await asyncFn(); }
+    finally {
+      pending = false;
+      el.disabled = false;
+      el.classList.remove('is-loading');
+    }
+  });
+}
+
+function syncClear(input, clearBtn) {
+  clearBtn.classList.toggle('show', !!input.value);
+}
+
+function fuzzyMatch(text, kw) {
+  if (!kw) return true;
+  const t = String(text || '').toLowerCase();
+  const k = String(kw).toLowerCase().trim();
+  if (!k) return true;
+  if (t.includes(k)) return true;
+  let i = 0;
+  for (const ch of t) {
+    if (ch === k[i]) i++;
+    if (i >= k.length) return true;
+  }
+  return false;
+}
+
+/* ===== 麻塘湖灌区：接口待接入 ===== */
+
+const DIST = {
+  hlt: {
+    prefix: 'hlt',
+    sites: [],
+    state: { page: 1, size: 20, total: 0, rows: [], allRows: [], current: null },
+  },
+  mth: {
+    prefix: 'mth',
+    sites: [],
+    state: { page: 1, size: 20, total: 0, rows: [], allRows: [], current: null },
+  },
+};
+
+let activeDist = 'hlt';
+const HIST = { page: 1, size: 10, total: 0, rows: [] };
+let moistureChart = null;
+
+function cfg(key) { return DIST[key]; }
+function elId(key, suffix) { return `${cfg(key).prefix}-${suffix}`; }
+
+function setDefaultDates(key) {
+  const now = new Date();
+  if (key === 'hlt') {
+    const el = $('hlt-date');
+    if (el) el.value = fmtDate(now);
+    return;
+  }
+  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
+  const e = fmtDate(now);
+  $(elId(key, 'start-date')).value = s;
+  $(elId(key, 'end-date')).value = e;
+}
+
+function setModalDefaultDates(key) {
+  const now = new Date();
+  if (key === 'hlt') {
+    const e = fmtDate(now);
+    const s = fmtDate(new Date(now - 7 * 24 * 3600e3));
+    ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
+    ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
+    return;
+  }
+  const s = $(elId(key, 'start-date')).value;
+  const e = $(elId(key, 'end-date')).value;
+  ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
+  ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
+}
+
+async function loadMoistureSites(key) {
+  if (key !== 'hlt') return;
+  try {
+    const res = await fetch(`${API}/station-metrics/sites?type=moisture`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    cfg(key).sites = Array.isArray(data) ? data.map(x => ({
+      code: String(x.code ?? x.stcd ?? ''),
+      name: String(x.name ?? x.stnm ?? x.code ?? ''),
+    })).filter(x => x.code) : [];
+  } catch (e) {
+    console.warn('加载墒情站点失败，尝试 /soil-moisture/sites', e);
+    try {
+      const res = await fetch(`${API}/soil-moisture/sites`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      cfg(key).sites = Array.isArray(data) ? data.map(x => ({
+        code: String(x.code ?? ''),
+        name: String(x.name ?? x.code ?? ''),
+      })).filter(x => x.code) : [];
+    } catch (e2) {
+      console.warn('加载墒情站点失败', e2);
+      cfg(key).sites = [];
+    }
+  }
+}
+
+function renderDevDd(key, keyword) {
+  const dd = $(elId(key, 'dev-dd'));
+  const code = $(elId(key, 'dev-code')).value;
+  const list = cfg(key).sites.filter(s => fuzzyMatch(s.name, keyword) || fuzzyMatch(s.code, keyword));
+  if (!list.length) {
+    dd.innerHTML = '<div class="ss-empty">无匹配设备</div>';
+    dd.classList.add('open');
+    return;
+  }
+  dd.innerHTML = list.map(s =>
+    `<div class="ss-opt${s.code === code ? ' active' : ''}" data-code="${esc(s.code)}" data-name="${esc(s.name)}">${esc(s.name)}</div>`
+  ).join('');
+  dd.classList.add('open');
+}
+
+function setDev(key, code, name) {
+  $(elId(key, 'dev-code')).value = code || '';
+  $(elId(key, 'dev-input')).value = name || '';
+  $(elId(key, 'dev-dd')).classList.remove('open');
+  syncClear($(elId(key, 'dev-input')), $(elId(key, 'dev-clear')));
+}
+
+function clearDev(key) {
+  setDev(key, '', '');
+}
+
+function bindDevSelect(key) {
+  const input = $(elId(key, 'dev-input'));
+  const dd = $(elId(key, 'dev-dd'));
+  const wrap = $(elId(key, 'dev-ss'));
+  const clearBtn = $(elId(key, 'dev-clear'));
+  const openAll = () => {
+    input.select();
+    renderDevDd(key, '');
+  };
+  input.addEventListener('focus', openAll);
+  input.addEventListener('click', openAll);
+  input.addEventListener('input', () => {
+    $(elId(key, 'dev-code')).value = '';
+    renderDevDd(key, input.value);
+    syncClear(input, clearBtn);
+  });
+  clearBtn.addEventListener('mousedown', e => {
+    e.preventDefault();
+    setDev(key, '', '');
+    renderDevDd(key, '');
+    input.focus();
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') dd.classList.remove('open');
+    if (e.key === 'Enter') {
+      const first = dd.querySelector('.ss-opt');
+      if (first && dd.classList.contains('open')) {
+        e.preventDefault();
+        setDev(key, first.dataset.code, first.dataset.name);
+      }
+    }
+  });
+  dd.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.ss-opt');
+    if (!opt) return;
+    e.preventDefault();
+    setDev(key, opt.dataset.code, opt.dataset.name);
+  });
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dd.classList.remove('open');
+  });
+}
+
+async function fetchMonitoring(key) {
+  if (key !== 'hlt') return [];
+  const p = new URLSearchParams();
+  const stcd = ($(elId(key, 'dev-code')).value || '').trim();
+  if (stcd) p.set('stcds', stcd);
+  const date = ($('hlt-date')?.value || '').trim();
+  if (date) p.set('date', date);
+  const qs = p.toString();
+  const res = await fetch(`${API}/soil-moisture/monitoring${qs ? `?${qs}` : ''}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return (Array.isArray(data) ? data : []).map(normalizeMoistureRow);
+}
+
+function filterRows(key, list) {
+  if (key === 'hlt') {
+    const kw = ($(elId(key, 'dev-input')).value || '').trim();
+    if (!kw || $(elId(key, 'dev-code')).value) return list;
+    return list.filter(r => fuzzyMatch(r.siteName, kw) || fuzzyMatch(r.siteCode, kw) || fuzzyMatch(r.stcd, kw));
+  }
+  const siteId = ($(elId(key, 'dev-code')).value || '').trim();
+  if (siteId) return list.filter(r => String(r.siteCode || r.siteId) === siteId);
+  const kw = ($(elId(key, 'dev-input')).value || '').trim();
+  if (!kw) return list;
+  return list.filter(r => fuzzyMatch(r.siteName, kw) || fuzzyMatch(r.siteCode, kw));
+}
+
+function applyPage(key) {
+  const st = cfg(key).state;
+  const pages = Math.max(1, Math.ceil(st.total / st.size) || 1);
+  if (st.page > pages) st.page = pages;
+  const start = (st.page - 1) * st.size;
+  st.rows = st.allRows.slice(start, start + st.size);
+  renderTable(key);
+  renderPager(key);
+}
+
+async function loadList(key) {
+  if (key === 'mth') {
+    renderMthEmpty();
+    return;
+  }
+  const wrap = $(elId(key, 'list-tbl-wrap'));
+  setLoading(wrap, true);
+  try {
+    let list = await fetchMonitoring(key);
+    list = filterRows(key, list);
+    const st = cfg(key).state;
+    st.allRows = list;
+    st.total = list.length;
+    applyPage(key);
+  } catch (err) {
+    console.error(err);
+    const st = cfg(key).state;
+    st.allRows = [];
+    st.total = 0;
+    st.rows = [];
+    $(elId(key, 'tbl-body')).innerHTML = `<tr><td colspan="${COL_SPAN}" class="empty">数据加载失败，请重试</td></tr>`;
+    renderPager(key);
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+async function query(key) {
+  cfg(key).state.page = 1;
+  await loadList(key);
+}
+
+async function reset(key) {
+  clearDev(key);
+  setDefaultDates(key);
+  cfg(key).state.page = 1;
+  await loadList(key);
+}
+
+function renderDepthCells(r) {
+  return DEPTHS.map(d => `<td>${fmtMoisture(r[moistureField(d)])}</td>`).join('');
+}
+
+function renderTable(key) {
+  const tbody = $(elId(key, 'tbl-body'));
+  const st = cfg(key).state;
+  if (!st.rows.length) {
+    tbody.innerHTML = `<tr><td colspan="${COL_SPAN}" class="empty">暂无数据</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = st.rows.map((r, i) => `
+    <tr>
+      <td>${fmtN(r.siteName)}</td>
+      <td>${fmtTm(r.tm)}</td>
+      <td>-</td>
+      ${renderDepthCells(r)}
+      <td>${statusTag(r.status)}</td>
+      <td><button class="act-btn" data-action="detail" data-dist="${key}" data-idx="${i}">查看</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderPager(key) {
+  const bar = $(elId(key, 'tbl-pg'));
+  const st = cfg(key).state;
+  const pages = Math.max(1, Math.ceil(st.total / st.size) || 1);
+  if (st.page > pages) st.page = pages;
+
+  let html = `<span class="pg-info">共 ${st.total} 条</span>`;
+  html += `<select class="pg-size" data-dist="${key}">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === st.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-dist="${key}" data-page="${st.page - 1}" ${st.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+  const maxShow = 5;
+  let from = Math.max(1, st.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === st.page ? 'active' : ''}" data-dist="${key}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-dist="${key}" data-page="${st.page + 1}" ${st.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.dist;
+      const p = +btn.dataset.page;
+      const s = cfg(k).state;
+      const pg = Math.max(1, Math.ceil(s.total / s.size) || 1);
+      if (!p || p === s.page || p < 1 || p > pg) return;
+      s.page = p;
+      applyPage(k);
+    });
+  });
+  const sizeSel = bar.querySelector('.pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      const k = sizeSel.dataset.dist;
+      const s = cfg(k).state;
+      s.size = +sizeSel.value;
+      s.page = 1;
+      applyPage(k);
+    });
+  }
+}
+
+function onTableClick(e) {
+  const btn = e.target.closest('[data-action="detail"]');
+  if (!btn) return;
+  const key = btn.dataset.dist;
+  const row = cfg(key).state.rows[+btn.dataset.idx];
+  if (row) openDetail(key, row);
+}
+
+function openModal(id) {
+  $(id).classList.add('show');
+}
+
+function closeModal(id) {
+  const ov = $(id);
+  ov.classList.remove('show');
+  ov.querySelectorAll('.modal.is-max').forEach(m => {
+    m.classList.remove('is-max');
+    const btn = m.querySelector('.modal-max');
+    if (btn) { btn.title = '最大化'; btn.setAttribute('aria-label', '最大化'); }
+  });
+  if (id === 'detail-overlay') {
+    if (moistureChart) { moistureChart.dispose(); moistureChart = null; }
+  }
+}
+
+function openDetail(key, row) {
+  activeDist = key;
+  cfg(key).state.current = row;
+  setModalDefaultDates(key);
+  HIST.page = 1;
+  $('detail-title').textContent = row.siteName || '站点详情';
+
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('.modal-tab[data-mtab="chart"]').classList.add('active');
+  $('mpane-chart').classList.add('active');
+
+  openModal('detail-overlay');
+  requestAnimationFrame(async () => {
+    await reloadChart();
+    await loadHistory();
+  });
+}
+
+function emptyChart(inst, box, tip) {
+  if (!inst) inst = echarts.init(box);
+  inst.clear();
+  inst.setOption({
+    title: { text: tip || '暂无数据', left: 'center', top: 'middle', textStyle: { color: '#bbb', fontSize: 14, fontWeight: 'normal' } },
+  });
+  return inst;
+}
+
+async function fetchTrend(row) {
+  const p = new URLSearchParams();
+  p.set('stcd', row.siteCode || row.site || row.stcd || '');
+  const s = dateToStart($('chart-start').value);
+  const e = dateToEnd($('chart-end').value);
+  if (s) p.set('startTime', s);
+  if (e) p.set('endTime', e);
+  const res = await fetch(`${API}/soil-moisture/trend?${p}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return Array.isArray(data?.points) ? data.points : [];
+}
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function renderMoistureChart(labels, series) {
+  const box = $('moisture-chart-box');
+  if (!moistureChart) moistureChart = echarts.init(box);
+  const has = labels.length && series.some(s => s.data.some(v => v != null));
+  if (!has) {
+    moistureChart = emptyChart(moistureChart, box, '暂无含水量数据');
+    return;
+  }
+  const allVals = series.flatMap(s => s.data).filter(v => v != null && Number.isFinite(+v));
+  const minV = allVals.length ? Math.floor(Math.min(...allVals) / 4) * 4 - 4 : 15;
+  const maxV = allVals.length ? Math.ceil(Math.max(...allVals) / 4) * 4 + 4 : 35;
+  moistureChart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e8e8e8',
+      textStyle: { color: '#333', fontSize: 13 },
+      valueFormatter: v => (v == null ? '-' : v + '%'),
+    },
+    legend: {
+      data: series.map(s => s.name),
+      top: 8,
+      type: 'scroll',
+      itemWidth: 14,
+      itemHeight: 8,
+      textStyle: { fontSize: 12, color: '#666' },
+    },
+    grid: { left: 12, right: 28, top: 48, bottom: 28, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      boundaryGap: false,
+      axisLabel: { fontSize: 11, color: '#888', rotate: 25 },
+      axisLine: { lineStyle: { color: '#e8e8e8' } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      min: Math.max(0, minV),
+      max: maxV,
+      interval: 4,
+      axisLabel: { fontSize: 12, color: '#888', formatter: v => v + '%' },
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+    },
+    series: series.map((s, i) => {
+      const color = MOISTURE_COLORS[i % MOISTURE_COLORS.length];
+      return {
+        name: s.name,
+        type: 'line',
+        data: s.data,
+        smooth: true,
+        showSymbol: labels.length <= 48,
+        symbol: 'circle',
+        symbolSize: 5,
+        connectNulls: false,
+        lineStyle: { color, width: 2 },
+        itemStyle: { color: '#fff', borderColor: color, borderWidth: 2 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: hexToRgba(color, 0.35) },
+            { offset: 1, color: hexToRgba(color, 0.02) },
+          ]),
+        },
+      };
+    }),
+  }, true);
+  moistureChart.resize();
+}
+
+async function reloadChart() {
+  const row = cfg(activeDist).state.current;
+  if (!row) return;
+  const box = $('moisture-chart-box');
+  setLoading(box, true);
+  try {
+    const list = await fetchTrend(row);
+    const labels = list.map(p => fmtChartAxisTm(p.hour));
+    const openSeries = DEPTHS.map(d => ({
+      name: d + 'cm',
+      data: list.map(p => chartMoistureValue(p[moistureField(d)])),
+    }));
+    renderMoistureChart(labels, openSeries);
+  } catch (err) {
+    console.error(err);
+    moistureChart = emptyChart(moistureChart, box, '数据加载失败');
+  } finally {
+    setLoading(box, false);
+  }
+}
+
+async function fetchHistory(row) {
+  const p = new URLSearchParams();
+  p.set('stcd', row.siteCode || row.site || row.stcd || '');
+  p.set('page', String(HIST.page));
+  p.set('size', String(HIST.size));
+  const s = dateToStart($('hist-start').value);
+  const e = dateToEnd($('hist-end').value);
+  if (s) p.set('startTime', s);
+  if (e) p.set('endTime', e);
+  const res = await fetch(`${API}/soil-moisture/history?${p}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return {
+    total: data?.total || 0,
+    records: (Array.isArray(data?.records) ? data.records : []).map(normalizeMoistureRow),
+  };
+}
+
+function renderHistory() {
+  const tbody = $('hist-body');
+  if (!HIST.rows.length) {
+    tbody.innerHTML = `<tr><td colspan="${HIST_COL_SPAN}" class="empty">暂无数据</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = HIST.rows.map(r => `
+    <tr>
+      <td>${fmtTm(r.tm)}</td>
+      ${DEPTHS.map(d => `<td>${fmtMoisture(r[moistureField(d)])}</td>`).join('')}
+    </tr>
+  `).join('');
+}
+
+function renderHistPager() {
+  const bar = $('hist-pg');
+  const pages = Math.max(1, Math.ceil(HIST.total / HIST.size) || 1);
+  if (HIST.page > pages) HIST.page = pages;
+
+  let html = `<span class="pg-info">共 ${HIST.total} 条</span>`;
+  html += `<select class="pg-size" id="hist-pg-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === HIST.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${HIST.page - 1}" ${HIST.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+  const maxShow = 5;
+  let from = Math.max(1, HIST.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === HIST.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${HIST.page + 1}" ${HIST.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === HIST.page || p < 1 || p > pages) return;
+      HIST.page = p;
+      loadHistory();
+    });
+  });
+  const sizeSel = $('hist-pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      HIST.size = +sizeSel.value;
+      HIST.page = 1;
+      loadHistory();
+    });
+  }
+}
+
+async function loadHistory() {
+  const row = cfg(activeDist).state.current;
+  if (!row) return;
+  const wrap = $('hist-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    const data = await fetchHistory(row);
+    HIST.total = data.total;
+    HIST.rows = data.records;
+    renderHistory();
+    renderHistPager();
+  } catch (err) {
+    console.error(err);
+    HIST.rows = [];
+    HIST.total = 0;
+    $('hist-body').innerHTML = `<tr><td colspan="${HIST_COL_SPAN}" class="empty">数据加载失败，请重试</td></tr>`;
+    renderHistPager();
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+function bindModal() {
+  document.querySelectorAll('[data-close]').forEach(btn =>
+    btn.addEventListener('click', () => closeModal(btn.dataset.close)));
+  document.querySelectorAll('.overlay').forEach(el =>
+    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); }));
+  document.querySelectorAll('.modal-max').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const modal = btn.closest('.modal');
+      if (!modal) return;
+      modal.classList.toggle('is-max');
+      const maxed = modal.classList.contains('is-max');
+      btn.title = maxed ? '还原' : '最大化';
+      btn.setAttribute('aria-label', btn.title);
+      requestAnimationFrame(() => { if (moistureChart) moistureChart.resize(); });
+    });
+  });
+  document.querySelectorAll('.modal-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      $('mpane-' + tab.dataset.mtab).classList.add('active');
+      if (tab.dataset.mtab === 'chart') {
+        requestAnimationFrame(() => { if (moistureChart) moistureChart.resize(); });
+      }
+    });
+  });
+  bindAsyncClick($('chart-query-btn'), reloadChart);
+  bindAsyncClick($('hist-query-btn'), async () => { HIST.page = 1; await loadHistory(); });
+  bindAsyncClick($('chart-reset-btn'), async () => {
+    setModalDefaultDates(activeDist);
+    await reloadChart();
+  });
+  bindAsyncClick($('hist-reset-btn'), async () => {
+    setModalDefaultDates(activeDist);
+    HIST.page = 1;
+    await loadHistory();
+  });
+  window.addEventListener('resize', () => { if (moistureChart) moistureChart.resize(); });
+}
+
+function renderMthEmpty() {
+  const st = cfg('mth').state;
+  st.allRows = [];
+  st.rows = [];
+  st.total = 0;
+  $('mth-tbl-body').innerHTML = `<tr><td colspan="${COL_SPAN}" class="empty">暂无数据</td></tr>`;
+  $('mth-tbl-pg').innerHTML = `<span class="pg-info">共 0 条</span>
+    <select class="pg-size" disabled><option>20条/页</option></select>
+    <button class="pg-btn" disabled>&lt;</button>
+    <button class="pg-btn active" disabled>1</button>
+    <button class="pg-btn" disabled>&gt;</button>`;
+}
+
+function bindDistrictTabs() {
+  document.querySelectorAll('.tab-item').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      $('panel-' + tab.dataset.tab).classList.add('active');
+      if (tab.dataset.tab === 'mth') renderMthEmpty();
+    });
+  });
+}
+
+async function init() {
+  ['hlt', 'mth'].forEach(key => {
+    setDefaultDates(key);
+    bindDevSelect(key);
+    bindAsyncClick($(elId(key, 'query-btn')), () => query(key));
+    bindAsyncClick($(elId(key, 'reset-btn')), () => reset(key));
+    $(elId(key, 'tbl-body')).addEventListener('click', onTableClick);
+  });
+  bindModal();
+  bindDistrictTabs();
+  await loadMoistureSites('hlt');
+  await loadList('hlt');
+  renderMthEmpty();
+}
+
+init();
+</script>
+</body>
+</html>

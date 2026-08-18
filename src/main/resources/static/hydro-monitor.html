@@ -291,9 +291,10 @@ function buildPptnPivot(rows, fullBuckets) {
       if (i === 0) {
         inc = 0; // 第一条记录，无法确定增量，不计入
       } else {
-        const prev = stationRows[i-1].dyp != null ? +stationRows[i-1].dyp : 0;
-        // -9991 设备异常、-999 设备不存在：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
-        inc = (cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
+        const prevRaw = stationRows[i-1].dyp;
+        const prev = prevRaw != null ? +prevRaw : 0;
+        // -9991 设备异常、-999 设备不存在、prev 为 null（基线缺失）：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+        inc = (prevRaw != null && cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
       }
       m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
     }
@@ -384,9 +385,10 @@ function buildPeriodPivot(rows, intervalMinutes, fullBuckets) {
       if (i === 0) {
         inc = 0; // 第一条记录，无法确定增量，不计入
       } else {
-        const prev = stationRows[i-1].dyp != null ? +stationRows[i-1].dyp : 0;
-        // -9991 设备异常、-999 设备不存在：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
-        inc = (cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
+        const prevRaw = stationRows[i-1].dyp;
+        const prev = prevRaw != null ? +prevRaw : 0;
+        // -9991 设备异常、-999 设备不存在、prev 为 null（基线缺失）：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+        inc = (prevRaw != null && cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
       }
       m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
     }
@@ -469,9 +471,10 @@ function buildDailyPivot(rows, fullBuckets) {
       if (i === 0) {
         inc = 0; // 第一条记录，无法确定增量，不计入
       } else {
-        const prev = stationRows[i-1].dyp != null ? +stationRows[i-1].dyp : 0;
-        // -9991 设备异常、-999 设备不存在：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
-        inc = (cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
+        const prevRaw = stationRows[i-1].dyp;
+        const prev = prevRaw != null ? +prevRaw : 0;
+        // -9991 设备异常、-999 设备不存在、prev 为 null（基线缺失）：视为缺失，不产生增量（prev 异常时直接相减会产生超大伪增量）
+        inc = (prevRaw != null && cur !== -999 && cur !== -9991 && prev !== -999 && prev !== -9991 && cur > prev) ? cur - prev : 0;
       }
       m.set(stcd, +(((m.get(stcd) || 0) + inc).toFixed(1)));
     }
