@@ -26,6 +26,8 @@ public interface SoilMoistureMapper {
      * （PG 会报 "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"），
      * 故先在子查询中物化出 skey，外层按 skey 去重排序。
      * <p>-999（设备异常）透传，由前端展示 '--'。
+     * <p>电压 vol 关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID = n.site），
+     * 取筛选时间范围内最新一条，无数据为 null。
      *
      * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部
      * @param startTime 起始时间（含，可选）
@@ -33,15 +35,23 @@ public interface SoilMoistureMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.stnm, t.tm, " +
+            "t.stcd, t.skey AS site, t.stnm, t.tm, t.vol, " +
             "t.mten, t.mtwenty, t.mthirty, t.mforty, t.mfifty, t.msixty, t.meighty, t.mhundred " +
             "FROM ( " +
-            "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, " +
+            "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, fv.vol, " +
             "  TRUNC(n.mten, 2) AS mten, TRUNC(n.mtwenty, 2) AS mtwenty, TRUNC(n.mthirty, 2) AS mthirty, " +
             "  TRUNC(n.mforty, 2) AS mforty, TRUNC(n.mfifty, 2) AS mfifty, TRUNC(n.msixty, 2) AS msixty, " +
             "  TRUNC(n.meighty, 2) AS meighty, TRUNC(n.mhundred, 2) AS mhundred " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
+            "  LEFT JOIN ( " +
+            "    SELECT DISTINCT ON (v.site) v.site, v.vol " +
+            "    FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
+            "    WHERE 1=1 " +
+            "    <if test='startTime != null'>AND v.tm &gt;= #{startTime} </if>" +
+            "    <if test='endTime != null'>AND v.tm &lt; #{endTime} </if>" +
+            "    ORDER BY v.site, v.tm DESC " +
+            "  ) fv ON fv.site = n.site " +
             "  WHERE 1=1 " +
             "  <if test='stcds != null and stcds.size() > 0'>" +
             "  AND (n.stcd IN " +
@@ -60,6 +70,7 @@ public interface SoilMoistureMapper {
             @Result(column = "site", property = "site"),
             @Result(column = "stnm", property = "stnm"),
             @Result(column = "tm", property = "tm"),
+            @Result(column = "vol", property = "vol"),
             @Result(column = "mten", property = "mten"),
             @Result(column = "mtwenty", property = "mtwenty"),
             @Result(column = "mthirty", property = "mthirty"),

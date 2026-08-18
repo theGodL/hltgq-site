@@ -47,4 +47,7 @@ public class SoilMoistureVO {
 
     /** 100 厘米土壤含水量 */
     private BigDecimal mhundred;
+
+    /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值（仅 monitoring 返回，history 为 null） */
+    private BigDecimal vol;
 }
