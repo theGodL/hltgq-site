@@ -70,11 +70,10 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "TRUNC(AVG(g.open_degree) FILTER (WHERE g.open_degree NOT IN (-999, -9991)), 2) AS open_degree, " +
             "TRUNC(AVG(g.up_z) FILTER (WHERE g.up_z NOT IN (-999, -9991)), 2) AS up_z, " +
             "TRUNC(AVG(g.down_z) FILTER (WHERE g.down_z NOT IN (-999, -9991)), 2) AS down_z, " +
-            "TRUNC(fq.q, 2) AS q, " +
-            "TRUNC(fq.tf, 2) AS tf " +
+            "TRUNC(fq.q, 2) AS q " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "LEFT JOIN (" +
-            "  SELECT f.site, date_trunc('hour', f.tm) AS hour, AVG(f.q) FILTER (WHERE f.q NOT IN (-999, -9991)) AS q, MAX(f.tf) FILTER (WHERE f.tf NOT IN (-999, -9991)) AS tf " +
+            "  SELECT f.site, date_trunc('hour', f.tm) AS hour, AVG(f.q) FILTER (WHERE f.q NOT IN (-999, -9991)) AS q " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  WHERE f.tm &gt;= #{startTime}::timestamp AND f.tm &lt;= #{endTime}::timestamp " +
             "  GROUP BY f.site, date_trunc('hour', f.tm)" +
@@ -86,7 +85,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "AND CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END IN " +
             "<foreach collection='gateNos' item='g2' open='(' separator=',' close=')'>#{g2}</foreach>" +
             "</if>" +
-            "GROUP BY date_trunc('hour', g.tm), g.site, CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END, fq.q, fq.tf " +
+            "GROUP BY date_trunc('hour', g.tm), g.site, CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END, fq.q " +
             "ORDER BY date_trunc('hour', g.tm)" +
             "</script>")
     @Results({
@@ -96,8 +95,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             @Result(column = "open_degree", property = "openDegree"),
             @Result(column = "up_z", property = "upZ"),
             @Result(column = "down_z", property = "downZ"),
-            @Result(column = "q", property = "q"),
-            @Result(column = "tf", property = "tf")
+            @Result(column = "q", property = "q")
     })
     List<GateMonitor> selectHourlyAggregated(@Param("siteId") String siteId,
                                               @Param("gateNos") List<String> gateNos,

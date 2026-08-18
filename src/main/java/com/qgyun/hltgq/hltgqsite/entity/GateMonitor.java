@@ -48,10 +48,6 @@ public class GateMonitor {
     @TableField(exist = false)
     private BigDecimal q;
 
-    /** 累计流量 (m³)，关联流量表 t_auto_hltgq_water_wt_nfo 的 tf（非本表字段） */
-    @TableField(exist = false)
-    private BigDecimal tf;
-
     /** 电压 (V)，关联电压表 t_auto_hltgq_water_vol_info 的 vol（非本表字段） */
     @TableField(exist = false)
     private BigDecimal vol;
@@ -128,9 +124,6 @@ public class GateMonitor {
 
     public BigDecimal getQ() { return q; }
     public void setQ(BigDecimal q) { this.q = q; }
-
-    public BigDecimal getTf() { return tf; }
-    public void setTf(BigDecimal tf) { this.tf = tf; }
 
     public BigDecimal getVol() { return vol; }
     public void setVol(BigDecimal vol) { this.vol = vol; }

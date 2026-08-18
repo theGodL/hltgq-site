@@ -351,16 +351,12 @@ tbody tr:hover td{background:#fafafa}
           <button class="btn btn-default" id="chart-reset-btn">重置</button>
         </div>
         <div class="chart-block">
-          <div class="chart-title">水位</div>
+          <div class="chart-title">水位 / 瞬时流量</div>
           <div id="chart-box" class="chart-box"></div>
         </div>
         <div class="chart-block">
           <div class="chart-title">开度</div>
           <div id="open-chart-box" class="chart-box"></div>
-        </div>
-        <div class="chart-block">
-          <div class="chart-title" id="flow-chart-title">累计流量</div>
-          <div id="flow-chart-box" class="chart-box"></div>
         </div>
       </div>
 
@@ -537,7 +533,6 @@ const HIST = { page: 1, size: 10, total: 0, rows: [], histType: 'waterLevel', op
 let HIST_DEVICES = []; // [{id, gateNo, deviceName}] 备用
 let chart = null;
 let openChart = null;
-let flowChart = null;
 
 const OPEN_COLORS = ['#FA8C16', '#1677FF', '#52C41A', '#722ED1', '#EB2F96', '#13C2C2', '#2F54EB', '#A0D911'];
 
@@ -550,14 +545,6 @@ function fmtAxisTm(v) {
   // 2026-07-22 18:00:00 -> 07-22 18:00
   const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
   return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : s;
-}
-
-function setDefaultDates() {
-  const now = new Date();
-  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
-  const e = fmtDate(now);
-  $('start-date').value = s;
-  $('end-date').value = e;
 }
 
 function setModalDefaultDates() {
@@ -786,7 +773,8 @@ async function query() {
 
 async function reset() {
   clearDev();
-  setDefaultDates();
+  $('start-date').value = '';
+  $('end-date').value = '';
   S.page = 1;
   await loadList();
 }
@@ -895,7 +883,6 @@ function closeModal(id) {
   if (id === 'detail-overlay') {
     if (chart) { chart.dispose(); chart = null; }
     if (openChart) { openChart.dispose(); openChart = null; }
-    if (flowChart) { flowChart.dispose(); flowChart = null; }
   }
   if (id === 'stats-overlay') {
     if (statsChart) { statsChart.dispose(); statsChart = null; }
@@ -940,7 +927,7 @@ function processExportRows(list) {
   const tmSet = new Set();
   const byGate = {};
   const waterByTm = {}; // tm -> {upZ, downZ}
-  const flowByTm = {};  // tm -> {tf, q}（站点级，与闸孔无关）
+  const qByTm = {};     // tm -> q（站点级，与闸孔无关）
 
   rows.forEach(r => {
     const tm = r.tm;
@@ -951,9 +938,7 @@ function processExportRows(list) {
     if (!waterByTm[tm]) waterByTm[tm] = { upZ: null, downZ: null };
     if (waterByTm[tm].upZ == null && r.upZ != null) waterByTm[tm].upZ = r.upZ;
     if (waterByTm[tm].downZ == null && r.downZ != null) waterByTm[tm].downZ = r.downZ;
-    if (!flowByTm[tm]) flowByTm[tm] = { tf: null, q: null };
-    if (flowByTm[tm].tf == null && r.tf != null) flowByTm[tm].tf = r.tf;
-    if (flowByTm[tm].q == null && r.q != null) flowByTm[tm].q = r.q;
+    if (qByTm[tm] == null && r.q != null) qByTm[tm] = r.q;
   });
 
   const times = [...tmSet].sort((a, b) => String(a).localeCompare(String(b)));
@@ -968,10 +953,9 @@ function processExportRows(list) {
       return (v === null || v === undefined || v === '') ? null : +v;
     }),
   }));
-  const tfData = times.map(t => (flowByTm[t]?.tf == null) ? null : +flowByTm[t].tf);
-  const qData = times.map(t => (flowByTm[t]?.q == null) ? null : +flowByTm[t].q);
+  const qData = times.map(t => (qByTm[t] == null) ? null : +qByTm[t]);
 
-  return { labels, upData, downData, openSeries, tfData, qData };
+  return { labels, upData, downData, openSeries, qData };
 }
 
 function emptyChart(inst, box, tip) {
@@ -983,16 +967,20 @@ function emptyChart(inst, box, tip) {
   return inst;
 }
 
-function renderWaterChart(labels, upData, downData) {
+/** 水位折线图（左轴）+ 瞬时流量折线图（右轴 m³/s，叠加展示）
+ *  水位与流量任一有数据即渲染；空值转 null 断线 */
+function renderWaterChart(labels, upData, downData, qData) {
   const box = $('chart-box');
   if (!chart) chart = echarts.init(box);
-  const has = labels.length && (upData.some(v => v != null) || downData.some(v => v != null));
-  if (!has) {
-    chart = emptyChart(chart, box, '暂无水位数据');
+  const hasWater = labels.length && (upData.some(v => v != null) || downData.some(v => v != null));
+  const hasQ = labels.length && qData.some(v => v != null && Number.isFinite(v));
+  if (!hasWater && !hasQ) {
+    chart = emptyChart(chart, box, '暂无水位及流量数据');
     return;
   }
   const upColor = '#5B8FF9';
   const downColor = '#91CAFF';
+  const qColor = '#52C41A';
   chart.setOption({
     title: { show: false },
     tooltip: {
@@ -1000,9 +988,19 @@ function renderWaterChart(labels, upData, downData) {
       backgroundColor: 'rgba(255,255,255,0.95)',
       borderColor: '#e8e8e8',
       textStyle: { color: '#333', fontSize: 13 },
+      formatter: params => {
+        const rows = (Array.isArray(params) ? params : [params]).map(p => {
+          if (p.value == null || p.value === '') return `${p.marker}${p.seriesName}：-`;
+          const v = +p.value;
+          if (!Number.isFinite(v)) return `${p.marker}${p.seriesName}：-`;
+          const unit = p.seriesName === '瞬时流量' ? ' m³/s' : ' m';
+          return `${p.marker}${p.seriesName}：${v.toFixed(2)}${unit}`;
+        });
+        return `${params[0].axisValue}<br/>` + rows.join('<br/>');
+      },
     },
     legend: {
-      data: ['闸前水位', '闸后水位'],
+      data: ['闸前水位', '闸后水位', '瞬时流量'],
       top: 4,
       textStyle: { fontSize: 12, color: '#666' },
     },
@@ -1015,19 +1013,30 @@ function renderWaterChart(labels, upData, downData) {
       axisLine: { lineStyle: { color: '#e8e8e8' } },
       axisTick: { show: false },
     },
-    yAxis: {
-      type: 'value',
-      name: '单位: m',
-      scale: true,
-      nameTextStyle: { color: '#999', fontSize: 12 },
-      axisLabel: { fontSize: 12, color: '#888' },
-      splitLine: { lineStyle: { color: '#f0f0f0' } },
-    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '水位 (m)',
+        scale: true,
+        nameTextStyle: { color: '#999', fontSize: 12 },
+        axisLabel: { fontSize: 12, color: '#888' },
+        splitLine: { lineStyle: { color: '#f0f0f0' } },
+      },
+      {
+        type: 'value',
+        name: '瞬时流量 (m³/s)',
+        scale: true,
+        nameTextStyle: { color: '#999', fontSize: 12 },
+        axisLabel: { fontSize: 12, color: '#888' },
+        splitLine: { show: false },
+      },
+    ],
     series: [
       {
         name: '闸前水位',
         type: 'line',
         data: upData,
+        yAxisIndex: 0,
         smooth: true,
         showSymbol: false,
         connectNulls: true,
@@ -1044,6 +1053,7 @@ function renderWaterChart(labels, upData, downData) {
         name: '闸后水位',
         type: 'line',
         data: downData,
+        yAxisIndex: 0,
         smooth: true,
         showSymbol: false,
         connectNulls: true,
@@ -1055,6 +1065,17 @@ function renderWaterChart(labels, upData, downData) {
             { offset: 1, color: 'rgba(145,202,255,0.02)' },
           ]),
         },
+      },
+      {
+        name: '瞬时流量',
+        type: 'line',
+        data: qData,
+        yAxisIndex: 1,
+        smooth: true,
+        showSymbol: false,
+        connectNulls: true,
+        lineStyle: { color: qColor, width: 2 },
+        itemStyle: { color: qColor },
       },
     ],
   }, true);
@@ -1117,77 +1138,6 @@ function renderOpenChart(labels, openSeries) {
     }),
   }, true);
   openChart.resize();
-}
-
-/** 累计流量折线图（样式对齐水位/开度图）。
- *  兜底：累计流量 tf 全为 NULL 时切换为瞬时流量 q，标题、Y 轴单位、Tooltip 同步调整为"流量 (m³/s)"；两者皆无则显示空态 */
-function renderFlowChart(labels, tfData, qData) {
-  const box = $('flow-chart-box');
-  const titleEl = $('flow-chart-title');
-  if (!flowChart) flowChart = echarts.init(box);
-  if (titleEl) titleEl.textContent = '累计流量';
-  const hasTf = tfData.some(v => v != null && Number.isFinite(v));
-  const hasQ = qData.some(v => v != null && Number.isFinite(v));
-  const data = hasTf ? tfData : (hasQ ? qData : null);
-  if (!labels.length || !data) {
-    flowChart = emptyChart(flowChart, box, '暂无流量数据');
-    return;
-  }
-  const useTf = !!hasTf;
-  const unit = useTf ? 'm³' : 'm³/s';
-  if (!useTf && titleEl) titleEl.textContent = '流量';
-  const color = '#52C41A';
-  flowChart.setOption({
-    title: { show: false },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: 'rgba(255,255,255,0.95)',
-      borderColor: '#e8e8e8',
-      textStyle: { color: '#333', fontSize: 13 },
-      valueFormatter: v => (v == null || !Number.isFinite(+v)) ? '-' : (+v === -9991 ? '--' : fmtN2(v) + ' ' + unit),
-    },
-    legend: {
-      data: [useTf ? '累计流量' : '瞬时流量'],
-      top: 4,
-      textStyle: { fontSize: 12, color: '#666' },
-    },
-    grid: { left: 12, right: 28, top: 40, bottom: 8, containLabel: true },
-    xAxis: {
-      type: 'category',
-      data: labels,
-      boundaryGap: false,
-      axisLabel: { fontSize: 11, color: '#888', rotate: 30 },
-      axisLine: { lineStyle: { color: '#e8e8e8' } },
-      axisTick: { show: false },
-    },
-    yAxis: {
-      type: 'value',
-      name: `单位: ${unit}`,
-      scale: true,
-      nameTextStyle: { color: '#999', fontSize: 12 },
-      axisLabel: { fontSize: 12, color: '#888' },
-      splitLine: { lineStyle: { color: '#f0f0f0' } },
-    },
-    series: [
-      {
-        name: useTf ? '累计流量' : '瞬时流量',
-        type: 'line',
-        data,
-        smooth: true,
-        showSymbol: false,
-        connectNulls: true,
-        lineStyle: { color, width: 2 },
-        itemStyle: { color },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(82,196,26,0.28)' },
-            { offset: 1, color: 'rgba(82,196,26,0.02)' },
-          ]),
-        },
-      },
-    ],
-  }, true);
-  flowChart.resize();
 }
 
 /** 弹窗类型下拉：选项文案 = 外层站点名 + 水位/开度/流量；入参 type=waterLevel|opening|flow */
@@ -1405,33 +1355,27 @@ async function reloadDetail() {
   if (!S.current || !S.current.siteId) return;
   const waterBox = $('chart-box');
   const openBox = $('open-chart-box');
-  const flowBox = $('flow-chart-box');
   setLoading(waterBox, true);
   setLoading(openBox, true);
-  setLoading(flowBox, true);
   try {
     if (!DETAIL.selected.length) {
       chart = emptyChart(chart, waterBox, '请选择闸孔');
       openChart = emptyChart(openChart, openBox, '请选择闸孔');
-      flowChart = emptyChart(flowChart, flowBox, '请选择闸孔');
       return;
     }
     const res = await fetch(`${API}/gate-monitor/export?${buildExportParams()}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    const { labels, upData, downData, openSeries, tfData, qData } = processExportRows(Array.isArray(data) ? data : []);
-    renderWaterChart(labels, upData, downData);
+    const { labels, upData, downData, openSeries, qData } = processExportRows(Array.isArray(data) ? data : []);
+    renderWaterChart(labels, upData, downData, qData);
     renderOpenChart(labels, openSeries);
-    renderFlowChart(labels, tfData, qData);
   } catch (e) {
     console.error(e);
     chart = emptyChart(chart, waterBox, '数据加载失败');
     openChart = emptyChart(openChart, openBox, '数据加载失败');
-    flowChart = emptyChart(flowChart, flowBox, '数据加载失败');
   } finally {
     setLoading(waterBox, false);
     setLoading(openBox, false);
-    setLoading(flowBox, false);
   }
 }
 
@@ -1451,7 +1395,6 @@ function bindModal() {
       requestAnimationFrame(() => {
         if (chart) chart.resize();
         if (openChart) openChart.resize();
-        if (flowChart) flowChart.resize();
         if (statsChart) statsChart.resize();
       });
     });
@@ -1467,7 +1410,6 @@ function bindModal() {
         requestAnimationFrame(() => {
           if (chart) chart.resize();
           if (openChart) openChart.resize();
-          if (flowChart) flowChart.resize();
         });
       }
     });
@@ -1498,7 +1440,6 @@ function bindModal() {
   window.addEventListener('resize', () => {
     if (chart) chart.resize();
     if (openChart) openChart.resize();
-    if (flowChart) flowChart.resize();
     if (statsChart) statsChart.resize();
   });
 }
@@ -1928,7 +1869,6 @@ function bindStatsModal() {
 }
 
 async function init() {
-  setDefaultDates();
   setMthDefaultDates();
   bindModal();
   bindDevSelect();

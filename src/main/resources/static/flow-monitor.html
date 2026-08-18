@@ -475,14 +475,6 @@ async function loadFlowSites() {
   }
 }
 
-function setDefaultDates() {
-  const now = new Date();
-  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
-  const e = fmtDate(now);
-  $('start-date').value = s;
-  $('end-date').value = e;
-}
-
 function setModalDefaultDates() {
   const now = new Date();
   const s = $('start-date').value || fmtDate(new Date(now - 7 * 24 * 3600e3));
@@ -548,7 +540,8 @@ async function query() {
 
 async function reset() {
   clearSite();
-  setDefaultDates();
+  $('start-date').value = '';
+  $('end-date').value = '';
   S.page = 1;
   await loadList();
 }
@@ -562,7 +555,7 @@ function renderTable() {
   tbody.innerHTML = S.rows.map((r, i) => `
     <tr>
       <td>${fmtN(r.stnm)}</td>
-      <td>${r.stcd ? fmtN(r.stcd) : ''}</td>
+      <td>${r.stcd ? fmtN(r.stcd) : '--'}</td>
       <td>${fmtN2(r.q)}</td>
       <td>${fmtN2(r.tf)}</td>
       <td>${fmtTm(r.tm)}</td>
@@ -993,7 +986,6 @@ function bindDistrictTabs() {
 }
 
 function init() {
-  setDefaultDates();
   setMthDefaultDates();
   bindSiteSelect();
   bindMthSiteSelect();
