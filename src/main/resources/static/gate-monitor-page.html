@@ -410,7 +410,7 @@ tbody tr:hover td{background:#fafafa}
         <label style="color:#666;white-space:nowrap">日期</label>
         <input type="date" id="stats-date">
         <label style="color:#666;white-space:nowrap">时间点</label>
-        <select id="stats-time"></select>
+        <select id="stats-time" style="min-width:80px;width:80px"></select>
         <button class="btn btn-primary" id="stats-query-btn">查询</button>
         <button class="btn btn-default" id="stats-reset-btn">重置</button>
       </div>
@@ -1717,7 +1717,7 @@ function buildHalfHourOptions() {
       const hh = pad(h);
       const mm = pad(m);
       const val = `${hh}:${mm}`;
-      html += `<option value="${val}">${val}（半小时）</option>`;
+      html += `<option value="${val}">${val}</option>`;
     }
   }
   sel.innerHTML = html;
