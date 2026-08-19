@@ -56,7 +56,7 @@ public interface DashboardMapper {
      *
      * @param site 站点主键 ID（必填）
      */
-    @Select("SELECT id, code, site, device, content, level, status, time " +
+    @Select("SELECT id, code, site, device, content, \"level\", status, time " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_alert\" " +
             "WHERE site = #{site} AND status IN ('#1#', '#2#', '#3#') " +
             "ORDER BY time DESC")
