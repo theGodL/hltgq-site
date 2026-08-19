@@ -31,4 +31,7 @@ public class IrrigationWaterLevelVO {
 
     /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
     private BigDecimal vol;
+
+    /** 在线状态：以站点表 zebpsu 状态判断（#1# 在线 / #2# 离线）。水位站均为库上站点，不按采集时间断联 */
+    private Boolean isOnline;
 }

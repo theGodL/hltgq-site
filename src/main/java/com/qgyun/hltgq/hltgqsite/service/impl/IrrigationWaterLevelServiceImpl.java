@@ -65,9 +65,38 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         // 分页查询
         List<IrrigationWaterLevelVO> records = irrigationWaterLevelMapper.selectPage(
                 dateWrapper, stcdFilter, limit, offset);
+        // 在线状态：水位站均为库上站点，以站点表 zebpsu 状态判断（#1# 在线 / #2# 离线），不走时间断联；
+        // 站点表未查到状态的站点默认在线（不误报离线）
+        if (!records.isEmpty()) {
+            Set<String> stcds = new HashSet<>();
+            for (IrrigationWaterLevelVO vo : records) {
+                if (vo.getStcd() != null) stcds.add(vo.getStcd().trim());
+            }
+            Map<String, Boolean> onlineByStcd = new HashMap<>();
+            if (!stcds.isEmpty()) {
+                QueryWrapper<StStinfo> wrapper = new QueryWrapper<>();
+                wrapper.in("iofhpi", stcds);
+                for (StStinfo s : stStinfoMapper.selectList(wrapper)) {
+                    if (s.getStcd() != null) {
+                        onlineByStcd.put(s.getStcd().trim(), isZebpsuOnline(s.getZebpsu()));
+                    }
+                }
+            }
+            for (IrrigationWaterLevelVO vo : records) {
+                vo.setIsOnline(vo.getStcd() == null
+                        ? Boolean.TRUE
+                        : onlineByStcd.getOrDefault(vo.getStcd().trim(), Boolean.TRUE));
+            }
+        }
         page.setRecords(records);
 
         return page;
+    }
+
+    /** zebpsu 站点状态：#1# 在线、#2# 离线；兼容 "#1#"/"1"/"#1" 格式，null 或未知值默认在线 */
+    private boolean isZebpsuOnline(String zebpsu) {
+        if (zebpsu == null) return true;
+        return !"2".equals(zebpsu.trim().replace("#", ""));
     }
 
     @Override

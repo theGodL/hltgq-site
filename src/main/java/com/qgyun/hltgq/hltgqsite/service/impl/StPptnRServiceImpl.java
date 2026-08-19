@@ -132,8 +132,17 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         List<GqRainfallVO> vos = rows.stream()
                 .filter(row -> gqStationVisible(row, stcd))
                 .map(this::toGqRainfallVO).collect(Collectors.toList());
-        // 在线状态：最新采集时间断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）
-        vos.forEach(vo -> vo.setIsOnline(!isStale(vo.getTm(), vo.getStnm())));
+        // 在线状态：水库站用站点表 zebpsu 状态（#1# 在线 / #2# 离线），不走时间断联（水库站报文频率特殊，水位页面为时段列表语义）；
+        // 其余站按时间断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）
+        Map<String, Boolean> reservoirOnline = loadReservoirOnlineStatus(rows);
+        vos.forEach(vo -> {
+            String key = vo.getStcd() == null ? null : vo.getStcd().trim();
+            if (key != null && reservoirOnline.containsKey(key)) {
+                vo.setIsOnline(reservoirOnline.get(key));
+            } else {
+                vo.setIsOnline(!isStale(vo.getTm(), vo.getStnm()));
+            }
+        });
         // 填充昨日雨量 dailyDyp（分页前一次批量查询，避免翻页重复计算）
         fillDailyDyp(vos);
         return toPage(vos, page, size);
@@ -203,6 +212,36 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         long threshold = MQTT_STATION_NAMES.contains(stnm) ? MQTT_STALE_MINUTES : RBT_STALE_MINUTES;
         // 毫秒级严格大于，与前端 Date.now() - t > staleMs 语义完全一致（toMinutes 向下取整会导致边界差一分钟误判）
         return Duration.between(tm, LocalDateTime.now()).toMillis() > threshold * 60_000L;
+    }
+
+    /**
+     * 水库站在线状态：仅查本次行涉及的水库站（STCD/名称双重识别），取站点表 zebpsu 状态；
+     * 站点表未查到状态记录的按在线处理（默认在线，不误报离线）
+     */
+    private Map<String, Boolean> loadReservoirOnlineStatus(List<Map<String, Object>> rows) {
+        Set<String> stcds = new HashSet<>();
+        for (Map<String, Object> row : rows) {
+            if (isReservoirStation(row)) {
+                Object v = row.get("stcd");
+                if (v != null) stcds.add(String.valueOf(v).trim());
+            }
+        }
+        Map<String, Boolean> map = new HashMap<>();
+        if (stcds.isEmpty()) return map;
+        QueryWrapper<StStinfo> wrapper = new QueryWrapper<>();
+        wrapper.in("iofhpi", stcds);
+        for (StStinfo s : stStinfoMapper.selectList(wrapper)) {
+            if (s.getStcd() != null) {
+                map.put(s.getStcd().trim(), isZebpsuOnline(s.getZebpsu()));
+            }
+        }
+        return map;
+    }
+
+    /** zebpsu 站点状态：#1# 在线、#2# 离线；兼容 "#1#"/"1"/"#1" 格式，null 或未知值默认在线 */
+    private boolean isZebpsuOnline(String zebpsu) {
+        if (zebpsu == null) return true;
+        return !"2".equals(zebpsu.trim().replace("#", ""));
     }
 
     private BigDecimal toBigDecimal(Object val) {

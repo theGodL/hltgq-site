@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -37,6 +38,27 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     /** -999 = 设备不存在：视为缺失不返回（-9991 设备异常保留，透传由前端展示 '--'） */
     private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
+
+    /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
+    private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
+            "南山寺节制闸", "渠首进水闸", "渠首电站防洪闸", "双庙湖节制闸"
+    ));
+
+    /** MQTT 站断联阈值：报文 10 分钟一次，30 分钟无更新判离线 */
+    private static final long MQTT_STALE_MINUTES = 30;
+    /** RabbitMQ 站断联阈值：报文 1 小时一次，70 分钟无更新判离线 */
+    private static final long RBT_STALE_MINUTES = 70;
+
+    /**
+     * 断联判定（与前端 isStaleTm 规则一致）：MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线；
+     * 无时间值（null）视为在线；时间在未来（时钟偏差）也视为在线
+     */
+    private boolean isStale(LocalDateTime tm, String siteName) {
+        if (tm == null) return false;
+        long threshold = MQTT_STATION_NAMES.contains(siteName) ? MQTT_STALE_MINUTES : RBT_STALE_MINUTES;
+        // 毫秒级严格大于，与前端 Date.now() - t > staleMs 语义一致（toMinutes 向下取整会导致边界差一分钟误判）
+        return Duration.between(tm, LocalDateTime.now()).toMillis() > threshold * 60_000L;
+    }
 
     private static boolean isMissing(BigDecimal v) {
         return v != null && v.compareTo(DEVICE_MISSING) == 0;
@@ -141,6 +163,8 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                     ? cumulativeFlow.setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setLon(holes.stream().map(GateMonitor::getLon).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setLat(holes.stream().map(GateMonitor::getLat).filter(Objects::nonNull).findFirst().orElse(null));
+            // 在线状态：最新采集时间断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）
+            vo.setIsOnline(!isStale(latestTm, siteName));
             vo.setHoles(holeDataList);
             result.add(vo);
         }

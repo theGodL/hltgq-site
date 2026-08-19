@@ -44,6 +44,9 @@ public class GateMonitoringVO {
     /** 站点纬度（站点表 bviiio_y） */
     private BigDecimal lat;
 
+    /** 在线状态：断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线），与监测页面标红规则一致 */
+    private Boolean isOnline;
+
     /** 各闸孔数据（按闸孔号排序） */
     private List<GateHoleData> holes;
 }
