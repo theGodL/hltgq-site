@@ -76,6 +76,16 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             "寺前", "河图铺", "下前河", "鲤鱼墩", "弥陀", "白帽"
     );
 
+    /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
+    private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
+            "南山寺节制闸", "渠首进水闸", "渠首电站防洪闸", "双庙湖节制闸"
+    ));
+
+    /** MQTT 站断联阈值：报文 10 分钟一次，30 分钟无更新判离线 */
+    private static final long MQTT_STALE_MINUTES = 30;
+    /** RabbitMQ 站断联阈值：报文 1 小时一次，70 分钟无更新判离线 */
+    private static final long RBT_STALE_MINUTES = 70;
+
     @Override
     public List<StPptnR> latestPerStation() {
         return baseMapper.selectLatestPerStation();
@@ -122,6 +132,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         List<GqRainfallVO> vos = rows.stream()
                 .filter(row -> gqStationVisible(row, stcd))
                 .map(this::toGqRainfallVO).collect(Collectors.toList());
+        // 在线状态：最新采集时间断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）
+        vos.forEach(vo -> vo.setIsOnline(!isStale(vo.getTm(), vo.getStnm())));
         // 填充昨日雨量 dailyDyp（分页前一次批量查询，避免翻页重复计算）
         fillDailyDyp(vos);
         return toPage(vos, page, size);
@@ -180,6 +192,17 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         // 电压：取电压表最新一条（SQL 已关联）
         vo.setVol(toBigDecimal(row.get("vol")));
         return vo;
+    }
+
+    /**
+     * 断联判定（与前端 isStaleTm 规则一致）：MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线；
+     * 无时间值（null）视为在线（不判离线）；时间在未来（时钟偏差）也视为在线
+     */
+    private boolean isStale(LocalDateTime tm, String stnm) {
+        if (tm == null) return false;
+        long threshold = MQTT_STATION_NAMES.contains(stnm) ? MQTT_STALE_MINUTES : RBT_STALE_MINUTES;
+        // 毫秒级严格大于，与前端 Date.now() - t > staleMs 语义完全一致（toMinutes 向下取整会导致边界差一分钟误判）
+        return Duration.between(tm, LocalDateTime.now()).toMillis() > threshold * 60_000L;
     }
 
     private BigDecimal toBigDecimal(Object val) {

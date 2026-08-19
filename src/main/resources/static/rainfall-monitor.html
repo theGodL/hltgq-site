@@ -98,6 +98,8 @@ tbody tr:hover td{background:#fafafa}
 tbody tr.total-row td{background:#e6f4ff;font-weight:600;color:#000000d9}
 tbody tr.total-row:hover td{background:#e6f4ff}
 .empty{text-align:center;color:#bbb;padding:48px;font-size:14px}
+/* 站报文中断：最新监测时间滞后超过阈值时红色标识 */
+.tm-stale{color:#ff4d4f;font-weight:600}
 .act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s}
 .act-btn:hover{opacity:.7}
 
@@ -411,6 +413,22 @@ const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isMissing
 const fmtTm = v => {
   if (v === null || v === undefined || v === '') return '-';
   return String(v).replace('T', ' ').replace(/\.\d+$/, '');
+};
+/** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：MQTT 报文 10 分钟一次、30 分钟无更新判中断；RabbitMQ 1 小时一次、70 分钟判中断 */
+const MQTT_SITES = ['南山寺节制闸', '渠首进水闸', '渠首电站防洪闸', '双庙湖节制闸'];
+const MQTT_STALE_MS = 30 * 60 * 1000;
+const RBT_STALE_MS = 70 * 60 * 1000;
+const parseTm = v => {
+  if (v === null || v === undefined || v === '') return null;
+  const d = new Date(String(v).replace(' ', 'T'));
+  return isNaN(d.getTime()) ? null : d;
+};
+/** 最新监测时间是否中断：MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判中断；无时间值返回 false（'-' 不标红） */
+const isStaleTm = (v, siteName) => {
+  const d = parseTm(v);
+  if (!d) return false;
+  const staleMs = MQTT_SITES.includes(String(siteName || '')) ? MQTT_STALE_MS : RBT_STALE_MS;
+  return Date.now() - d.getTime() > staleMs;
 };
 const fmtRain = v => {
   if (v === null || v === undefined || v === '') return '';
@@ -832,7 +850,7 @@ function renderIrrList() {
   tbody.innerHTML = IRR.rows.map((r, i) => `
     <tr>
       <td>${fmtN(r.stnm)}</td>
-      <td>${fmtTm(r.tm)}</td>
+      <td${isStaleTm(r.tm, r.stnm) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
       <td>${fmtN(r.drp)}</td>
       <td>${fmtN(r.rain1h)}</td>
       <td>${fmtN(r.rain3h)}</td>

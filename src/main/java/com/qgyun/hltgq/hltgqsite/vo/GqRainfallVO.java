@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -52,4 +53,9 @@ public class GqRainfallVO {
 
     /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
     private BigDecimal vol;
+
+    /** 在线状态：最新采集时间断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）。
+     *  仅实时列表接口（/gq-rainfall）评估，历史查询等场景不输出 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Boolean isOnline;
 }
