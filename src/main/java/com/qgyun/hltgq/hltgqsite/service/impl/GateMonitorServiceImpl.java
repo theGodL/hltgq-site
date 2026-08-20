@@ -38,6 +38,11 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     /** -999 = 设备不存在：视为缺失不返回（-9991 设备异常保留，透传由前端展示 '--'） */
     private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
+    /** -9991 = 设备异常：透传由前端展示 '--'；与 -999 一样视为无有效值 */
+    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
+
+    /** 流量同批次对齐窗口（分钟）：报文按批次入库，流量 tm 应在开度/水位最新时刻 ±20 分钟内 */
+    private static final long FLOW_ALIGN_MINUTES = 20;
 
     /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
     private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
@@ -62,6 +67,11 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     private static boolean isMissing(BigDecimal v) {
         return v != null && v.compareTo(DEVICE_MISSING) == 0;
+    }
+
+    /** 是否有效值：null、-999（设备不存在）、-9991（设备异常）、0 均视为无效（0 多为设备异常兜底上报） */
+    private static boolean isEffective(BigDecimal v) {
+        return v != null && v.signum() != 0 && !isMissing(v) && v.compareTo(DEVICE_ERROR) != 0;
     }
 
     @Autowired
@@ -108,6 +118,25 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                     .max(LocalDateTime::compareTo)
                     .orElse(null);
 
+            // 最新时刻开度/水位有效性：latestTm 时刻的开度、闸前/闸后水位全部无有效值时
+            // 视为该时刻设备监测数据不可用（null/-999/-9991/0），流量一并置空展示，
+            // 避免客户看到"最新时刻开度水位为 0 或 -- 而流量有值"误判设备数据采集不准
+            boolean latestDataValid = holes.stream()
+                    .filter(h -> h.getTm() != null && h.getTm().equals(latestTm))
+                    .anyMatch(h -> isEffective(h.getOpenDegree())
+                            || isEffective(h.getUpZ()) || isEffective(h.getDownZ()));
+
+            // 流量同批次取值：报文按批次入库，流量 tm 应在开度/水位最新时刻 ±20 分钟窗口内；
+            // 窗口内取最新一条（受 startTime/endTime 范围约束），窗口外无记录视为该批次无流量数据
+            Map<String, Object> flowRow = latestTm == null ? null
+                    : waterFlowMapper.selectLatestInWindow(siteId,
+                            latestTm.minusMinutes(FLOW_ALIGN_MINUTES),
+                            latestTm.plusMinutes(FLOW_ALIGN_MINUTES),
+                            startTime, endTime);
+            BigDecimal flowQ = flowRow == null ? null : toBigDecimal(flowRow.get("q"));
+            BigDecimal flowYtf = flowRow == null ? null : toBigDecimal(flowRow.get("ytf"));
+            BigDecimal flowTtf = flowRow == null ? null : toBigDecimal(flowRow.get("ttf"));
+
             // 闸前/闸后水位：分别取最新一条有效值（-999 设备不存在视为无值跳过；-9991 设备异常保留）
             Comparator<GateMonitor> byTmDesc = Comparator.comparing(GateMonitor::getTm,
                     Comparator.nullsLast(LocalDateTime::compareTo));
@@ -138,17 +167,15 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             vo.setTm(latestTm);
             vo.setUpZ(latestUpZ != null ? latestUpZ.getUpZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setDownZ(latestDownZ != null ? latestDownZ.getDownZ().setScale(2, java.math.RoundingMode.DOWN) : null);
-            // 流量、电压与经纬度为站点级数据，各孔子查询结果相同，取第一条有效值（-999 设备不存在跳过；-9991 设备异常保留）
-            vo.setQ(holes.stream().map(GateMonitor::getQ)
-                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null));
+            // 流量（瞬时/累计）取同批次窗口内的流量表记录（-999 设备不存在视为无值跳过；-9991 设备异常保留）；
+            // 电压与经纬度为站点级数据，各孔子查询结果相同，取第一条有效值
+            vo.setQ(flowQ == null || isMissing(flowQ) ? null : flowQ);
             vo.setVol(holes.stream().map(GateMonitor::getVol)
                     .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null));
-            // 累计流量（站点级）：默认（无起始时间）= 末行 ytf（当年 1月1日 0点起至最新数据时间）；
+            // 累计流量（站点级）：默认（无起始时间）= 同批次 ytf（当年 1月1日 0点起至最新数据时间）；
             // 指定起始时间 = 时间框范围累计 = ttf(范围内末行) − ttf(起点前最近一行)，起点前无积分行基准按 0
-            BigDecimal ytf = holes.stream().map(GateMonitor::getYtf)
-                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null);
-            BigDecimal ttf = holes.stream().map(GateMonitor::getTtf)
-                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null);
+            BigDecimal ytf = flowYtf == null || isMissing(flowYtf) ? null : flowYtf;
+            BigDecimal ttf = flowTtf == null || isMissing(flowTtf) ? null : flowTtf;
             BigDecimal prevTtf = holes.stream().map(GateMonitor::getPrevTtf)
                     .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null);
             BigDecimal cumulativeFlow;
@@ -161,6 +188,11 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             }
             vo.setCumulativeFlow(cumulativeFlow != null
                     ? cumulativeFlow.setScale(2, java.math.RoundingMode.DOWN) : null);
+            // 最新时刻开度/水位无有效值 → 瞬时/累计流量不展示，与开度/水位显示保持一致
+            if (!latestDataValid) {
+                vo.setQ(null);
+                vo.setCumulativeFlow(null);
+            }
             vo.setLon(holes.stream().map(GateMonitor::getLon).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setLat(holes.stream().map(GateMonitor::getLat).filter(Objects::nonNull).findFirst().orElse(null));
             // 在线状态：最新采集时间断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）

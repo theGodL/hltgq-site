@@ -105,11 +105,12 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     /**
      * 各闸孔最新一条数据（按站点 + 闸孔分组，取最新 TM）
      * <p>使用 PostgreSQL DISTINCT ON 对 (site, gate_no) 去重，每组取 tm 最大的一条。
-     * <p>性能注意：流量 q 不能用相关子查询（每输出行执行一次全表扫描，接口会慢到 30 秒），
-     * 改为 LEFT JOIN 预聚合子查询（流量表仅扫描一次）；电压 vol 同样用预聚合子查询
-     * 关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID，取最新一条）。
-     * <p>累计流量取数：fq 返回范围内末行的 q/ytf/ttf；fq_prev（仅指定起始时间时拼接）
-     * 返回起始时间前最近一条 ttf 非空行的 ttf，供 Service 层相减计算范围累计流量。
+     * <p>性能注意：流量取值已移出本查询——Service 层按闸门表最新时刻 ±20 分钟窗口
+     * 单独查询流量表（WaterFlowMapper.selectLatestInWindow，走 (site, tm) 索引 LIMIT 1），
+     * 本查询不再关联流量表（原 fq 预聚合子查询每站全表扫描一次，结果已无人使用，已移除）。
+     * 电压 vol 用预聚合子查询关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID，取最新一条）。
+     * <p>累计流量取数：fq_prev（仅指定起始时间时拼接）返回起始时间前最近一条 ttf 非空行的 ttf，
+     * 供 Service 层相减计算范围累计流量。
      * <p>数据清洗：库中存在 gate_no='0' 且开度为 NULL 的采集占位行，
      * 直接映射为 '1' 会与真实闸孔 1 撞号（holes 中出现重复编号），
      * 因此先过滤该类脏行，再将 gate_no 归一化（'0'→'1'）后在子查询输出列上分组，
@@ -121,23 +122,15 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     @Select("<script>" +
             "SELECT DISTINCT ON (t.site, t.gate_no) " +
             "t.site, t.site_name, t.lon, t.lat, t.gate_no, t.tm, " +
-            "t.open_degree, t.up_z, t.down_z, t.status, TRUNC(t.q, 3) AS q, t.vol, " +
-            "t.ytf, t.ttf<if test='startTime != null'>, t.prev_ttf</if> " +
+            "t.open_degree, t.up_z, t.down_z, t.status, t.vol" +
+            "<if test='startTime != null'>, t.prev_ttf</if> " +
             "FROM ( " +
             "  SELECT g.site, s.zzkaec AS site_name, s.bviiio_x AS lon, s.bviiio_y AS lat, " +
             "  CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, g.tm, " +
             "  TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status, " +
-            "  fq.q, fq.ytf, fq.ttf, fv.vol<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
+            "  fv.vol<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "  INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
-            "  LEFT JOIN ( " +
-            "    SELECT DISTINCT ON (f.site) f.site, f.q, f.ytf, f.ttf " +
-            "    FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
-            "    WHERE 1=1 " +
-            "    <if test='startTime != null'>AND f.tm &gt;= #{startTime} </if>" +
-            "    <if test='endTime != null'>AND f.tm &lt;= #{endTime} </if>" +
-            "    ORDER BY f.site, f.tm DESC " +
-            "  ) fq ON fq.site = g.site " +
             "  LEFT JOIN ( " +
             "    SELECT DISTINCT ON (v.site) v.site, v.vol " +
             "    FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
@@ -173,10 +166,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             @Result(column = "up_z", property = "upZ"),
             @Result(column = "down_z", property = "downZ"),
             @Result(column = "status", property = "status"),
-            @Result(column = "q", property = "q"),
             @Result(column = "vol", property = "vol"),
-            @Result(column = "ytf", property = "ytf"),
-            @Result(column = "ttf", property = "ttf"),
             @Result(column = "prev_ttf", property = "prevTtf")
     })
     List<GateMonitor> selectLatestPerHole(@Param("site") String site,

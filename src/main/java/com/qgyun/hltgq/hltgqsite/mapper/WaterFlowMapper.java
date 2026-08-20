@@ -141,6 +141,34 @@ public interface WaterFlowMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
+     * 闸站监测同批次流量取数：取指定站点在 [windowStart, windowEnd] 窗口内的最新一条流量记录
+     * <p>报文按批次入库，流量（t_auto_hltgq_water_wt_nfo）tm 应与闸门表最新时刻接近（±20 分钟）；
+     * 窗口内取 tm 最新一条，窗口外无记录说明该批次无流量数据（由 Service 层置 null）。
+     *
+     * @param siteId      站点 UUID
+     * @param windowStart 窗口起点（闸门表最新时刻 − 20 分钟）
+     * @param windowEnd   窗口终点（闸门表最新时刻 + 20 分钟）
+     * @param startTime   查询起始时间（可选，与闸门表范围过滤保持一致）
+     * @param endTime     查询截止时间（可选）
+     */
+    @Select("<script>" +
+            "SELECT TRUNC(f.q, 3) AS q, f.ytf, f.ttf " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "WHERE f.site = #{siteId} " +
+            "<if test='windowStart != null'>AND f.tm &gt;= #{windowStart} </if>" +
+            "<if test='windowEnd != null'>AND f.tm &lt;= #{windowEnd} </if>" +
+            "<if test='startTime != null'>AND f.tm &gt;= #{startTime} </if>" +
+            "<if test='endTime != null'>AND f.tm &lt;= #{endTime} </if>" +
+            "ORDER BY f.tm DESC LIMIT 1" +
+            "</script>")
+    Map<String, Object> selectLatestInWindow(
+            @Param("siteId") String siteId,
+            @Param("windowStart") LocalDateTime windowStart,
+            @Param("windowEnd") LocalDateTime windowEnd,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
+
+    /**
      * 闸站累计流量取数（月累计 + 年累计，单站单行）
      * <p>year_flow = 最新非空 ytf（当年 1月1日 0点起累计）；
      * total_flow = 最新非空 ttf（总累计）；
