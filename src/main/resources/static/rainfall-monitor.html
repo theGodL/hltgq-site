@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>雨量监测</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1394,10 +1395,11 @@ function renderChart(hours) {
     },
     legend: {
       data: ['实时雨量'],
-      bottom: 0,
+      top: 4,
       textStyle: { fontSize: 12, color: '#666' },
     },
-    grid: { left: 16, right: 24, top: 40, bottom: 48, containLabel: true },
+    grid: { left: 16, right: 24, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+    dataZoom: buildChartDataZoom(),
     xAxis: {
       type: 'category',
       data: xData,

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>取水量监测</title>
 <script src="/hltgq-site/lib/echarts.min.js"></script>
+<script src="/hltgq-site/lib/chart-data-zoom.js"></script>
 <script src="/hltgq-site/lib/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -366,7 +367,8 @@ function drawChart(records, dim) {
         return `${p[0].axisValue}<br/><span style="color:#1677ff">●</span> 水量：<b>${v != null ? Number(v).toLocaleString() + ' m³' : '无数据'}</b>`;
       }
     },
-    grid: { left: 10, right: 20, top: 40, bottom: 55, containLabel: true },
+    grid: { left: 10, right: 20, top: 40, bottom: chartType === 'line' ? CHART_DATA_ZOOM_GRID_BOTTOM : 55, containLabel: true },
+    ...(chartType === 'line' ? { dataZoom: buildChartDataZoom() } : {}),
     xAxis: {
       type: 'category', data: xData, boundaryGap: chartType === 'bar',
       axisLabel: { rotate: 30, fontSize: 11, color: '#888' },

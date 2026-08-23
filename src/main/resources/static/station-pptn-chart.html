@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>站点监测 - 雨量统计</title>
 <script src="/hltgq-site/lib/echarts.min.js"></script>
+<script src="/hltgq-site/lib/chart-data-zoom.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -219,7 +220,8 @@ function drawChart(records) {
         return `${p[0].axisValue}<br/><span style="color:#1677ff">●</span> 降雨量：<b>${v != null ? v + ' mm' : '无数据'}</b>`;
       }
     },
-    grid: { left: 10, right: 20, top: 40, bottom: 55, containLabel: true },
+    grid: { left: 10, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+    dataZoom: buildChartDataZoom(),
     xAxis: {
       type: 'category',
       data: hours.map(h => h.slice(5, 16)),

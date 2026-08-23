@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>墒情监测</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-data-zoom.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -860,7 +861,8 @@ function renderMoistureChart(labels, series) {
       itemHeight: 8,
       textStyle: { fontSize: 12, color: '#666' },
     },
-    grid: { left: 12, right: 28, top: 48, bottom: 28, containLabel: true },
+    grid: { left: 12, right: 28, top: 48, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+    dataZoom: buildChartDataZoom(),
     xAxis: {
       type: 'category',
       data: labels,

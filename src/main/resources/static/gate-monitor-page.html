@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>闸站监测</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-data-zoom.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -1026,7 +1027,8 @@ function renderWaterChart(labels, upData, downData, qData) {
       top: 4,
       textStyle: { fontSize: 12, color: '#666' },
     },
-    grid: { left: 12, right: 28, top: 40, bottom: 8, containLabel: true },
+    grid: { left: 12, right: 28, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+    dataZoom: buildChartDataZoom(),
     xAxis: {
       type: 'category',
       data: labels,
@@ -1128,7 +1130,8 @@ function renderOpenChart(labels, openSeries) {
       type: 'scroll',
       textStyle: { fontSize: 12, color: '#666' },
     },
-    grid: { left: 12, right: 28, top: 40, bottom: 8, containLabel: true },
+    grid: { left: 12, right: 28, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+    dataZoom: buildChartDataZoom(),
     xAxis: {
       type: 'category',
       data: labels,
@@ -1854,7 +1857,8 @@ function renderStatsChart(stations) {
         return `${meta.station}<br/>${label}：${(+y).toFixed(2)} m`;
       },
     },
-    grid: { left: 16, right: 24, top: 44, bottom: 40, containLabel: true },
+    grid: { left: 16, right: 24, top: 44, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+    dataZoom: buildChartDataZoom(),
     xAxis: {
       type: 'category',
       data: stationNames,
