@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -169,15 +170,42 @@ public class GateMonitorController {
     }
 
     /**
-     * 闸站召测：对固定四站（北干渠进水闸、南干渠进水闸、毕岭节制闸、汪元节制闸）下发召测指令
-     * <p>转发至召测服务（recall.base-url，内网服务），异步触发——code=0 仅代表指令已发出，
-     * RTU 应答后自动加报数据入库，前端可稍后刷新查看最新数据。
+     * 闸站召测：对四站（北干渠进水闸、南干渠进水闸、毕岭节制闸、汪元节制闸）下发召测指令
+     * <p>异步触发模式：本接口立即返回，召测转发在后台线程执行（服务端 /api/recall 同步挂起
+     * 等待 RTU 应答入库，窗口 5 分钟 + 1 分钟余量）；前端随后轮询 /recall-status 直至收敛
+     * （判定时间在服务端：CONFIRMED = 数据已入库 / IDLE = 超时）。
      *
-     * @return success（是否全部成功）+ results（每站 stcd/siteName/code/msg）
+     * @param stcds 待召测站码列表（JSON 数组，null/空 = 四站全部；重试仅传上次失败的站）
+     * @return success=true + msg（指令已下发）
      */
     @PostMapping("/recall")
-    public Map<String, Object> recall() {
-        log.info("收到闸站召测请求");
-        return gateMonitorService.recallStations();
+    public Map<String, Object> recall(@RequestBody(required = false) List<String> stcds) {
+        log.info("收到闸站召测请求：stcds={}", stcds);
+        return gateMonitorService.recallStations(stcds);
+    }
+
+    /**
+     * 闸站召测状态：聚合查询四站状态（页面加载/刷新后恢复按钮状态用）
+     * <p>转发至召测服务 /api/recall/status，聚合规则：任一 RECALLING → 召测中；
+     * 全部 CONFIRMED → 数据确认；否则空闲（IDLE）。
+     *
+     * @return status（聚合态：RECALLING/CONFIRMED/IDLE）+ stations（每站 stcd/siteName/status/msg）
+     */
+    @GetMapping("/recall-status")
+    public Map<String, Object> recallStatus() {
+        log.info("收到闸站召测状态查询（刷新恢复）");
+        return gateMonitorService.recallStatus();
+    }
+
+    /**
+     * 闸站召测确认复位：对四站全调 /api/recall/confirm（幂等），清除服务端确认状态
+     * <p>用户点击绿色"数据确认"后调用（先调本接口，再刷新图表数据，按钮复位为召测样式）。
+     *
+     * @return success + results（每站 stcd/siteName/code/msg）
+     */
+    @PostMapping("/recall-confirm")
+    public Map<String, Object> recallConfirm() {
+        log.info("收到闸站召测确认复位");
+        return gateMonitorService.recallConfirm();
     }
 }

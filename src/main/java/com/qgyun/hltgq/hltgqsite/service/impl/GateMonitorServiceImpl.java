@@ -29,6 +29,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Service
@@ -62,19 +66,46 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         RECALL_STATIONS.put("9000000006", "汪元节制闸");
     }
 
+    /** 召测四站 stcd（固定顺序，与 RECALL_STATIONS 键一致） */
+    private static final List<String> RECALL_STCDS = Arrays.asList(
+            "9000000001", "9000000002", "9000000005", "9000000006");
+
     /** 召测服务地址（内网服务，无鉴权） */
     @Value("${recall.base-url:http://10.68.18.4:8081}")
     private String recallBaseUrl;
 
-    /** 召测转发 HTTP 客户端（连接 5s / 读取 10s 超时，避免接口悬挂） */
+    /**
+     * 召测转发 HTTP 客户端：连接 5s / 读取 400s。
+     * 召测转发在后台线程执行，需完整等满服务端同步挂起窗口（360 秒 = 5 分钟 + 1 分钟余量），
+     * 读超时取 400s 略大于窗口，避免任务提前断开导致日志与前端轮询结果不一致。
+     */
     private final RestTemplate recallRestTemplate = createRecallRestTemplate();
 
     private static RestTemplate createRecallRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
-        factory.setReadTimeout(10000);
+        factory.setReadTimeout(400000);
         return new RestTemplate(factory);
     }
+
+    /** 召测并行线程池：四站各自独立下发/等待，互不阻塞（文档：四站互不影响，并发最多 4 个挂起连接） */
+    private static final ExecutorService RECALL_EXECUTOR = Executors.newFixedThreadPool(4, r -> {
+        Thread t = new Thread(r, "recall-worker");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** 召测触发线程池：整轮召测异步执行（每轮 1 个任务，内部四站并行转发）。
+     * 展示层接口立即返回（避免网关 60s 超时），前端随后轮询 /recall-status 直至收敛 */
+    private static final ExecutorService RECALL_TRIGGER_EXECUTOR = Executors.newFixedThreadPool(4, r -> {
+        Thread t = new Thread(r, "recall-trigger");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** 本端召测中标记：异步任务刚提交、服务端尚未收到指令的瞬间，/recall-status 以此兜底返回
+     * RECALLING，防止前端轮询误判为失败；任务结束（含异常）即清除，交回服务端真实状态判定 */
+    private final Set<String> localRecalling = ConcurrentHashMap.newKeySet();
 
     /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
     private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
@@ -491,52 +522,165 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     }
 
     @Override
-    public Map<String, Object> recallStations() {
-        // 逐站转发召测指令（每站 1 次内网 HTTP 调用，毫秒级）；code=0 仅代表指令已发出，RTU 应答后数据自动加报入库
-        log.info("召测开始：目标四站 {}，召测服务 {}", RECALL_STATIONS, recallBaseUrl);
-        List<Map<String, Object>> results = new ArrayList<>();
-        boolean allOk = true;
-        for (Map.Entry<String, String> e : RECALL_STATIONS.entrySet()) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("stcd", e.getKey());
-            item.put("siteName", e.getValue());
-            String url = recallBaseUrl + "/api/recall";
-            try {
-                Map<String, Object> body = new HashMap<>();
-                body.put("stcd", e.getKey());
-                body.put("afn", "37");
-                log.info("召测指令下发：stcd={} ({})，afn=37，POST {}", e.getKey(), e.getValue(), url);
-                ResponseEntity<Map> resp = recallRestTemplate.postForEntity(url, body, Map.class);
-                Map<?, ?> data = resp.getBody();
-                Object code = data != null ? data.get("code") : null;
-                boolean ok = resp.getStatusCode().is2xxSuccessful()
-                        && code != null && "0".equals(String.valueOf(code));
-                item.put("code", code != null ? code : -1);
-                item.put("msg", data != null && data.get("msg") != null
-                        ? String.valueOf(data.get("msg"))
-                        : "HTTP " + resp.getStatusCode().value());
-                if (ok) {
-                    log.info("召测指令已发出：stcd={} ({})，code={}，msg={}",
-                            e.getKey(), e.getValue(), code, item.get("msg"));
-                } else {
-                    log.warn("召测失败：stcd={} ({})，HTTP {}，code={}，msg={}",
-                            e.getKey(), e.getValue(), resp.getStatusCode().value(), code, item.get("msg"));
-                }
-                if (!ok) allOk = false;
-            } catch (Exception ex) {
-                // 连接失败/超时：记录异常信息，不中断其余站点
-                item.put("code", -1);
-                item.put("msg", ex.getMessage());
-                log.warn("召测异常：stcd={} ({})，{}", e.getKey(), e.getValue(), ex.toString());
-                allOk = false;
-            }
-            results.add(item);
+    public Map<String, Object> recallStations(List<String> stcds) {
+        // 异步触发模式（展示层接口不能同步挂起：网关 60s 超时会 504）：立即返回，实际转发在后台线程
+        // 执行，前端随即轮询 /recall-status 直至收敛（判定时间在服务端）
+        List<String> targets = (stcds == null || stcds.isEmpty()) ? RECALL_STCDS : new ArrayList<>(stcds);
+        log.info("收到召测指令（异步触发）：目标 {} 站 {}", targets.size(), targets);
+        localRecalling.addAll(targets);
+        RECALL_TRIGGER_EXECUTOR.submit(() -> recallStationsSync(targets));
+        Map<String, Object> ret = new LinkedHashMap<>();
+        ret.put("success", true);
+        ret.put("msg", "召测指令已下发，等待 RTU 应答（最长 5 分钟）");
+        return ret;
+    }
+
+    /** 整轮召测后台执行：四站并行转发 /api/recall（服务端同步挂起等待 RTU 应答入库，窗口 360s） */
+    private void recallStationsSync(List<String> targets) {
+        try {
+            log.info("召测开始：目标 {} 站 {}，召测服务 {}", targets.size(), targets, recallBaseUrl);
+            List<Map<String, Object>> results = recallAll(targets, this::recallOne);
+            boolean allOk = results.stream().allMatch(r -> "0".equals(String.valueOf(r.get("code"))));
+            log.info("召测结束：success={}，各站结果={}", allOk, results);
+        } finally {
+            // 任务结束（含异常）：清除本端标记，后续轮询以服务端真实状态（CONFIRMED/IDLE）为准
+            localRecalling.removeAll(targets);
         }
-        log.info("召测结束：success={}，各站结果={}", allOk, results);
+    }
+
+    /**
+     * 多站并行转发：先把所有任务提交到线程池（先物化再 join），避免 Stream map 惰性求值导致逐站串行
+     * （否则每站等前一个完成，5 分钟级超时下四站最长 20 分钟）
+     */
+    private List<Map<String, Object>> recallAll(List<String> stcds,
+                                                java.util.function.Function<String, Map<String, Object>> caller) {
+        List<CompletableFuture<Map<String, Object>>> futures = stcds.stream()
+                .map(stcd -> CompletableFuture.supplyAsync(() -> caller.apply(stcd), RECALL_EXECUTOR))
+                .collect(Collectors.toList()); // 关键：先物化，让所有站同时提交，真正并行
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
+    }
+    /** 单站召测：POST /api/recall 并等待返回（读超时 400s > 服务端 360s 窗口）；code=0 = 数据已入库 */
+    private Map<String, Object> recallOne(String stcd) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("stcd", stcd);
+        item.put("siteName", RECALL_STATIONS.getOrDefault(stcd, stcd));
+        String url = recallBaseUrl + "/api/recall";
+        try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("stcd", stcd);
+            body.put("afn", "37");
+            log.info("召测指令下发：stcd={} ({})，afn=37，POST {}", stcd, item.get("siteName"), url);
+            ResponseEntity<Map> resp = recallRestTemplate.postForEntity(url, body, Map.class);
+            Map<?, ?> data = resp.getBody();
+            Object code = data != null ? data.get("code") : null;
+            boolean ok = resp.getStatusCode().is2xxSuccessful()
+                    && code != null && "0".equals(String.valueOf(code));
+            item.put("code", code != null ? code : -1);
+            item.put("msg", data != null && data.get("msg") != null
+                    ? String.valueOf(data.get("msg"))
+                    : "HTTP " + resp.getStatusCode().value());
+            // 透传应答明细（elapsedSeconds 为字符串契约，ctime 仅展示/排查用，不做时间比较）
+            if (data != null && data.get("data") != null) {
+                item.put("data", data.get("data"));
+            }
+            if (ok) {
+                log.info("召测成功：stcd={} ({})，code={}，应答={}", stcd, item.get("siteName"), code,
+                        data != null ? data.get("data") : "");
+            } else {
+                log.warn("召测失败：stcd={} ({})，HTTP {}，code={}，msg={}",
+                        stcd, item.get("siteName"), resp.getStatusCode().value(), code, item.get("msg"));
+            }
+        } catch (Exception ex) {
+            // 连接失败/超时/服务端异常：记录异常信息，不中断其余站点（并行各站独立）
+            item.put("code", -1);
+            item.put("msg", ex.getMessage());
+            log.warn("召测异常：stcd={} ({})，{}", stcd, item.get("siteName"), ex.toString());
+        }
+        return item;
+    }
+
+    @Override
+    public Map<String, Object> recallStatus() {
+        // 聚合查询四站状态（页面加载/刷新后恢复按钮状态用）：并行转发 /api/recall/status
+        List<Map<String, Object>> stations = recallAll(RECALL_STCDS, this::recallStatusOne);
+        // 异步触发刚提交、后台任务尚未把指令送达服务端的瞬间，服务端仍为 IDLE：
+        // 本端召测中标记内的站按 RECALLING 上报，避免前端轮询误判为失败
+        for (Map<String, Object> s : stations) {
+            if ("IDLE".equals(s.get("status")) && localRecalling.contains(String.valueOf(s.get("stcd")))) {
+                s.put("status", "RECALLING");
+            }
+        }
+        // 聚合规则：任一 RECALLING → 召测中；全部 CONFIRMED → 数据确认；否则空闲
+        String aggregate;
+        if (stations.stream().anyMatch(s -> "RECALLING".equals(s.get("status")))) {
+            aggregate = "RECALLING";
+        } else if (stations.stream().allMatch(s -> "CONFIRMED".equals(s.get("status")))) {
+            aggregate = "CONFIRMED";
+        } else {
+            aggregate = "IDLE";
+        }
+        log.info("召测状态聚合查询：status={}，各站={}", aggregate, stations);
+        Map<String, Object> ret = new LinkedHashMap<>();
+        ret.put("status", aggregate);
+        ret.put("stations", stations);
+        return ret;
+    }
+
+    /** 单站状态查询：GET /api/recall/status?stcd=xxx（查询失败按 IDLE 处理，按钮恢复可点击） */
+    private Map<String, Object> recallStatusOne(String stcd) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("stcd", stcd);
+        item.put("siteName", RECALL_STATIONS.getOrDefault(stcd, stcd));
+        item.put("status", "IDLE");
+        try {
+            String url = recallBaseUrl + "/api/recall/status?stcd=" + stcd;
+            ResponseEntity<Map> resp = recallRestTemplate.getForEntity(url, Map.class);
+            Map<?, ?> data = resp.getBody();
+            Object code = data != null ? data.get("code") : null;
+            Object status = "0".equals(String.valueOf(code)) && data.get("data") instanceof Map
+                    ? ((Map<?, ?>) data.get("data")).get("status") : null;
+            item.put("status", status != null ? String.valueOf(status) : "IDLE");
+            item.put("msg", data != null && data.get("msg") != null
+                    ? String.valueOf(data.get("msg")) : "HTTP " + resp.getStatusCode().value());
+        } catch (Exception ex) {
+            log.warn("召测状态查询异常：stcd={} ({})，{}", stcd, item.get("siteName"), ex.toString());
+        }
+        return item;
+    }
+
+    @Override
+    public Map<String, Object> recallConfirm() {
+        // 四站全调确认复位（/api/recall/confirm 幂等）：用户点击"数据确认"后调用
+        List<Map<String, Object>> results = recallAll(RECALL_STCDS, this::recallConfirmOne);
+        boolean allOk = results.stream().allMatch(r -> "0".equals(String.valueOf(r.get("code"))));
+        log.info("召测确认复位：success={}，各站={}", allOk, results);
         Map<String, Object> ret = new LinkedHashMap<>();
         ret.put("success", allOk);
         ret.put("results", results);
         return ret;
+    }
+
+    /** 单站确认复位：POST /api/recall/confirm?stcd=xxx（幂等，可重复调用） */
+    private Map<String, Object> recallConfirmOne(String stcd) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("stcd", stcd);
+        item.put("siteName", RECALL_STATIONS.getOrDefault(stcd, stcd));
+        try {
+            String url = recallBaseUrl + "/api/recall/confirm?stcd=" + stcd;
+            ResponseEntity<Map> resp = recallRestTemplate.postForEntity(url, null, Map.class);
+            Map<?, ?> data = resp.getBody();
+            Object code = data != null ? data.get("code") : null;
+            item.put("code", code != null ? code : -1);
+            item.put("msg", data != null && data.get("msg") != null
+                    ? String.valueOf(data.get("msg")) : "HTTP " + resp.getStatusCode().value());
+        } catch (Exception ex) {
+            item.put("code", -1);
+            item.put("msg", ex.getMessage());
+            log.warn("召测确认复位异常：stcd={} ({})，{}", stcd, item.get("siteName"), ex.toString());
+        }
+        return item;
     }
 
     /** 2 位小数截断（null 安全，累计流量统一 2 位精度） */

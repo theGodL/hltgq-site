@@ -56,6 +56,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .btn-default{background:#fff;color:#333;border-color:#d9d9d9}
 .btn-default:hover{color:#1677ff;border-color:#1677ff}
 .btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+/* 召测状态机：数据确认（绿色） */
+.btn-success{background:#52c41a;color:#fff;border-color:#52c41a}
+.btn-success:hover{background:#73d13d;border-color:#73d13d}
 .btn.is-loading{color:transparent !important;position:relative}
 .btn.is-loading::after{
   content:'';
@@ -415,6 +418,7 @@ tbody tr:hover td{background:#fafafa}
         <button class="btn btn-primary" id="stats-query-btn">查询</button>
         <button class="btn btn-default" id="stats-reset-btn">重置</button>
         <button class="btn btn-primary" id="stats-recall-btn" style="margin-left:6px">召测</button>
+        <span id="stats-recall-tip" hidden style="color:#e74c3c;font-size:13px;margin-left:8px;white-space:nowrap"></span>
       </div>
       <div class="stats-legend">
         <span class="dot-up"><i></i>闸前水位</span>
@@ -1482,8 +1486,8 @@ function onTableClick(e) {
 
 /* ===== 流量计算参数（南山寺节制闸、渠首进水闸、渠首电站防洪闸、双庙湖节制闸） ===== */
 const DISCHARGE_SITES = ['南山寺节制闸', '渠首进水闸', '渠首电站防洪闸', '双庙湖节制闸'];
-/* 编辑开关：当前全角色只读（输入框只读样式 + 保存按钮隐藏）；后续接入权限功能后按角色动态开启 */
-const DISCHARGE_EDITABLE = false;
+/* 编辑开关：已开放编辑（输入框可编辑 + 显示保存按钮）；后端写开关 sluice-discharge.write-enabled 已同步开启 */
+const DISCHARGE_EDITABLE = true;
 const DISCHARGE = { row: null }; // 当前弹窗站点（保存时使用）
 const DC_FIELDS = [
   { id: 'dc-full-open-free', key: 'fullOpenFreeCoeff', label: '流量系数（全开自由流）' },
@@ -1858,8 +1862,7 @@ function renderStatsChart(stations) {
         return `${meta.station}<br/>${label}：${(+y).toFixed(2)} m`;
       },
     },
-    grid: { left: 16, right: 24, top: 44, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
-    dataZoom: buildChartDataZoom(),
+    grid: { left: 16, right: 24, top: 44, bottom: 24, containLabel: true },
     xAxis: {
       type: 'category',
       data: stationNames,
@@ -1925,25 +1928,176 @@ async function reloadStatsChart() {
   }
 }
 
-/** 召测四站（RabbitMQ 站，1 小时报文一次）：北干渠进水闸、南干渠进水闸、毕岭节制闸、汪元节制闸 */
-async function recallStations() {
+/* ===== 召测状态机（前端轮询模式）=====
+   [召测] --点击--> 发指令(短请求) --> [召测中(灰)] --前端每5s轮询 /recall-status--> [数据确认(绿)]
+   --点击确认--> 调 /recall-confirm + 刷新图表 --> [召测]
+   超时判定在服务端（5 分钟窗口，时间对比在服务器）：轮询到 IDLE 才复位 + 按钮右侧红字
+   "上次召测5分钟内未得到最新报文"；重试仅对失败站；弹窗打开时调 /recall-status 恢复状态 */
+const RECALL_WAIT_MS = 15 * 1000;       // 召测指令请求短等待：服务端立即响应则直接收敛；挂起中则本地中断转状态轮询
+const RECALL_STATUS_POLL_MS = 5 * 1000; // 状态轮询间隔（判定在服务端：RECALLING 直到应答入库 / 5 分钟超时）
+const RECALL_POLL_MAX = 80;             // 轮询次数上限（5 分钟窗口 + 余量），防止服务端状态异常时无限轮询
+const RECALL_TIP_TIMEOUT = '上次召测5分钟内未得到最新报文'; // 召测超时后的按钮右侧红字提示
+const RECALL = { state: 'idle', failedStcds: [], suppressRestore: false };
+let recallStatusTimer = null;
+
+/** 按状态切换召测按钮外观：idle 召测(蓝) / recalling 召测中(灰禁用) / confirmed 数据确认(绿) */
+function setRecallState(state) {
+  RECALL.state = state;
+  const btn = $('stats-recall-btn');
+  if (!btn) return;
+  if (state === 'recalling') {
+    btn.className = 'btn btn-default';
+    btn.disabled = true;
+    btn.textContent = '召测中';
+  } else if (state === 'confirmed') {
+    btn.className = 'btn btn-success';
+    btn.disabled = false;
+    btn.textContent = '数据确认';
+  } else { // idle
+    btn.className = 'btn btn-primary';
+    btn.disabled = false;
+    btn.textContent = '召测';
+  }
+}
+
+function stopRecallStatusTimer() {
+  if (recallStatusTimer) { clearInterval(recallStatusTimer); recallStatusTimer = null; }
+}
+
+/** 按钮右侧红字提示（召测超时未得到最新报文时显示，新召测/成功时清除） */
+function showRecallTip(text) {
+  const tip = $('stats-recall-tip');
+  if (!tip) return;
+  tip.textContent = text;
+  tip.hidden = false;
+}
+function hideRecallTip() {
+  const tip = $('stats-recall-tip');
+  if (tip) tip.hidden = true;
+}
+
+/** 查询召测状态（四站），返回 {status, stations:[{stcd,siteName,status}]}；查询失败返回 null */
+async function fetchRecallStatus() {
   try {
-    const res = await fetch(`${API}/gate-monitor/recall`, { method: 'POST' });
+    const res = await fetch(`${API}/gate-monitor/recall-status`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    const failed = (data && Array.isArray(data.results) ? data.results : [])
-      .filter(r => String(r.code) !== '0')
-      .map(r => r.siteName || r.stcd);
-    if (!data || !data.success || failed.length) {
-      showToast(failed.length ? `召测失败：${failed.join('、')}` : '召测失败');
+    return data && Array.isArray(data.stations) ? data : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * 轮询收敛判定（以服务端每站状态为准，时间对比在服务端）：
+ * 目标站任一 RECALLING → 继续轮询；全部 CONFIRMED → 绿；
+ * 有失败（IDLE）→ 复位 + 红字（部分成功 toast 注明"成功站已入库"），失败站记录供提示。
+ * 返回 true = 已收敛停止轮询，false = 继续轮询
+ */
+function handleRecallStatusTick(statusData, targets) {
+  const stations = statusData && Array.isArray(statusData.stations) ? statusData.stations : [];
+  if (!stations.length) return false; // 查询异常：继续轮询
+  const targetSet = targets && targets.length ? new Set(targets) : null;
+  const mine = targetSet ? stations.filter(s => targetSet.has(String(s.stcd))) : stations;
+  if (!mine.length) return false;
+  const failed = mine.filter(s => String(s.status) !== 'CONFIRMED');
+  if (failed.some(s => String(s.status) === 'RECALLING')) return false; // 窗口内继续等
+  if (failed.length === 0) {
+    // 目标站全部确认入库：变绿"数据确认"，等待用户点击确认刷新
+    RECALL.failedStcds = [];
+    RECALL.suppressRestore = false;
+    hideRecallTip();
+    setRecallState('confirmed');
+    return true;
+  }
+  // 全部失败 / 部分成功（无站还在窗口内）：复位 + 红字，失败站记录供提示
+  RECALL.failedStcds = failed.map(s => String(s.stcd));
+  const failedNames = failed.map(s => s.siteName || s.stcd).join('、');
+  showToast(failed.length < mine.length
+    ? `召测失败：${failedNames}（成功站已入库，刷新可见）`
+    : `召测失败：${failedNames}`);
+  showRecallTip(RECALL_TIP_TIMEOUT); // 服务端判定超时未得到最新报文：按钮右侧红字提示
+  RECALL.suppressRestore = false;
+  setRecallState('idle');
+  return true;
+}
+
+/** 启动状态轮询（立即查一次 + 每 5s 查询），收敛后自动停止；targets 为空/null = 四站全部 */
+function startRecallStatusPolling(targets) {
+  stopRecallStatusTimer();
+  let polls = 0;
+  const tick = async () => {
+    const d = await fetchRecallStatus();
+    if (!d) {
+      // 查询异常：次数保护后兜底复位（正常网络下不会触发）
+      if (++polls > RECALL_POLL_MAX) { stopRecallStatusTimer(); showRecallTip(RECALL_TIP_TIMEOUT); setRecallState('idle'); }
       return;
     }
-    // 召测为异步触发：code=0 仅代表指令已发出，RTU 应答后自动加报入库，立即刷新图表展示最新数据
-    showToast('召测指令已发送，数据入库后自动刷新');
+    if (handleRecallStatusTick(d, targets)) stopRecallStatusTimer();
+  };
+  tick();
+  recallStatusTimer = setInterval(tick, RECALL_STATUS_POLL_MS);
+}
+
+/** 弹窗打开时恢复按钮状态：CONFIRMED → 绿；RECALLING → 灰 + 轮询直到收敛；IDLE → 召测 */
+async function restoreRecallState() {
+  const d = await fetchRecallStatus();
+  if (RECALL.suppressRestore) return; // 用户已主动发起新召测：迟到的恢复结果不覆盖当前状态
+  if (!d) return; // 查询失败：保持现状，不误报
+  if (d.status === 'CONFIRMED') { stopRecallStatusTimer(); hideRecallTip(); setRecallState('confirmed'); return; }
+  if (d.status !== 'RECALLING') { setRecallState('idle'); return; } // IDLE：未召测或已复位，无红字
+  stopRecallStatusTimer();
+  setRecallState('recalling');
+  startRecallStatusPolling(null); // 恢复场景目标为四站全部
+}
+
+/** 召测按钮点击：idle 触发召测，confirmed 确认数据并刷新图表 */
+async function onRecallClick() {
+  if (RECALL.state === 'confirmed') {
+    // 数据确认：先调 /recall-confirm（四站幂等复位，文档⑤），再刷新图表展示最新数据
+    try {
+      const res = await fetch(`${API}/gate-monitor/recall-confirm`, { method: 'POST' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (e) {
+      console.error(e);
+    }
+    // 召测数据为最新时刻：切到最近半小时时间点，确保刷新后能看到新数据
+    setStatsDefaultFilters();
     await reloadStatsChart();
+    setRecallState('idle');
+    return;
+  }
+  if (RECALL.state === 'recalling') return; // 召测中禁用（按钮已 disabled，双保险）
+  stopRecallStatusTimer(); // 先停掉旧的恢复/状态轮询，避免其查询结果与新召测互相干扰
+  RECALL.suppressRestore = true; // 抑制弹窗打开时未返回的恢复查询结果，防止覆盖本次召测状态
+  hideRecallTip(); // 发起新召测：清除上次超时红字提示
+  setRecallState('recalling'); // 立即置灰，防止短等待期间重复点击
+  // 点击"召测"始终四站全量召测（失败站记录仅用于失败提示，不缩小召测范围）
+  const stcds = [];
+  const controller = new AbortController();
+  const waitTimer = setTimeout(() => controller.abort(), RECALL_WAIT_MS);
+  try {
+    const res = await fetch(`${API}/gate-monitor/recall`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(stcds),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    // 指令已发出：不论服务端立即返回还是挂起中，统一以状态轮询收尾（判定在服务端）
+    startRecallStatusPolling(null);
   } catch (e) {
-    console.error(e);
-    showToast('召测失败，请重试');
+    if (e && e.name === 'AbortError') {
+      // 本地短等超时：服务端仍在 5 分钟窗口内处理，转状态轮询
+      startRecallStatusPolling(null);
+    } else {
+      // 服务不可达/HTTP 错误：复位并提示（失败站记录保留，供下次重试）
+      showToast('召测失败，请重试');
+      showRecallTip(RECALL_TIP_TIMEOUT);
+      RECALL.suppressRestore = false;
+      setRecallState('idle');
+    }
+  } finally {
+    clearTimeout(waitTimer);
   }
 }
 
@@ -1951,6 +2105,7 @@ function openStatsModal() {
   setStatsDefaultFilters();
   openModal('stats-overlay');
   requestAnimationFrame(() => reloadStatsChart());
+  restoreRecallState(); // 恢复召测按钮状态（页面刷新后不丢：RECALLING 灰 / CONFIRMED 绿 / IDLE 召测）
 }
 
 function bindStatsModal() {
@@ -1961,7 +2116,7 @@ function bindStatsModal() {
     setStatsDefaultFilters();
     await reloadStatsChart();
   });
-  bindAsyncClick($('stats-recall-btn'), recallStations);
+  $('stats-recall-btn')?.addEventListener('click', onRecallClick);
 }
 
 async function init() {
