@@ -9,9 +9,12 @@ import com.qgyun.hltgq.hltgqsite.vo.GateDeviceVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,6 +27,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/gate-monitor")
 public class GateMonitorController {
+
+    private static final Logger log = LoggerFactory.getLogger(GateMonitorController.class);
 
     @Autowired
     private GateMonitorMapper gateMonitorMapper;
@@ -161,5 +166,18 @@ public class GateMonitorController {
             @RequestParam String siteId,
             @RequestParam(defaultValue = "12") int months) {
         return gateMonitorService.monthlyCumulativeFlow(siteId, months);
+    }
+
+    /**
+     * 闸站召测：对固定四站（北干渠进水闸、南干渠进水闸、毕岭节制闸、汪元节制闸）下发召测指令
+     * <p>转发至召测服务（recall.base-url，内网服务），异步触发——code=0 仅代表指令已发出，
+     * RTU 应答后自动加报数据入库，前端可稍后刷新查看最新数据。
+     *
+     * @return success（是否全部成功）+ results（每站 stcd/siteName/code/msg）
+     */
+    @PostMapping("/recall")
+    public Map<String, Object> recall() {
+        log.info("收到闸站召测请求");
+        return gateMonitorService.recallStations();
     }
 }

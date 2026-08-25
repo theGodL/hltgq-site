@@ -70,4 +70,13 @@ public interface GateMonitorService {
      * @return 每月一个数据点（时间升序，最早在前），月内无 ttf 数据时累计为 null
      */
     List<GateMonthCumulativeFlowVO> monthlyCumulativeFlow(String siteId, int months);
+
+    /**
+     * 闸站召测：对固定四站（北干渠进水闸、南干渠进水闸、毕岭节制闸、汪元节制闸）下发召测指令
+     * <p>转发至召测服务（recall.base-url），异步触发——code=0 仅代表指令已发出，
+     * RTU 应答后自动加报数据入库，前端可稍后刷新查看最新数据。
+     *
+     * @return success（是否全部成功）+ results（每站 stcd/siteName/code/msg）
+     */
+    Map<String, Object> recallStations();
 }

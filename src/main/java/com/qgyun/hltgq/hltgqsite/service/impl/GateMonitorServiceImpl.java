@@ -13,8 +13,14 @@ import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -27,6 +33,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class GateMonitorServiceImpl implements GateMonitorService {
+
+    private static final Logger log = LoggerFactory.getLogger(GateMonitorServiceImpl.class);
 
     /**
      * 闸站图表固定七站（按展示顺序）：
@@ -43,6 +51,30 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     /** 流量同批次对齐窗口（分钟）：报文按批次入库，流量 tm 应在开度/水位最新时刻 ±20 分钟内 */
     private static final long FLOW_ALIGN_MINUTES = 20;
+
+    /** 召测四站（stcd → 站名）：仅 RabbitMQ 四站支持召测，报文 1 小时一次 */
+    private static final Map<String, String> RECALL_STATIONS = new LinkedHashMap<>();
+
+    static {
+        RECALL_STATIONS.put("9000000001", "北干渠进水闸");
+        RECALL_STATIONS.put("9000000002", "南干渠进水闸");
+        RECALL_STATIONS.put("9000000005", "毕岭节制闸");
+        RECALL_STATIONS.put("9000000006", "汪元节制闸");
+    }
+
+    /** 召测服务地址（内网服务，无鉴权） */
+    @Value("${recall.base-url:http://10.68.18.4:8081}")
+    private String recallBaseUrl;
+
+    /** 召测转发 HTTP 客户端（连接 5s / 读取 10s 超时，避免接口悬挂） */
+    private final RestTemplate recallRestTemplate = createRecallRestTemplate();
+
+    private static RestTemplate createRecallRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(10000);
+        return new RestTemplate(factory);
+    }
 
     /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
     private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
@@ -456,6 +488,55 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             result.add(vo);
         }
         return result;
+    }
+
+    @Override
+    public Map<String, Object> recallStations() {
+        // 逐站转发召测指令（每站 1 次内网 HTTP 调用，毫秒级）；code=0 仅代表指令已发出，RTU 应答后数据自动加报入库
+        log.info("召测开始：目标四站 {}，召测服务 {}", RECALL_STATIONS, recallBaseUrl);
+        List<Map<String, Object>> results = new ArrayList<>();
+        boolean allOk = true;
+        for (Map.Entry<String, String> e : RECALL_STATIONS.entrySet()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("stcd", e.getKey());
+            item.put("siteName", e.getValue());
+            String url = recallBaseUrl + "/api/recall";
+            try {
+                Map<String, Object> body = new HashMap<>();
+                body.put("stcd", e.getKey());
+                body.put("afn", "37");
+                log.info("召测指令下发：stcd={} ({})，afn=37，POST {}", e.getKey(), e.getValue(), url);
+                ResponseEntity<Map> resp = recallRestTemplate.postForEntity(url, body, Map.class);
+                Map<?, ?> data = resp.getBody();
+                Object code = data != null ? data.get("code") : null;
+                boolean ok = resp.getStatusCode().is2xxSuccessful()
+                        && code != null && "0".equals(String.valueOf(code));
+                item.put("code", code != null ? code : -1);
+                item.put("msg", data != null && data.get("msg") != null
+                        ? String.valueOf(data.get("msg"))
+                        : "HTTP " + resp.getStatusCode().value());
+                if (ok) {
+                    log.info("召测指令已发出：stcd={} ({})，code={}，msg={}",
+                            e.getKey(), e.getValue(), code, item.get("msg"));
+                } else {
+                    log.warn("召测失败：stcd={} ({})，HTTP {}，code={}，msg={}",
+                            e.getKey(), e.getValue(), resp.getStatusCode().value(), code, item.get("msg"));
+                }
+                if (!ok) allOk = false;
+            } catch (Exception ex) {
+                // 连接失败/超时：记录异常信息，不中断其余站点
+                item.put("code", -1);
+                item.put("msg", ex.getMessage());
+                log.warn("召测异常：stcd={} ({})，{}", e.getKey(), e.getValue(), ex.toString());
+                allOk = false;
+            }
+            results.add(item);
+        }
+        log.info("召测结束：success={}，各站结果={}", allOk, results);
+        Map<String, Object> ret = new LinkedHashMap<>();
+        ret.put("success", allOk);
+        ret.put("results", results);
+        return ret;
     }
 
     /** 2 位小数截断（null 安全，累计流量统一 2 位精度） */

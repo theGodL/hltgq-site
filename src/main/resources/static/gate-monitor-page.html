@@ -414,6 +414,7 @@ tbody tr:hover td{background:#fafafa}
         <select id="stats-time" style="min-width:80px;width:80px"></select>
         <button class="btn btn-primary" id="stats-query-btn">查询</button>
         <button class="btn btn-default" id="stats-reset-btn">重置</button>
+        <button class="btn btn-primary" id="stats-recall-btn" style="margin-left:6px">召测</button>
       </div>
       <div class="stats-legend">
         <span class="dot-up"><i></i>闸前水位</span>
@@ -1924,6 +1925,28 @@ async function reloadStatsChart() {
   }
 }
 
+/** 召测四站（RabbitMQ 站，1 小时报文一次）：北干渠进水闸、南干渠进水闸、毕岭节制闸、汪元节制闸 */
+async function recallStations() {
+  try {
+    const res = await fetch(`${API}/gate-monitor/recall`, { method: 'POST' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const failed = (data && Array.isArray(data.results) ? data.results : [])
+      .filter(r => String(r.code) !== '0')
+      .map(r => r.siteName || r.stcd);
+    if (!data || !data.success || failed.length) {
+      showToast(failed.length ? `召测失败：${failed.join('、')}` : '召测失败');
+      return;
+    }
+    // 召测为异步触发：code=0 仅代表指令已发出，RTU 应答后自动加报入库，立即刷新图表展示最新数据
+    showToast('召测指令已发送，数据入库后自动刷新');
+    await reloadStatsChart();
+  } catch (e) {
+    console.error(e);
+    showToast('召测失败，请重试');
+  }
+}
+
 function openStatsModal() {
   setStatsDefaultFilters();
   openModal('stats-overlay');
@@ -1938,6 +1961,7 @@ function bindStatsModal() {
     setStatsDefaultFilters();
     await reloadStatsChart();
   });
+  bindAsyncClick($('stats-recall-btn'), recallStations);
 }
 
 async function init() {
