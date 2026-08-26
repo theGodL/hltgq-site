@@ -29,7 +29,7 @@ public interface SoilMoistureMapper {
      * <p>电压 vol 关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID = n.site），
      * 取筛选时间范围内最新一条，无数据为 null。
      *
-     * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部
+     * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部（仅返回监测类型含墒情 #7# 的站点）
      * @param startTime 起始时间（含，可选）
      * @param endTime   截止时间（不含，可选）
      */
@@ -58,6 +58,9 @@ public interface SoilMoistureMapper {
             "    ORDER BY v.site, v.tm DESC " +
             "  ) fv ON fv.site = n.site " +
             "  WHERE 1=1 " +
+            "  <if test='stcds == null or stcds.size() == 0'>" +
+            "  AND s.epjutj LIKE '%#7#%' " +
+            "  </if>" +
             "  <if test='stcds != null and stcds.size() > 0'>" +
             "  AND (n.stcd IN " +
             "  <foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
@@ -183,7 +186,8 @@ public interface SoilMoistureMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 墒情监测全部站点（表中有数据即视为墒情站，站点标识 = COALESCE(stcd, site)）
+     * 墒情监测全部站点（站点标识 = COALESCE(stcd, site)，MQTT 站点无 stcd 时以 site 主键兜底；
+     * 仅保留监测类型含墒情 #7# 的站点）
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，函数表达式（COALESCE）会报
      * "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"，故子查询先物化 skey。
      */
@@ -192,6 +196,7 @@ public interface SoilMoistureMapper {
             "  SELECT COALESCE(n.stcd, n.site) AS skey, COALESCE(s.zzkaec, n.stcd, n.site) AS name " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
+            "  WHERE s.epjutj LIKE '%#7#%' " +
             ") t " +
             "ORDER BY t.skey")
     @Results({

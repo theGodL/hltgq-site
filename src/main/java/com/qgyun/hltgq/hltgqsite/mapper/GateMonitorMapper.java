@@ -17,11 +17,12 @@ import java.util.Map;
 public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
 
     /**
-     * 有闸门数据的站点列表（关联站点表获取名称）
+     * 有闸门数据的站点列表（关联站点表获取名称，仅保留监测类型含闸门 #4# 的站点）
      */
     @Select("SELECT DISTINCT g.site, s.zzkaec AS site_name " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
+            "WHERE s.epjutj LIKE '%#4#%' " +
             "ORDER BY s.zzkaec")
     @Results({
             @Result(column = "site", property = "site"),
@@ -104,6 +105,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
 
     /**
      * 各闸孔最新一条数据（按站点 + 闸孔分组，取最新 TM）
+     * <p>site 为空（全站模式）时仅返回监测类型含闸门 #4# 的站点。
      * <p>使用 PostgreSQL DISTINCT ON 对 (site, gate_no) 去重，每组取 tm 最大的一条。
      * <p>性能注意：流量取值已移出本查询——Service 层按闸门表最新时刻 ±20 分钟窗口
      * 单独查询流量表（WaterFlowMapper.selectLatestInWindow，走 (site, tm) 索引 LIMIT 1），
@@ -149,6 +151,7 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "  </if>" +
             "  WHERE 1=1 " +
             "  AND NOT (g.gate_no = '0' AND g.open_degree IS NULL) " +
+            "  <if test='site == null or site == \"\"'>AND s.epjutj LIKE '%#4#%' </if>" +
             "  <if test='site != null and site != \"\"'>AND g.site = #{site} </if>" +
             "  <if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
             "  <if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +

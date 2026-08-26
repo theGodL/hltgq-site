@@ -35,6 +35,8 @@ public class StRiverRController {
     public List<StRiverR> list(@RequestParam(required = false) String stcd) {
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<StRiverR>().orderByAsc("TM");
         if (stcd != null) wrapper.eq("STCD", stcd);
+        // 全站模式仅保留监测类型含水位 #1# 的站点
+        else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#1#%'");
         return stRiverRService.list(wrapper);
     }
 
@@ -47,6 +49,8 @@ public class StRiverRController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<>();
         if (stcd != null) wrapper.eq("STCD", stcd);
+        // 全站模式仅保留监测类型含水位 #1# 的站点
+        else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#1#%'");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
         return (Page<StRiverR>) stRiverRService.page(new Page<StRiverR>(page, size).addOrder(OrderItem.asc("TM")), wrapper);
@@ -59,6 +63,8 @@ public class StRiverRController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<StRiverR>().orderByAsc("TM");
         if (stcd != null) wrapper.eq("STCD", stcd);
+        // 全站模式仅保留监测类型含水位 #1# 的站点
+        else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#1#%'");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
         return stRiverRService.list(wrapper);

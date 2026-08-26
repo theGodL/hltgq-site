@@ -24,6 +24,9 @@ public class StStinfo {
     @TableField("\"zebpsu\"")
     private String zebpsu;
 
+    @TableField("\"epjutj\"")
+    private String epjutj;
+
     @TableField(value = "\"STGROUP\"", exist = false)
     private String stgroup;
 

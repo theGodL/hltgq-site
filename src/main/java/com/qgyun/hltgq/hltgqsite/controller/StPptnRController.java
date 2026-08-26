@@ -48,6 +48,8 @@ public class StPptnRController {
     public List<StPptnR> list(@RequestParam(required = false) String stcd) {
         QueryWrapper<StPptnR> wrapper = new QueryWrapper<StPptnR>().orderByAsc("TM");
         if (stcd != null) wrapper.eq("STCD", stcd);
+        // 全站模式仅保留监测类型含雨量 #2# 的站点
+        else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#2#%'");
         return stPptnRService.list(wrapper);
     }
 
@@ -64,6 +66,8 @@ public class StPptnRController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
         QueryWrapper<StPptnR> wrapper = new QueryWrapper<>();
         if (stcd != null) wrapper.eq("STCD", stcd);
+        // 全站模式仅保留监测类型含雨量 #2# 的站点
+        else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#2#%'");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
         return stPptnRService.dailyPage(new Page<>(page, size), wrapper);
@@ -78,6 +82,8 @@ public class StPptnRController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
         QueryWrapper<StPptnR> wrapper = new QueryWrapper<>();
         if (stcd != null) wrapper.eq("STCD", stcd);
+        // 全站模式仅保留监测类型含雨量 #2# 的站点
+        else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#2#%'");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
         return (Page<StPptnR>) stPptnRService.page(new Page<StPptnR>(page, size).addOrder(OrderItem.asc("TM")), wrapper);
@@ -90,6 +96,8 @@ public class StPptnRController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
         QueryWrapper<StPptnR> wrapper = new QueryWrapper<StPptnR>().orderByAsc("TM");
         if (stcd != null) wrapper.eq("STCD", stcd);
+        // 全站模式仅保留监测类型含雨量 #2# 的站点
+        else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#2#%'");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
         return stPptnRService.list(wrapper);

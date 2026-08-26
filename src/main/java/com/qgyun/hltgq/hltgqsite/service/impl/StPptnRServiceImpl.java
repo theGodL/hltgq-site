@@ -580,7 +580,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     /**
-     * 非水库雨量站点集合：雨量表 distinct STCD → 排除水库 STCD → 关联站点表排除水库名称。
+     * 非水库雨量站点集合：雨量表 distinct STCD → 排除水库 STCD → 关联站点表排除水库名称
+     * → 仅保留监测类型含雨量（#2#）的站点（epjutj 多类型以 | 分隔，如 #1#|#2#）。
      * 返回 LinkedHashMap 保证迭代顺序稳定。
      */
     private Map<String, StStinfo> resolveGqStcds() {
@@ -593,6 +594,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             StStinfo info = stStinfoMapper.selectById(s);
             if (info == null) continue;
             if (info.getStnm() != null && RESERVOIR_STATION_NAMES.contains(info.getStnm())) continue;
+            if (info.getEpjutj() == null || !info.getEpjutj().contains("#2#")) continue;
             map.put(s, info);
         }
         return map;

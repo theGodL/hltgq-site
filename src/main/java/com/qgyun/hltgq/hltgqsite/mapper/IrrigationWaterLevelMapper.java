@@ -21,7 +21,7 @@ public interface IrrigationWaterLevelMapper {
      * 分页查询：每个站点最新一条水位数据
      *
      * @param dateWrapper 监测日期过滤条件（作用于确定"最新"的子查询）
-     * @param stcd        站点编号过滤（直接参数绑定，作用于外层结果），null 表示不过滤
+     * @param stcd        站点编号过滤（直接参数绑定，作用于外层结果），null 表示不过滤（全站模式仅返回监测类型含水位 #1# 的站点）
      * @param limit       每页条数
      * @param offset      偏移量
      */
@@ -49,6 +49,7 @@ public interface IrrigationWaterLevelMapper {
             "  ORDER BY v.site, v.tm DESC " +
             ") fv ON fv.site = s.id " +
             "<if test='stcd != null'>WHERE r.STCD = #{stcd} </if>" +
+            "<if test='stcd == null'>WHERE s.epjutj LIKE '%#1#%' </if>" +
             "ORDER BY r.STCD " +
             "LIMIT #{limit} OFFSET #{offset}" +
             "</script>")
@@ -80,7 +81,11 @@ public interface IrrigationWaterLevelMapper {
             "    ${ew.customSqlSegment} " +
             "    GROUP BY STCD" +
             "  ) rm ON r.STCD = rm.STCD AND r.TM = rm.MaxTM " +
+            "  <if test='stcd == null'>" +
+            "  INNER JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = r.STCD " +
+            "  </if>" +
             "  <if test='stcd != null'>WHERE r.STCD = #{stcd} </if>" +
+            "  <if test='stcd == null'>WHERE s.epjutj LIKE '%#1#%' </if>" +
             ") t" +
             "</script>")
     long selectCount(
@@ -103,11 +108,12 @@ public interface IrrigationWaterLevelMapper {
             @Param("endTime") String endTime);
 
     /**
-     * 水位监测全部站点编号+名称
+     * 水位监测全部站点编号+名称（仅保留监测类型含水位 #1# 的站点）
      */
     @Select("SELECT DISTINCT r.STCD AS code, COALESCE(s.zzkaec, r.STCD) AS name " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = r.STCD " +
+            "WHERE s.epjutj LIKE '%#1#%' " +
             "ORDER BY r.STCD")
     @Results({
             @Result(column = "code", property = "code"),

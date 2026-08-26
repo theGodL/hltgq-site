@@ -17,10 +17,13 @@ import java.util.Map;
 @Mapper
 public interface StPptnRMapper extends BaseMapper<StPptnR> {
 
+    // 全站模式仅返回监测类型含雨量 #2# 的站点
     @Select("SELECT t.STCD, sub.MaxHydroDay AS tm, MAX(t.DRP) AS drp " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info t " +
             "INNER JOIN (SELECT STCD, MAX((TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '32 hours') AS MaxHydroDay FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info GROUP BY STCD) sub " +
             "ON t.STCD = sub.STCD AND (t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '32 hours' = sub.MaxHydroDay " +
+            "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = t.STCD " +
+            "WHERE s.epjutj LIKE '%#2#%' " +
             "GROUP BY t.STCD, sub.MaxHydroDay " +
             "ORDER BY t.STCD")
     @Results({
@@ -186,8 +189,11 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
                                             @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 雨量监测全部站点编号（去重）
+     * 雨量监测全部站点编号（去重，仅保留监测类型含雨量 #2# 的站点）
      */
-    @Select("SELECT DISTINCT STCD FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info ORDER BY STCD")
+    @Select("SELECT DISTINCT r.STCD FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info r " +
+            "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = r.STCD " +
+            "WHERE s.epjutj LIKE '%#2#%' " +
+            "ORDER BY r.STCD")
     List<String> selectDistinctRainfallStcds();
 }

@@ -16,6 +16,7 @@ import java.util.Map;
 public interface StRiverRMapper extends BaseMapper<StRiverR> {
 
     // -999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'
+    // 全站模式（无 stcd 参数）仅返回监测类型含水位 #1# 的站点
     @Select("SELECT r.STCD AS stcd, r.TM AS tm, " +
             "CASE WHEN COALESCE(r.Z, r.Z1) = -999 THEN NULL ELSE COALESCE(r.Z, r.Z1) END AS z, " +
             "r.Z2 AS z2, CASE WHEN w.Q = -999 THEN NULL ELSE TRUNC(w.Q, 3) END AS q, " +
@@ -28,6 +29,8 @@ public interface StRiverRMapper extends BaseMapper<StRiverR> {
             "  INNER JOIN (SELECT STCD, MAX(TM) AS MaxTM FROM \"qixiao-apaas\".t_auto_hltgq_water_wt_nfo GROUP BY STCD) wm " +
             "  ON w2.STCD = wm.STCD AND w2.TM = wm.MaxTM " +
             ") w ON r.STCD = w.STCD " +
+            "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON s.iofhpi = r.STCD " +
+            "WHERE s.epjutj LIKE '%#1#%' " +
             "ORDER BY r.STCD")
     @Results({
             @Result(column = "stcd", property = "stcd"),

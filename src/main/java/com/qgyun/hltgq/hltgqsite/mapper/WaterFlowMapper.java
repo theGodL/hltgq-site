@@ -29,7 +29,7 @@ public interface WaterFlowMapper {
      * fq_prev（仅指定起始时间时拼接）返回起始时间前最近一条 ttf 非空行的 ttf，
      * 供 Service 层相减计算时间框范围累计流量。
      *
-     * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部
+     * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部（仅返回监测类型含流量 #3# 的站点）
      * @param startTime 起始时间（可选）
      * @param endTime   截止时间（可选）
      */
@@ -41,6 +41,9 @@ public interface WaterFlowMapper {
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
             "  WHERE 1=1 " +
+            "  <if test='stcds == null or stcds.size() == 0'>" +
+            "  AND s.epjutj LIKE '%#3#%' " +
+            "  </if>" +
             "  <if test='stcds != null and stcds.size() > 0'>" +
             "  AND (f.stcd IN " +
             "  <foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
@@ -227,7 +230,8 @@ public interface WaterFlowMapper {
             @Param("curMonthStart") LocalDateTime curMonthStart);
 
     /**
-     * 流量监测全部站点（站点标识 = COALESCE(stcd, site)，MQTT 站点无 stcd 时以 site UUID 兜底）
+     * 流量监测全部站点（站点标识 = COALESCE(stcd, site)，MQTT 站点无 stcd 时以 site 主键兜底；
+     * 仅保留监测类型含流量 #3# 的站点）
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，函数表达式（COALESCE）会报
      * "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"，故子查询先物化 skey。
      */
@@ -236,6 +240,7 @@ public interface WaterFlowMapper {
             "  SELECT COALESCE(f.stcd, f.site) AS skey, COALESCE(s.zzkaec, f.stcd, f.site) AS name " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
+            "  WHERE s.epjutj LIKE '%#3#%' " +
             ") t " +
             "ORDER BY t.skey")
     @Results({
