@@ -1,0 +1,3236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>水量预测</title>
+<script src="./lib/echarts.min.js"></script>
+<script src="./lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:12px}
+.breadcrumb{color:#999;font-size:13px}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+
+/* 顶部功能 Tab：下划线风格 */
+.top-tabs{display:flex;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:0 8px;border-bottom:1px solid #f0f0f0}
+.top-tab{padding:14px 28px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none;white-space:nowrap;transition:color .2s}
+.top-tab:hover{color:#1677ff}
+.top-tab.active{color:#1677ff;font-weight:500;border-bottom-color:#1677ff}
+
+.panel{display:none}
+.panel.active{display:flex;flex:1;min-height:0}
+.panel-empty{flex:1;align-items:center;justify-content:center;background:#fff;border-radius:8px;color:#bbb;font-size:14px;min-height:420px}
+
+/* 左右布局 */
+.main-layout{display:flex;gap:12px;flex:1;min-height:0;align-items:stretch}
+.left-panel{width:320px;flex-shrink:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;max-height:calc(100vh - 120px);overflow:hidden}
+.left-scroll{flex:1;overflow-y:auto;padding:20px 20px 12px}
+.right-panel{flex:1;min-width:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;max-height:calc(100vh - 120px);overflow:hidden}
+.right-scroll{flex:1;overflow-y:auto;padding:20px}
+
+/* 表单 */
+.form-item{margin-bottom:18px}
+.form-label{display:block;color:#333;font-size:14px;margin-bottom:8px;line-height:22px}
+.form-label .req{color:#ff4d4f;margin-right:2px}
+.form-hint{color:#999;font-size:12px;line-height:1.6;margin-bottom:10px}
+.form-row{display:flex;align-items:center;gap:8px}
+.form-row .unit{color:#999;font-size:13px;flex-shrink:0}
+.field{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s;width:100%;color:#333}
+.field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.field:disabled{background:#f5f5f5;color:#bbb;cursor:not-allowed}
+.date-range{display:flex;align-items:center;gap:6px}
+.date-range .field{flex:1;min-width:0}
+.date-sep{color:#bbb;flex-shrink:0}
+.select-wrap{position:relative}
+.select-wrap select.field{appearance:none;-webkit-appearance:none;padding-right:28px;cursor:pointer}
+.select-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #999;pointer-events:none}
+
+.chk-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.chk-row input[type=checkbox]{width:16px;height:16px;accent-color:#1677ff;cursor:pointer}
+.chk-row label{cursor:pointer;user-select:none;color:#333}
+
+.radio-group{display:flex;flex-direction:column;gap:10px}
+/* .radio-group.radio-row{flex-direction:row;flex-wrap:wrap;gap:16px 20px} */
+.radio-item{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.radio-item input{width:16px;height:16px;accent-color:#1677ff;cursor:pointer}
+
+.outflow-list-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.outflow-list-hd .unit-tip{color:#999;font-size:12px}
+.outflow-list{max-height:220px;overflow-y:auto;border:1px solid #f0f0f0;border-radius:6px}
+.outflow-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-bottom:1px solid #f5f5f5}
+.outflow-row:last-child{border-bottom:none}
+.outflow-row .dt{color:#333;font-size:13px;white-space:nowrap}
+.outflow-row .field{width:120px;text-align:right}
+
+.left-actions{padding:12px 20px 16px;border-top:1px solid #f0f0f0;flex-shrink:0}
+.btn-block{width:100%;height:36px}
+
+/* 按钮 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important;position:relative}
+.btn.is-loading::after{
+  content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;
+  width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
+  animation:spin .6s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 结果区 */
+.result-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.result-hd h2{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
+.history-btn{color:#1677ff;border-color:#91caff;background:#fff}
+.history-btn:hover{background:#e6f4ff;border-color:#1677ff;color:#1677ff}
+.history-btn svg{flex-shrink:0}
+
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stats-row.cols-3{grid-template-columns:repeat(3,1fr)}
+.stat-card{background:#fafafa;border:1px solid #f0f0f0;border-radius:8px;padding:16px 20px}
+.stat-card .label{color:#999;font-size:13px;margin-bottom:8px}
+.stat-card .value{font-size:24px;font-weight:700;color:#1f1f1f;line-height:1.2}
+.stat-card .value .unit{font-size:13px;font-weight:400;color:#999;margin-left:4px}
+.stat-card .value-row{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
+.stat-card .period{color:#999;font-size:13px;padding-bottom:4px;white-space:nowrap}
+
+.upload-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.upload-hd .link{background:none;border:none;color:#1677ff;cursor:pointer;font-size:13px;padding:0}
+.upload-hd .link:hover{opacity:.75}
+.upload-btn{width:100%;height:36px;border:1px dashed #91caff;background:#f0f7ff;color:#1677ff;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:14px}
+.upload-btn:hover{background:#e6f4ff}
+.upload-name{margin-top:8px;font-size:12px;color:#666;word-break:break-all}
+.coeff-val{font-size:16px;font-weight:600;color:#1f1f1f;line-height:32px}
+
+.map-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.map-toolbar .chart-title{margin:0}
+.map-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.map-filters .field{width:auto;min-width:140px}
+.topo-wrap{position:relative;border:1px solid #f0f0f0;border-radius:8px;background:#fff;overflow:hidden;min-height:480px}
+.topo-echarts{width:100%;height:640px;min-width:980px}
+.topo-svg{display:block;width:100%;height:100%;padding:0;user-select:none;pointer-events:none;text-rendering:geometricPrecision;shape-rendering:geometricPrecision}
+.topo-viewport{height:580px;overflow:hidden;cursor:grab;background:#fafafa;touch-action:none}
+.topo-viewport.is-dragging{cursor:grabbing}
+.topo-canvas{width:100%;height:100%;transform:none}
+.topo-pan-hint{position:absolute;left:12px;bottom:10px;z-index:2;font-size:12px;color:#999;background:rgba(255,255,255,.9);padding:2px 8px;border-radius:4px;pointer-events:none}
+.topo-tag-rect{fill:#52c41a}
+.topo-tag-text{fill:#fff;font-size:9px;font-weight:600;pointer-events:none}
+.topo-var-pill{fill:#3d9a48;stroke:#2d7a36;stroke-width:.75}
+.topo-var-txt{fill:#fff;font-size:8px;font-weight:600;font-family:Consolas,'Segoe UI',sans-serif;pointer-events:none}
+.topo-legend{position:absolute;right:12px;bottom:12px;z-index:2;background:#fff;border:1px solid #111;padding:10px 14px 8px;font-family:SimHei,'Microsoft YaHei',sans-serif;color:#111;min-width:340px;box-shadow:none;border-radius:0}
+.topo-legend .lg-title{text-align:center;font-size:18px;font-weight:700;margin-bottom:10px;letter-spacing:4px}
+.topo-legend .lg-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;align-items:center}
+.topo-legend .lg-row{display:flex;align-items:center;gap:8px;font-size:12px;line-height:1.4;color:#111}
+.topo-legend .lg-foot{text-align:right;margin-top:8px;font-size:11px;color:#5b9bd5}
+.topo-fullscreen{height:28px;width:28px;padding:0;flex-shrink:0}
+
+.detail-subtabs{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #f0f0f0;margin-bottom:12px;flex-wrap:wrap}
+.sub-tabs{display:flex;gap:0}
+.sub-tab{padding:10px 14px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none;white-space:nowrap}
+.sub-tab:hover{color:#1677ff}
+.sub-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
+
+.chart-card{border:1px solid #f0f0f0;border-radius:8px;padding:16px 16px 8px;margin-bottom:16px}
+.chart-card:last-child{margin-bottom:0}
+.chart-card .chart-title{font-size:14px;font-weight:500;color:#333;margin-bottom:2px}
+.chart-card .chart-unit{font-size:12px;color:#999;margin-bottom:4px}
+.chart-box{width:100%;height:280px}
+
+/* 空状态 */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:420px;color:#bbb;padding:40px 20px}
+.empty-state svg{margin-bottom:16px;opacity:.85}
+.empty-state p{font-size:14px;color:#999}
+
+/* 右侧抽屉 */
+.drawer-mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1100}
+.drawer-mask.show{display:block}
+.drawer{position:fixed;top:0;right:0;width:560px;max-width:92vw;height:100vh;background:#fff;z-index:1101;transform:translateX(100%);transition:transform .28s ease;display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.08)}
+.drawer.show{transform:translateX(0)}
+.drawer-hd{padding:16px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.drawer-hd h3{font-size:16px;font-weight:600;color:#1f1f1f}
+.drawer-bd{flex:1;overflow-y:auto;padding:0}
+.hist-item{display:flex;align-items:center;gap:16px;padding:16px 20px;border-bottom:1px solid #f0f0f0}
+.hist-item:hover{background:#fafafa}
+.hist-name{flex:1;min-width:0;color:#333;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-time{flex-shrink:0;color:#666;font-size:13px;width:120px}
+.hist-acts{flex-shrink:0;display:flex;gap:12px}
+.hist-acts button{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff}
+.hist-acts button:hover{opacity:.75}
+
+/* 弹窗 */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1200;align-items:center;justify-content:center;padding:20px}
+.overlay.show{display:flex}
+.modal{background:#fff;border-radius:10px;width:480px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;border:1px solid #e8e8e8;box-shadow:0 8px 28px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06)}
+.modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.modal-hd span{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
+.modal-close{background:none;border:none;cursor:pointer;color:#8c8c8c;font-size:18px;line-height:1;width:28px;height:28px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:color .2s,background .2s}
+.modal-close:hover{color:#262626;background:#f5f5f5}
+.modal-bd{padding:20px;overflow-y:auto;flex:1;min-height:0}
+.modal-ft{padding:12px 20px;border-top:1px solid #f0f0f0;display:flex;justify-content:flex-end;gap:8px;flex-shrink:0}
+
+/* 编辑弹窗 */
+#edit-overlay .modal{width:480px}
+.edit-form .form-label{margin-bottom:8px}
+.edit-form .field{height:36px}
+
+/* 查看详情弹窗 */
+#view-overlay .modal,#mid-view-overlay .modal,#demand-view-overlay .modal,#loss-view-overlay .modal{width:1100px;height:min(860px,92vh);max-width:96vw}
+.view-bd{padding:16px 20px 20px;overflow-y:auto;flex:1;min-height:0;background:#f7f8fa}
+.view-bd .stats-row{margin-bottom:12px}
+.view-bd .stat-card{background:#fff}
+.view-bd .chart-card{background:#fff;margin-bottom:12px}
+.detail-card{background:#fff;border:1px solid #f0f0f0;border-radius:8px;padding:16px}
+.detail-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+.detail-hd h4{font-size:14px;font-weight:500;color:#333}
+.detail-tools{display:flex;align-items:center;gap:8px}
+.detail-tools .field{width:180px;height:32px}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e8e8e8}
+thead tr{background:#fafafa}
+th{padding:10px 12px;text-align:left;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
+td{padding:10px 12px;border:1px solid #e8e8e8;color:#000000d9;white-space:nowrap}
+tbody tr:hover td{background:#fafafa}
+.demand-table th,.demand-table td{text-align:center}
+.demand-table th{background:#fafafa;font-weight:500}
+
+.pg-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 0 0;gap:8px;flex-wrap:wrap}
+.pg-info{color:#666;font-size:13px}
+.pg-btns{display:flex;align-items:center;gap:4px}
+.pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
+
+.toast{position:fixed;left:50%;top:80px;transform:translateX(-50%);background:rgba(0,0,0,.72);color:#fff;font-size:14px;padding:10px 20px;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000}
+.toast.show{opacity:1}
+
+@media (max-width:1100px){
+  .main-layout{flex-direction:column}
+  .left-panel{width:100%;max-height:none}
+  .right-panel{max-height:none}
+  .stats-row{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:640px){
+  .stats-row{grid-template-columns:1fr}
+  .top-tab{padding:12px 14px}
+  .drawer{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>水资源调度</span><span class="sep">/</span>
+    <span>水量预测</span><span class="sep">/</span>
+    <span class="cur">短期来水预测</span>
+  </div>
+
+  <div class="top-tabs" id="top-tabs">
+    <div class="top-tab active" data-panel="short">短期来水预测</div>
+    <div class="top-tab" data-panel="mid">中长期来水预测</div>
+    <div class="top-tab" data-panel="demand">需水预测</div>
+    <div class="top-tab" data-panel="loss">水量损失预测</div>
+  </div>
+
+  <!-- 短期来水预测 -->
+  <div class="panel active" id="panel-short">
+    <div class="main-layout">
+      <!-- 左侧参数 -->
+      <div class="left-panel">
+        <div class="left-scroll">
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>预测时间</label>
+            <div class="date-range">
+              <input type="date" class="field" id="start-date" value="2026-08-01">
+              <span class="date-sep">—</span>
+              <input type="date" class="field" id="end-date" value="2026-08-30">
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label">典型洪水</label>
+            <div class="select-wrap">
+              <select class="field" id="typical-flood">
+                <option value="">不使用</option>
+                <option value="flood1">典型洪水一（名称待定）</option>
+                <option value="flood2">典型洪水二（名称待定）</option>
+                <option value="flood3">典型洪水三（名称待定）</option>
+                <option value="flood4">典型洪水四（名称待定）</option>
+                <option value="flood5">典型洪水五（名称待定）</option>
+                <option value="flood6">典型洪水六（名称待定）</option>
+              </select>
+              <span class="select-arrow"></span>
+            </div>
+          </div>
+
+          <div class="form-item">
+            <div class="chk-row">
+              <input type="checkbox" id="custom-rain-chk">
+              <label for="custom-rain-chk">自定义总降雨量</label>
+            </div>
+            <div class="form-row" id="custom-rain-row" style="display:none">
+              <input type="number" class="field" id="custom-rain" placeholder="请输入" min="0" step="0.1">
+              <span class="unit">mm</span>
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>起始水位</label>
+            <div class="form-row">
+              <input type="number" class="field" id="start-level" placeholder="请输入" min="0" step="0.01" value="87.00">
+              <span class="unit">m</span>
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label">出库水量</label>
+            <div class="form-hint">出库默认值为50万方/日，自定义出库时需要上传对应预测时间内的出库水量</div>
+            <div class="radio-group">
+              <label class="radio-item"><input type="radio" name="outflow-mode" value="none"> 不出库</label>
+              <label class="radio-item"><input type="radio" name="outflow-mode" value="max"> 最大出库</label>
+              <label class="radio-item"><input type="radio" name="outflow-mode" value="custom" checked> 自定义出库</label>
+            </div>
+          </div>
+
+          <div class="form-item" id="custom-outflow-block">
+            <div class="outflow-list-hd">
+              <label class="form-label" style="margin:0"><span class="req">*</span>自定义出库水量</label>
+              <span class="unit-tip">单位: 万方</span>
+            </div>
+            <div class="outflow-list" id="outflow-list"></div>
+          </div>
+        </div>
+        <div class="left-actions">
+          <button class="btn btn-primary btn-block" id="calc-btn">模型计算</button>
+        </div>
+      </div>
+
+      <!-- 右侧结果 -->
+      <div class="right-panel">
+        <div class="right-scroll" id="result-area">
+          <div class="result-hd">
+            <h2>短期来水预测计算结果</h2>
+            <button class="btn history-btn" id="history-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              查看历史计算方案
+            </button>
+          </div>
+
+          <!-- 缺省态 -->
+          <div class="empty-state" id="result-empty">
+            <svg width="120" height="100" viewBox="0 0 120 100" fill="none">
+              <rect x="18" y="28" width="84" height="56" rx="6" fill="#f5f5f5" stroke="#e8e8e8"/>
+              <path d="M30 68l18-18 12 10 16-20 14 28H30z" fill="#e6f4ff" stroke="#91caff" stroke-width="1.2"/>
+              <circle cx="42" cy="44" r="6" fill="#bae0ff"/>
+              <rect x="38" y="16" width="44" height="10" rx="3" fill="#f0f0f0"/>
+            </svg>
+            <p>暂无计算结果，请设置参数后点击「模型计算」</p>
+          </div>
+
+          <!-- 结果内容 -->
+          <div id="result-content" style="display:none">
+            <div class="stats-row" id="main-stats"></div>
+            <div class="chart-card">
+              <div class="chart-title">降雨量分布</div>
+              <div class="chart-unit">单位: mm</div>
+              <div class="chart-box" id="chart-rain"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">入库水量/出库水量</div>
+              <div class="chart-unit">单位: m</div>
+              <div class="chart-box" id="chart-io"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中长期来水预测 -->
+  <div class="panel" id="panel-mid">
+    <div class="main-layout">
+      <div class="left-panel">
+        <div class="left-scroll">
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>预测时间</label>
+            <div class="date-range">
+              <input type="date" class="field" id="mid-start-date" value="2027-01-01">
+              <span class="date-sep">—</span>
+              <input type="date" class="field" id="mid-end-date" value="2027-12-31">
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label">典型年份</label>
+            <div class="radio-group radio-row">
+              <label class="radio-item"><input type="radio" name="typical-year" value="none"> 无</label>
+              <label class="radio-item"><input type="radio" name="typical-year" value="wet"> 丰水年</label>
+              <label class="radio-item"><input type="radio" name="typical-year" value="normal" checked> 平水年</label>
+              <label class="radio-item"><input type="radio" name="typical-year" value="dry"> 枯水年</label>
+            </div>
+          </div>
+
+          <div class="form-item" id="hist-year-item">
+            <label class="form-label">历史年份</label>
+            <input type="number" class="field" id="hist-year" placeholder="选择日期" min="1950" max="2100" step="1" disabled>
+          </div>
+        </div>
+        <div class="left-actions">
+          <button class="btn btn-primary btn-block" id="mid-calc-btn">模型计算</button>
+        </div>
+      </div>
+
+      <div class="right-panel">
+        <div class="right-scroll">
+          <div class="result-hd">
+            <h2>中长期来水预测计算结果</h2>
+            <button class="btn history-btn" id="mid-history-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              查看历史计算方案
+            </button>
+          </div>
+
+          <div class="empty-state" id="mid-result-empty">
+            <svg width="120" height="100" viewBox="0 0 120 100" fill="none">
+              <rect x="18" y="28" width="84" height="56" rx="6" fill="#f5f5f5" stroke="#e8e8e8"/>
+              <path d="M30 68l18-18 12 10 16-20 14 28H30z" fill="#e6f4ff" stroke="#91caff" stroke-width="1.2"/>
+              <circle cx="42" cy="44" r="6" fill="#bae0ff"/>
+              <rect x="38" y="16" width="44" height="10" rx="3" fill="#f0f0f0"/>
+            </svg>
+            <p>暂无计算结果，请设置参数后点击「模型计算」</p>
+          </div>
+
+          <div id="mid-result-content" style="display:none">
+            <div class="stats-row cols-3" id="mid-stats"></div>
+            <div class="chart-card">
+              <div class="chart-title">逐旬来水趋势</div>
+              <div class="chart-unit">单位：万方</div>
+              <div class="chart-box" id="chart-decade" style="height:320px"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">月度来水汇总</div>
+              <div class="chart-unit">单位：万方</div>
+              <div class="chart-box" id="chart-month"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 需水预测 -->
+  <div class="panel" id="panel-demand">
+    <div class="main-layout">
+      <div class="left-panel">
+        <div class="left-scroll">
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>中长期来水预报模型计算结果</label>
+            <div class="select-wrap">
+              <select class="field" id="demand-model">
+                <option value="m1">中长期来水预报1</option>
+                <option value="m2">中长期来水预报2</option>
+                <option value="m3">中长期来水预报3</option>
+              </select>
+              <span class="select-arrow"></span>
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label">灌溉保证率</label>
+            <div class="radio-group">
+              <label class="radio-item"><input type="radio" name="irrig-rate" value="90" checked> 90%</label>
+              <label class="radio-item"><input type="radio" name="irrig-rate" value="75"> 75%</label>
+              <label class="radio-item"><input type="radio" name="irrig-rate" value="50"> 50%</label>
+              <label class="radio-item"><input type="radio" name="irrig-rate" value="avg"> 多年平均</label>
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label">默认综合水利用系数</label>
+            <div class="coeff-val">0.589</div>
+          </div>
+
+          <div class="form-item">
+            <div class="upload-hd">
+              <label class="form-label" style="margin:0"><span class="req">*</span>需水基础数据收集表</label>
+              <button type="button" class="link" id="demand-tpl-btn">下载模板</button>
+            </div>
+            <input type="file" id="demand-file" accept=".xlsx,.xls,.csv" hidden>
+            <button type="button" class="upload-btn" id="demand-upload-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              上传附件
+            </button>
+            <div class="upload-name" id="demand-file-name"></div>
+          </div>
+        </div>
+        <div class="left-actions">
+          <button class="btn btn-primary btn-block" id="demand-calc-btn">模型计算</button>
+        </div>
+      </div>
+
+      <div class="right-panel">
+        <div class="right-scroll">
+          <div class="result-hd">
+            <h2>需水预测计算结果</h2>
+            <button class="btn history-btn" id="demand-history-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              查看历史计算方案
+            </button>
+          </div>
+
+          <!-- 统计：计算前缺省 / 计算后展示 -->
+          <div class="empty-state" id="demand-result-empty" style="min-height:120px;padding:24px">
+            <p>暂无统计结果，请设置参数后点击「模型计算」</p>
+          </div>
+          <div id="demand-stats-wrap" style="display:none">
+            <div class="stats-row cols-3" id="demand-stats"></div>
+          </div>
+
+          <!-- 拓扑图：固定长期展示，仅绿色标签为变量 -->
+          <div class="chart-card">
+            <div class="map-toolbar">
+              <div class="chart-title">需水预测</div>
+              <div class="map-filters">
+                <div class="select-wrap">
+                  <select class="field" id="demand-scope">
+                    <option value="canal">支渠</option>
+                    <option value="district">分灌区</option>
+                    <option value="area">片区</option>
+                  </select>
+                  <span class="select-arrow"></span>
+                </div>
+                <input type="date" class="field" id="demand-map-start" value="2027-05-01" style="width:140px">
+                <span class="date-sep">—</span>
+                <input type="date" class="field" id="demand-map-end" value="2027-06-30" style="width:140px">
+                <button type="button" class="btn btn-default topo-fullscreen" id="topo-full-btn" title="全屏">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+            </div>
+            <!-- SVG 拓扑（工程工艺简图） -->
+            <div class="topo-wrap" id="topo-wrap">
+                            <div class="topo-viewport" id="topo-viewport" title="按住拖拽，滚轮缩放">
+              <div class="topo-canvas" id="topo-canvas">
+              <svg class="topo-svg" id="topo-svg" viewBox="0 0 1880 1020" xmlns="http://www.w3.org/2000/svg" text-rendering="geometricPrecision">
+                                <defs>
+                  <marker id="arr-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#111"/></marker>
+                  <marker id="arr-r-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#4a90d9"/></marker>
+                  <marker id="arr-r-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#2f9e44"/></marker>
+                  <marker id="arr-u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#4a90d9"/></marker>
+                  <marker id="arr-u-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#2f9e44"/></marker>
+                  <marker id="arr-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#4a90d9"/></marker>
+                  <marker id="arr-d-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#2f9e44"/></marker>
+                  <marker id="arr-l-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#2f9e44"/></marker>
+                </defs>
+
+                <line x1="95" y1="250" x2="1120" y2="250" stroke="#111" stroke-width="5"/>
+<text x="190" y="286" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="14" fill="#cf1322" font-weight="700">总干渠</text>
+                <rect x="8" y="232" width="82" height="36" fill="#fff" stroke="#1677ff" stroke-width="1.4"/>
+<text x="49" y="254" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="12" fill="#1677ff" font-weight="600">花凉亭水库</text>
+<g transform="translate(120.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="130" y="220" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="130" dy="0">渠首进</tspan><tspan x="130" dy="12">水闸</tspan></text>
+<line x1="185" y1="250" x2="185" y2="188" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="185" cy="250" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="185" cy="250" r="2" fill="#666"/>
+<text x="185" y="180" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">城关支渠</text>
+<line x1="235" y1="250" x2="235" y2="188" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="235" cy="250" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="235" cy="250" r="2" fill="#666"/>
+<text x="235" y="180" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">幸福支渠</text>
+<line x1="285" y1="250" x2="285" y2="188" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<text x="285" y="180" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">沙改支渠</text>
+<g transform="translate(330.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="340" y="220" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="340" dy="0">双庙湖</tspan><tspan x="340" dy="12">节制闸</tspan></text>
+                <path d="M 400 250 V 95" stroke="#4a90d9" stroke-width="3.2" fill="none"/>
+                <line x1="400" y1="95" x2="900" y2="95" stroke="#4a90d9" stroke-width="3.2"/>
+                <line x1="900" y1="95" x2="1180" y2="95" stroke="#2f9e44" stroke-width="3.2" marker-end="url(#arr-r-green)"/>
+<text x="385" y="180" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="13" fill="#cf1322" transform="rotate(-90 385 180)">太怀干渠</text>
+<text x="1000" y="117" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="13" fill="#cf1322" font-weight="700" font-style="italic">腊皖分干渠</text>
+                <line x1="450" y1="95" x2="450" y2="42" stroke="#4a90d9" stroke-width="1.8"/>
+<g transform="translate(441.0,61.0)"><rect width="18" height="18" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L14.5 14.5 M14.5 3.5 L3.5 14.5" stroke="#e03131" stroke-width="1.3"/></g>
+                <circle cx="450" cy="38" r="10" fill="#fff" stroke="#111" stroke-width="1.2"/>
+                <path d="M447 32 L453 38 L447 38 L453 44" fill="none" stroke="#e03131" stroke-width="1.5"/>
+<text x="465" y="36" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#c47a2a">集岭电站</text>
+<g transform="translate(500.0,85.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="510" y="66" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="510" dy="0">太怀进</tspan><tspan x="510" dy="12">水闸</tspan></text>
+<g transform="translate(690.0,85.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="700" y="66" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="700" dy="0">王家桥</tspan><tspan x="700" dy="12">节制闸</tspan></text>
+<line x1="560" y1="95" x2="560" y2="147" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="560" cy="95" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="560" cy="95" r="2" fill="#666"/>
+<text x="560" y="151" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">朝阳支渠</text>
+<line x1="650" y1="95" x2="650" y2="147" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="650" y="151" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">陈良支渠</text>
+<line x1="780" y1="95" x2="780" y2="147" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="780" cy="95" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="780" cy="95" r="2" fill="#666"/>
+<text x="780" y="151" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">王居山支渠</text>
+<line x1="960" y1="95" x2="960" y2="147" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="960" y="151" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">邵山支渠</text>
+<line x1="1060" y1="95" x2="1060" y2="147" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1060" cy="95" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1060" cy="95" r="2" fill="#666"/>
+<text x="1060" y="151" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">易潭支渠</text>
+<line x1="600" y1="95" x2="600" y2="47" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="600" cy="95" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="600" cy="95" r="2" fill="#666"/>
+<text x="600" y="39" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">新仓支渠</text>
+<line x1="740" y1="95" x2="740" y2="47" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<text x="740" y="39" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">龙王山支渠</text>
+<line x1="860" y1="95" x2="860" y2="47" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="860" cy="95" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="860" cy="95" r="2" fill="#666"/>
+<text x="860" y="39" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">一安支渠</text>
+<line x1="940" y1="95" x2="940" y2="47" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<text x="940" y="39" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">高旗支渠</text>
+<g transform="translate(1156.0,86.0)"><rect width="18" height="18" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L14.5 14.5 M14.5 3.5 L3.5 14.5" stroke="#e03131" stroke-width="1.3"/></g>
+<g transform="translate(460.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="470" y="220" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="470" dy="0">南山寺</tspan><tspan x="470" dy="12">节制闸</tspan></text>
+<text x="418" y="113" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">南山寺</text>
+<!-- ===== 太宿干渠（图三 1:1）+ 毕岭仅小幅错位 ===== -->
+                <line x1="600" y1="250" x2="600" y2="840" stroke="#4a90d9" stroke-width="3.5"/>
+<text x="575" y="430" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="14" fill="#cf1322" font-weight="700" transform="rotate(-90 575 430)">太宿干渠</text>
+
+<!-- 太宿进水闸：落在总干渠与竖轴交点 -->
+<g transform="translate(590.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="600" y="220" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="600" dy="0">太宿进</tspan><tspan x="600" dy="12">水闸</tspan></text>
+
+<!-- 龙寨←（略低） 杨岭→（略高） -->
+<line x1="600" y1="282" x2="655" y2="282" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<text x="660" y="278" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">杨岭支渠</text>
+<line x1="600" y1="300" x2="520" y2="300" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<text x="515" y="296" text-anchor="end" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">龙寨支渠</text>
+
+<!-- 段龙节制闸 -->
+<g transform="translate(590.0,320.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="640" y="310" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="640" dy="0">段龙节</tspan><tspan x="640" dy="12">制闸</tspan></text>
+
+<!-- 小宫← -->
+<line x1="600" y1="365" x2="520" y2="365" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<circle cx="514" cy="365" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="514" cy="365" r="2" fill="#666"/>
+<text x="500" y="361" text-anchor="end" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">小宫支渠</text>
+
+<!-- 章大计量闸 -->
+<g transform="translate(590.0,395.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="640" y="385" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="640" dy="0">章大计</tspan><tspan x="640" dy="12">量闸</tspan></text>
+
+<!-- 胜利←（略低） 红旗→（略高） -->
+<line x1="600" y1="432" x2="655" y2="432" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<circle cx="661" cy="432" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="661" cy="432" r="2" fill="#666"/>
+<text x="668" y="428" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">红旗支渠</text>
+<line x1="600" y1="450" x2="520" y2="450" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<circle cx="514" cy="450" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="514" cy="450" r="2" fill="#666"/>
+<text x="500" y="446" text-anchor="end" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">胜利支渠</text>
+
+<!-- 鲁元←（略低） 姚圩→（略高） -->
+<line x1="600" y1="468" x2="655" y2="468" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<circle cx="661" cy="468" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="661" cy="468" r="2" fill="#666"/>
+<text x="668" y="464" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">姚圩支渠</text>
+<line x1="600" y1="486" x2="520" y2="486" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<circle cx="514" cy="486" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="514" cy="486" r="2" fill="#666"/>
+<text x="500" y="482" text-anchor="end" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">鲁元支渠</text>
+
+<!-- 马安水库 ← 铁寨电灌站 -->
+<line x1="600" y1="520" x2="520" y2="520" stroke="#4a90d9" stroke-width="1.8"/>
+<text x="555" y="510" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#c47a2a">铁寨电灌站</text>
+<rect x="430" y="505" width="72" height="30" fill="#fff" stroke="#1677ff" stroke-width="1.4"/>
+<text x="466" y="524" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="11" fill="#1677ff" font-weight="600">马安水库</text>
+
+<!-- 程岭节制闸 -->
+<g transform="translate(590.0,555.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="640" y="545" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="640" dy="0">程岭节</tspan><tspan x="640" dy="12">制闸</tspan></text>
+
+<!-- 荆安→ -->
+<line x1="600" y1="590" x2="665" y2="590" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<circle cx="671" cy="590" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="671" cy="590" r="2" fill="#666"/>
+<text x="678" y="586" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">荆安支渠</text>
+
+<!-- ===== 长马分干渠（加长水平段，折点左移，白马在折点右侧） ===== -->
+<g transform="translate(590.0,615.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<path d="M 600 625 H 380 V 730" stroke="#2f9e44" stroke-width="2.8" fill="none"/>
+<text x="480" y="612" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="12" fill="#cf1322" font-weight="700" font-style="italic">长马分干渠</text>
+<!-- 长马竖段：五里 / 牌楼 / 新民 ← -->
+<line x1="380" y1="655" x2="310" y2="655" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<circle cx="304" cy="655" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="304" cy="655" r="2" fill="#666"/>
+<text x="290" y="651" text-anchor="end" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">五里支渠</text>
+<line x1="380" y1="685" x2="310" y2="685" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<text x="290" y="681" text-anchor="end" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">牌楼支渠</text>
+<line x1="380" y1="715" x2="310" y2="715" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<text x="290" y="711" text-anchor="end" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">新民支渠</text>
+
+<!-- ===== 乔木分干渠（绿：水平向左） ===== -->
+<g transform="translate(590.0,720.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<line x1="600" y1="730" x2="120" y2="730" stroke="#2f9e44" stroke-width="2.8" marker-end="url(#arr-l-green)"/>
+<!-- 长马落入处闸（折点） -->
+<g transform="translate(370.0,720.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="490" y="716" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="12" fill="#cf1322" font-weight="700" font-style="italic">乔木分干渠</text>
+
+<!-- 折点右侧（右→左靠主干）：南岭 东方 新安 白马 ↓ -->
+<line x1="575" y1="730" x2="575" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="575" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="575" cy="796" r="2" fill="#666"/>
+<text x="575" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">南岭支渠</text>
+<line x1="535" y1="730" x2="535" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="535" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="535" cy="796" r="2" fill="#666"/>
+<text x="535" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">东方支渠</text>
+<line x1="495" y1="730" x2="495" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="495" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="495" cy="796" r="2" fill="#666"/>
+<text x="495" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">新安支渠</text>
+<line x1="450" y1="730" x2="450" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="450" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="450" cy="796" r="2" fill="#666"/>
+<text x="450" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">白马支渠</text>
+
+<!-- 折点左侧（右→左）：万元 毛坝 明光 红雨 新前 木梓 ↓ -->
+<line x1="330" y1="730" x2="330" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="330" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="330" cy="796" r="2" fill="#666"/>
+<text x="330" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">万元支渠</text>
+<line x1="290" y1="730" x2="290" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="290" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="290" cy="796" r="2" fill="#666"/>
+<text x="290" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">毛坝支渠</text>
+<line x1="250" y1="730" x2="250" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="250" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="250" cy="796" r="2" fill="#666"/>
+<text x="250" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">明光支渠</text>
+<line x1="210" y1="730" x2="210" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="210" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="210" cy="796" r="2" fill="#666"/>
+<text x="210" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">红雨支渠</text>
+<line x1="170" y1="730" x2="170" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="170" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="170" cy="796" r="2" fill="#666"/>
+<text x="170" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">新前支渠</text>
+<line x1="130" y1="730" x2="130" y2="790" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="130" cy="796" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="130" cy="796" r="2" fill="#666"/>
+<text x="130" y="800" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">木梓支渠</text>
+
+<!-- 程岭 / 杨肖：在乔木分干下方（图四） -->
+<line x1="600" y1="765" x2="665" y2="765" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<circle cx="671" cy="765" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="671" cy="765" r="2" fill="#666"/>
+<text x="678" y="761" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">程岭支渠</text>
+<line x1="600" y1="800" x2="665" y2="800" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-r-blue)"/>
+<circle cx="671" cy="800" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="671" cy="800" r="2" fill="#666"/>
+<text x="678" y="796" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">杨肖支渠</text>
+
+<!-- ===== 太宿右折 → 滴露 / 下仓分干（图二） ===== -->
+<line x1="600" y1="840" x2="980" y2="840" stroke="#4a90d9" stroke-width="3.5" marker-end="url(#arr-r-blue)"/>
+<!-- 彭桥↓ 矮脚↓ -->
+<line x1="660" y1="840" x2="660" y2="900" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="660" y="904" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">彭桥支渠</text>
+<line x1="710" y1="840" x2="710" y2="900" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="710" y="904" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">矮脚支渠</text>
+<!-- 胜天↑ 碎石↓（x 接近，不在滴露闸上） -->
+<line x1="770" y1="840" x2="770" y2="780" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="770" cy="774" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="770" cy="774" r="2" fill="#666"/>
+<text x="770" y="766" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">胜天支渠</text>
+<line x1="800" y1="840" x2="800" y2="900" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="800" cy="906" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="800" cy="906" r="2" fill="#666"/>
+<text x="800" y="910" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">碎石支渠</text>
+<!-- 滴露节制闸 -->
+<g transform="translate(870.0,830.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="880" y="810" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="880" dy="0">滴露节</tspan><tspan x="880" dy="12">制闸</tspan></text>
+
+<!-- 下仓分干渠（绿） -->
+<line x1="980" y1="840" x2="1380" y2="840" stroke="#2f9e44" stroke-width="3.2" marker-end="url(#arr-r-green)"/>
+<text x="1120" y="826" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="13" fill="#cf1322" font-weight="700">下仓分干渠</text>
+<!-- 云集↑ -->
+<line x1="1020" y1="840" x2="1020" y2="780" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="1020" cy="774" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1020" cy="774" r="2" fill="#666"/>
+<text x="1020" y="766" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">云集支渠</text>
+<!-- 下仓节制闸 -->
+<g transform="translate(1065.0,830.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="1075" y="810" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="1075" dy="0">下仓节</tspan><tspan x="1075" dy="12">制闸</tspan></text>
+<!-- 立新 朝阳 杨树 ↓ -->
+<line x1="1130" y1="840" x2="1130" y2="900" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1130" cy="906" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1130" cy="906" r="2" fill="#666"/>
+<text x="1130" y="910" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">立新支渠</text>
+<line x1="1180" y1="840" x2="1180" y2="900" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1180" cy="906" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1180" cy="906" r="2" fill="#666"/>
+<text x="1180" y="910" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">朝阳支渠</text>
+<line x1="1230" y1="840" x2="1230" y2="900" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1230" cy="906" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1230" cy="906" r="2" fill="#666"/>
+<text x="1230" y="910" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">杨树支渠</text>
+<!-- 署光↓（原金塘位置） -->
+<line x1="1280" y1="840" x2="1280" y2="900" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1280" y="904" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">署光支渠</text>
+<!-- 金塘↑（原署光位置） -->
+<line x1="1330" y1="840" x2="1330" y2="780" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="1330" cy="774" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1330" cy="774" r="2" fill="#666"/>
+<text x="1330" y="766" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="9" fill="#111">金塘支渠</text>
+
+<!-- 毕岭：紧挨太宿竖轴右侧一小段 -->
+<g transform="translate(650.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="660" y="220" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="660" dy="0">毕岭节</tspan><tspan x="660" dy="12">制闸</tspan></text>
+<line x1="700" y1="250" x2="700" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="700" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">毕岭支渠</text>
+<g transform="translate(730.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<line x1="740" y1="250" x2="740" y2="335" stroke="#2f9e44" stroke-width="2.6" marker-end="url(#arr-d-green)"/>
+<text x="740" y="339" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="12" fill="#cf1322">高岭分干渠</text>
+<line x1="780" y1="250" x2="780" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="780" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">甘庄支渠</text>
+<line x1="814" y1="250" x2="814" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="814" cy="250" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="814" cy="250" r="2" fill="#666"/>
+<text x="814" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">五星支渠</text>
+<line x1="848" y1="250" x2="848" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="848" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">红旗支渠</text>
+<line x1="882" y1="250" x2="882" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="882" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">叶湾支渠</text>
+<line x1="916" y1="250" x2="916" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<g transform="translate(906.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="916" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">华丰支渠</text>
+<g transform="translate(960.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="970" y="220" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="970" dy="0">汪园节</tspan><tspan x="970" dy="12">制闸</tspan></text>
+<line x1="1010" y1="250" x2="1010" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1010" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">桥东支渠</text>
+<line x1="1044" y1="250" x2="1044" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1044" cy="250" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1044" cy="250" r="2" fill="#666"/>
+<text x="1044" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">袁林支渠</text>
+<line x1="1078" y1="250" x2="1078" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1078" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">黄屋支渠</text>
+                <!-- 分叉竖轴（加长）→ 北干渠 / 南干渠 -->
+                <line x1="1120" y1="250" x2="1120" y2="520" stroke="#111" stroke-width="4.5" marker-end="url(#arr-d)"/>
+                <line x1="1120" y1="250" x2="1840" y2="250" stroke="#4a90d9" stroke-width="4.2" marker-end="url(#arr-r-blue)"/>
+<g transform="translate(1150.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="1160" y="220" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="1160" dy="0">北干渠</tspan><tspan x="1160" dy="12">进水闸</tspan></text>
+<line x1="1200" y1="250" x2="1200" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1200" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">金桥支渠</text>
+<line x1="1234" y1="250" x2="1234" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1234" cy="250" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1234" cy="250" r="2" fill="#666"/>
+<text x="1234" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">联合(1)支渠</text>
+<line x1="1268" y1="250" x2="1268" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1268" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">杨树支渠</text>
+<line x1="1302" y1="250" x2="1302" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1302" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">中沟支渠</text>
+<!-- 张家垅 + 郭塘↓ 同一站点；雷埠↑ 在张家垅与何土塘之间 -->
+<g transform="translate(1340.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="1350" y="220" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="1350" dy="0">张家垅</tspan><tspan x="1350" dy="12">节制闸</tspan></text>
+<line x1="1350" y1="250" x2="1350" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1350" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">郭塘支渠</text>
+<line x1="1390" y1="250" x2="1390" y2="188" stroke="#2f9e44" stroke-width="2.6" marker-end="url(#arr-u-green)"/>
+<text x="1390" y="180" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="11" fill="#cf1322">雷埠支渠</text>
+<g transform="translate(1420.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="1430" y="220" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="1430" dy="0">何土塘</tspan><tspan x="1430" dy="12">节制闸</tspan></text>
+<line x1="1518" y1="250" x2="1518" y2="188" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="1518" cy="250" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1518" cy="250" r="2" fill="#666"/>
+<text x="1518" y="180" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">红星支渠</text>
+<line x1="1550" y1="250" x2="1550" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1550" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">三联支渠</text>
+<g transform="translate(1578.0,240.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<line x1="1622" y1="250" x2="1622" y2="188" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<text x="1622" y="180" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">新坝支渠</text>
+<line x1="1654" y1="250" x2="1654" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1654" cy="250" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1654" cy="250" r="2" fill="#666"/>
+<text x="1654" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">南川支渠</text>
+<line x1="1686" y1="250" x2="1686" y2="188" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<text x="1686" y="180" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">红岭支渠</text>
+<line x1="1718" y1="250" x2="1718" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1718" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">武昌支渠</text>
+<line x1="1750" y1="250" x2="1750" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1750" cy="250" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1750" cy="250" r="2" fill="#666"/>
+<text x="1750" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">赛口支渠</text>
+<line x1="1782" y1="250" x2="1782" y2="312" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<text x="1782" y="316" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">南坂支渠</text>
+<text x="1805" y="286" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="14" fill="#cf1322" font-weight="700">北干渠</text>
+<!-- ===== 南干渠（按图二 1:1）===== -->
+<!-- 竖轴落点：左=姑塘进水闸→姑塘支渠；右=南干渠进水闸→南干渠 -->
+<g transform="translate(1050.0,510.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="1060" y="534" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="1060" dy="0">姑塘进</tspan><tspan x="1060" dy="12">水闸</tspan></text>
+<line x1="1060" y1="520" x2="960" y2="520" stroke="#2f9e44" stroke-width="2.8" marker-end="url(#arr-l-green)"/>
+<text x="968" y="508" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="12" fill="#cf1322" font-weight="700">姑塘支渠</text>
+<line x1="1060" y1="520" x2="1120" y2="520" stroke="#2f9e44" stroke-width="2.8"/>
+
+<g transform="translate(1145.0,510.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<text x="1155" y="534" text-anchor="middle" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111" font-weight="700"><tspan x="1155" dy="0">南干渠</tspan><tspan x="1155" dy="12">进水闸</tspan></text>
+<line x1="1120" y1="520" x2="1820" y2="520" stroke="#4a90d9" stroke-width="4" marker-end="url(#arr-r-blue)"/>
+<text x="1740" y="556" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="14" fill="#cf1322" font-weight="700">南干渠</text>
+
+<!-- 上行：联合(2) 永兴 -->
+<line x1="1210" y1="520" x2="1210" y2="462" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="1210" cy="456" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1210" cy="456" r="2" fill="#666"/>
+<text x="1210" y="448" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">联合(2)支渠</text>
+<line x1="1255" y1="520" x2="1255" y2="462" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="1255" cy="456" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1255" cy="456" r="2" fill="#666"/>
+<text x="1255" y="448" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">永兴支渠</text>
+
+<!-- 下行：李桥 大桥 -->
+<line x1="1300" y1="520" x2="1300" y2="578" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1300" cy="584" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1300" cy="584" r="2" fill="#666"/>
+<text x="1300" y="588" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">李桥支渠</text>
+<line x1="1345" y1="520" x2="1345" y2="578" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1345" cy="584" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1345" cy="584" r="2" fill="#666"/>
+<text x="1345" y="588" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">大桥支渠</text>
+
+<!-- 杨林分干渠（闸 + 绿↑） -->
+<g transform="translate(1385.0,510.0)"><rect width="20" height="20" fill="#fff" stroke="#e03131" stroke-width="1.4"/><path d="M3.5 3.5 L16.5 16.5 M16.5 3.5 L3.5 16.5" stroke="#e03131" stroke-width="1.3"/></g>
+<line x1="1395" y1="520" x2="1395" y2="435" stroke="#2f9e44" stroke-width="2.8" marker-end="url(#arr-u-green)"/>
+<circle cx="1395" cy="429" r="5.5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1395" cy="429" r="2" fill="#666"/>
+<text x="1395" y="421" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="11" fill="#cf1322">杨林分干渠</text>
+
+<!-- 下行：团山 -->
+<line x1="1445" y1="520" x2="1445" y2="578" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1445" cy="584" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1445" cy="584" r="2" fill="#666"/>
+<text x="1445" y="588" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">团山支渠</text>
+
+<!-- 上行：乔方 横山 -->
+<line x1="1490" y1="520" x2="1490" y2="462" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="1490" cy="456" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1490" cy="456" r="2" fill="#666"/>
+<text x="1490" y="448" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">乔方支渠</text>
+<line x1="1535" y1="520" x2="1535" y2="462" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="1535" cy="456" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1535" cy="456" r="2" fill="#666"/>
+<text x="1535" y="448" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">横山支渠</text>
+
+<!-- 下行：十里 -->
+<line x1="1580" y1="520" x2="1580" y2="578" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-d)"/>
+<circle cx="1580" cy="584" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1580" cy="584" r="2" fill="#666"/>
+<text x="1580" y="588" text-anchor="start" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">十里支渠</text>
+
+<!-- 上行：白林 太寺 -->
+<line x1="1625" y1="520" x2="1625" y2="462" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="1625" cy="456" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1625" cy="456" r="2" fill="#666"/>
+<text x="1625" y="448" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">白林支渠</text>
+<line x1="1670" y1="520" x2="1670" y2="462" stroke="#4a90d9" stroke-width="1.8" marker-end="url(#arr-u)"/>
+<circle cx="1670" cy="456" r="5" fill="#fff" stroke="#666" stroke-width="1.2"/><circle cx="1670" cy="456" r="2" fill="#666"/>
+<text x="1670" y="448" text-anchor="end" writing-mode="vertical-rl" font-family="SimHei,'Microsoft YaHei',sans-serif" font-size="10" fill="#111">太寺支渠</text>
+                <g id="topo-var-layer"></g>
+              </svg>
+              </div>
+              </div>
+              <div class="topo-pan-hint">按住拖拽移动 · 滚轮缩放</div>
+              <div class="topo-legend">
+                <div class="lg-title">图例</div>
+                <div class="lg-grid">
+                  <div class="lg-row">
+                    <svg width="28" height="18" viewBox="0 0 28 18"><circle cx="14" cy="9" r="8" fill="#fff" stroke="#111" stroke-width="1.2"/><circle cx="14" cy="9" r="5.2" fill="#fff" stroke="#111" stroke-width="1.1"/><circle cx="14" cy="9" r="2.2" fill="#111"/></svg>
+                    万亩以上的灌区
+                  </div>
+                  <div class="lg-row">
+                    <svg width="36" height="12" viewBox="0 0 36 12"><line x1="1" y1="6" x2="28" y2="6" stroke="#111" stroke-width="4"/><path d="M28 2 L35 6 L28 10 Z" fill="#111"/></svg>
+                    总干渠
+                  </div>
+                  <div class="lg-row">
+                    <svg width="28" height="18" viewBox="0 0 28 18"><circle cx="14" cy="9" r="7" fill="#fff" stroke="#111" stroke-width="1.2"/><circle cx="14" cy="9" r="3.5" fill="#fff" stroke="#111" stroke-width="1.1"/></svg>
+                    三千-1万亩的灌区
+                  </div>
+                  <div class="lg-row">
+                    <svg width="36" height="12" viewBox="0 0 36 12"><line x1="1" y1="6" x2="28" y2="6" stroke="#4F81BD" stroke-width="3"/><path d="M28 2.5 L35 6 L28 9.5 Z" fill="#4F81BD"/></svg>
+                    干渠
+                  </div>
+                  <div class="lg-row">
+                    <svg width="28" height="18" viewBox="0 0 28 18"><circle cx="14" cy="9" r="6" fill="#fff" stroke="#111" stroke-width="1.2"/><circle cx="14" cy="9" r="1.8" fill="#111"/></svg>
+                    三千亩以下的灌区
+                  </div>
+                  <div class="lg-row">
+                    <svg width="36" height="12" viewBox="0 0 36 12"><line x1="1" y1="6" x2="28" y2="6" stroke="#4FAD5B" stroke-width="2.4"/><path d="M28 3 L35 6 L28 9 Z" fill="#4FAD5B"/></svg>
+                    分干渠
+                  </div>
+                  <div class="lg-row">
+                    <span style="width:22px;height:14px;background:#C6E0B4;border:1px solid #8fbc8f;display:inline-block;flex-shrink:0"></span>
+                    流量、灌溉面积、长度
+                  </div>
+                  <div class="lg-row">
+                    <svg width="36" height="12" viewBox="0 0 36 12"><line x1="1" y1="6" x2="28" y2="6" stroke="#76D0F1" stroke-width="1.6"/><path d="M28 3.5 L34 6 L28 8.5 Z" fill="#76D0F1"/></svg>
+                    支渠
+                  </div>
+                  <div class="lg-row">
+                    <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="2" width="14" height="14" fill="#fff" stroke="#C00000" stroke-width="1.4"/><path d="M4 4 L14 14 M14 4 L4 14" stroke="#C00000" stroke-width="1.4"/></svg>
+                    泄洪闸
+                  </div>
+                  <div class="lg-row">
+                    <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="2" width="14" height="14" fill="#fff" stroke="#C00000" stroke-width="1.4"/><path d="M4 4 L14 14 M14 4 L4 14" stroke="#C00000" stroke-width="1.4"/></svg>
+                    节制闸
+                  </div>
+                  <div class="lg-row">
+                    <svg width="28" height="16" viewBox="0 0 28 16"><ellipse cx="14" cy="8" rx="11" ry="6" fill="#fff" stroke="#111" stroke-width="1.2"/><path d="M11 4 L16 8 L12 8 L17 12" fill="none" stroke="#C00000" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                    水电站
+                  </div>
+                </div>
+                <div class="lg-foot">中水三立数据技术股份有限公司</div>
+              </div>
+            </div>
+
+            <!-- ECharts 拓扑（暂隐藏） -->
+            <div class="topo-wrap" id="topo-wrap-echarts" style="display:none">
+              <div class="topo-echarts" id="topo-echarts"></div>
+            </div>
+
+            <!-- 旧 SVG 备份（隐藏） -->
+            <div class="topo-wrap" id="topo-wrap-svg-old" style="display:none">
+              <svg class="topo-svg" id="topo-svg-old" viewBox="0 0 1100 520" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M0 0 L10 5 L0 10 z" fill="#222"/>
+                  </marker>
+                </defs>
+
+                <!-- ===== 渠线（固定） ===== -->
+                <!-- 总干渠 -->
+                <path d="M110 200 H700" stroke="#111" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+                <!-- 太怀干渠（上） -->
+                <path d="M300 200 V70 H430" stroke="#111" stroke-width="3.5" fill="none"/>
+                <!-- 太宿干渠（下） -->
+                <path d="M300 200 V430" stroke="#111" stroke-width="3.5" fill="none"/>
+                <!-- 北干/腊皖方向 -->
+                <path d="M520 200 V90 H780" stroke="#111" stroke-width="3" fill="none"/>
+                <!-- 南干/高岭方向 -->
+                <path d="M620 200 V400 H900" stroke="#111" stroke-width="3" fill="none"/>
+                <!-- 右侧多支渠竖线 -->
+                <path d="M780 90 V400" stroke="#333" stroke-width="2.5" fill="none"/>
+
+                <!-- 上部支渠 -->
+                <path d="M180 200 V80" stroke="#444" stroke-width="1.8" fill="none"/>
+                <path d="M220 200 V60" stroke="#444" stroke-width="1.8" fill="none"/>
+                <path d="M260 200 V70" stroke="#444" stroke-width="1.8" fill="none"/>
+                <!-- 太宿左侧支渠 -->
+                <path d="M300 260 H210" stroke="#444" stroke-width="1.8" fill="none"/>
+                <path d="M300 300 H200" stroke="#444" stroke-width="1.8" fill="none"/>
+                <path d="M300 340 H205" stroke="#444" stroke-width="1.8" fill="none"/>
+                <path d="M300 380 H215" stroke="#444" stroke-width="1.8" fill="none"/>
+                <!-- 太宿右侧支渠 -->
+                <path d="M300 270 H390" stroke="#444" stroke-width="1.8" fill="none"/>
+                <path d="M300 320 H400" stroke="#444" stroke-width="1.8" fill="none"/>
+                <path d="M300 370 H395" stroke="#444" stroke-width="1.8" fill="none"/>
+                <!-- 太怀上支 -->
+                <path d="M360 70 V30" stroke="#444" stroke-width="1.8" fill="none"/>
+                <path d="M400 70 V35" stroke="#444" stroke-width="1.8" fill="none"/>
+                <!-- 北干支渠 -->
+                <path d="M600 90 V40" stroke="#444" stroke-width="1.8" fill="none"/>
+                <path d="M680 90 V45" stroke="#444" stroke-width="1.8" fill="none"/>
+                <!-- 南干/高岭下行支渠簇 -->
+                <path d="M800 200 V420" stroke="#444" stroke-width="1.6" fill="none"/>
+                <path d="M840 220 V430" stroke="#444" stroke-width="1.6" fill="none"/>
+                <path d="M880 240 V440" stroke="#444" stroke-width="1.6" fill="none"/>
+                <path d="M920 250 V450" stroke="#444" stroke-width="1.6" fill="none"/>
+                <path d="M960 260 V455" stroke="#444" stroke-width="1.6" fill="none"/>
+                <path d="M1000 270 V460" stroke="#444" stroke-width="1.6" fill="none"/>
+                <!-- 连接至高岭 -->
+                <path d="M780 200 H1000" stroke="#333" stroke-width="2" fill="none"/>
+
+                <!-- ===== 水库 ===== -->
+                <rect x="18" y="180" width="78" height="40" rx="4" fill="#e6f4ff" stroke="#1677ff" stroke-width="1.6"/>
+                <text x="57" y="204" text-anchor="middle" font-size="12" fill="#1677ff" font-weight="600">花凉亭水库</text>
+                <rect x="230" y="455" width="70" height="32" rx="4" fill="#e6f4ff" stroke="#1677ff" stroke-width="1.4"/>
+                <text x="265" y="475" text-anchor="middle" font-size="11" fill="#1677ff" font-weight="600">马安水库</text>
+                <path d="M300 430 V470 H265" stroke="#1677ff" stroke-width="1.5" fill="none" stroke-dasharray="3 2"/>
+
+                <!-- ===== 渠名（红） ===== -->
+                <text x="150" y="188" font-size="13" fill="#cf1322" font-weight="700">总干渠</text>
+                <text x="312" y="130" font-size="12" fill="#cf1322" font-weight="700" transform="rotate(-90 312 130)">太怀干渠</text>
+                <text x="312" y="320" font-size="12" fill="#cf1322" font-weight="700" transform="rotate(-90 312 320)">太宿干渠</text>
+                <text x="540" y="120" font-size="12" fill="#cf1322" font-weight="700">北干渠</text>
+                <text x="640" y="320" font-size="12" fill="#cf1322" font-weight="700" transform="rotate(-90 640 320)">南干渠</text>
+                <text x="790" y="150" font-size="12" fill="#cf1322" font-weight="700" transform="rotate(-90 790 150)">高岭分干渠</text>
+                <text x="720" y="80" font-size="11" fill="#cf1322" font-weight="700">腊皖分干渠</text>
+
+                <!-- ===== 闸站符号 ===== -->
+                <!-- 进水闸：方框打叉 -->
+                <g transform="translate(118,188)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <path d="M4 4 L20 20 M20 4 L4 20" stroke="#333" stroke-width="1.4"/>
+                </g>
+                <text x="130" y="228" text-anchor="middle" font-size="10" fill="#333">渠首进水闸</text>
+
+                <g transform="translate(248,188)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <line x1="12" y1="4" x2="12" y2="20" stroke="#333" stroke-width="1.6"/>
+                </g>
+                <text x="260" y="228" text-anchor="middle" font-size="10" fill="#333">双庙湖节制闸</text>
+
+                <!-- 南山寺（电站） -->
+                <ellipse cx="300" cy="200" rx="14" ry="10" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                <line x1="290" y1="196" x2="310" y2="196" stroke="#333" stroke-width="1.2"/>
+                <line x1="290" y1="204" x2="310" y2="204" stroke="#333" stroke-width="1.2"/>
+                <text x="300" y="228" text-anchor="middle" font-size="10" fill="#333">南山寺</text>
+
+                <g transform="translate(288,118)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <path d="M4 4 L20 20 M20 4 L4 20" stroke="#333" stroke-width="1.4"/>
+                </g>
+                <text x="340" y="134" font-size="10" fill="#333">太怀进水闸</text>
+
+                <g transform="translate(288,228)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <path d="M4 4 L20 20 M20 4 L4 20" stroke="#333" stroke-width="1.4"/>
+                </g>
+                <text x="350" y="244" font-size="10" fill="#333">太宿进水闸</text>
+
+                <g transform="translate(288,288)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <line x1="12" y1="4" x2="12" y2="20" stroke="#333" stroke-width="1.6"/>
+                </g>
+                <text x="350" y="304" font-size="10" fill="#333">段龙节制闸</text>
+
+                <g transform="translate(288,348)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <line x1="12" y1="4" x2="12" y2="20" stroke="#333" stroke-width="1.6"/>
+                </g>
+                <text x="350" y="364" font-size="10" fill="#333">章大计量闸</text>
+
+                <g transform="translate(288,398)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <line x1="12" y1="4" x2="12" y2="20" stroke="#333" stroke-width="1.6"/>
+                </g>
+                <text x="350" y="414" font-size="10" fill="#333">程岭节制闸</text>
+
+                <g transform="translate(508,188)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <line x1="12" y1="4" x2="12" y2="20" stroke="#333" stroke-width="1.6"/>
+                </g>
+                <text x="520" y="228" text-anchor="middle" font-size="10" fill="#333">毕岭节制闸</text>
+
+                <g transform="translate(608,188)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <line x1="12" y1="4" x2="12" y2="20" stroke="#333" stroke-width="1.6"/>
+                </g>
+                <text x="620" y="228" text-anchor="middle" font-size="10" fill="#333">汪园节制闸</text>
+
+                <g transform="translate(688,188)">
+                  <rect width="24" height="24" fill="#fff" stroke="#333" stroke-width="1.4"/>
+                  <line x1="12" y1="4" x2="12" y2="20" stroke="#333" stroke-width="1.6"/>
+                </g>
+                <text x="700" y="228" text-anchor="middle" font-size="10" fill="#333">滴露节制闸</text>
+
+                <!-- 末端圆点（灌区） -->
+                <circle cx="180" cy="80" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/>
+                <circle cx="180" cy="80" r="2" fill="#333"/>
+                <circle cx="220" cy="60" r="6" fill="#fff" stroke="#333" stroke-width="1.8"/>
+                <circle cx="220" cy="60" r="3" fill="#fff" stroke="#333"/>
+                <circle cx="220" cy="60" r="1.5" fill="#333"/>
+                <circle cx="260" cy="70" r="4.5" fill="#fff" stroke="#333" stroke-width="1.3" stroke-dasharray="2 1.5"/>
+                <circle cx="210" cy="260" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="210" cy="260" r="2" fill="#333"/>
+                <circle cx="200" cy="300" r="6" fill="#fff" stroke="#333" stroke-width="1.8"/><circle cx="200" cy="300" r="3" fill="#fff" stroke="#333"/><circle cx="200" cy="300" r="1.5" fill="#333"/>
+                <circle cx="205" cy="340" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="205" cy="340" r="2" fill="#333"/>
+                <circle cx="215" cy="380" r="4.5" fill="#fff" stroke="#333" stroke-width="1.3" stroke-dasharray="2 1.5"/>
+                <circle cx="390" cy="270" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="390" cy="270" r="2" fill="#333"/>
+                <circle cx="400" cy="320" r="6" fill="#fff" stroke="#333" stroke-width="1.8"/><circle cx="400" cy="320" r="3" fill="#fff" stroke="#333"/><circle cx="400" cy="320" r="1.5" fill="#333"/>
+                <circle cx="395" cy="370" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="395" cy="370" r="2" fill="#333"/>
+                <circle cx="360" cy="30" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="360" cy="30" r="2" fill="#333"/>
+                <circle cx="400" cy="35" r="6" fill="#fff" stroke="#333" stroke-width="1.8"/><circle cx="400" cy="35" r="3" fill="#fff" stroke="#333"/><circle cx="400" cy="35" r="1.5" fill="#333"/>
+                <circle cx="600" cy="40" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="600" cy="40" r="2" fill="#333"/>
+                <circle cx="680" cy="45" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="680" cy="45" r="2" fill="#333"/>
+                <circle cx="800" cy="420" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="800" cy="420" r="2" fill="#333"/>
+                <circle cx="840" cy="430" r="6" fill="#fff" stroke="#333" stroke-width="1.8"/><circle cx="840" cy="430" r="3" fill="#fff" stroke="#333"/><circle cx="840" cy="430" r="1.5" fill="#333"/>
+                <circle cx="880" cy="440" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="880" cy="440" r="2" fill="#333"/>
+                <circle cx="920" cy="450" r="4.5" fill="#fff" stroke="#333" stroke-width="1.3" stroke-dasharray="2 1.5"/>
+                <circle cx="960" cy="455" r="5" fill="#fff" stroke="#333" stroke-width="1.5"/><circle cx="960" cy="455" r="2" fill="#333"/>
+                <circle cx="1000" cy="460" r="6" fill="#fff" stroke="#333" stroke-width="1.8"/><circle cx="1000" cy="460" r="3" fill="#fff" stroke="#333"/><circle cx="1000" cy="460" r="1.5" fill="#333"/>
+
+                <!-- 支渠名称 -->
+                <text x="168" y="100" font-size="10" fill="#333" transform="rotate(-90 168 100)">城关支渠</text>
+                <text x="208" y="90" font-size="10" fill="#333" transform="rotate(-90 208 90)">幸福支渠</text>
+                <text x="248" y="95" font-size="10" fill="#333" transform="rotate(-90 248 95)">沙改支渠</text>
+                <text x="230" y="256" font-size="10" fill="#333">龙寨支渠</text>
+                <text x="225" y="296" font-size="10" fill="#333">小宫支渠</text>
+                <text x="228" y="336" font-size="10" fill="#333">胜利支渠</text>
+                <text x="232" y="376" font-size="10" fill="#333">鲁元支渠</text>
+                <text x="330" y="266" font-size="10" fill="#333">杨岭支渠</text>
+                <text x="330" y="316" font-size="10" fill="#333">红旗支渠</text>
+                <text x="330" y="366" font-size="10" fill="#333">姚圩支渠</text>
+                <text x="348" y="55" font-size="10" fill="#333">三联支渠</text>
+                <text x="388" y="58" font-size="10" fill="#333">金桥支渠</text>
+                <text x="588" y="62" font-size="10" fill="#333">毕岭支渠</text>
+                <text x="668" y="66" font-size="10" fill="#333">汪园支渠</text>
+                <text x="808" y="360" font-size="10" fill="#333" transform="rotate(-90 808 360)">甘庄支渠</text>
+                <text x="848" y="365" font-size="10" fill="#333" transform="rotate(-90 848 365)">五星支渠</text>
+                <text x="888" y="370" font-size="10" fill="#333" transform="rotate(-90 888 370)">叶湾支渠</text>
+                <text x="928" y="375" font-size="10" fill="#333" transform="rotate(-90 928 375)">华丰支渠</text>
+                <text x="968" y="380" font-size="10" fill="#333" transform="rotate(-90 968 380)">桥东支渠</text>
+                <text x="1008" y="385" font-size="10" fill="#333" transform="rotate(-90 1008 385)">袁林支渠</text>
+
+                <!-- ===== 绿色变量标签（仅此可变） ===== -->
+                <g id="topo-tag-layer"></g>
+              </svg>
+              <div class="topo-legend">
+                <div class="lg-title">图例</div>
+                <div class="lg-row"><svg width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="#fff" stroke="#333" stroke-width="1.6"/><circle cx="7" cy="7" r="3" fill="#fff" stroke="#333"/><circle cx="7" cy="7" r="1.2" fill="#333"/></svg>灌区 &gt; 1万亩</div>
+                <div class="lg-row"><svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="#fff" stroke="#333" stroke-width="1.4"/><circle cx="7" cy="7" r="1.8" fill="#333"/></svg>灌区 0.3–1万亩</div>
+                <div class="lg-row"><svg width="14" height="14"><circle cx="7" cy="7" r="4.5" fill="#fff" stroke="#333" stroke-width="1.2" stroke-dasharray="2 1.5"/></svg>灌区 &lt; 0.3万亩</div>
+                <div class="lg-row"><span style="width:22px;height:4px;background:#111;display:inline-block"></span>总干渠</div>
+                <div class="lg-row"><span style="width:22px;height:3px;background:#111;display:inline-block"></span>干渠</div>
+                <div class="lg-row"><span style="width:22px;height:2px;background:#444;display:inline-block"></span>分干/支渠</div>
+                <div class="lg-row"><svg width="14" height="14"><rect x="2" y="2" width="10" height="10" fill="#fff" stroke="#333"/><path d="M3.5 3.5 L10.5 10.5 M10.5 3.5 L3.5 10.5" stroke="#333"/></svg>进水闸</div>
+                <div class="lg-row"><svg width="14" height="14"><rect x="2" y="2" width="10" height="10" fill="#fff" stroke="#333"/><line x1="7" y1="3.5" x2="7" y2="10.5" stroke="#333" stroke-width="1.4"/></svg>节制闸</div>
+                <div class="lg-row"><svg width="14" height="14"><ellipse cx="7" cy="7" rx="5" ry="3.5" fill="#fff" stroke="#333"/></svg>水电站</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 明细表：始终展示，无数据时表内提示 -->
+          <div id="demand-result-content">
+            <div class="detail-card">
+              <div class="detail-hd" style="margin-bottom:0">
+                <h4>需水预测详细结果</h4>
+              </div>
+              <div class="detail-subtabs">
+                <div class="sub-tabs" id="demand-subtabs">
+                  <div class="sub-tab active" data-tab="canal">支渠明细</div>
+                  <div class="sub-tab" data-tab="district">分灌区明细</div>
+                  <div class="sub-tab" data-tab="area">片区明细</div>
+                  <div class="sub-tab" data-tab="total">总计</div>
+                </div>
+                <div class="detail-tools">
+                  <input type="text" class="field" id="demand-filter" placeholder="筛选当前结果">
+                  <button class="btn btn-default" id="demand-export">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    导出
+                  </button>
+                </div>
+              </div>
+              <div class="tbl-wrap">
+                <table class="demand-table" id="demand-table">
+                  <thead id="demand-thead"></thead>
+                  <tbody id="demand-tbody"></tbody>
+                </table>
+              </div>
+              <div class="pg-bar">
+                <div class="pg-info" id="demand-pg-info">共 0 条</div>
+                <div class="pg-btns" id="demand-pg-btns"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 水量损失预测 -->
+  <div class="panel" id="panel-loss">
+    <div class="main-layout">
+      <div class="left-panel">
+        <div class="left-scroll">
+          <div class="form-item">
+            <label class="form-label">预测类型</label>
+            <div class="radio-group">
+              <label class="radio-item"><input type="radio" name="loss-type" value="short"> 短期来水预报</label>
+              <label class="radio-item"><input type="radio" name="loss-type" value="mid" checked> 中长期来水预报</label>
+            </div>
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>方案选择</label>
+            <div class="select-wrap">
+              <select class="field" id="loss-scheme"></select>
+              <span class="select-arrow"></span>
+            </div>
+          </div>
+        </div>
+        <div class="left-actions">
+          <button class="btn btn-primary btn-block" id="loss-calc-btn">模型计算</button>
+        </div>
+      </div>
+
+      <div class="right-panel">
+        <div class="right-scroll">
+          <div class="result-hd">
+            <h2>水量损失预测计算结果</h2>
+            <button class="btn history-btn" id="loss-history-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              查看历史计算方案
+            </button>
+          </div>
+
+          <div class="empty-state" id="loss-result-empty">
+            <svg width="120" height="100" viewBox="0 0 120 100" fill="none">
+              <rect x="18" y="28" width="84" height="56" rx="6" fill="#f5f5f5" stroke="#e8e8e8"/>
+              <path d="M30 68l18-18 12 10 16-20 14 28H30z" fill="#e6f4ff" stroke="#91caff" stroke-width="1.2"/>
+              <circle cx="42" cy="44" r="6" fill="#bae0ff"/>
+              <rect x="38" y="16" width="44" height="10" rx="3" fill="#f0f0f0"/>
+            </svg>
+            <p>暂无计算结果，请设置参数后点击「模型计算」</p>
+          </div>
+
+          <div id="loss-result-content" style="display:none">
+            <div class="chart-card">
+              <div class="chart-title">损失水量</div>
+              <div class="chart-unit">单位：万方</div>
+              <div class="chart-box" id="chart-loss" style="height:300px"></div>
+            </div>
+
+            <div class="detail-card">
+              <div class="detail-hd">
+                <h4>水量损失预测详细结果</h4>
+                <div class="detail-tools">
+                  <input type="text" class="field" id="loss-filter" placeholder="筛选当前结果">
+                  <button class="btn btn-default" id="loss-export">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    导出
+                  </button>
+                </div>
+              </div>
+              <div class="tbl-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>日期</th>
+                      <th>预测水量(万方)</th>
+                      <th>损失水量(万方)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="loss-tbody"></tbody>
+                </table>
+              </div>
+              <div class="pg-bar">
+                <div class="pg-info" id="loss-pg-info">共 0 条</div>
+                <div class="pg-btns" id="loss-pg-btns"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 历史计算方案抽屉 -->
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="history-drawer">
+  <div class="drawer-hd">
+    <h3>模型运行记录</h3>
+    <button class="modal-close" id="drawer-close" title="关闭">×</button>
+  </div>
+  <div class="drawer-bd" id="history-list"></div>
+</aside>
+
+<!-- 编辑名称弹窗 -->
+<div class="overlay" id="edit-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span>标题</span>
+      <button class="modal-close" data-close="edit-overlay">×</button>
+    </div>
+    <div class="modal-bd edit-form">
+      <label class="form-label"><span class="req">*</span>名称</label>
+      <input type="text" class="field" id="edit-name" maxlength="80">
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-default" data-close="edit-overlay">取消</button>
+      <button class="btn btn-primary" id="edit-confirm">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 查看详情弹窗（短期） -->
+<div class="overlay" id="view-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span id="view-title">短期来水预测（对应模型）</span>
+      <button class="modal-close" data-close="view-overlay">×</button>
+    </div>
+    <div class="modal-bd view-bd">
+      <div class="stats-row" id="view-stats"></div>
+
+      <div class="chart-card">
+        <div class="chart-title">降雨量分布</div>
+        <div class="chart-unit">单位: mm</div>
+        <div class="chart-box" id="view-chart-rain"></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">库容与水位情况</div>
+        <div class="chart-unit">单位: m</div>
+        <div class="chart-box" id="view-chart-cap"></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">入库水量出库水量</div>
+        <div class="chart-unit">单位: m</div>
+        <div class="chart-box" id="view-chart-io"></div>
+      </div>
+
+      <div class="detail-card">
+        <div class="detail-hd">
+          <h4>短期来水预测明细</h4>
+          <div class="detail-tools">
+            <input type="text" class="field" id="detail-filter" placeholder="筛选当前结果">
+            <button class="btn btn-default" id="detail-export">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              导出
+            </button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>降雨量(mm)</th>
+                <th>入库水量(万方)</th>
+                <th>水位(m)</th>
+                <th>库容(万方)</th>
+                <th>出库水量(万方)</th>
+                <th>蒸发量(mm)</th>
+                <th>入库流量(m³/s)</th>
+                <th>出库流量(m³/s)</th>
+              </tr>
+            </thead>
+            <tbody id="detail-tbody"></tbody>
+          </table>
+        </div>
+        <div class="pg-bar">
+          <div class="pg-info" id="detail-pg-info">共 0 条</div>
+          <div class="pg-btns" id="detail-pg-btns"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 查看详情弹窗（中长期） -->
+<div class="overlay" id="mid-view-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span>中长期来水预测（对应模型）</span>
+      <button class="modal-close" data-close="mid-view-overlay">×</button>
+    </div>
+    <div class="modal-bd view-bd">
+      <div class="stats-row cols-3" id="mid-view-stats"></div>
+      <div class="chart-card">
+        <div class="chart-title">逐旬来水趋势</div>
+        <div class="chart-unit">单位：万方</div>
+        <div class="chart-box" id="mid-view-chart-decade" style="height:320px"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">月度来水汇总</div>
+        <div class="chart-unit">单位：万方</div>
+        <div class="chart-box" id="mid-view-chart-month"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 查看详情弹窗（需水） -->
+<div class="overlay" id="demand-view-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span>需水预测（对应模型）</span>
+      <button class="modal-close" data-close="demand-view-overlay">×</button>
+    </div>
+    <div class="modal-bd view-bd">
+      <div class="stats-row cols-3" id="demand-view-stats"></div>
+      <div class="detail-card">
+        <div class="detail-hd">
+          <h4>需水预测详细结果</h4>
+          <div class="detail-tools">
+            <input type="text" class="field" id="demand-view-filter" placeholder="筛选当前结果">
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table class="demand-table">
+            <thead id="demand-view-thead"></thead>
+            <tbody id="demand-view-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 查看详情弹窗（水量损失） -->
+<div class="overlay" id="loss-view-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span>水量损失预测（对应模型）</span>
+      <button class="modal-close" data-close="loss-view-overlay">×</button>
+    </div>
+    <div class="modal-bd view-bd">
+      <div class="chart-card">
+        <div class="chart-title">损失水量</div>
+        <div class="chart-unit">单位：万方</div>
+        <div class="chart-box" id="loss-view-chart" style="height:300px"></div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-hd">
+          <h4>水量损失预测详细结果</h4>
+          <div class="detail-tools">
+            <input type="text" class="field" id="loss-view-filter" placeholder="筛选当前结果">
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>预测水量(万方)</th>
+                <th>损失水量(万方)</th>
+              </tr>
+            </thead>
+            <tbody id="loss-view-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  /* ========== Mock 数据 ========== */
+  const DATES = [];
+  for (let d = 1; d <= 30; d++) {
+    DATES.push('2026-08-' + String(d).padStart(2, '0'));
+  }
+
+  function seeded(i, base, amp) {
+    const n = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+    return +(base + (n - Math.floor(n)) * amp).toFixed(2);
+  }
+
+  const MOCK = {
+    summary: {
+      maxLevel: 89.42,
+      totalIn: 1286,
+      totalOut: 914,
+      peakInFlow: 78
+    },
+    rainfall: DATES.map((_, i) => {
+      const v = seeded(i, 0, 48);
+      return v < 3 ? 0 : +v.toFixed(2);
+    }),
+    inflow: DATES.map((_, i) => seeded(i, 280, 420)),
+    outflow: DATES.map((_, i) => seeded(i + 3, 260, 380)),
+    level: DATES.map((_, i) => +(87 + i * 0.08 + seeded(i, 0, 1.2)).toFixed(2)),
+    capacity: DATES.map((_, i) => Math.round(4600 + i * 28 + seeded(i, 0, 80))),
+    evaporation: DATES.map((_, i) => +(2 + seeded(i, 0, 1.2)).toFixed(1)),
+    inFlowRate: DATES.map((_, i) => Math.round(30 + seeded(i, 0, 50))),
+    outFlowRate: DATES.map((_, i) => Math.round(25 + seeded(i + 1, 0, 40)))
+  };
+
+  // 对齐截图样例前几行
+  MOCK.rainfall[0] = 0;
+  MOCK.rainfall[1] = 4.5;
+  MOCK.rainfall[2] = 12.8;
+  MOCK.inflow[0] = 42; MOCK.inflow[1] = 49; MOCK.inflow[2] = 55;
+  MOCK.level[0] = 87.25; MOCK.level[1] = 87.61; MOCK.level[2] = 87.94;
+  MOCK.capacity[0] = 4620; MOCK.capacity[1] = 4711; MOCK.capacity[2] = 4795;
+  MOCK.outflow[0] = 41; MOCK.outflow[1] = 40; MOCK.outflow[2] = 37;
+  MOCK.evaporation[0] = 2.2; MOCK.evaporation[1] = 2.3; MOCK.evaporation[2] = 2.5;
+  MOCK.inFlowRate[0] = 32; MOCK.inFlowRate[1] = 42; MOCK.inFlowRate[2] = 50;
+
+  let historyList = [
+    { id: '20260801001', type: 'short', name: '20260801001短期来水预测（对应模型名称）', time: '2026/08/01 14:36' },
+    { id: '20260801002', type: 'short', name: '20260801002短期来水预测（对应模型名称）', time: '2026/08/01 15:00' },
+    { id: '20260801003', type: 'short', name: '20260801003短期来水预测（对应模型名称）', time: '2026/08/01 15:30' },
+    { id: '20260801004', type: 'short', name: '20260801004短期来水预测（对应模型名称）', time: '2026/08/01 16:00' },
+    { id: '20260801005', type: 'short', name: '20260801005短期来水预测（对应模型名称）', time: '2026/08/01 16:30' },
+    { id: '20260801006', type: 'short', name: '20260801006短期来水预测（对应模型名称）', time: '2026/08/01 17:00' },
+    { id: '20260802001', type: 'mid', name: '20260802001中长期来水预测（对应模型名称）', time: '2026/08/02 09:12' },
+    { id: '20260802002', type: 'mid', name: '20260802002中长期来水预测（对应模型名称）', time: '2026/08/02 10:05' },
+    { id: '20260802003', type: 'mid', name: '20260802003中长期来水预测（对应模型名称）', time: '2026/08/02 11:20' },
+    { id: '20260802004', type: 'mid', name: '20260802004中长期来水预测（对应模型名称）', time: '2026/08/02 14:36' },
+    { id: '20260802005', type: 'mid', name: '20260802005中长期来水预测（对应模型名称）', time: '2026/08/02 15:48' },
+    { id: '20260802006', type: 'mid', name: '20260802006中长期来水预测（对应模型名称）', time: '2026/08/02 16:30' },
+    { id: '20260803001', type: 'demand', name: '20260803001需水预测（对应模型名称）', time: '2026/08/03 09:10' },
+    { id: '20260803002', type: 'demand', name: '20260803002需水预测（对应模型名称）', time: '2026/08/03 10:22' },
+    { id: '20260803003', type: 'demand', name: '20260803003需水预测（对应模型名称）', time: '2026/08/03 11:05' },
+    { id: '20260803004', type: 'demand', name: '20260803004需水预测（对应模型名称）', time: '2026/08/03 14:18' },
+    { id: '20260803005', type: 'demand', name: '20260803005需水预测（对应模型名称）', time: '2026/08/03 15:40' },
+    { id: '20260803006', type: 'demand', name: '20260803006需水预测（对应模型名称）', time: '2026/08/03 16:55' },
+    { id: '20260804001', type: 'loss', name: '20260804001水量损失预测（对应模型名称）', time: '2026/08/04 09:20' },
+    { id: '20260804002', type: 'loss', name: '20260804002水量损失预测（对应模型名称）', time: '2026/08/04 10:35' },
+    { id: '20260804003', type: 'loss', name: '20260804003水量损失预测（对应模型名称）', time: '2026/08/04 11:48' },
+    { id: '20260804004', type: 'loss', name: '20260804004水量损失预测（对应模型名称）', time: '2026/08/04 14:12' },
+    { id: '20260804005', type: 'loss', name: '20260804005水量损失预测（对应模型名称）', time: '2026/08/04 15:30' },
+    { id: '20260804006', type: 'loss', name: '20260804006水量损失预测（对应模型名称）', time: '2026/08/04 16:40' }
+  ];
+
+  let historyType = 'short';
+  let editingId = null;
+  let detailPage = 1;
+  const DETAIL_PAGE_SIZE = 10;
+  let detailFilter = '';
+  let charts = {};
+  let demandTab = 'canal';
+  let demandFilter = '';
+  let demandUploaded = false;
+  let demandHasResult = false;
+  let demandPage = 1;
+  const DEMAND_PAGE_SIZE = 10;
+  const DEMAND_PERIODS = ['5月上旬', '5月中旬', '5月下旬', '6月上旬', '6月中旬', '6月下旬'];
+
+  const DEMAND_MOCK = {
+    summary: { total: 8048, area: '105.83', peak: '7月中旬' },
+    rows: [
+      { area: '东部片区', district: '徐桥灌区', canal: '东干一支渠', size: 7400, crop: '水稻', v: [25, 34, 42, 47, 48, 46] },
+      { area: '东部片区', district: '大石灌区', canal: '东干二支渠', size: 8360, crop: '水稻', v: [38, 45, 50, 52, 50, 45] },
+      { area: '东部片区', district: '新仓灌区', canal: '东干三支渠', size: 9320, crop: '油菜', v: [28, 36, 41, 44, 43, 38] },
+      { area: '北部片区', district: '北中灌区', canal: '北干一支渠', size: 10280, crop: '水稻', v: [58, 59, 57, 52, 45, 39] },
+      { area: '北部片区', district: '北西灌区', canal: '北干二支渠', size: 8640, crop: '小麦', v: [32, 35, 38, 36, 33, 30] },
+      { area: '北部片区', district: '江塘灌区', canal: '北干三支渠', size: 7180, crop: '混合作物', v: [41, 44, 46, 43, 40, 36] },
+      { area: '南部片区', district: '小池灌区', canal: '南干二支渠', size: 13160, crop: '蔬菜', v: [63, 56, 50, 45, 43, 45] },
+      { area: '南部片区', district: '小池灌区', canal: '南干一支渠', size: 9840, crop: '水稻', v: [48, 52, 55, 51, 47, 42] },
+      { area: '南部片区', district: '下仓灌区', canal: '南干三支渠', size: 6520, crop: '油菜', v: [22, 26, 30, 28, 25, 21] },
+      { area: '西部片区', district: '西部灌区', canal: '西干一支渠', size: 8960, crop: '水稻', v: [46, 49, 53, 50, 46, 41] },
+      { area: '西部片区', district: '西部灌区', canal: '西干二支渠', size: 5740, crop: '小麦', v: [19, 23, 27, 26, 24, 20] },
+      { area: '西部片区', district: '宿怀灌区', canal: '太宿支渠', size: 6680, crop: '混合作物', v: [31, 35, 39, 37, 34, 29] }
+    ]
+  };
+
+  let lossPage = 1;
+  let lossFilter = '';
+  let lossCalcType = 'mid';
+  const LOSS_PAGE_SIZE = 10;
+  const LOSS_SCHEMES = {
+    short: ['短期来水预报1', '短期来水预报2', '短期来水预报3'],
+    mid: ['中长期来水预报1', '中长期来水预报2', '中长期来水预报3']
+  };
+  const LOSS_DECADE_LABELS = [];
+  for (let m = 1; m <= 12; m++) {
+    ['上旬', '中旬', '下旬'].forEach(p => LOSS_DECADE_LABELS.push(m + '月' + p));
+  }
+  const LOSS_MOCK = {
+    short: DATES.map((d, i) => ({
+      date: d,
+      predict: +(10 + seeded(i + 70, 0, 8)).toFixed(1),
+      loss: +(2 + seeded(i + 90, 0, 4)).toFixed(1)
+    })),
+    midRows: Array.from({ length: 36 }, (_, i) => {
+      const d = new Date(2026, 6, 1);
+      d.setDate(d.getDate() + i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return {
+        date: y + '-' + m + '-' + day,
+        predict: +(10 + seeded(i + 150, 0, 8)).toFixed(1),
+        loss: +(2 + seeded(i + 170, 0, 4)).toFixed(1)
+      };
+    }),
+    midChart: LOSS_DECADE_LABELS.map((_, i) => +(30 + seeded(i + 190, 0, 55)).toFixed(1))
+  };
+  // 对齐截图样例前几行
+  [
+    [12.5, 3.2], [13.1, 2.9], [11.8, 3.5], [14.2, 2.7], [10.6, 4.1],
+    [12.9, 3.0], [13.6, 2.8], [11.2, 3.7], [14.8, 2.5], [12.0, 3.3]
+  ].forEach((pair, i) => {
+    if (LOSS_MOCK.short[i]) {
+      LOSS_MOCK.short[i].predict = pair[0];
+      LOSS_MOCK.short[i].loss = pair[1];
+    }
+    if (LOSS_MOCK.midRows[i]) {
+      LOSS_MOCK.midRows[i].predict = pair[0];
+      LOSS_MOCK.midRows[i].loss = pair[1];
+    }
+  });
+
+  /* ========== 工具 ========== */
+  function $(id) { return document.getElementById(id); }
+  function toast(msg) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove('show'), 1800);
+  }
+  function fmtDateSlash(iso) {
+    return iso.replace(/-/g, '/');
+  }
+  function fmtMD(iso) {
+    const p = iso.split('-');
+    return p[1] + '/' + p[2];
+  }
+  function daysBetween(a, b) {
+    const d1 = new Date(a + 'T00:00:00');
+    const d2 = new Date(b + 'T00:00:00');
+    return Math.round((d2 - d1) / 86400000);
+  }
+  function eachDate(start, end) {
+    const list = [];
+    const d = new Date(start + 'T00:00:00');
+    const last = new Date(end + 'T00:00:00');
+    while (d <= last) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      list.push(y + '-' + m + '-' + day);
+      d.setDate(d.getDate() + 1);
+    }
+    return list;
+  }
+  function renderStats(containerId, s) {
+    $(containerId).innerHTML = [
+      { label: '最高水位', value: s.maxLevel, unit: 'm' },
+      { label: '累计入库水量', value: s.totalIn.toLocaleString(), unit: '万m³' },
+      { label: '累计出库水量', value: s.totalOut.toLocaleString(), unit: '万m³' },
+      { label: '峰值入库流量', value: s.peakInFlow, unit: 'm³/s' }
+    ].map(it =>
+      `<div class="stat-card"><div class="label">${it.label}</div><div class="value">${it.value}<span class="unit">${it.unit}</span></div></div>`
+    ).join('');
+  }
+
+  function renderMidStats(containerId) {
+    const s = MID_MOCK.summary;
+    $(containerId).innerHTML = [
+      { label: '全年预测水量', value: s.annual.toLocaleString(), unit: '万m³' },
+      { label: '最大旬水量', value: s.maxDecade, unit: '万m³', period: s.maxPeriod },
+      { label: '最小旬水量', value: s.minDecade, unit: '万m³', period: s.minPeriod }
+    ].map(it =>
+      `<div class="stat-card"><div class="label">${it.label}</div><div class="value-row"><div class="value">${it.value}<span class="unit">${it.unit}</span></div>${it.period ? `<div class="period">${it.period}</div>` : ''}</div></div>`
+    ).join('');
+  }
+
+  /* ========== 中长期 Mock ========== */
+  const DECADE_LABELS = [];
+  const DECADE_PERIODS = ['上', '中', '下'];
+  for (let m = 1; m <= 12; m++) {
+    DECADE_PERIODS.forEach(p => DECADE_LABELS.push(m + '月' + p));
+  }
+  const MONTH_LABELS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0') + '月');
+  const MID_MOCK = {
+    summary: { annual: 12486, maxDecade: 368, maxPeriod: '7月中旬', minDecade: 163, minPeriod: '12月下旬' },
+    decade: DECADE_LABELS.map((_, i) => {
+      const base = 220 + Math.sin(i / 3.2) * 70 + Math.cos(i / 5) * 40;
+      return Math.round(base + seeded(i + 20, 0, 50));
+    }),
+    month: MONTH_LABELS.map((_, i) => Math.round(700 + seeded(i + 40, 0, 350) + Math.sin(i / 2) * 120))
+  };
+  // 对齐截图：峰值在 7 月中旬、谷值在 12 月下旬
+  MID_MOCK.decade[19] = 368; // 7月中
+  MID_MOCK.decade[35] = 163; // 12月下
+  MID_MOCK.month = MID_MOCK.decade.reduce((acc, v, i) => {
+    const mi = Math.floor(i / 3);
+    acc[mi] = (acc[mi] || 0) + v;
+    return acc;
+  }, []);
+  // 与设计稿统计值对齐
+  MID_MOCK.summary.annual = 12486;
+  MID_MOCK.summary.maxDecade = 368;
+  MID_MOCK.summary.minDecade = 163;
+
+  /* ========== 自定义出库列表 ========== */
+  function rebuildOutflowList() {
+    const start = $('start-date').value;
+    const end = $('end-date').value;
+    const box = $('outflow-list');
+    if (!start || !end || end < start) {
+      box.innerHTML = '<div class="outflow-row" style="color:#999;justify-content:center">请选择有效预测时间</div>';
+      return;
+    }
+    const dates = eachDate(start, end);
+    const defaults = [450.2154, 460.1237, 455.9876, 470.5432, 480.3210, 490.6789, 495.4321, 500.7890, 485.2468, 475.1357];
+    box.innerHTML = dates.map((dt, i) => {
+      const v = (defaults[i % defaults.length] + i * 0.37).toFixed(4);
+      return `<div class="outflow-row"><span class="dt">${fmtDateSlash(dt)}</span><input type="number" class="field outflow-val" data-date="${dt}" value="${v}" step="0.0001"></div>`;
+    }).join('');
+  }
+
+  /* ========== 图表 ========== */
+  function axisDates(dates) {
+    return dates.map(fmtMD);
+  }
+  function rainOption(dates, data) {
+    return {
+      color: ['#1677ff'],
+      tooltip: { trigger: 'axis' },
+      legend: { bottom: 0, data: ['降雨量'], itemWidth: 10, itemHeight: 10 },
+      grid: { left: 48, right: 20, top: 36, bottom: 48 },
+      xAxis: {
+        type: 'category',
+        data: axisDates(dates),
+        axisLabel: { rotate: 40, fontSize: 10, color: '#999', interval: 0 },
+        axisTick: { alignWithLabel: true },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: {
+        type: 'value', min: 0, max: 50, splitNumber: 2,
+        axisLabel: { color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [{
+        name: '降雨量', type: 'bar', data: data, barMaxWidth: 14,
+        label: { show: true, position: 'top', fontSize: 9, color: '#666', formatter: p => (p.value > 0 ? p.value : '') }
+      }]
+    };
+  }
+  function ioOption(dates, inflow, outflow) {
+    return {
+      color: ['#1677ff', '#52c41a'],
+      tooltip: { trigger: 'axis' },
+      legend: { bottom: 0, data: ['入库水量', '出库水量'] },
+      grid: { left: 48, right: 20, top: 28, bottom: 48 },
+      xAxis: {
+        type: 'category', boundaryGap: false, data: axisDates(dates),
+        axisLabel: { rotate: 40, fontSize: 10, color: '#999', interval: 0 },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: {
+        type: 'value', min: 0, max: 900, splitNumber: 3,
+        axisLabel: { color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [
+        {
+          name: '入库水量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6,
+          data: inflow,
+          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
+            { offset: 0, color: 'rgba(22,119,255,.28)' }, { offset: 1, color: 'rgba(22,119,255,.02)' }
+          ]}}
+        },
+        {
+          name: '出库水量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6,
+          data: outflow,
+          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
+            { offset: 0, color: 'rgba(82,196,26,.25)' }, { offset: 1, color: 'rgba(82,196,26,.02)' }
+          ]}}
+        }
+      ]
+    };
+  }
+  function capOption(dates, capacity, level) {
+    // 库容量级大，水位量级小：双轴
+    return {
+      color: ['#722ed1', '#1677ff'],
+      tooltip: { trigger: 'axis' },
+      legend: { bottom: 0, data: ['库容', '水位'] },
+      grid: { left: 52, right: 48, top: 28, bottom: 48 },
+      xAxis: {
+        type: 'category', data: axisDates(dates),
+        axisLabel: { rotate: 40, fontSize: 10, color: '#999', interval: 0 },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: [
+        {
+          type: 'value', name: '', min: 0,
+          axisLabel: { color: '#999' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', name: '', min: 80, max: 100,
+          axisLabel: { color: '#999' },
+          splitLine: { show: false }
+        }
+      ],
+      series: [
+        { name: '库容', type: 'bar', data: capacity, barMaxWidth: 12, itemStyle: { color: '#9b7de8' } },
+        { name: '水位', type: 'line', yAxisIndex: 1, data: level, symbol: 'circle', symbolSize: 6, itemStyle: { color: '#1677ff' }, lineStyle: { width: 2 } }
+      ]
+    };
+  }
+  function ensureChart(key, el) {
+    if (charts[key]) {
+      charts[key].dispose();
+    }
+    charts[key] = echarts.init(el);
+    return charts[key];
+  }
+  function renderMainCharts() {
+    const rain = ensureChart('mainRain', $('chart-rain'));
+    rain.setOption(rainOption(DATES, MOCK.rainfall));
+    // 主图入库/出库用更接近截图量级的曲线
+    const inSeries = DATES.map((_, i) => Math.round(300 + seeded(i, 0, 500)));
+    const outSeries = DATES.map((_, i) => Math.round(280 + seeded(i + 5, 0, 480)));
+    const io = ensureChart('mainIo', $('chart-io'));
+    io.setOption(ioOption(DATES, inSeries, outSeries));
+  }
+  function renderViewCharts() {
+    ensureChart('viewRain', $('view-chart-rain')).setOption(rainOption(DATES, MOCK.rainfall));
+    ensureChart('viewCap', $('view-chart-cap')).setOption(capOption(DATES, MOCK.capacity, MOCK.level));
+    const inSeries = DATES.map((_, i) => Math.round(300 + seeded(i, 0, 500)));
+    const outSeries = DATES.map((_, i) => Math.round(280 + seeded(i + 5, 0, 480)));
+    ensureChart('viewIo', $('view-chart-io')).setOption(ioOption(DATES, inSeries, outSeries));
+    setTimeout(() => {
+      Object.values(charts).forEach(c => c && c.resize());
+    }, 50);
+  }
+
+  function decadeOption() {
+    return {
+      color: ['#1677ff'],
+      tooltip: { trigger: 'axis' },
+      legend: { bottom: 0, data: ['来水量'] },
+      grid: { left: 48, right: 20, top: 28, bottom: 56 },
+      xAxis: {
+        type: 'category', boundaryGap: false, data: DECADE_LABELS,
+        axisLabel: { rotate: 40, fontSize: 10, color: '#999', interval: 0 },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: {
+        type: 'value', min: 100, max: 400, splitNumber: 3,
+        axisLabel: { color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [{
+        name: '来水量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6,
+        data: MID_MOCK.decade,
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
+          { offset: 0, color: 'rgba(22,119,255,.28)' }, { offset: 1, color: 'rgba(22,119,255,.02)' }
+        ]}}
+      }]
+    };
+  }
+  function monthOption() {
+    return {
+      color: ['#1677ff'],
+      tooltip: { trigger: 'axis' },
+      legend: { bottom: 0, data: ['预测水量'], itemWidth: 10, itemHeight: 10 },
+      grid: { left: 48, right: 20, top: 28, bottom: 48 },
+      xAxis: {
+        type: 'category', data: MONTH_LABELS,
+        axisLabel: { color: '#999' },
+        axisTick: { alignWithLabel: true },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: {
+        type: 'value', min: 0, max: 1000, splitNumber: 5,
+        axisLabel: { color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [{
+        name: '预测水量', type: 'bar', data: MID_MOCK.month, barMaxWidth: 28
+      }]
+    };
+  }
+  function renderMidCharts() {
+    ensureChart('midDecade', $('chart-decade')).setOption(decadeOption());
+    ensureChart('midMonth', $('chart-month')).setOption(monthOption());
+  }
+  function renderMidViewCharts() {
+    ensureChart('midViewDecade', $('mid-view-chart-decade')).setOption(decadeOption());
+    ensureChart('midViewMonth', $('mid-view-chart-month')).setOption(monthOption());
+    setTimeout(() => Object.values(charts).forEach(c => c && c.resize()), 50);
+  }
+
+  /* ========== 明细表 ========== */
+  function buildDetailRows() {
+    return DATES.map((dt, i) => ({
+      date: dt,
+      rain: MOCK.rainfall[i],
+      inflow: MOCK.inflow[i],
+      level: MOCK.level[i],
+      capacity: MOCK.capacity[i],
+      outflow: MOCK.outflow[i],
+      evaporation: MOCK.evaporation[i],
+      inFlow: MOCK.inFlowRate[i],
+      outFlow: MOCK.outFlowRate[i]
+    }));
+  }
+  function filteredRows() {
+    const rows = buildDetailRows();
+    const q = detailFilter.trim();
+    if (!q) return rows;
+    return rows.filter(r => Object.values(r).some(v => String(v).includes(q)));
+  }
+  function renderDetailTable() {
+    const rows = filteredRows();
+    const total = rows.length;
+    const pages = Math.max(1, Math.ceil(total / DETAIL_PAGE_SIZE));
+    if (detailPage > pages) detailPage = pages;
+    const start = (detailPage - 1) * DETAIL_PAGE_SIZE;
+    const pageRows = rows.slice(start, start + DETAIL_PAGE_SIZE);
+    $('detail-tbody').innerHTML = pageRows.map(r =>
+      `<tr>
+        <td>${r.date}</td>
+        <td>${r.rain}</td>
+        <td>${r.inflow}</td>
+        <td>${r.level}</td>
+        <td>${r.capacity}</td>
+        <td>${r.outflow}</td>
+        <td>${r.evaporation}</td>
+        <td>${r.inFlow}</td>
+        <td>${r.outFlow}</td>
+      </tr>`
+    ).join('') || `<tr><td colspan="9" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+
+    const from = total ? start + 1 : 0;
+    const to = Math.min(start + DETAIL_PAGE_SIZE, total);
+    $('detail-pg-info').textContent = `共 ${total} 条，本页显示 ${from}-${to} 条`;
+
+    const btns = $('detail-pg-btns');
+    let html = '';
+    for (let p = 1; p <= pages; p++) {
+      html += `<button class="pg-btn${p === detailPage ? ' active' : ''}" data-page="${p}">${p}</button>`;
+    }
+    btns.innerHTML = html;
+  }
+
+  /* ========== 历史列表 ========== */
+  function currentHistory() {
+    return historyList.filter(h => h.type === historyType);
+  }
+  function renderHistory() {
+    const list = currentHistory();
+    $('history-list').innerHTML = list.map(item =>
+      `<div class="hist-item" data-id="${item.id}">
+        <div class="hist-name" title="${item.name}">${item.name}</div>
+        <div class="hist-time">${item.time}</div>
+        <div class="hist-acts">
+          <button type="button" data-act="view">查看</button>
+          <button type="button" data-act="edit">编辑名称</button>
+        </div>
+      </div>`
+    ).join('') || '<div style="padding:48px;text-align:center;color:#bbb">暂无历史记录</div>';
+  }
+
+  function pushHistory(type, label) {
+    const now = new Date();
+    const sameType = historyList.filter(h => h.type === type).length;
+    const id = now.getFullYear().toString()
+      + String(now.getMonth() + 1).padStart(2, '0')
+      + String(now.getDate()).padStart(2, '0')
+      + String(sameType + 1).padStart(3, '0');
+    const pad = n => String(n).padStart(2, '0');
+    const time = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    historyList.unshift({ id, type, name: id + label + '（对应模型名称）', time });
+  }
+
+  /* ========== 交互 ========== */
+  // Tab
+  $('top-tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.top-tab');
+    if (!tab) return;
+    document.querySelectorAll('.top-tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    const panel = $('panel-' + tab.dataset.panel);
+    if (panel) panel.classList.add('active');
+    const crumb = document.querySelector('.breadcrumb .cur');
+    if (crumb) crumb.textContent = tab.textContent.trim();
+    if (tab.dataset.panel === 'mid' || tab.dataset.panel === 'demand' || tab.dataset.panel === 'loss') {
+      setTimeout(() => {
+        if (tab.dataset.panel === 'demand') renderTopoTags();
+        Object.values(charts).forEach(c => c && c.resize());
+      }, 50);
+    }
+  });
+
+  // 自定义降雨
+  $('custom-rain-chk').addEventListener('change', e => {
+    $('custom-rain-row').style.display = e.target.checked ? 'flex' : 'none';
+  });
+
+  // 出库模式
+  document.querySelectorAll('input[name="outflow-mode"]').forEach(r => {
+    r.addEventListener('change', () => {
+      $('custom-outflow-block').style.display = document.querySelector('input[name="outflow-mode"]:checked').value === 'custom' ? 'block' : 'none';
+    });
+  });
+
+  // 典型年份 → 历史年份
+  function syncHistYear() {
+    const mode = document.querySelector('input[name="typical-year"]:checked').value;
+    const input = $('hist-year');
+    const enable = mode === 'none';
+    input.disabled = !enable;
+    if (!enable) input.value = '';
+  }
+  document.querySelectorAll('input[name="typical-year"]').forEach(r => {
+    r.addEventListener('change', syncHistYear);
+  });
+  syncHistYear();
+
+  $('start-date').addEventListener('change', rebuildOutflowList);
+  $('end-date').addEventListener('change', rebuildOutflowList);
+
+  // 短期模型计算
+  $('calc-btn').addEventListener('click', () => {
+    const start = $('start-date').value;
+    const end = $('end-date').value;
+    const level = $('start-level').value;
+    if (!start || !end) return toast('请选择预测时间');
+    if (end < start) return toast('截止时间不能早于开始时间');
+    const span = daysBetween(start, end);
+    if (span < 1 || span > 30) return toast('预测时段需满足 1 ≤ 天数 ≤ 30');
+    if (!level && level !== '0') return toast('请输入起始水位');
+    if ($('custom-rain-chk').checked && !$('custom-rain').value) return toast('请输入自定义总降雨量');
+    if (document.querySelector('input[name="outflow-mode"]:checked').value === 'custom') {
+      const vals = [...document.querySelectorAll('.outflow-val')];
+      if (!vals.length || vals.some(i => i.value === '')) return toast('请完善自定义出库水量');
+    }
+
+    const btn = $('calc-btn');
+    btn.classList.add('is-loading');
+    setTimeout(() => {
+      btn.classList.remove('is-loading');
+      $('result-empty').style.display = 'none';
+      $('result-content').style.display = 'block';
+      renderStats('main-stats', MOCK.summary);
+      renderMainCharts();
+      pushHistory('short', '短期来水预测');
+      toast('计算完成');
+    }, 600);
+  });
+
+  // 中长期模型计算
+  $('mid-calc-btn').addEventListener('click', () => {
+    const start = $('mid-start-date').value;
+    const end = $('mid-end-date').value;
+    if (!start || !end) return toast('请选择预测时间');
+    if (end < start) return toast('截止时间不能早于开始时间');
+    const mode = document.querySelector('input[name="typical-year"]:checked').value;
+    if (mode === 'none' && !$('hist-year').value) return toast('请选择历史年份');
+
+    const btn = $('mid-calc-btn');
+    btn.classList.add('is-loading');
+    setTimeout(() => {
+      btn.classList.remove('is-loading');
+      $('mid-result-empty').style.display = 'none';
+      $('mid-result-content').style.display = 'block';
+      renderMidStats('mid-stats');
+      renderMidCharts();
+      pushHistory('mid', '中长期来水预测');
+      toast('计算完成');
+    }, 600);
+  });
+
+  /* ========== 需水预测 ========== */
+  function renderDemandStats(containerId) {
+    const s = DEMAND_MOCK.summary;
+    $(containerId).innerHTML = [
+      { label: '全灌区总需水', value: s.total.toLocaleString(), unit: '万m³' },
+      { label: '灌溉面积', value: s.area, unit: '万亩' },
+      { label: '需水高峰旬', value: s.peak, unit: '' }
+    ].map(it =>
+      `<div class="stat-card"><div class="label">${it.label}</div><div class="value">${it.value}${it.unit ? `<span class="unit">${it.unit}</span>` : ''}</div></div>`
+    ).join('');
+  }
+
+  function demandRowsByTab() {
+    const rows = DEMAND_MOCK.rows;
+    if (demandTab === 'canal') return rows.map(r => ({ ...r, v: r.v.slice() }));
+    if (demandTab === 'district') {
+      const map = {};
+      rows.forEach(r => {
+        const k = r.area + '|' + r.district;
+        if (!map[k]) map[k] = { area: r.area, district: r.district, canal: '—', size: 0, crop: '—', v: [0, 0, 0, 0, 0, 0] };
+        map[k].size += r.size;
+        map[k].v = map[k].v.map((x, i) => x + r.v[i]);
+      });
+      return Object.values(map);
+    }
+    if (demandTab === 'area') {
+      const map = {};
+      rows.forEach(r => {
+        if (!map[r.area]) map[r.area] = { area: r.area, district: '—', canal: '—', size: 0, crop: '—', v: [0, 0, 0, 0, 0, 0] };
+        map[r.area].size += r.size;
+        map[r.area].v = map[r.area].v.map((x, i) => x + r.v[i]);
+      });
+      return Object.values(map);
+    }
+    const total = { area: '合计', district: '—', canal: '—', size: 0, crop: '—', v: [0, 0, 0, 0, 0, 0] };
+    rows.forEach(r => {
+      total.size += r.size;
+      total.v = total.v.map((x, i) => x + r.v[i]);
+    });
+    return [total];
+  }
+
+  function filteredDemandRows() {
+    if (!demandHasResult) return [];
+    const rows = demandRowsByTab();
+    const q = demandFilter.trim();
+    if (!q) return rows;
+    return rows.filter(r => [r.area, r.district, r.canal, r.crop, r.size].some(v => String(v).includes(q)));
+  }
+
+  function demandColumns() {
+    const cols = [{ key: 'area', label: '片区' }];
+    if (demandTab === 'canal' || demandTab === 'district') cols.push({ key: 'district', label: '分灌区' });
+    if (demandTab === 'canal') cols.push({ key: 'canal', label: '支渠' });
+    cols.push({ key: 'size', label: '灌区面积' });
+    if (demandTab === 'canal') cols.push({ key: 'crop', label: '种植作物种类' });
+    DEMAND_PERIODS.forEach((label, i) => cols.push({ key: 'v' + i, label, periodIndex: i }));
+    return cols;
+  }
+
+  function renderDemandThead(theadId) {
+    const el = $(theadId);
+    if (!el) return;
+    el.innerHTML = '<tr>' + demandColumns().map(c => `<th>${c.label}</th>`).join('') + '</tr>';
+  }
+
+  function demandRowHtml(r, cols) {
+    return '<tr>' + cols.map(c => {
+      if (c.periodIndex != null) return `<td>${r.v[c.periodIndex]}</td>`;
+      return `<td>${r[c.key]}</td>`;
+    }).join('') + '</tr>';
+  }
+
+  function renderDemandPager(total) {
+    const info = $('demand-pg-info');
+    const btns = $('demand-pg-btns');
+    if (!info || !btns) return;
+    const pages = Math.max(1, Math.ceil(total / DEMAND_PAGE_SIZE));
+    if (demandPage > pages) demandPage = pages;
+    const from = total ? (demandPage - 1) * DEMAND_PAGE_SIZE + 1 : 0;
+    const to = Math.min(demandPage * DEMAND_PAGE_SIZE, total);
+    info.textContent = `共 ${total} 条` + (total ? `，本页显示 ${from}-${to} 条` : '');
+    let html = `<button class="pg-btn" data-page="${demandPage - 1}" ${demandPage <= 1 ? 'disabled' : ''}>‹</button>`;
+    for (let i = 1; i <= pages; i++) {
+      html += `<button class="pg-btn${i === demandPage ? ' active' : ''}" data-page="${i}">${i}</button>`;
+    }
+    html += `<button class="pg-btn" data-page="${demandPage + 1}" ${demandPage >= pages ? 'disabled' : ''}>›</button>`;
+    btns.innerHTML = html;
+  }
+
+  function renderDemandTable(tbodyId, opts) {
+    const options = opts || {};
+    const rows = filteredDemandRows();
+    const cols = demandColumns();
+    const theadId = options.theadId || (tbodyId === 'demand-view-tbody' ? 'demand-view-thead' : 'demand-thead');
+    renderDemandThead(theadId);
+
+    let pageRows = rows;
+    if (!options.noPager) {
+      const start = (demandPage - 1) * DEMAND_PAGE_SIZE;
+      pageRows = rows.slice(start, start + DEMAND_PAGE_SIZE);
+      renderDemandPager(rows.length);
+    }
+
+    const tbody = $(tbodyId);
+    if (!tbody) return;
+    tbody.innerHTML = pageRows.map(r => demandRowHtml(r, cols)).join('')
+      || `<tr><td colspan="${cols.length}" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+  }
+
+  function showDemandResult() {
+    demandHasResult = true;
+    $('demand-result-empty').style.display = 'none';
+    $('demand-stats-wrap').style.display = 'block';
+    $('demand-result-content').style.display = 'block';
+    demandPage = 1;
+    renderDemandStats('demand-stats');
+    renderDemandTable('demand-tbody');
+    renderTopoTags();
+  }
+
+  /* ========== ECharts graph 拓扑（图一整体 / 图二上半轴 / 图三下半轴） ========== */
+  function topoTagValue(i) {
+    const scope = $('demand-scope').value;
+    const a = +(40 + seeded(i + (scope === 'area' ? 10 : scope === 'district' ? 20 : 0), 0, 20)).toFixed(2);
+    const b = Math.round(2000 + seeded(i + 5, 0, 15000));
+    return a + '/' + b;
+  }
+
+  function buildTopoGraphOption() {
+    /* 图一整体 = 图二上半轴 + 图三下半轴；结构固定，仅绿标数值可变 */
+    const Y = 148;   // 上半轴：总干渠/北干渠（下层水平主干）
+    const Y_TOP = 82;  // 腊皖分干渠（上层水平支干）
+    const TX = 340;  // 下半轴：太宿干渠竖轴
+
+    const nodes = [];
+    const links = [];
+    const tagList = [];
+
+    function addNode(n) {
+      nodes.push(Object.assign({
+        symbolSize: 18,
+        itemStyle: { color: '#fff', borderColor: '#333', borderWidth: 1.3 },
+        label: { show: true, fontSize: 10, color: '#333', distance: 6 }
+      }, n));
+    }
+    function addGate(id, name, x, y, pos) {
+      addNode({
+        id, name, x, y, category: 1, symbol: 'rect', symbolSize: 16,
+        itemStyle: { color: '#fff', borderColor: '#222', borderWidth: 1.4 },
+        label: { show: true, position: pos || 'bottom', distance: 8, fontSize: 10, color: '#333' }
+      });
+    }
+    function addStation(id, name, x, y, pos) {
+      addNode({
+        id, name, x, y, category: 2, symbol: 'circle', symbolSize: 12,
+        itemStyle: { color: '#fff', borderColor: '#333', borderWidth: 1.5 },
+        label: { show: true, position: pos || 'bottom', distance: 8, fontSize: 10, color: '#333' }
+      });
+    }
+    function addCanalLabel(id, name, x, y, rotate, size) {
+      addNode({
+        id, name, x, y, category: 3, symbolSize: 1,
+        itemStyle: { color: 'transparent', borderWidth: 0 },
+        label: {
+          show: true, color: '#cf1322', fontWeight: 700, fontSize: size || 13,
+          rotate: rotate || 0, position: 'inside'
+        }
+      });
+    }
+    function addBranch(id, name, x, y, size, labelPos, labelRotate) {
+      addNode({
+        id, name, x, y, category: 4,
+        symbol: 'circle', symbolSize: size || 11,
+        itemStyle: { color: '#fff', borderColor: '#333', borderWidth: 1.5 },
+        label: {
+          show: true,
+          position: labelPos || 'bottom',
+          distance: 4,
+          fontSize: 9,
+          color: '#333',
+          rotate: labelRotate || 0
+        }
+      });
+    }
+    function addJ(id, x, y) {
+      addNode({
+        id, name: '', x, y, category: 4, symbolSize: 1,
+        itemStyle: { color: 'transparent', borderWidth: 0 },
+        label: { show: false }
+      });
+    }
+    function addTag(name, x, y, vertical) {
+      tagList.push({ name, x, y, vertical: !!vertical });
+    }
+    function L(a, b, w, color) {
+      links.push({
+        source: a, target: b,
+        lineStyle: { width: w || 2, color: color || '#222', curveness: 0, opacity: 1 }
+      });
+    }
+
+    // ========== 图二：上半轴 总干渠 → 北干渠 ==========
+    addNode({
+      id: 'res_hlt', name: '花凉亭水库', x: 48, y: Y, category: 0,
+      symbol: 'rect', symbolSize: [88, 34],
+      itemStyle: { color: '#e6f4ff', borderColor: '#1677ff', borderWidth: 1.6 },
+      label: { show: true, color: '#1677ff', fontWeight: 600, fontSize: 12 }
+    });
+
+    addGate('g_qs', '渠首进水闸', 125, Y, 'bottom');
+    addGate('g_smh', '双庙湖节制闸', 215, Y, 'bottom');
+    addJ('j_th0', 275, Y);
+    addStation('s_nss', '南山寺', 350, Y, 'bottom');
+    addGate('g_bl', '毕岭节制闸', 480, Y, 'bottom');
+    addGate('g_wy', '汪园节制闸', 575, Y, 'bottom');
+    addStation('s_zjl', '张家垅', 720, Y, 'bottom');
+    addStation('s_htt', '何土塘', 840, Y, 'bottom');
+    addJ('end_bg', 980, Y);
+
+    // 双庙湖 → 太怀干渠（上）→ 腊皖分干渠（右，Y_TOP 水平线）
+    addJ('j_th_v', 215, 115);
+    addGate('g_th', '太怀进水闸', 248, Y_TOP, 'bottom');
+    addJ('j_qs2', 295, Y_TOP);
+    addStation('s_wjq', '王家桥', 355, Y_TOP, 'top');
+    addJ('j_law_a', 420, Y_TOP);
+    addJ('j_law_b', 490, Y_TOP);
+    addJ('j_law_c', 555, Y_TOP);
+    addJ('end_law', 615, Y_TOP);
+
+    addCanalLabel('lab_zg', '总干渠', 170, Y - 20, 0);
+    addCanalLabel('lab_th', '太怀干渠', 198, 112, 90);
+    addCanalLabel('lab_law', '腊皖分干渠', 470, Y_TOP - 18, 0, 12);
+    addCanalLabel('lab_xp', '霄坪支渠', 655, 48, 90, 12);
+    addCanalLabel('lab_bg', '北干渠', 930, Y - 20, 0);
+    addCanalLabel('lab_lb', '雷埠支渠', 628, 48, 90, 12);
+
+    // 渠首进水闸 ↔ 双庙湖节制闸之间：三支渠垂直向上
+    const earlyUp = [
+      { j: 'j_cg', id: 'b_cg', name: '城关支渠', x: 150 },
+      { j: 'j_xf', id: 'b_xf', name: '幸福支渠', x: 170 },
+      { j: 'j_sg', id: 'b_sg', name: '沙改支渠', x: 190 }
+    ];
+    earlyUp.forEach(b => {
+      addJ(b.j, b.x, Y);
+      addBranch(b.id, b.name, b.x, 58, 11, 'left', 90);
+      addTag(b.name, b.x, 36, false);
+      L(b.j, b.id, 1.6, '#666');
+    });
+
+    // 腊皖分干渠（Y_TOP）上：向上支渠
+    addBranch('b_qs2', '桥山支渠', 295, 52, 11, 'left', 90);
+    addTag('桥山支渠', 295, 34, false);
+    L('j_qs2', 'b_qs2', 1.6, '#666');
+
+    const lawUp = [
+      { j: 'j_u_zy', id: 'b_zy', name: '朝阳支渠', x: 278 },
+      { j: 'j_u_gy', id: 'b_gy', name: '果园支渠', x: 395, y: 50 },
+      { j: 'j_u_lb', id: 'b_lb', name: '雷埠支渠', x: 615, y: 48, trunk: 'end_law' }
+    ];
+    lawUp.forEach(b => {
+      if (!b.trunk) addJ(b.j, b.x, Y_TOP);
+      const by = b.y || 54;
+      addBranch(b.id, b.name, b.x, by, 11, 'left', 90);
+      addTag(b.name, b.x, by - 18, false);
+      L(b.trunk || b.j, b.id, 1.6, '#666');
+    });
+
+    // 腊皖分干渠（Y_TOP）下：向下支渠
+    const lawDown = [
+      { j: 'j_d_cl', id: 'b_cl', name: '陈良支渠', x: 328, y: 118 },
+      { j: 'j_d_wgs', id: 'b_wgs', name: '王岗山支渠', x: 378, y: 120 },
+      { j: 'j_d_ss', id: 'b_ss', name: '邵山支渠', x: 448, y: 118 },
+      { j: 'j_d_hd', id: 'b_hd', name: '黑带支渠', x: 518, y: 120 },
+      { j: 'j_d_yt', id: 'b_yt', name: '易潭支渠', x: 578, y: 118 }
+    ];
+    lawDown.forEach(b => {
+      addJ(b.j, b.x, Y_TOP);
+      addBranch(b.id, b.name, b.x, b.y, 11, 'top', 0);
+      addTag(b.name, b.x, b.y + 18, false);
+      L(b.j, b.id, 1.6, '#666');
+    });
+
+    // 北干渠段上行支渠（总干渠北侧）
+    const upB = [
+      { id: 'b_xp', name: '霄坪灌区', x: 655, y: 58, from: 'g_wy' },
+      { id: 'b_hx', name: '红星支渠', x: 700, y: 36, from: 's_zjl' },
+      { id: 'b_xb', name: '新坝支渠', x: 760, y: 30, from: 's_zjl' },
+      { id: 'b_hl', name: '红岭支渠', x: 820, y: 36, from: 's_htt' }
+    ];
+    upB.forEach((b, i) => {
+      addBranch(b.id, b.name, b.x, b.y, 11 + (i % 2), 'bottom');
+      addTag(b.name, b.x, b.y - 20, false);
+      L(b.from, b.id, 1.5, '#666');
+    });
+
+    const bgDown = [
+      { id: 'b_sl3', name: '三联支渠', x: 760, y: 210, from: 's_zjl' },
+      { id: 'b_nc', name: '南川支渠', x: 820, y: 218, from: 's_htt' },
+      { id: 'b_fx', name: '凤昔支渠', x: 880, y: 215, from: 's_htt' },
+      { id: 'b_nb', name: '南坂支渠', x: 940, y: 220, from: 'end_bg' }
+    ];
+    bgDown.forEach(b => {
+      addBranch(b.id, b.name, b.x, b.y, 11, 'top');
+      addTag(b.name, b.x, b.y + 20, false);
+      L(b.from, b.id, 1.5, '#666');
+    });
+
+    // 下层总干渠主干
+    L('res_hlt', 'g_qs', 5, '#111');
+    L('g_qs', 'j_cg', 5, '#111');
+    L('j_cg', 'j_xf', 5, '#111');
+    L('j_xf', 'j_sg', 5, '#111');
+    L('j_sg', 'g_smh', 5, '#111');
+    L('g_smh', 'j_th0', 5, '#111');
+    L('j_th0', 's_nss', 5, '#111');
+    L('s_nss', 'g_bl', 4.5, '#111');
+    L('g_bl', 'g_wy', 4.5, '#111');
+    L('g_wy', 's_zjl', 4, '#111');
+    L('s_zjl', 's_htt', 4, '#111');
+    L('s_htt', 'end_bg', 4, '#111');
+
+    // 太怀干渠 ↑ + 腊皖分干渠 →
+    L('g_smh', 'j_th_v', 3.5, '#111');
+    L('j_th_v', 'g_th', 3.5, '#111');
+    L('g_th', 'j_qs2', 3, '#333');
+    L('j_qs2', 's_wjq', 3, '#333');
+    L('s_wjq', 'j_law_a', 3, '#333');
+    L('j_law_a', 'j_law_b', 3, '#333');
+    L('j_law_b', 'j_law_c', 3, '#333');
+    L('j_law_c', 'end_law', 3, '#333');
+
+    // ========== 图三：下半轴 太宿干渠 + 南干/分干 ==========
+    addGate('g_ts', '太宿进水闸', TX, 230, 'right');
+    addGate('g_dl', '段龙节制闸', TX, 295, 'right');
+    addGate('g_zd', '章大计量闸', TX, 360, 'right');
+    addGate('g_cl2', '程岭节制闸', TX, 430, 'right');
+    addGate('g_dl2', '滴露节制闸', TX, 510, 'right');
+
+    addCanalLabel('lab_ts', '太宿干渠', TX + 30, 340, 90);
+    addCanalLabel('lab_ng', '南干渠', 700, 320, 0);
+    addCanalLabel('lab_xc', '下仓分干渠', 880, 470, 0, 12);
+    addCanalLabel('lab_cm', '长马分干渠', 150, 470, 0, 12);
+    addCanalLabel('lab_qm', '乔木分干渠', 150, 560, 0, 12);
+    addCanalLabel('lab_gl', '高岭分干渠', 520, 470, 0, 12);
+    addCanalLabel('lab_ylfg', '杨林分干渠', 620, 280, 90, 12);
+
+    addNode({
+      id: 'res_ma', name: '马安水库', x: 200, y: 380, category: 0,
+      symbol: 'roundRect', symbolSize: [64, 28],
+      itemStyle: { color: '#e6f4ff', borderColor: '#1677ff', borderWidth: 1.4 },
+      label: { show: true, color: '#1677ff', fontWeight: 600, fontSize: 11 }
+    });
+
+    [
+      { id: 'b_lt2', name: '龙潭支渠', x: 230, y: 255, from: 'g_ts' },
+      { id: 'b_xy', name: '小营支渠', x: 225, y: 300, from: 'g_dl' },
+      { id: 'b_sl', name: '胜利支渠', x: 220, y: 345, from: 'g_dl' },
+      { id: 'b_jy', name: '晋元支渠', x: 230, y: 390, from: 'g_zd' }
+    ].forEach(b => {
+      addBranch(b.id, b.name, b.x, b.y, 11, 'left');
+      addTag(b.name, b.x - 10, b.y - 18, false);
+      L(b.from, b.id, 1.5, '#666');
+    });
+
+    [
+      { id: 'b_yl', name: '杨岭支渠', x: 430, y: 255, from: 'g_ts' },
+      { id: 'b_wl2', name: '伍岭支渠', x: 440, y: 310, from: 'g_dl' },
+      { id: 'b_hq', name: '红旗支渠', x: 445, y: 365, from: 'g_zd' }
+    ].forEach(b => {
+      addBranch(b.id, b.name, b.x, b.y, 11, 'right');
+      addTag(b.name, b.x + 10, b.y - 18, false);
+      L(b.from, b.id, 1.5, '#666');
+    });
+
+    L('g_zd', 'res_ma', 1.6, '#1677ff');
+
+    addJ('j_cm', 260, 470);
+    [
+      { id: 'b_wq', name: '五渠支渠', x: 40, y: 470 },
+      { id: 'b_pl', name: '牌楼支渠', x: 90, y: 470 },
+      { id: 'b_xx', name: '新兴支渠', x: 140, y: 470 },
+      { id: 'b_mq', name: '木枪支渠', x: 190, y: 470 },
+      { id: 'b_xq', name: '新前支渠', x: 240, y: 470 }
+    ].forEach(b => {
+      addBranch(b.id, b.name, b.x, b.y, 10, 'bottom');
+      addTag(b.name, b.x, b.y + 22, true);
+      L('j_cm', b.id, 1.4, '#666');
+    });
+
+    addJ('j_qm', TX, 560);
+    [
+      { id: 'b_hz', name: '红照支渠', x: 40, y: 560 },
+      { id: 'b_mg', name: '明光支渠', x: 90, y: 560 },
+      { id: 'b_mb', name: '毛坝支渠', x: 140, y: 560 },
+      { id: 'b_wy2', name: '万元支渠', x: 190, y: 560 },
+      { id: 'b_bm', name: '白马支渠', x: 240, y: 560 },
+      { id: 'b_ya', name: '杨安支渠', x: 290, y: 560 },
+      { id: 'b_xa', name: '新安支渠', x: 390, y: 560 },
+      { id: 'b_df', name: '东方支渠', x: 440, y: 560 },
+      { id: 'b_nl', name: '南岭支渠', x: 490, y: 560 }
+    ].forEach(b => {
+      addBranch(b.id, b.name, b.x, b.y, 10, 'bottom');
+      addTag(b.name, b.x, b.y + 26, true);
+      L('j_qm', b.id, 1.4, '#666');
+    });
+
+    addJ('j_gl', 430, 470);
+    [
+      { id: 'b_gz', name: '甘庄支渠', x: 480, y: 510 },
+      { id: 'b_wx', name: '五星支渠', x: 530, y: 520 },
+      { id: 'b_hq2', name: '红旗灌区', x: 580, y: 525 },
+      { id: 'b_yw', name: '叶湾支渠', x: 630, y: 530 },
+      { id: 'b_hf', name: '华丰支渠', x: 680, y: 535 },
+      { id: 'b_hd2', name: '后东支渠', x: 730, y: 540 },
+      { id: 'b_pl2', name: '裴林支渠', x: 780, y: 545 },
+      { id: 'b_hl2', name: '黄垒支渠', x: 830, y: 550 }
+    ].forEach(b => {
+      addBranch(b.id, b.name, b.x, b.y, 10, 'bottom');
+      addTag(b.name, b.x, b.y + 24, true);
+      L('j_gl', b.id, 1.4, '#666');
+    });
+
+    addJ('j_ng0', 480, 300);
+    addStation('s_gt', '姑塘', 600, 300, 'top');
+    addJ('j_ng1', 760, 300);
+    addStation('s_xc', '下仓', 880, 380, 'left');
+
+    [
+      { id: 'b_lh1', name: '联合一支渠', x: 650, y: 250, from: 's_gt' },
+      { id: 'b_lh2', name: '联合二支渠', x: 710, y: 245, from: 'j_ng1' },
+      { id: 'b_yx', name: '永兴支渠', x: 760, y: 250, from: 'j_ng1' },
+      { id: 'b_jq', name: '金桥支渠', x: 820, y: 255, from: 'j_ng1' }
+    ].forEach(b => {
+      addBranch(b.id, b.name, b.x, b.y, 11, 'bottom');
+      addTag(b.name, b.x, b.y - 18, false);
+      L(b.from, b.id, 1.5, '#666');
+    });
+
+    [
+      { id: 'b_lhs', name: '联合山支渠', x: 640, y: 350, from: 's_gt' },
+      { id: 'b_lq', name: '楼前支渠', x: 700, y: 355, from: 'j_ng1' },
+      { id: 'b_zg2', name: '中沟支渠', x: 760, y: 360, from: 'j_ng1' },
+      { id: 'b_dt', name: '邓塘支渠', x: 820, y: 365, from: 'j_ng1' },
+      { id: 'b_qf', name: '齐方支渠', x: 720, y: 400, from: 'j_ng1' },
+      { id: 'b_ts3', name: '塔山支渠', x: 780, y: 410, from: 's_xc' },
+      { id: 'b_bl2', name: '白林支渠', x: 840, y: 415, from: 's_xc' },
+      { id: 'b_ts4', name: '太寺支渠', x: 900, y: 420, from: 's_xc' }
+    ].forEach(b => {
+      addBranch(b.id, b.name, b.x, b.y, 10, 'top');
+      addTag(b.name, b.x, b.y + 20, false);
+      L(b.from, b.id, 1.5, '#666');
+    });
+
+    [
+      { id: 'b_lx', name: '立新支渠', x: 920, y: 500 },
+      { id: 'b_zy2', name: '朝阳支渠', x: 970, y: 510 },
+      { id: 'b_ys', name: '杨树支渠', x: 1020, y: 520 },
+      { id: 'b_xg2', name: '霞光支渠', x: 1070, y: 530 }
+    ].forEach(b => {
+      addBranch(b.id, b.name, b.x, b.y, 10, 'bottom');
+      addTag(b.name, b.x, b.y + 22, false);
+      L('s_xc', b.id, 1.4, '#666');
+    });
+
+    L('s_nss', 'g_ts', 3.6, '#111');
+    L('g_ts', 'g_dl', 3.6, '#111');
+    L('g_dl', 'g_zd', 3.6, '#111');
+    L('g_zd', 'g_cl2', 3.6, '#111');
+    L('g_cl2', 'g_dl2', 3.4, '#111');
+    L('g_dl2', 'j_qm', 2.6, '#333');
+    L('g_cl2', 'j_cm', 2.2, '#333');
+    L('g_cl2', 'j_gl', 2.2, '#333');
+    L('g_bl', 'j_ng0', 2.8, '#111');
+    L('j_ng0', 's_gt', 2.8, '#111');
+    L('s_gt', 'j_ng1', 2.8, '#111');
+    L('j_ng1', 's_xc', 2.4, '#333');
+
+    tagList.forEach((t, i) => {
+      const val = topoTagValue(i);
+      const w = t.vertical ? 15 : Math.max(52, val.length * 6.5);
+      const h = t.vertical ? 52 : 15;
+      nodes.push({
+        id: 'tag_' + i,
+        name: val,
+        value: t.name,
+        x: t.x,
+        y: t.y,
+        category: 5,
+        symbol: 'rect',
+        symbolSize: [w, h],
+        itemStyle: { color: '#52c41a', borderColor: '#389e0d', borderWidth: 1 },
+        label: {
+          show: true,
+          color: '#fff',
+          fontSize: 9,
+          fontWeight: 600,
+          rotate: t.vertical ? 90 : 0
+        },
+        tooltip: { formatter: t.name + '<br/>流量/面积：' + val }
+      });
+    });
+
+    return {
+      tooltip: { show: true },
+      animation: false,
+      series: [{
+        type: 'graph',
+        layout: 'none',
+        roam: true,
+        draggable: false,
+        categories: [
+          { name: '水库' },
+          { name: '闸站' },
+          { name: '站点' },
+          { name: '渠名' },
+          { name: '支渠灌区' },
+          { name: '需水标签' }
+        ],
+        data: nodes,
+        links,
+        lineStyle: { opacity: 1, curveness: 0 },
+        emphasis: { focus: 'adjacency', lineStyle: { width: 5 } },
+        scaleLimit: { min: 0.35, max: 3 },
+        left: 16,
+        right: 36,
+        top: 12,
+        bottom: 24
+      }]
+    };
+  }
+
+
+  /** 静态拓扑支渠绿标：紧凑圆角块 + 避让，避免与文字/绿块重叠 */
+  function renderTopoTags() {
+    const layer = $('topo-var-layer');
+    if (!layer) return;
+
+    // place: down=竖排字下方；up=竖排字上方；upSide=箭头旁；hLeft/hRight=水平字左/右；hBelow=水平字下
+    const branches = [
+      // 总干 ↑
+      { name: '城关支渠', cx: 185, tip: 188, place: 'up', fs: 10 },
+      { name: '幸福支渠', cx: 235, tip: 188, place: 'up', fs: 10 },
+      { name: '沙改支渠', cx: 285, tip: 188, place: 'up', fs: 10 },
+      // 腊皖 ↓↑
+      { name: '朝阳支渠', cx: 560, tip: 147, place: 'down', fs: 10 },
+      { name: '陈良支渠', cx: 650, tip: 147, place: 'down', fs: 10 },
+      { name: '王居山支渠', cx: 780, tip: 147, place: 'down', fs: 10 },
+      { name: '邵山支渠', cx: 960, tip: 147, place: 'down', fs: 10 },
+      { name: '易潭支渠', cx: 1060, tip: 147, place: 'down', fs: 10 },
+      { name: '新仓支渠', cx: 600, tip: 47, place: 'upSide', fs: 10 },
+      { name: '龙王山支渠', cx: 740, tip: 47, place: 'upSide', fs: 10 },
+      { name: '一安支渠', cx: 860, tip: 47, place: 'upSide', fs: 10 },
+      { name: '高旗支渠', cx: 940, tip: 47, place: 'upSide', fs: 10 },
+      // 太宿水平
+      { name: '杨岭支渠', cx: 660, tip: 278, place: 'hRight', fs: 10 },
+      { name: '龙寨支渠', cx: 515, tip: 296, place: 'hLeft', fs: 10 },
+      { name: '小宫支渠', cx: 500, tip: 361, place: 'hLeft', fs: 10 },
+      { name: '红旗支渠', cx: 668, tip: 428, place: 'hRight', fs: 10, key: 'hq_ts' },
+      { name: '胜利支渠', cx: 500, tip: 446, place: 'hLeft', fs: 10 },
+      { name: '姚圩支渠', cx: 668, tip: 464, place: 'hRight', fs: 10 },
+      { name: '鲁元支渠', cx: 500, tip: 482, place: 'hLeft', fs: 10 },
+      { name: '荆安支渠', cx: 678, tip: 586, place: 'hRight', fs: 10 },
+      // 长马 ←
+      { name: '五里支渠', cx: 290, tip: 651, place: 'hLeft', fs: 10 },
+      { name: '牌楼支渠', cx: 290, tip: 681, place: 'hLeft', fs: 10 },
+      { name: '新民支渠', cx: 290, tip: 711, place: 'hLeft', fs: 10 },
+      // 乔木 ↓
+      { name: '南岭支渠', cx: 575, tip: 796, place: 'down', fs: 9 },
+      { name: '东方支渠', cx: 535, tip: 796, place: 'down', fs: 9 },
+      { name: '新安支渠', cx: 495, tip: 796, place: 'down', fs: 9 },
+      { name: '白马支渠', cx: 450, tip: 796, place: 'down', fs: 9 },
+      { name: '万元支渠', cx: 330, tip: 796, place: 'down', fs: 9 },
+      { name: '毛坝支渠', cx: 290, tip: 796, place: 'down', fs: 9 },
+      { name: '明光支渠', cx: 250, tip: 796, place: 'down', fs: 9 },
+      { name: '红雨支渠', cx: 210, tip: 796, place: 'down', fs: 9 },
+      { name: '新前支渠', cx: 170, tip: 796, place: 'down', fs: 9 },
+      { name: '木梓支渠', cx: 130, tip: 796, place: 'down', fs: 9 },
+      { name: '程岭支渠', cx: 678, tip: 765, place: 'hRight', fs: 10 },
+      { name: '杨肖支渠', cx: 678, tip: 800, place: 'hRight', fs: 10 },
+      // 右折 / 下仓
+      { name: '彭桥支渠', cx: 660, tip: 900, place: 'down', fs: 9 },
+      { name: '矮脚支渠', cx: 710, tip: 900, place: 'down', fs: 9 },
+      { name: '胜天支渠', cx: 770, tip: 774, place: 'up', fs: 9 },
+      { name: '碎石支渠', cx: 800, tip: 906, place: 'down', fs: 9 },
+      { name: '云集支渠', cx: 1020, tip: 774, place: 'up', fs: 9 },
+      { name: '立新支渠', cx: 1130, tip: 906, place: 'down', fs: 9 },
+      { name: '朝阳支渠', cx: 1180, tip: 906, place: 'down', fs: 9, key: 'zy_xc' },
+      { name: '杨树支渠', cx: 1230, tip: 906, place: 'down', fs: 9, key: 'ys_xc' },
+      { name: '署光支渠', cx: 1280, tip: 900, place: 'down', fs: 9 },
+      { name: '金塘支渠', cx: 1330, tip: 774, place: 'up', fs: 9 },
+      // 总干下行密集段
+      { name: '毕岭支渠', cx: 700, tip: 312, place: 'down', fs: 10 },
+      { name: '甘庄支渠', cx: 780, tip: 312, place: 'down', fs: 10 },
+      { name: '五星支渠', cx: 814, tip: 312, place: 'down', fs: 10 },
+      { name: '红旗支渠', cx: 848, tip: 312, place: 'down', fs: 10, key: 'hq_zg' },
+      { name: '叶湾支渠', cx: 882, tip: 312, place: 'down', fs: 10 },
+      { name: '华丰支渠', cx: 916, tip: 312, place: 'down', fs: 10 },
+      { name: '桥东支渠', cx: 1010, tip: 312, place: 'down', fs: 10 },
+      { name: '袁林支渠', cx: 1044, tip: 312, place: 'down', fs: 10 },
+      { name: '黄屋支渠', cx: 1078, tip: 312, place: 'down', fs: 10 },
+      { name: '金桥支渠', cx: 1200, tip: 312, place: 'down', fs: 10 },
+      { name: '联合(1)支渠', cx: 1234, tip: 312, place: 'down', fs: 10 },
+      { name: '杨树支渠', cx: 1268, tip: 312, place: 'down', fs: 10, key: 'ys_bg' },
+      { name: '中沟支渠', cx: 1302, tip: 312, place: 'down', fs: 10 },
+      { name: '郭塘支渠', cx: 1350, tip: 312, place: 'down', fs: 10 },
+      { name: '雷埠支渠', cx: 1390, tip: 188, place: 'up', fs: 11 },
+      { name: '红星支渠', cx: 1518, tip: 188, place: 'up', fs: 10 },
+      { name: '三联支渠', cx: 1550, tip: 312, place: 'down', fs: 10 },
+      { name: '新坝支渠', cx: 1622, tip: 188, place: 'up', fs: 10 },
+      { name: '南川支渠', cx: 1654, tip: 312, place: 'down', fs: 10 },
+      { name: '红岭支渠', cx: 1686, tip: 188, place: 'up', fs: 10 },
+      { name: '武昌支渠', cx: 1718, tip: 312, place: 'down', fs: 10 },
+      { name: '赛口支渠', cx: 1750, tip: 312, place: 'down', fs: 10 },
+      { name: '南坂支渠', cx: 1782, tip: 312, place: 'down', fs: 10 },
+      // 南干
+      { name: '姑塘支渠', cx: 1004, tip: 508, place: 'hAbove', fs: 12 },
+      { name: '联合(2)支渠', cx: 1210, tip: 456, place: 'up', fs: 10 },
+      { name: '永兴支渠', cx: 1255, tip: 456, place: 'up', fs: 10 },
+      { name: '李桥支渠', cx: 1300, tip: 584, place: 'down', fs: 10 },
+      { name: '大桥支渠', cx: 1345, tip: 584, place: 'down', fs: 10 },
+      { name: '团山支渠', cx: 1445, tip: 584, place: 'down', fs: 10 },
+      { name: '乔方支渠', cx: 1490, tip: 456, place: 'up', fs: 10 },
+      { name: '横山支渠', cx: 1535, tip: 456, place: 'up', fs: 10 },
+      { name: '十里支渠', cx: 1580, tip: 584, place: 'down', fs: 10 },
+      { name: '白林支渠', cx: 1625, tip: 456, place: 'up', fs: 10 },
+      { name: '太寺支渠', cx: 1670, tip: 456, place: 'up', fs: 10 }
+    ];
+
+    const padX = 5, padY = 3, th = 13;
+    const boxes = [];
+
+    branches.forEach((b, i) => {
+      const val = (+(40 + seeded(i + ($('demand-scope').value === 'area' ? 10 : $('demand-scope').value === 'district' ? 20 : 0), 0, 20)).toFixed(1)).toFixed(1);
+      const tw = Math.max(26, val.length * 5.2 + padX * 2);
+      const fs = b.fs || 10;
+      const nameH = b.name.length * (fs + 1);
+      const nameW = b.name.length * fs;
+      let x = 0, y = 0;
+      switch (b.place) {
+        case 'down':
+          x = b.cx - tw / 2;
+          y = b.tip + 6 + nameH + 2;
+          break;
+        case 'up':
+          x = b.cx - tw / 2;
+          y = b.tip - 8 - nameH - th - 2;
+          break;
+        case 'upSide':
+          x = b.cx + 8;
+          y = b.tip - th - 2;
+          break;
+        case 'hLeft':
+          x = b.cx - nameW - tw - 6;
+          y = b.tip - th / 2;
+          break;
+        case 'hRight':
+          x = b.cx + nameW + 4;
+          y = b.tip - th / 2;
+          break;
+        case 'hBelow':
+          x = b.cx - tw / 2;
+          y = b.tip + 14;
+          break;
+        case 'hAbove':
+          x = b.cx - tw / 2;
+          y = b.tip - th - 5;
+          break;
+        default:
+          x = b.cx - tw / 2;
+          y = b.tip + 10;
+      }
+      boxes.push({ name: b.name, val, x, y, w: tw, h: th, key: b.key || b.name });
+    });
+
+    // 简单避让：重叠则下移
+    boxes.sort((a, b) => a.y - b.y || a.x - b.x);
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = 0; j < i; j++) {
+        const A = boxes[i], B = boxes[j];
+        if (A.x < B.x + B.w + 2 && A.x + A.w + 2 > B.x && A.y < B.y + B.h + 2 && A.y + A.h + 2 > B.y) {
+          A.y = B.y + B.h + 3;
+        }
+      }
+    }
+
+    const ns = 'http://www.w3.org/2000/svg';
+    layer.innerHTML = '';
+    boxes.forEach(box => {
+      const g = document.createElementNS(ns, 'g');
+      g.setAttribute('data-branch', box.key);
+      const rect = document.createElementNS(ns, 'rect');
+      rect.setAttribute('x', box.x);
+      rect.setAttribute('y', box.y);
+      rect.setAttribute('width', box.w);
+      rect.setAttribute('height', box.h);
+      rect.setAttribute('rx', '3');
+      rect.setAttribute('ry', '3');
+      rect.setAttribute('class', 'topo-var-pill');
+      const title = document.createElementNS(ns, 'title');
+      title.textContent = box.name + '：' + box.val;
+      const text = document.createElementNS(ns, 'text');
+      text.setAttribute('x', box.x + box.w / 2);
+      text.setAttribute('y', box.y + box.h / 2 + 3);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('class', 'topo-var-txt');
+      text.textContent = box.val;
+      g.appendChild(title);
+      g.appendChild(rect);
+      g.appendChild(text);
+      layer.appendChild(g);
+    });
+  }
+
+  function renderTopoEcharts() {
+    const el = $('topo-echarts');
+    if (!el || !window.echarts) return;
+    const chart = ensureChart('topoGraph', el);
+    chart.setOption(buildTopoGraphOption(), true);
+  }
+
+  $('demand-upload-btn').addEventListener('click', () => $('demand-file').click());
+  $('demand-file').addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    demandUploaded = true;
+    $('demand-file-name').textContent = '已上传：' + f.name;
+    toast('附件已上传');
+  });
+  $('demand-tpl-btn').addEventListener('click', () => {
+    if (window.XLSX) {
+      const header = ['片区', '分灌区', '支渠', '灌区面积', '种植作物种类', '5月上旬', '5月中旬', '5月下旬', '6月上旬', '6月中旬', '6月下旬'];
+      const ws = XLSX.utils.aoa_to_sheet([header]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '需水基础数据');
+      XLSX.writeFile(wb, '需水基础数据收集表模板.xlsx');
+    } else {
+      toast('模板下载组件未加载');
+    }
+  });
+
+  $('demand-calc-btn').addEventListener('click', () => {
+    if (!$('demand-model').value) return toast('请选择中长期来水预报模型计算结果');
+    if (!demandUploaded) return toast('请上传需水基础数据收集表');
+    const btn = $('demand-calc-btn');
+    btn.classList.add('is-loading');
+    setTimeout(() => {
+      btn.classList.remove('is-loading');
+      demandTab = 'canal';
+      demandFilter = '';
+      demandPage = 1;
+      $('demand-filter').value = '';
+      document.querySelectorAll('#demand-subtabs .sub-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'canal'));
+      showDemandResult();
+      pushHistory('demand', '需水预测');
+      toast('计算完成');
+    }, 600);
+  });
+
+  $('demand-subtabs').addEventListener('click', e => {
+    const tab = e.target.closest('.sub-tab');
+    if (!tab) return;
+    document.querySelectorAll('#demand-subtabs .sub-tab').forEach(t => t.classList.toggle('active', t === tab));
+    demandTab = tab.dataset.tab;
+    demandPage = 1;
+    renderDemandTable('demand-tbody');
+  });
+  $('demand-filter').addEventListener('input', e => {
+    demandFilter = e.target.value;
+    demandPage = 1;
+    renderDemandTable('demand-tbody');
+  });
+  $('demand-pg-btns').addEventListener('click', e => {
+    const btn = e.target.closest('[data-page]');
+    if (!btn || btn.disabled) return;
+    demandPage = +btn.dataset.page;
+    renderDemandTable('demand-tbody');
+  });
+  $('demand-view-filter').addEventListener('input', e => {
+    demandFilter = e.target.value;
+    renderDemandTable('demand-view-tbody', { noPager: true });
+  });
+  $('demand-export').addEventListener('click', () => {
+    const rows = filteredDemandRows();
+    if (!rows.length) return toast('暂无数据可导出');
+    const cols = demandColumns();
+    const header = cols.map(c => c.label);
+    const data = rows.map(r => cols.map(c => (c.periodIndex != null ? r.v[c.periodIndex] : r[c.key])));
+    if (window.XLSX) {
+      const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '需水明细');
+      XLSX.writeFile(wb, '需水预测详细结果.xlsx');
+    } else toast('导出组件未加载');
+  });
+
+  // 拓扑站点悬浮显示需水
+  $('demand-scope').addEventListener('change', () => {
+    renderTopoTags();
+    toast('已切换至' + $('demand-scope').selectedOptions[0].text + '，拓扑标签已更新');
+  });
+    function initTopoPanZoom() {
+    const vp = $('topo-viewport');
+    const svg = $('topo-svg');
+    if (!vp || !svg) return;
+    const BASE_W = 1880, BASE_H = 1020;
+    let x = 20, y = 10, scale = 0.72;
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    /* 用 viewBox 缩放平移，保持 SVG 矢量文字清晰，避免 CSS scale 光栅模糊 */
+    function apply() {
+      const vw = BASE_W / scale;
+      const vh = BASE_H / scale;
+      const vbX = -x / scale;
+      const vbY = -y / scale;
+      svg.setAttribute('viewBox', vbX + ' ' + vbY + ' ' + vw + ' ' + vh);
+    }
+    apply();
+    vp.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      dragging = true;
+      vp.classList.add('is-dragging');
+      sx = e.clientX; sy = e.clientY; ox = x; oy = y;
+      vp.setPointerCapture(e.pointerId);
+    });
+    vp.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      x = ox + (e.clientX - sx);
+      y = oy + (e.clientY - sy);
+      apply();
+    });
+    function endDrag(e) {
+      dragging = false;
+      vp.classList.remove('is-dragging');
+      try { vp.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    vp.addEventListener('pointerup', endDrag);
+    vp.addEventListener('pointercancel', endDrag);
+    vp.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = vp.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const prev = scale;
+      const next = Math.min(2.4, Math.max(0.45, scale * (e.deltaY < 0 ? 1.1 : 0.91)));
+      x = mx - (mx - x) * (next / prev);
+      y = my - (my - y) * (next / prev);
+      scale = next;
+      apply();
+    }, { passive: false });
+  }
+  initTopoPanZoom();
+
+  $('topo-full-btn').addEventListener('click', () => {
+    const el = $('topo-wrap');
+    if (!document.fullscreenElement) {
+      el.requestFullscreen && el.requestFullscreen();
+    } else {
+      document.exitFullscreen && document.exitFullscreen();
+    }
+  });
+
+  /* ========== 水量损失预测 ========== */
+  function getLossType() {
+    const el = document.querySelector('input[name="loss-type"]:checked');
+    return el ? el.value : 'mid';
+  }
+  function syncLossScheme() {
+    const type = getLossType();
+    const list = LOSS_SCHEMES[type] || [];
+    const sel = $('loss-scheme');
+    sel.innerHTML = list.map((name, i) => `<option value="${type}_${i}">${name}</option>`).join('');
+  }
+  function lossRows() {
+    const type = lossCalcType;
+    const rows = type === 'short' ? LOSS_MOCK.short : LOSS_MOCK.midRows;
+    const q = lossFilter.trim();
+    if (!q) return rows.slice();
+    return rows.filter(r => [r.date, r.predict, r.loss].some(v => String(v).includes(q)));
+  }
+  function lossLineOption(categories, data, rotate) {
+    return {
+      color: ['#1677ff'],
+      tooltip: { trigger: 'axis' },
+      legend: { bottom: 0, data: ['损失水量'] },
+      grid: { left: 48, right: 24, top: 28, bottom: 56 },
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: categories,
+        axisLabel: { rotate: rotate || 0, fontSize: 10, color: '#999', interval: 0 },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: {
+        type: 'value', min: 0, max: 100, splitNumber: 5,
+        axisLabel: { color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [{
+        name: '损失水量',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 7,
+        itemStyle: { color: '#1677ff', borderColor: '#fff', borderWidth: 1 },
+        data,
+        areaStyle: {
+          color: {
+            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(22,119,255,.28)' },
+              { offset: 1, color: 'rgba(22,119,255,.02)' }
+            ]
+          }
+        }
+      }]
+    };
+  }
+  function renderLossChart(chartId) {
+    const el = $(chartId || 'chart-loss');
+    if (!el || !window.echarts) return;
+    const type = lossCalcType;
+    let option;
+    if (type === 'short') {
+      const cats = LOSS_MOCK.short.map(r => fmtMD(r.date));
+      const data = LOSS_MOCK.short.map(r => r.loss);
+      option = lossLineOption(cats, data, 40);
+    } else {
+      option = lossLineOption(LOSS_DECADE_LABELS, LOSS_MOCK.midChart, 40);
+    }
+    const key = chartId === 'loss-view-chart' ? 'lossView' : 'lossMain';
+    ensureChart(key, el).setOption(option, true);
+  }
+  function renderLossTable(tbodyId, opts) {
+    const options = opts || {};
+    const rows = lossRows();
+    const tbody = $(tbodyId);
+    if (!tbody) return;
+    let pageRows = rows;
+    if (!options.noPager) {
+      const pages = Math.max(1, Math.ceil(rows.length / LOSS_PAGE_SIZE));
+      if (lossPage > pages) lossPage = pages;
+      const start = (lossPage - 1) * LOSS_PAGE_SIZE;
+      pageRows = rows.slice(start, start + LOSS_PAGE_SIZE);
+      const from = rows.length ? start + 1 : 0;
+      const to = Math.min(start + LOSS_PAGE_SIZE, rows.length);
+      const info = $('loss-pg-info');
+      const btns = $('loss-pg-btns');
+      if (info) info.textContent = `共 ${rows.length} 条` + (rows.length ? `，本页显示 ${from}-${to} 条` : '');
+      if (btns) {
+        let html = `<button class="pg-btn" data-page="${lossPage - 1}" ${lossPage <= 1 ? 'disabled' : ''}>‹</button>`;
+        for (let i = 1; i <= pages; i++) {
+          html += `<button class="pg-btn${i === lossPage ? ' active' : ''}" data-page="${i}">${i}</button>`;
+        }
+        html += `<button class="pg-btn" data-page="${lossPage + 1}" ${lossPage >= pages ? 'disabled' : ''}>›</button>`;
+        btns.innerHTML = html;
+      }
+    }
+    tbody.innerHTML = pageRows.map(r =>
+      `<tr><td>${r.date}</td><td>${r.predict}</td><td>${r.loss}</td></tr>`
+    ).join('') || `<tr><td colspan="3" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+  }
+  function showLossResult() {
+    $('loss-result-empty').style.display = 'none';
+    $('loss-result-content').style.display = 'block';
+    lossPage = 1;
+    renderLossChart('chart-loss');
+    renderLossTable('loss-tbody');
+    setTimeout(() => charts.lossMain && charts.lossMain.resize(), 50);
+  }
+  function openLossView() {
+    lossFilter = '';
+    if ($('loss-view-filter')) $('loss-view-filter').value = '';
+    renderLossChart('loss-view-chart');
+    renderLossTable('loss-view-tbody', { noPager: true });
+    $('loss-view-overlay').classList.add('show');
+    setTimeout(() => charts.lossView && charts.lossView.resize(), 50);
+  }
+
+  document.querySelectorAll('input[name="loss-type"]').forEach(r => {
+    r.addEventListener('change', () => {
+      syncLossScheme();
+      // 切换类型后若已有结果，按新类型刷新图表/表格
+      if ($('loss-result-content').style.display !== 'none') {
+        lossCalcType = getLossType();
+        lossPage = 1;
+        lossFilter = '';
+        $('loss-filter').value = '';
+        renderLossChart('chart-loss');
+        renderLossTable('loss-tbody');
+      }
+    });
+  });
+  $('loss-calc-btn').addEventListener('click', () => {
+    if (!$('loss-scheme').value) return toast('请选择方案');
+    const btn = $('loss-calc-btn');
+    btn.classList.add('is-loading');
+    setTimeout(() => {
+      btn.classList.remove('is-loading');
+      lossCalcType = getLossType();
+      lossFilter = '';
+      $('loss-filter').value = '';
+      showLossResult();
+      pushHistory('loss', '水量损失预测');
+      toast('计算完成');
+    }, 600);
+  });
+  $('loss-filter').addEventListener('input', e => {
+    lossFilter = e.target.value;
+    lossPage = 1;
+    renderLossTable('loss-tbody');
+  });
+  $('loss-pg-btns').addEventListener('click', e => {
+    const btn = e.target.closest('[data-page]');
+    if (!btn || btn.disabled) return;
+    lossPage = +btn.dataset.page;
+    renderLossTable('loss-tbody');
+  });
+  $('loss-export').addEventListener('click', () => {
+    const rows = lossRows();
+    if (!rows.length) return toast('暂无数据可导出');
+    const header = ['日期', '预测水量(万方)', '损失水量(万方)'];
+    const data = rows.map(r => [r.date, r.predict, r.loss]);
+    if (window.XLSX) {
+      const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '损失明细');
+      XLSX.writeFile(wb, '水量损失预测详细结果.xlsx');
+    } else toast('导出组件未加载');
+  });
+  $('loss-view-filter').addEventListener('input', e => {
+    lossFilter = e.target.value;
+    renderLossTable('loss-view-tbody', { noPager: true });
+  });
+  $('loss-view-overlay').addEventListener('click', e => {
+    if (e.target === $('loss-view-overlay')) $('loss-view-overlay').classList.remove('show');
+  });
+
+  // 抽屉
+  function openDrawer(type) {
+    historyType = type;
+    renderHistory();
+    $('drawer-mask').classList.add('show');
+    $('history-drawer').classList.add('show');
+  }
+  function closeDrawer() {
+    $('drawer-mask').classList.remove('show');
+    $('history-drawer').classList.remove('show');
+  }
+  $('history-btn').addEventListener('click', () => openDrawer('short'));
+  $('mid-history-btn').addEventListener('click', () => openDrawer('mid'));
+  $('demand-history-btn').addEventListener('click', () => openDrawer('demand'));
+  $('loss-history-btn').addEventListener('click', () => openDrawer('loss'));
+  $('drawer-mask').addEventListener('click', closeDrawer);
+  $('drawer-close').addEventListener('click', closeDrawer);
+
+  $('history-list').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const item = historyList.find(h => h.id === btn.closest('.hist-item').dataset.id);
+    if (!item) return;
+    if (btn.dataset.act === 'edit') {
+      editingId = item.id;
+      $('edit-name').value = item.name;
+      $('edit-overlay').classList.add('show');
+    } else if (btn.dataset.act === 'view') {
+      if (item.type === 'mid') openMidView(item);
+      else if (item.type === 'demand') openDemandView(item);
+      else if (item.type === 'loss') openLossView(item);
+      else openView(item);
+    }
+  });
+
+  // 编辑弹窗
+  document.querySelectorAll('[data-close]').forEach(el => {
+    el.addEventListener('click', () => $(el.dataset.close).classList.remove('show'));
+  });
+  $('edit-overlay').addEventListener('click', e => {
+    if (e.target === $('edit-overlay')) $('edit-overlay').classList.remove('show');
+  });
+  $('edit-confirm').addEventListener('click', () => {
+    const name = $('edit-name').value.trim();
+    if (!name) return toast('请输入名称');
+    const item = historyList.find(h => h.id === editingId);
+    if (item) item.name = name;
+    renderHistory();
+    $('edit-overlay').classList.remove('show');
+    toast('已保存');
+  });
+
+  // 查看详情（短期）
+  function openView(item) {
+    $('view-title').textContent = '短期来水预测（对应模型）';
+    renderStats('view-stats', MOCK.summary);
+    detailPage = 1;
+    detailFilter = '';
+    $('detail-filter').value = '';
+    renderDetailTable();
+    $('view-overlay').classList.add('show');
+    requestAnimationFrame(() => renderViewCharts());
+  }
+  $('view-overlay').addEventListener('click', e => {
+    if (e.target === $('view-overlay')) $('view-overlay').classList.remove('show');
+  });
+
+  // 查看详情（中长期）
+  function openMidView() {
+    renderMidStats('mid-view-stats');
+    $('mid-view-overlay').classList.add('show');
+    requestAnimationFrame(() => renderMidViewCharts());
+  }
+  $('mid-view-overlay').addEventListener('click', e => {
+    if (e.target === $('mid-view-overlay')) $('mid-view-overlay').classList.remove('show');
+  });
+
+  // 查看详情（需水）
+  function openDemandView() {
+    demandHasResult = true;
+    renderDemandStats('demand-view-stats');
+    demandFilter = '';
+    $('demand-view-filter').value = '';
+    demandTab = 'canal';
+    renderDemandTable('demand-view-tbody', { noPager: true });
+    $('demand-view-overlay').classList.add('show');
+  }
+  $('demand-view-overlay').addEventListener('click', e => {
+    if (e.target === $('demand-view-overlay')) $('demand-view-overlay').classList.remove('show');
+  });
+
+  $('detail-filter').addEventListener('input', e => {
+    detailFilter = e.target.value;
+    detailPage = 1;
+    renderDetailTable();
+  });
+  $('detail-pg-btns').addEventListener('click', e => {
+    const btn = e.target.closest('[data-page]');
+    if (!btn) return;
+    detailPage = +btn.dataset.page;
+    renderDetailTable();
+  });
+  $('detail-export').addEventListener('click', () => {
+    const rows = filteredRows();
+    if (!rows.length) return toast('暂无数据可导出');
+    const header = ['日期', '降雨量(mm)', '入库水量(万方)', '水位(m)', '库容(万方)', '出库水量(万方)', '蒸发量(mm)', '入库流量(m3/s)', '出库流量(m3/s)'];
+    const data = rows.map(r => [r.date, r.rain, r.inflow, r.level, r.capacity, r.outflow, r.evaporation, r.inFlow, r.outFlow]);
+    if (window.XLSX) {
+      const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '明细');
+      XLSX.writeFile(wb, '短期来水预测明细.xlsx');
+    } else {
+      toast('导出组件未加载');
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    Object.values(charts).forEach(c => c && c.resize());
+  });
+
+  // init
+  rebuildOutflowList();
+  renderHistory();
+  renderTopoTags();
+  renderDemandTable('demand-tbody');
+  syncLossScheme();
+})();
+</script>
+</body>
+</html>
