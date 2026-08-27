@@ -13,6 +13,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 
@@ -24,6 +26,14 @@ import java.util.Collections;
  */
 @Component
 public class ModelClient {
+
+    private static final Logger log = LoggerFactory.getLogger(ModelClient.class);
+
+    /** 响应日志截断长度：输出前 N 字符即可覆盖字段名契约（数组前几项），避免大响应刷屏 */
+    private static final int RESPONSE_LOG_LIMIT = 4000;
+
+    /** 响应日志尾部追加长度：尾部字段（如 /predict 的 val_metrics）同样需要契约核对 */
+    private static final int RESPONSE_LOG_TAIL = 3000;
 
     public static final String PATH_HEALTH = "/health";
     public static final String PATH_FORECAST = "/forecast";
@@ -59,7 +69,10 @@ public class ModelClient {
             String jsonBody = objectMapper.writeValueAsString(body == null ? Collections.emptyMap() : body);
             ResponseEntity<String> response = restTemplate.postForEntity(baseUrl + path,
                     new HttpEntity<>(jsonBody, headers), String.class);
-            return parseOk(response.getBody(), path);
+            JsonNode node = parseOk(response.getBody(), path);
+            // 响应诊断日志：字段名契约核对唯一溯源（模型响应不落库），截断避免大响应刷屏
+            log.info("model response {}: {}", path, summarize(response.getBody()));
+            return node;
         } catch (ModelCallException e) {
             throw e;
         } catch (HttpClientErrorException | HttpServerErrorException e) {
@@ -69,6 +82,20 @@ public class ModelClient {
         } catch (Exception e) {
             throw new ModelCallException(-1, "调用模型服务异常: " + e.getMessage());
         }
+    }
+
+    /** 响应日志截断：超长输出「前 N 字符 + 尾 M 字符」，兼顾头部数组契约与尾部指标字段 */
+    private String summarize(String body) {
+        if (body == null) {
+            return "null";
+        }
+        if (body.length() <= RESPONSE_LOG_LIMIT + RESPONSE_LOG_TAIL) {
+            return body;
+        }
+        int tail = Math.min(RESPONSE_LOG_TAIL, body.length() - RESPONSE_LOG_LIMIT);
+        return body.substring(0, RESPONSE_LOG_LIMIT)
+                + "...(截断" + body.length() + "字符)..."
+                + body.substring(body.length() - tail);
     }
 
     /**

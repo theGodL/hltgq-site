@@ -152,7 +152,7 @@ public class LongPredictService {
         try {
             JsonNode response = modelClient.postJson(ModelClient.PATH_PREDICT, body);
 
-            // 1. 回写 scenario / val_metrics（大小写兼容）
+            // 1. 回写 scenario / val_metrics（大小写兼容；NSE 模型不返回，其余 5 指标全采集）
             LongPredictRecord record = new LongPredictRecord();
             record.setId(recordId);
             // 模型不回显 scenario 时不覆盖用户提交值
@@ -164,6 +164,10 @@ public class LongPredictService {
             if (!metrics.isMissingNode() && !metrics.isNull()) {
                 record.setNse(doubleOfAny(metrics, "NSE", "nse"));
                 record.setRmse(doubleOfAny(metrics, "RMSE", "rmse"));
+                record.setMae(doubleOfAny(metrics, "MAE", "mae"));
+                record.setMse(doubleOfAny(metrics, "MSE", "mse"));
+                record.setR2(doubleOfAny(metrics, "R2", "r2"));
+                record.setSmape(doubleOfAny(metrics, "SMAPE", "smape"));
             }
 
             // 2. 事务内：写 monthly（year_month → stat_date 月初）+ tenday（日期 → 旬标签 + 旬首日期）+ 回写汇总

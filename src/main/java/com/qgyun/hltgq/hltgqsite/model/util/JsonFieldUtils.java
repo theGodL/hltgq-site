@@ -23,6 +23,17 @@ public final class JsonFieldUtils {
         return value == null || value.isNull() ? null : value.asText();
     }
 
+    /** 兼容多个候选字段名，返回第一个非空文本 */
+    public static String textOfAny(JsonNode node, String... fields) {
+        for (String field : fields) {
+            String value = textOf(node, field);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     /** 取数值字段，缺失/null/NaN 返回 null */
     public static Double doubleOf(JsonNode node, String field) {
         JsonNode value = node.get(field);

@@ -50,3 +50,30 @@ CREATE INDEX idx_decision_scale_factor_record_sort ON t_auto_hltgq_water_decisio
 CREATE INDEX idx_decision_branch_detail_record_branch ON t_auto_hltgq_water_decision_branch_detail(record_id, branch_name);
 CREATE INDEX idx_decision_branch_detail_record_tenday ON t_auto_hltgq_water_decision_branch_detail(record_id, tenday_label);
 CREATE INDEX idx_decision_branch_detail_record_satisfied ON t_auto_hltgq_water_decision_branch_detail(record_id, is_satisfied);
+
+-- 短期来水预测
+ALTER TABLE t_auto_hltgq_water_short_forecast_record ALTER COLUMN request_json TYPE TEXT;
+ALTER TABLE t_auto_hltgq_water_short_forecast_record ALTER COLUMN rainfall_json TYPE TEXT;
+ALTER TABLE t_auto_hltgq_water_short_forecast_record ALTER COLUMN custom_discharge_json TYPE TEXT;
+
+-- 中长期来水预测
+ALTER TABLE t_auto_hltgq_water_long_predict_record ALTER COLUMN request_json TYPE TEXT;
+-- 模型评估指标（val_metrics 全量采集：MAE/MSE/R2/SMAPE，NSE 模型不返回）
+ALTER TABLE t_auto_hltgq_water_long_predict_record ADD COLUMN IF NOT EXISTS mae DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_long_predict_record ADD COLUMN IF NOT EXISTS mse DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_long_predict_record ADD COLUMN IF NOT EXISTS r2 DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_long_predict_record ADD COLUMN IF NOT EXISTS smape DOUBLE PRECISION;
+
+-- 需水预测
+ALTER TABLE t_auto_hltgq_water_demand_record ALTER COLUMN request_json TYPE TEXT;
+
+-- 水量损失预测
+ALTER TABLE t_auto_hltgq_water_loss_record ALTER COLUMN request_json TYPE TEXT;
+ALTER TABLE t_auto_hltgq_water_loss_record ALTER COLUMN rainfall_json TYPE TEXT;
+
+-- 水资源配置
+ALTER TABLE t_auto_hltgq_water_allocate_record ALTER COLUMN request_json TYPE TEXT;
+
+-- 配水调度预测
+ALTER TABLE t_auto_hltgq_water_decision_record ALTER COLUMN request_json TYPE TEXT;
+ALTER TABLE t_auto_hltgq_water_decision_record ALTER COLUMN tens TYPE TEXT;

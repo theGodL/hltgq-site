@@ -38,17 +38,19 @@ public final class BoolTextUtils {
     }
 
     /**
-     * 接口布尔文本归一化：true/是/#1# → #1#；false/否/#2# → #2#；其他原样返回。
+     * 接口布尔文本归一化：true/是/已满足/满足/#1# → #1#；false/否/未满足/不满足/#2# → #2#；其他原样返回。
      */
     public static String normalize(String value) {
         if (value == null) {
             return null;
         }
         String text = value.trim();
-        if ("true".equalsIgnoreCase(text) || "是".equals(text) || TRUE.equals(text)) {
+        if ("true".equalsIgnoreCase(text) || "是".equals(text) || "已满足".equals(text)
+                || "满足".equals(text) || TRUE.equals(text)) {
             return TRUE;
         }
-        if ("false".equalsIgnoreCase(text) || "否".equals(text) || FALSE.equals(text)) {
+        if ("false".equalsIgnoreCase(text) || "否".equals(text) || "未满足".equals(text)
+                || "不满足".equals(text) || FALSE.equals(text)) {
             return FALSE;
         }
         return value;

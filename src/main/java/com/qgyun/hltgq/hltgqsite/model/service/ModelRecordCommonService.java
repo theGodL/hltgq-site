@@ -58,11 +58,10 @@ public class ModelRecordCommonService {
         mapper.updateById(record);
     }
 
-    /** 历史方案列表：del_flag=#2#，按 created_at 倒序，仅取摘要列 */
+    /** 历史方案列表：del_flag=#2#，按 created_at 倒序（全列查询：摘要列 select 子句与实体带引号列名映射存在缺陷，实测仅 id/status 能映射回实体） */
     public <T extends BaseRecordEntity> List<T> list(BaseMapper<T> mapper) {
         QueryWrapper<T> wrapper = new QueryWrapper<>();
-        wrapper.select("\"id\"", "\"scheme_name\"", "\"status\"", "\"created_at\"", "\"updated_at\"")
-                .eq("\"del_flag\"", BoolTextUtils.FALSE)
+        wrapper.eq("\"del_flag\"", BoolTextUtils.FALSE)
                 .orderByDesc("\"created_at\"");
         return mapper.selectList(wrapper);
     }

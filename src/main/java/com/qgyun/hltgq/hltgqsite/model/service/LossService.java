@@ -33,12 +33,14 @@ import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.doubleOf;
 import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.doubleOfAny;
 import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.parseDate;
 import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.parseDateTime;
-import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.textOf;
+import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.textOfAny;
 
 /**
  * 水量损失预测服务。
  * <p>参数从所选历史方案 request_json 提取复现 → 调 /loss(mode=short/long) →
  * 主表 summary 兼容映射 + 明细（损失字段名兼容 损失水量_万方/蒸发损失_万方）→ completed。
+ * <p>明细字段名按模式兼容：短期=日期/预测水量_万方/损失水量_万方(或蒸发损失_万方)，
+ * 长期=Date/Evaporation_万方/Predicted_W。
  */
 @Service
 public class LossService {
@@ -253,9 +255,10 @@ public class LossService {
                     for (JsonNode item : response.path("data")) {
                         LossDetail detail = new LossDetail();
                         detail.setRecordId(recordId);
-                        detail.setDataDate(resolveDataDate(mode, textOf(item, "日期"), year));
-                        detail.setPredictVolume(doubleOf(item, "预测水量_万方"));
-                        detail.setLossVolume(doubleOfAny(item, "损失水量_万方", "蒸发损失_万方"));
+                        // 短期：日期/预测水量_万方/损失水量_万方(或蒸发损失_万方)；长期：Date/Evaporation_万方/Predicted_W
+                        detail.setDataDate(resolveDataDate(mode, textOfAny(item, "日期", "Date"), year));
+                        detail.setPredictVolume(doubleOfAny(item, "预测水量_万方", "Predicted_W"));
+                        detail.setLossVolume(doubleOfAny(item, "损失水量_万方", "蒸发损失_万方", "Evaporation_万方"));
                         detail.setCorpCode(corpCode);
                         detail.setCreatedAt(now);
                         detail.setCreatedBy(createdBy);

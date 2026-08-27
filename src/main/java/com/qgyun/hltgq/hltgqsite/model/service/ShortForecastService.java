@@ -208,7 +208,10 @@ public class ShortForecastService {
                 daily.setWaterLevel(doubleOf(item, "水位_m"));
                 daily.setInflowRate(FlowRateUtils.volumeToRate(daily.getInflowVolume()));
                 daily.setOutflowRate(FlowRateUtils.volumeToRate(daily.getOutflowVolume()));
-                daily.setStorage(storageCurveService.getStorageByLevel(daily.getWaterLevel()));
+                // 库容：模型直出「库容_万方」优先，缺失降级查库容曲线表
+                Double storage = doubleOf(item, "库容_万方");
+                daily.setStorage(storage != null ? storage
+                        : storageCurveService.getStorageByLevel(daily.getWaterLevel()));
                 daily.setCorpCode(corpCode);
                 daily.setCreatedAt(now);
                 daily.setCreatedBy(createdBy);

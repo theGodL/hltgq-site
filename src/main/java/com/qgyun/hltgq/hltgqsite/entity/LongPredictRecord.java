@@ -64,4 +64,20 @@ public class LongPredictRecord extends BaseRecordEntity {
     /** RMSE 指标（val_metrics，大小写兼容） */
     @TableField("\"rmse\"")
     private Double rmse;
+
+    /** MAE 指标（val_metrics） */
+    @TableField("\"mae\"")
+    private Double mae;
+
+    /** MSE 指标（val_metrics） */
+    @TableField("\"mse\"")
+    private Double mse;
+
+    /** R2 决定系数（val_metrics） */
+    @TableField("\"r2\"")
+    private Double r2;
+
+    /** SMAPE 指标（val_metrics） */
+    @TableField("\"smape\"")
+    private Double smape;
 }

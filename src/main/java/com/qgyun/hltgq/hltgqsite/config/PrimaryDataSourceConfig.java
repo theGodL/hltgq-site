@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.qgyun.hltgq.hltgqsite.handler.LocalDateTimeTypeHandler;
+import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.SqlSessionTemplate;
@@ -41,7 +42,8 @@ public class PrimaryDataSourceConfig {
 
     @Bean(name = "primarySqlSessionFactory")
     @Primary
-    public SqlSessionFactory primarySqlSessionFactory(@Qualifier("primaryDataSource") DataSource dataSource) throws Exception {
+    public SqlSessionFactory primarySqlSessionFactory(@Qualifier("primaryDataSource") DataSource dataSource,
+                                                       ShortIdGenerator shortIdGenerator) throws Exception {
         MybatisSqlSessionFactoryBean factory = new MybatisSqlSessionFactoryBean();
         factory.setDataSource(dataSource);
         factory.setTypeHandlers(new LocalDateTimeTypeHandler());
@@ -52,6 +54,8 @@ public class PrimaryDataSourceConfig {
 
         // 全局列名加双引号：KingbaseES 中大写列名必须加引号，否则会折叠为小写
         GlobalConfig globalConfig = GlobalConfigUtils.defaults();
+        // 显式注入短ID生成器：自定义 factory 不走自动配置，必须手动注册（ASSIGN_UUID String 主键 → 22位短ID）
+        globalConfig.setIdentifierGenerator(shortIdGenerator);
         globalConfig.getDbConfig().setColumnFormat("\"%s\"");
         factory.setGlobalConfig(globalConfig);
 

@@ -38,14 +38,33 @@ public final class TenDayMapUtils {
     private TenDayMapUtils() {
     }
 
-    /** 旬标签 → 灌溉旬排序值（1~18），未知标签返回 null */
+    /** 旬标签 → 灌溉旬排序值（1~18），未知标签返回 null；兼容带年份标签（如「2027年5月上旬」） */
     public static Integer sortOrderOf(String label) {
-        return label == null ? null : TEN_DAY_MAP.get(label);
+        if (label == null) {
+            return null;
+        }
+        Integer order = TEN_DAY_MAP.get(label);
+        if (order == null) {
+            order = TEN_DAY_MAP.get(stripYear(label));
+        }
+        return order;
     }
 
-    /** 旬标签 → 全年旬排序值（1~36），未知标签返回 null */
+    /** 旬标签 → 全年旬排序值（1~36），未知标签返回 null；兼容带年份标签（如「2027年1月上旬」） */
     public static Integer fullSortOrderOf(String label) {
-        return label == null ? null : FULL_TEN_DAY_MAP.get(label);
+        if (label == null) {
+            return null;
+        }
+        Integer order = FULL_TEN_DAY_MAP.get(label);
+        if (order == null) {
+            order = FULL_TEN_DAY_MAP.get(stripYear(label));
+        }
+        return order;
+    }
+
+    /** 剥离前导年份，如「2027年1月上旬」→「1月上旬」；无年份原样返回 */
+    private static String stripYear(String label) {
+        return label.replaceFirst("^\\d{4}年", "");
     }
 
     /** 灌溉旬排序值（1~18）→ 旬标签，越界返回 null */
