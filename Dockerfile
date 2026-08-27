@@ -12,7 +12,7 @@ FROM eclipse-temurin:8-jre-jammy
 LABEL maintainer="hltgq-site"
 LABEL description="HLTGQ 数据服务平台"
 
-# ----- 安装 curl（用于 docker-compose healthcheck）-----
+# ----- 安装 curl（便于容器内排障与健康检查）-----
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # ----- 设置时区 -----

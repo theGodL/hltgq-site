@@ -17,7 +17,7 @@ import org.springframework.web.client.RestTemplate;
 import java.util.Collections;
 
 /**
- * 模型一体化服务客户端（model.base-url，默认 http://172.27.177.30:8000）。
+ * 模型一体化服务客户端（model.base-url，默认 http://10.68.18.11:8000）。
  * <p>统一解析响应约定 {code,msg}：0=成功、1=参数错误、2=模型异常，非 0 一律抛 {@link ModelCallException}。
  * <p>计算类接口（/predict /allocate /decision）服务端全局锁串行执行，read 超时 310s（默认）。
  * <p>中文业务字段（如 "入库水量_万方"）原样解析，不转义不改名。

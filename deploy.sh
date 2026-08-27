@@ -18,12 +18,15 @@ case "${1:-deploy}" in
         docker rm ${CONTAINER_NAME} 2>/dev/null || true
         docker build -t ${IMAGE_NAME}:latest "$PROJECT_DIR"
         mkdir -p /service/hltgq/logs/hltgq-site
+        mkdir -p /service/hltgq/hltgq-site/decision-excel
         docker run -d \
             --name ${CONTAINER_NAME} \
             --restart unless-stopped \
             -p 18687:8080 \
             -v /service/hltgq/logs/hltgq-site:/app/logs \
+            -v /service/hltgq/hltgq-site/decision-excel:/app/decision-excel \
             -e TZ=Asia/Shanghai \
+            -e MODEL_BASE_URL="${MODEL_BASE_URL:-http://10.68.18.11:8000}" \
             --memory="1024m" \
             ${IMAGE_NAME}:latest
         echo "部署完成，查看日志："

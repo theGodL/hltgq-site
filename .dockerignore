@@ -31,5 +31,4 @@ Thumbs.db
 
 # Docker 自身
 Dockerfile
-docker-compose.yml
 .dockerignore
