@@ -3,6 +3,9 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+# 决策 Excel 快照存档目录（运行时生成）
+decision-excel/
+
 ### STS ###
 .apt_generated
 .classpath

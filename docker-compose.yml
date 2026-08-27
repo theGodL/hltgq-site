@@ -9,9 +9,10 @@ services:
       - "18687:8080"
     environment:
       - TZ=Asia/Shanghai
-    # 日志持久化（可选）
+    # 持久化：日志 + 决策 Excel 快照（容器重建不丢，下载按 recordId 取用防串档）
     volumes:
       - ./logs:/app/logs
+      - ./decision-excel:/app/decision-excel
     # 资源限制（按服务器配置调整）
     deploy:
       resources:
