@@ -185,6 +185,7 @@ tbody tr:hover td{background:#fafafa}
               <th>瞬时流量 (m³/s)</th>
               <th>累计流量 (m³)</th>
               <th>采集时间</th>
+              <th>电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -232,6 +233,7 @@ tbody tr:hover td{background:#fafafa}
               <th>瞬时流量 (m³/s)</th>
               <th>累计流量 (m³)</th>
               <th>采集时间</th>
+              <th>电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -554,7 +556,7 @@ async function loadList() {
     S.total = 0;
     renderTable();
     renderPager();
-    $('tbl-body').innerHTML = `<tr><td colspan="6" class="empty">加载失败：${err.message || err}</td></tr>`;
+    $('tbl-body').innerHTML = `<tr><td colspan="7" class="empty">加载失败：${err.message || err}</td></tr>`;
   } finally {
     setLoading(wrap, false);
   }
@@ -576,7 +578,7 @@ async function reset() {
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = S.rows.map((r, i) => `
@@ -586,6 +588,7 @@ function renderTable() {
       <td>${fmtN3(r.q)}</td>
       <td>${fmtN2(r.cumulativeFlow)}</td>
       <td${isStaleTm(r.tm, r.stnm) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
+      <td>${fmtN2(r.vol)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
     </tr>
   `).join('');
@@ -980,7 +983,7 @@ function bindMthSiteSelect() {
 function renderMthEmpty() {
   MTH.total = 0;
   MTH.page = 1;
-  $('mth-tbl-body').innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+  $('mth-tbl-body').innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
   const bar = $('mth-tbl-pg');
   bar.innerHTML = `<span class="pg-info">共 0 条</span>
     <select class="pg-size" disabled><option>20条/页</option></select>

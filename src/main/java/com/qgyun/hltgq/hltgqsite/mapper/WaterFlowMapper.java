@@ -35,11 +35,16 @@ public interface WaterFlowMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.stnm, t.tm, t.q, t.tf, t.ytf, t.ttf<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
+            "t.stcd, t.skey AS site, t.stnm, t.tm, t.q, t.tf, t.ytf, t.ttf, t.vol<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
             "FROM ( " +
-            "  SELECT f.stcd, COALESCE(f.stcd, f.site) AS skey, COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf, f.ytf, f.ttf " +
+            "  SELECT f.stcd, COALESCE(f.stcd, f.site) AS skey, COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf, f.ytf, f.ttf, fv.vol " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
+            "  LEFT JOIN ( " +
+            "    SELECT DISTINCT ON (v.site) v.site, v.vol " +
+            "    FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
+            "    ORDER BY v.site, v.tm DESC " +
+            "  ) fv ON fv.site = s.id " +
             "  WHERE 1=1 " +
             "  <if test='stcds == null or stcds.size() == 0'>" +
             "  AND s.epjutj LIKE '%#3#%' " +
@@ -76,6 +81,7 @@ public interface WaterFlowMapper {
             @Result(column = "tf", property = "tf"),
             @Result(column = "ytf", property = "ytf"),
             @Result(column = "ttf", property = "ttf"),
+            @Result(column = "vol", property = "vol"),
             @Result(column = "prev_ttf", property = "prevTtf")
     })
     List<FlowMonitoringVO> selectLatestPerStation(

@@ -33,6 +33,9 @@ public class FlowMonitoringVO {
     /** 累计流量 (m³)：默认（无起始时间）= 末行年累计 ytf；指定起始时间 = ttf(末行) − ttf(起点前一行) */
     private BigDecimal cumulativeFlow;
 
+    /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
+    private BigDecimal vol;
+
     /** 年累计流量（内部计算用，不出 JSON） */
     @JsonIgnore
     private BigDecimal ytf;

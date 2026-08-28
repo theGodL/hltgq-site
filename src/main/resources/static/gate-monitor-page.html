@@ -244,6 +244,7 @@ tbody tr:hover td{background:#fafafa}
               <th>瞬时流量 (m³/s)</th>
               <th>累计流量 (m³)</th>
               <th>采集时间</th>
+              <th>电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -291,6 +292,7 @@ tbody tr:hover td{background:#fafafa}
               <th>闸前水位 (m)</th>
               <th>闸后水位 (m)</th>
               <th>采集时间</th>
+              <th>电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -775,7 +777,7 @@ async function loadList() {
     S.allRows = [];
     S.total = 0;
     S.rows = [];
-    $('tbl-body').innerHTML = '<tr><td colspan="8" class="empty">数据加载失败，请重试</td></tr>';
+    $('tbl-body').innerHTML = '<tr><td colspan="9" class="empty">数据加载失败，请重试</td></tr>';
     renderPager();
   } finally {
     setLoading(wrap, false);
@@ -816,7 +818,7 @@ function fmtHolesOpen(holes) {
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = S.rows.map((r, i) => `
@@ -828,6 +830,7 @@ function renderTable() {
       <td>${fmtN3(r.q)}</td>
       <td>${fmtN2(r.cumulativeFlow)}</td>
       <td${isStaleTm(r.tm, r.siteName) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
+      <td>${fmtN2(r.vol)}</td>
       <td>
         <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>
         ${isDischargeSite(r.siteName) ? `<button class="act-btn" data-action="discharge" data-idx="${i}" style="margin-left:10px">流量计算</button>` : ''}
@@ -1661,7 +1664,7 @@ function bindMthDevSelect() {
 }
 
 function renderMthEmpty() {
-  $('mth-tbl-body').innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+  $('mth-tbl-body').innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
   $('mth-tbl-pg').innerHTML = `<span class="pg-info">共 0 条</span>
     <select class="pg-size" disabled><option>20条/页</option></select>
     <button class="pg-btn" disabled>&lt;</button>
