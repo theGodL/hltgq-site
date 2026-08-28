@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.controller;
 
+import com.qgyun.hltgq.hltgqsite.archive.client.ArchiveCallException;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelCallException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -30,6 +31,15 @@ public class GlobalExceptionHandler {
     public Map<String, Object> handleModelCall(ModelCallException e) {
         Map<String, Object> result = new HashMap<>();
         result.put("code", e.getCode());
+        result.put("message", e.getMessage());
+        return result;
+    }
+
+    @ExceptionHandler(ArchiveCallException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public Map<String, Object> handleArchiveCall(ArchiveCallException e) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("rc", e.getRc());
         result.put("message", e.getMessage());
         return result;
     }

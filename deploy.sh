@@ -27,6 +27,7 @@ case "${1:-deploy}" in
             -v /service/hltgq/hltgq-site/decision-excel:/app/decision-excel \
             -e TZ=Asia/Shanghai \
             -e MODEL_BASE_URL="${MODEL_BASE_URL:-http://10.68.18.11:8000}" \
+            -e ARCHIVE_BASE_URL="${ARCHIVE_BASE_URL:-http://10.68.18.12:8090}" \
             --memory="1024m" \
             ${IMAGE_NAME}:latest
         echo "部署完成，查看日志："
