@@ -36,6 +36,17 @@
             <version>3.5.5</version>
         </dependency>
 
+        <!-- Redis (weather cache + future performance optimization) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- lettuce connection pool support -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
+
         <!-- PostgreSQL JDBC Driver（兼容人大金仓 KingbaseES v8） -->
         <dependency>
             <groupId>org.postgresql</groupId>
