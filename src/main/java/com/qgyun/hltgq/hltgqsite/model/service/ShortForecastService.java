@@ -94,11 +94,17 @@ public class ShortForecastService {
             throw new IllegalArgumentException("起始日期格式错误，应为 YYYY-MM-DD");
         }
         int days = req.getDays() == null ? 30 : req.getDays();
+        // 模型 /forecast 契约限制 1~30（超出模型直接拒绝："days必须在1~30之间"）
         if (days < 1 || days > 30) {
             throw new IllegalArgumentException("预报天数必须在 1~30 之间");
         }
         boolean useTypical = Boolean.TRUE.equals(req.getUseTypical());
         boolean adjustRainfall = Boolean.TRUE.equals(req.getAdjustRainfall());
+        int floodIdx = req.getFloodIdx() == null ? 0 : req.getFloodIdx();
+        // 模型 /forecast 契约：典型洪水样本编号 0~5（超出模型直接拒绝）
+        if (useTypical && (floodIdx < 0 || floodIdx > 5)) {
+            throw new IllegalArgumentException("典型洪水样本编号必须在 0~5 之间");
+        }
         String dischargeMode = req.getDischargeMode() == null ? "max" : req.getDischargeMode().trim();
         if (!"max".equals(dischargeMode) && !"none".equals(dischargeMode) && !"custom".equals(dischargeMode)) {
             throw new IllegalArgumentException("下泄模式必须是 max / none / custom 之一");
@@ -120,7 +126,7 @@ public class ShortForecastService {
         body.put("days", days);
         body.put("use_typical", useTypical);
         if (useTypical) {
-            body.put("flood_idx", req.getFloodIdx() == null ? 0 : req.getFloodIdx());
+            body.put("flood_idx", floodIdx);
         }
         if (!useTypical) {
             body.put("rainfall", req.getRainfall());
@@ -129,7 +135,10 @@ public class ShortForecastService {
         if (adjustRainfall) {
             body.put("target_total", req.getTargetTotal());
         }
-        body.put("initial_water_level", req.getInitialWaterLevel());
+        // initial_water_level 为 null 时不传，由模型端取默认 79.89（显式 null 可能触发模型类型校验失败）
+        if (req.getInitialWaterLevel() != null) {
+            body.put("initial_water_level", req.getInitialWaterLevel());
+        }
         body.put("discharge_mode", dischargeMode);
         if ("custom".equals(dischargeMode)) {
             body.put("custom_discharge", req.getCustomDischarge());
@@ -144,7 +153,7 @@ public class ShortForecastService {
         record.setDays((double) days);
         record.setUseTypical(BoolTextUtils.boolToText(useTypical));
         if (useTypical) {
-            record.setFloodIdx((double) (req.getFloodIdx() == null ? 0 : req.getFloodIdx()));
+            record.setFloodIdx((double) floodIdx);
         }
         record.setAdjustRainfall(BoolTextUtils.boolToText(adjustRainfall));
         record.setTargetTotal(req.getTargetTotal());
@@ -206,8 +215,13 @@ public class ShortForecastService {
                 daily.setInflowVolume(doubleOf(item, "入库水量_万方"));
                 daily.setOutflowVolume(doubleOf(item, "出库水量_万方"));
                 daily.setWaterLevel(doubleOf(item, "水位_m"));
-                daily.setInflowRate(FlowRateUtils.volumeToRate(daily.getInflowVolume()));
-                daily.setOutflowRate(FlowRateUtils.volumeToRate(daily.getOutflowVolume()));
+                // 流量：模型直出「入库流量_m3s/出库流量_m3s」优先（模型样例已确认直出），缺失降级按水量换算
+                Double inflowRate = doubleOf(item, "入库流量_m3s");
+                daily.setInflowRate(inflowRate != null ? inflowRate
+                        : FlowRateUtils.volumeToRate(daily.getInflowVolume()));
+                Double outflowRate = doubleOf(item, "出库流量_m3s");
+                daily.setOutflowRate(outflowRate != null ? outflowRate
+                        : FlowRateUtils.volumeToRate(daily.getOutflowVolume()));
                 // 库容：模型直出「库容_万方」优先，缺失降级查库容曲线表
                 Double storage = doubleOf(item, "库容_万方");
                 daily.setStorage(storage != null ? storage
@@ -278,6 +292,13 @@ public class ShortForecastService {
             lossBody.put("use_typical", forecastBody.getOrDefault("use_typical", Boolean.FALSE));
             if (forecastBody.containsKey("flood_idx")) {
                 lossBody.put("flood_idx", forecastBody.get("flood_idx"));
+            }
+            // /loss(mode=short) 契约含 adjust_rainfall/target_total：调整降雨口径需与 /forecast 一致
+            if (forecastBody.containsKey("adjust_rainfall")) {
+                lossBody.put("adjust_rainfall", forecastBody.get("adjust_rainfall"));
+            }
+            if (forecastBody.containsKey("target_total")) {
+                lossBody.put("target_total", forecastBody.get("target_total"));
             }
             if (forecastBody.containsKey("initial_water_level")) {
                 lossBody.put("initial_water_level", forecastBody.get("initial_water_level"));

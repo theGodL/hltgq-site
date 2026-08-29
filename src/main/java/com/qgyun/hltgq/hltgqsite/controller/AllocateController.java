@@ -126,7 +126,7 @@ public class AllocateController {
         }
     }
 
-    /** POI 解析上传 Excel → rows（数值列转 Double，日期列保留旬标签字符串） */
+    /** POI 解析上传 Excel → rows（数值列转 Double，日期列保留旬标签字符串；空单元格置 null） */
     private List<Map<String, Object>> parseManualRows(MultipartFile file) {
         List<Map<String, String>> rows;
         try {
@@ -147,13 +147,25 @@ public class AllocateController {
         if (!missing.isEmpty()) {
             throw new IllegalArgumentException("配水基础数据表缺少以下列: " + String.join(", ", missing));
         }
+        // 必填数值列（除日期外 9 列）不允许空单元格：逐行检查后统一报错，避免模型端 float('') 晦涩报错
+        List<String> blanks = new ArrayList<>();
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, String> row : rows) {
+        for (int i = 0; i < rows.size(); i++) {
+            Map<String, String> row = rows.get(i);
+            // 日期格式预检：模型端用正则 (\d+)月 提取月份（如 "1月上旬" / "2026年5月上旬"），缺失将报错
+            String dateValue = row.get("日期");
+            if (dateValue == null || !dateValue.contains("月")) {
+                throw new IllegalArgumentException("配水基础数据表第" + (i + 2) + "行「日期」缺少月份数字（格式应为 1月上旬 或 2026年5月上旬）");
+            }
             Map<String, Object> item = new LinkedHashMap<>();
             for (Map.Entry<String, String> entry : row.entrySet()) {
                 String key = entry.getKey();
                 String value = entry.getValue();
-                if (!"日期".equals(key) && value != null && !value.isEmpty()) {
+                boolean blank = value == null || value.isEmpty();
+                if (blank && !"日期".equals(key) && isRequiredNumeric(key)) {
+                    blanks.add("第" + (i + 2) + "行「" + key + "」");
+                }
+                if (!"日期".equals(key) && !blank) {
                     try {
                         item.put(key, Double.parseDouble(value));
                         continue;
@@ -161,11 +173,28 @@ public class AllocateController {
                         // 非数值保留原始字符串
                     }
                 }
-                item.put(key, value);
+                // 空单元格 → null（模型端不接受空串数值）
+                item.put(key, blank ? null : value);
             }
             result.add(item);
         }
+        if (!blanks.isEmpty()) {
+            throw new IllegalArgumentException("配水基础数据表以下必填数值单元格为空: " + String.join("、", blanks));
+        }
         return result;
+    }
+
+    /** 是否必填数值列（MANUAL_REQUIRED_COLUMNS 中除日期外的列） */
+    private static boolean isRequiredNumeric(String key) {
+        if ("日期".equals(key)) {
+            return false;
+        }
+        for (String column : MANUAL_REQUIRED_COLUMNS) {
+            if (column.equals(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 轮询配置方案执行状态：{id, status, errorMsg} */

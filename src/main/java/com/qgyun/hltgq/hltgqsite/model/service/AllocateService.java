@@ -27,7 +27,9 @@ import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.doubleOf;
@@ -119,7 +121,17 @@ public class AllocateService {
             if (req.getRows() == null || req.getRows().isEmpty()) {
                 throw new IllegalArgumentException("manual 模式下配水数据行不能为空（或使用 /water-allocation/upload 上传模板）");
             }
-            body.put("rows", req.getRows());
+            // 空串数值 → null，避免模型端 "could not convert string to float: ''"（upload 解析已置 null，JSON 直传兜底）
+            List<Map<String, Object>> cleanedRows = new ArrayList<>();
+            for (Map<String, Object> row : req.getRows()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                for (Map.Entry<String, Object> entry : row.entrySet()) {
+                    Object v = entry.getValue();
+                    item.put(entry.getKey(), (v instanceof String && ((String) v).trim().isEmpty()) ? null : v);
+                }
+                cleanedRows.add(item);
+            }
+            body.put("rows", cleanedRows);
         }
 
         // 写主表（参数留存 + 请求归档，calculating）
@@ -179,11 +191,26 @@ public class AllocateService {
         }
         String pondOption = req.getPondOption() == null || req.getPondOption().trim().isEmpty()
                 ? "多年平均" : req.getPondOption().trim();
-        body.put("scenario", midRecord.getScenario());
+        // /allocate 契约：塘坝可供水量档位只能是 50% / 75% / 90% / 多年平均
+        if (!"50%".equals(pondOption) && !"75%".equals(pondOption) && !"90%".equals(pondOption)
+                && !"多年平均".equals(pondOption)) {
+            throw new IllegalArgumentException("塘坝可供水量档位必须是 50% / 75% / 90% / 多年平均 之一");
+        }
+        // 中长期方案 scenario 入库可能为空白串（"原始"方案提交时写 null，被库默认值落成 ''）；
+        // 且 /predict 对"原始"方案会回显 "历史<年份>年" 并回写记录（如"历史1957年"），
+        // 语义等价于"原始"。两者均规范化为 null 再传模型（/allocate 契约：scenario 必须是 丰/平/枯 或 null）
+        String scenario = midRecord.getScenario() == null || midRecord.getScenario().trim().isEmpty()
+                ? null : midRecord.getScenario().trim();
+        if (scenario != null && !"丰".equals(scenario) && !"平".equals(scenario) && !"枯".equals(scenario)) {
+            log.warn("中长期方案 {} 的 scenario=[{}] 非丰/平/枯，按原始(null)处理",
+                    req.getLongPredictRecordId(), scenario);
+            scenario = null;
+        }
+        body.put("scenario", scenario);
         body.put("guarantee_rate", demandRecord.getGuaranteeRate());
         body.put("canal_eff", demandRecord.getCanalEff());
         body.put("pond_option", pondOption);
-        record.setScenario(midRecord.getScenario());
+        record.setScenario(scenario);
         record.setGuaranteeRate(demandRecord.getGuaranteeRate());
         record.setCanalEff(demandRecord.getCanalEff());
         record.setPondOption(pondOption);

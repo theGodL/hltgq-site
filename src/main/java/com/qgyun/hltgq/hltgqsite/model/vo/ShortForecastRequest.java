@@ -16,7 +16,7 @@ public class ShortForecastRequest {
     /** 起始日期 YYYY-MM-DD（必填） */
     private String startDate;
 
-    /** 预报天数 1~30（默认30） */
+    /** 预报天数 1~30（默认30；模型契约上限 30） */
     private Integer days;
 
     /** 是否使用典型洪水（默认 false） */

@@ -134,6 +134,26 @@ public class ModelClient {
         }
     }
 
+    /**
+     * GET /health：健康检查响应不含 {code,msg} 包装（status=ok + files 文件存在性表），单独解析不校验 code。
+     * files 任一为 false 表示对应模型/结果文件缺失，该链路可能无法运行。
+     */
+    public JsonNode health() {
+        try {
+            ResponseEntity<String> response = restTemplate.getForEntity(baseUrl + PATH_HEALTH, String.class);
+            String body = response.getBody();
+            JsonNode node = objectMapper.readTree(body);
+            log.info("model health: {}", summarize(body));
+            return node;
+        } catch (HttpClientErrorException | HttpServerErrorException e) {
+            throw fromErrorBody(e.getResponseBodyAsString(), PATH_HEALTH);
+        } catch (ResourceAccessException e) {
+            throw new ModelCallException(-1, "模型服务不可达或超时: " + rootMessage(e));
+        } catch (Exception e) {
+            throw new ModelCallException(-1, "解析模型健康检查响应失败: " + e.getMessage());
+        }
+    }
+
     private JsonNode parseOk(String body, String path) {
         try {
             JsonNode node = objectMapper.readTree(body);

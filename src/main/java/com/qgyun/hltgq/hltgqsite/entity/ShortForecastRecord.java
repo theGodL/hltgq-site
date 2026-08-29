@@ -19,7 +19,7 @@ public class ShortForecastRecord extends BaseRecordEntity {
     @TableField("\"start_date\"")
     private LocalDateTime startDate;
 
-    /** 预报天数（1~30） */
+    /** 预报天数（1~30，模型契约上限 30） */
     @TableField("\"days\"")
     private Double days;
 
