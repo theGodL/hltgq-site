@@ -33,8 +33,13 @@ public class ArchiveSyncService {
 
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    /** 根节点标记：parent_id='*' 时为顶级部门 */
+    /** 根节点标记：parent_id='*' 时为顶级部门；实际数据中根部门 parent_id 为空串，同样视为根 */
     private static final String ROOT_PARENT = "*";
+
+    /** 根节点判定：parent_id 为 null / 空串 / '*' 或自引用均视为根 */
+    private boolean isRootParent(String parentId, String orgId) {
+        return parentId == null || parentId.isEmpty() || ROOT_PARENT.equals(parentId) || parentId.equals(orgId);
+    }
 
     /** 无岗位用户的默认岗位名称（需浩微「职位管理」预置） */
     private static final String DEFAULT_POSITION = "员工";
@@ -135,7 +140,7 @@ public class ArchiveSyncService {
         }
         toSync.put(id, org);
         String parentId = str(org.get("parent_id"));
-        if (parentId != null && !ROOT_PARENT.equals(parentId) && !parentId.equals(id)) {
+        if (!isRootParent(parentId, id)) {
             Map<String, Object> parent = orgMap.get(parentId);
             if (parent != null) {
                 collectWithAncestors(parent, orgMap, toSync, visited);
@@ -151,7 +156,7 @@ public class ArchiveSyncService {
         String parentId = str(org.get("parent_id"));
 
         String parentCode = null;
-        if (parentId != null && !ROOT_PARENT.equals(parentId) && !parentId.equals(String.valueOf(org.get("id")))) {
+        if (!isRootParent(parentId, String.valueOf(org.get("id")))) {
             Map<String, Object> parent = orgMap.get(parentId);
             if (parent != null) {
                 parentCode = str(parent.get("code"));
@@ -180,7 +185,7 @@ public class ArchiveSyncService {
             return 1;
         }
         String parentId = str(org.get("parent_id"));
-        if (parentId == null || ROOT_PARENT.equals(parentId) || parentId.equals(id)) {
+        if (isRootParent(parentId, id)) {
             return 1;
         }
         Map<String, Object> parent = orgMap.get(parentId);
@@ -201,7 +206,7 @@ public class ArchiveSyncService {
             return name;
         }
         String parentId = str(org.get("parent_id"));
-        if (parentId == null || ROOT_PARENT.equals(parentId) || parentId.equals(id)) {
+        if (isRootParent(parentId, id)) {
             return name;
         }
         Map<String, Object> parent = orgMap.get(parentId);

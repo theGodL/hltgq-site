@@ -1,0 +1,126 @@
+package com.qgyun.hltgq.hltgqsite.auth;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
+/**
+ * 登录验证拦截器：白名单放行 → 解析会话 → 用户上下文写入 ThreadLocal。
+ * <p>未登录：浏览器导航（Accept 含 text/html）302 跳转平台登录页；AJAX/API 返回 401 JSON。
+ * <p>会话服务不可用（Redis 故障）：503 JSON，禁止降级放行（安全取舍，区别于天气缓存降级）。
+ */
+@Component
+public class AuthInterceptor implements HandlerInterceptor {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthInterceptor.class);
+
+    /** 平台登录页地址（未登录跳转） */
+    @Value("${auth.login-page-url:http://220.179.1.110:8081/login/user/login}")
+    private String loginPageUrl;
+
+    /** 可配置白名单（逗号分隔），与代码固定白名单合并 */
+    @Value("${auth.white-list:}")
+    private String whiteListConfig;
+
+    @Autowired
+    private SessionContextService sessionContextService;
+
+    /** 代码固定白名单（不受配置影响） */
+    private static final Set<String> FIXED_WHITE_LIST = new HashSet<>(Arrays.asList(
+            "/auth/login",
+            "/error"
+    ));
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        String path = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        String relativePath = path.substring(contextPath.length());
+        if (isWhiteListed(relativePath)) {
+            return true;
+        }
+
+        try {
+            String sessionId = sessionContextService.extractSessionId(request);
+            if (sessionId == null) {
+                log.warn("未登录：{} {} 未携带会话 ID", request.getMethod(), relativePath);
+                handleUnauthorized(request, response);
+                return false;
+            }
+            UserContext user = sessionContextService.resolveUser(sessionId);
+            UserContextHolder.set(user);
+            return true;
+        } catch (UnauthorizedException e) {
+            log.warn("未登录：{} {} - {}", request.getMethod(), relativePath, e.getMessage());
+            handleUnauthorized(request, response);
+            return false;
+        } catch (SessionUnavailableException e) {
+            log.error("会话服务不可用：{} {} - {}", request.getMethod(), relativePath, e.getMessage());
+            writeJson(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "{\"code\":503,\"message\":\"会话服务不可用，请稍后重试\"}");
+            return false;
+        }
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        UserContextHolder.clear();
+    }
+
+    /**
+     * 白名单判定：配置白名单 + 代码固定白名单，均按前缀匹配（支持 /static/** 类写法简化为 /static）。
+     */
+    private boolean isWhiteListed(String path) {
+        for (String item : FIXED_WHITE_LIST) {
+            if (path.startsWith(item)) {
+                return true;
+            }
+        }
+        if (StringUtils.hasText(whiteListConfig)) {
+            for (String item : whiteListConfig.split(",")) {
+                String trimmed = item.trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
+                if (path.startsWith(trimmed)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 未登录处理：页面导航 302 跳转登录页；AJAX/API 返回 401 JSON（携带 redirectUrl 供前端跳转）
+     */
+    private void handleUnauthorized(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        String accept = request.getHeader("Accept");
+        if (accept != null && accept.contains("text/html")) {
+            response.sendRedirect(loginPageUrl);
+            return;
+        }
+        writeJson(response, HttpServletResponse.SC_UNAUTHORIZED,
+                "{\"code\":401,\"message\":\"未登录\",\"redirectUrl\":\"" + loginPageUrl + "\"}");
+    }
+
+    /**
+     * 输出 JSON 响应
+     */
+    private void writeJson(HttpServletResponse response, int status, String body) throws Exception {
+        response.setStatus(status);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write(body);
+    }
+}

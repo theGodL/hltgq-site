@@ -124,16 +124,38 @@ public class ArchiveClient {
         });
     }
 
-    /** POST JSON，重试 3 次，rc=200 才返回 */
+    /** POST JSON，重试 3 次，rc=200 才返回；请求入参打印一次（含 token，截断），供三方排查契约核对 */
     private JsonNode postJson(String path, Object body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        final String jsonBody;
+        try {
+            jsonBody = objectMapper.writeValueAsString(body);
+        } catch (Exception e) {
+            throw new ArchiveCallException("-1", "序列化请求体失败(" + path + "): " + e.getMessage());
+        }
+        log.info("archive {} request: {}", path, summarize(jsonBody));
         return execute(path, () -> {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            String jsonBody = objectMapper.writeValueAsString(body);
             ResponseEntity<String> response = restTemplate.postForEntity(
                     baseUrl + path, new HttpEntity<>(jsonBody, headers), String.class);
             return response.getBody();
         });
+    }
+
+    /** 请求日志截断：超长输出「前 N 字符 + 尾 M 字符」，兼顾头部字段结构与尾部行数据 */
+    private String summarize(String body) {
+        if (body == null) {
+            return "null";
+        }
+        int limit = 4000;
+        int tail = 3000;
+        if (body.length() <= limit + tail) {
+            return body;
+        }
+        int tailLen = Math.min(tail, body.length() - limit);
+        return body.substring(0, limit)
+                + "...(截断" + body.length() + "字符)..."
+                + body.substring(body.length() - tailLen);
     }
 
     /** 统一重试与响应解析：网络异常/5xx 重试，业务 rc!=200 直接抛异常 */

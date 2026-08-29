@@ -25,35 +25,60 @@ public interface ArchiveSyncMapper {
     List<Map<String, Object>> selectOrgsSince(@Param("since") String since);
 
     /**
-     * 全量查询用户：LEFT JOIN 主部门(main='1')取部门编码、任一岗位取岗位名称。
-     * <p>条件全部放在 ON 子句中，保证无部门/无岗位用户不丢行（Java 侧跳过/兜底）。
+     * 全量查询用户：部门取「main='1' 优先、否则任一部门关系」（实际数据 main 多为 NULL，不能硬过滤），
+     * 岗位取任一岗位名称（窗口函数去重，防多岗位笛卡尔积）。
+     * <p>无部门用户不丢行（LEFT JOIN），Java 侧跳过并记日志。
      */
     @Select("SELECT u.id, u.name, u.login_name, u.mobile, u.email, u.sex, u.id_card, " +
             "to_char(u.birthday, 'YYYY-MM-DD') AS birthday, u.updated_at, " +
             "o.code AS dept_code, p.name AS position_name " +
             "FROM \"qixiao-apaas\".\"t_apaas_uc_user\" u " +
-            "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user_org_rel\" rel " +
-            "  ON u.id = rel.biz_id AND rel.corp_code = 'hltgq' AND rel.main = '1' " +
+            "LEFT JOIN ( " +
+            "  SELECT biz_id, rel_id FROM ( " +
+            "    SELECT biz_id, rel_id, ROW_NUMBER() OVER ( " +
+            "      PARTITION BY biz_id ORDER BY CASE WHEN main = '1' THEN 0 ELSE 1 END, created_at ASC " +
+            "    ) AS rn " +
+            "    FROM \"qixiao-apaas\".\"t_apaas_uc_user_org_rel\" " +
+            "    WHERE corp_code = 'hltgq' " +
+            "  ) t WHERE rn = 1 " +
+            ") rel ON u.id = rel.biz_id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_org\" o " +
             "  ON rel.rel_id = o.id AND o.corp_code = 'hltgq' " +
-            "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user_position_rel\" prel " +
-            "  ON u.id = prel.biz_id AND prel.corp_code = 'hltgq' " +
+            "LEFT JOIN ( " +
+            "  SELECT biz_id, rel_id FROM ( " +
+            "    SELECT biz_id, rel_id, ROW_NUMBER() OVER (PARTITION BY biz_id ORDER BY created_at ASC) AS rn " +
+            "    FROM \"qixiao-apaas\".\"t_apaas_uc_user_position_rel\" " +
+            "    WHERE corp_code = 'hltgq' " +
+            "  ) t WHERE rn = 1 " +
+            ") prel ON u.id = prel.biz_id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_position\" p " +
             "  ON prel.rel_id = p.id AND p.corp_code = 'hltgq' " +
             "WHERE u.corp_code = 'hltgq'")
     List<Map<String, Object>> selectUsersAll();
 
-    /** 增量查询用户：updated_at >= since */
+    /** 增量查询用户：updated_at >= since，部门/岗位关联同全量 */
     @Select("SELECT u.id, u.name, u.login_name, u.mobile, u.email, u.sex, u.id_card, " +
             "to_char(u.birthday, 'YYYY-MM-DD') AS birthday, u.updated_at, " +
             "o.code AS dept_code, p.name AS position_name " +
             "FROM \"qixiao-apaas\".\"t_apaas_uc_user\" u " +
-            "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user_org_rel\" rel " +
-            "  ON u.id = rel.biz_id AND rel.corp_code = 'hltgq' AND rel.main = '1' " +
+            "LEFT JOIN ( " +
+            "  SELECT biz_id, rel_id FROM ( " +
+            "    SELECT biz_id, rel_id, ROW_NUMBER() OVER ( " +
+            "      PARTITION BY biz_id ORDER BY CASE WHEN main = '1' THEN 0 ELSE 1 END, created_at ASC " +
+            "    ) AS rn " +
+            "    FROM \"qixiao-apaas\".\"t_apaas_uc_user_org_rel\" " +
+            "    WHERE corp_code = 'hltgq' " +
+            "  ) t WHERE rn = 1 " +
+            ") rel ON u.id = rel.biz_id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_org\" o " +
             "  ON rel.rel_id = o.id AND o.corp_code = 'hltgq' " +
-            "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user_position_rel\" prel " +
-            "  ON u.id = prel.biz_id AND prel.corp_code = 'hltgq' " +
+            "LEFT JOIN ( " +
+            "  SELECT biz_id, rel_id FROM ( " +
+            "    SELECT biz_id, rel_id, ROW_NUMBER() OVER (PARTITION BY biz_id ORDER BY created_at ASC) AS rn " +
+            "    FROM \"qixiao-apaas\".\"t_apaas_uc_user_position_rel\" " +
+            "    WHERE corp_code = 'hltgq' " +
+            "  ) t WHERE rn = 1 " +
+            ") prel ON u.id = prel.biz_id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_position\" p " +
             "  ON prel.rel_id = p.id AND p.corp_code = 'hltgq' " +
             "WHERE u.corp_code = 'hltgq' AND u.updated_at >= #{since}")
