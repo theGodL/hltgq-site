@@ -9,6 +9,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.DemandBranchDetailMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.DemandRecordMapper;
 import com.qgyun.hltgq.hltgqsite.model.service.DemandService;
 import com.qgyun.hltgq.hltgqsite.model.service.ModelRecordCommonService;
+import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ExcelParseUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.DemandSubmitRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -78,7 +79,7 @@ public class DemandController {
         }
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=WaterDemandForecast_Template.xlsx")
+                        DownloadHeaderUtils.attachment("WaterDemandForecast_Template.xlsx"))
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(bytes);
     }

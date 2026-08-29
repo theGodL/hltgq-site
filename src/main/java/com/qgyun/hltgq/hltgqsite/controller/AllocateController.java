@@ -7,6 +7,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.AllocateRecordMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.AllocateTendayMapper;
 import com.qgyun.hltgq.hltgqsite.model.service.AllocateService;
 import com.qgyun.hltgq.hltgqsite.model.service.ModelRecordCommonService;
+import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ExcelParseUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.TenDayMapUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.AllocateSubmitRequest;
@@ -99,7 +100,7 @@ public class AllocateController {
     public ResponseEntity<byte[]> downloadTemplate() {
         byte[] bytes = buildTemplate();
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=配水基础数据收集表.xlsx")
+                .header(HttpHeaders.CONTENT_DISPOSITION, DownloadHeaderUtils.attachment("配水基础数据收集表.xlsx"))
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(bytes);
     }
@@ -179,7 +180,11 @@ public class AllocateController {
             result.add(item);
         }
         if (!blanks.isEmpty()) {
-            throw new IllegalArgumentException("配水基础数据表以下必填数值单元格为空: " + String.join("、", blanks));
+            // 空单元格可能多达 36行×9列，拼接超长错误信息无益：最多列 10 项 + 总数
+            String detail = blanks.size() > 10
+                    ? String.join("、", blanks.subList(0, 10)) + " 等共 " + blanks.size() + " 处"
+                    : String.join("、", blanks);
+            throw new IllegalArgumentException("配水基础数据表以下必填数值单元格为空: " + detail + "（请填写完整后再上传）");
         }
         return result;
     }

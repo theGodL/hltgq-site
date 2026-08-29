@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>水量预测</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/model-api.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -42,7 +44,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .form-row .unit{color:#999;font-size:13px;flex-shrink:0}
 .field{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s;width:100%;color:#333}
 .field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
-.field:disabled{background:#f5f5f5;color:#bbb;cursor:not-allowed}
+.field:disabled,.field[readonly]{background:#f5f5f5;color:#666;cursor:not-allowed}
 .date-range{display:flex;align-items:center;gap:6px}
 .date-range .field{flex:1;min-width:0}
 .date-sep{color:#bbb;flex-shrink:0}
@@ -142,7 +144,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .chart-card:last-child{margin-bottom:0}
 .chart-card .chart-title{font-size:14px;font-weight:500;color:#333;margin-bottom:2px}
 .chart-card .chart-unit{font-size:12px;color:#999;margin-bottom:4px}
-.chart-box{width:100%;height:280px}
+.chart-box{width:100%;height:320px}
 
 /* 空状态 */
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:420px;color:#bbb;padding:40px 20px}
@@ -203,8 +205,9 @@ tbody tr:hover td{background:#fafafa}
 
 .pg-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 0 0;gap:8px;flex-wrap:wrap}
 .pg-info{color:#666;font-size:13px}
-.pg-btns{display:flex;align-items:center;gap:4px}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-ellipsis{min-width:20px;height:28px;display:inline-flex;align-items:center;justify-content:center;color:#999;font-size:13px;user-select:none;letter-spacing:1px}
 .pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
 .pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
 .pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
@@ -260,12 +263,12 @@ tbody tr:hover td{background:#fafafa}
             <div class="select-wrap">
               <select class="field" id="typical-flood">
                 <option value="">不使用</option>
-                <option value="flood1">典型洪水一（名称待定）</option>
-                <option value="flood2">典型洪水二（名称待定）</option>
-                <option value="flood3">典型洪水三（名称待定）</option>
-                <option value="flood4">典型洪水四（名称待定）</option>
-                <option value="flood5">典型洪水五（名称待定）</option>
-                <option value="flood6">典型洪水六（名称待定）</option>
+                <option value="0">典型洪水一</option>
+                <option value="1">典型洪水二</option>
+                <option value="2">典型洪水三</option>
+                <option value="3">典型洪水四</option>
+                <option value="4">典型洪水五</option>
+                <option value="5">典型洪水六</option>
               </select>
               <span class="select-arrow"></span>
             </div>
@@ -360,12 +363,13 @@ tbody tr:hover td{background:#fafafa}
       <div class="left-panel">
         <div class="left-scroll">
           <div class="form-item">
-            <label class="form-label"><span class="req">*</span>预测时间</label>
+            <label class="form-label">预测时间</label>
             <div class="date-range">
-              <input type="date" class="field" id="mid-start-date" value="2027-01-01">
+              <input type="text" class="field" id="mid-start-date" value="1月上旬" readonly tabindex="-1">
               <span class="date-sep">—</span>
-              <input type="date" class="field" id="mid-end-date" value="2027-12-31">
+              <input type="text" class="field" id="mid-end-date" value="12月下旬" readonly tabindex="-1">
             </div>
+            <div class="form-hint">模型固定输出全年 36 旬，不可修改</div>
           </div>
 
           <div class="form-item">
@@ -380,7 +384,12 @@ tbody tr:hover td{background:#fafafa}
 
           <div class="form-item" id="hist-year-item">
             <label class="form-label">历史年份</label>
-            <input type="number" class="field" id="hist-year" placeholder="选择日期" min="1950" max="2100" step="1" disabled>
+            <div class="select-wrap">
+              <select class="field" id="hist-year" disabled>
+                <option value="">请选择年份</option>
+              </select>
+              <span class="select-arrow"></span>
+            </div>
           </div>
         </div>
         <div class="left-actions">
@@ -432,12 +441,10 @@ tbody tr:hover td{background:#fafafa}
       <div class="left-panel">
         <div class="left-scroll">
           <div class="form-item">
-            <label class="form-label"><span class="req">*</span>中长期来水预报模型计算结果</label>
+            <label class="form-label">中长期来水预报模型计算结果（可选）</label>
             <div class="select-wrap">
               <select class="field" id="demand-model">
-                <option value="m1">中长期来水预报1</option>
-                <option value="m2">中长期来水预报2</option>
-                <option value="m3">中长期来水预报3</option>
+                <option value="">不关联</option>
               </select>
               <span class="select-arrow"></span>
             </div>
@@ -460,7 +467,7 @@ tbody tr:hover td{background:#fafafa}
 
           <div class="form-item">
             <div class="upload-hd">
-              <label class="form-label" style="margin:0"><span class="req">*</span>需水基础数据收集表</label>
+              <label class="form-label" style="margin:0">需水基础数据收集表</label>
               <button type="button" class="link" id="demand-tpl-btn">下载模板</button>
             </div>
             <input type="file" id="demand-file" accept=".xlsx,.xls,.csv" hidden>
@@ -1460,75 +1467,28 @@ tbody tr:hover td{background:#fafafa}
 
 <script>
 (function () {
-  /* ========== Mock 数据 ========== */
-  const DATES = [];
-  for (let d = 1; d <= 30; d++) {
-    DATES.push('2026-08-' + String(d).padStart(2, '0'));
+  const API = window.ModelApi;
+  if (!API) {
+    console.error('ModelApi 未加载');
+    return;
   }
 
-  function seeded(i, base, amp) {
-    const n = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
-    return +(base + (n - Math.floor(n)) * amp).toFixed(2);
-  }
+  /* ========== 运行态（接口结果缓存） ========== */
+  let shortDetail = null;
+  let midDetail = null;
+  let demandDetail = null;
+  let lossDetail = null;
+  let shortDates = [];
+  let shortSeries = null;
+  let midSeries = null;
+  let demandRowsCache = [];
+  let demandPeriods = [];
+  let lossRowsCache = [];
+  let lossChartCats = [];
+  let lossChartData = [];
+  let demandTopoMap = {};
 
-  const MOCK = {
-    summary: {
-      maxLevel: 89.42,
-      totalIn: 1286,
-      totalOut: 914,
-      peakInFlow: 78
-    },
-    rainfall: DATES.map((_, i) => {
-      const v = seeded(i, 0, 48);
-      return v < 3 ? 0 : +v.toFixed(2);
-    }),
-    inflow: DATES.map((_, i) => seeded(i, 280, 420)),
-    outflow: DATES.map((_, i) => seeded(i + 3, 260, 380)),
-    level: DATES.map((_, i) => +(87 + i * 0.08 + seeded(i, 0, 1.2)).toFixed(2)),
-    capacity: DATES.map((_, i) => Math.round(4600 + i * 28 + seeded(i, 0, 80))),
-    evaporation: DATES.map((_, i) => +(2 + seeded(i, 0, 1.2)).toFixed(1)),
-    inFlowRate: DATES.map((_, i) => Math.round(30 + seeded(i, 0, 50))),
-    outFlowRate: DATES.map((_, i) => Math.round(25 + seeded(i + 1, 0, 40)))
-  };
-
-  // 对齐截图样例前几行
-  MOCK.rainfall[0] = 0;
-  MOCK.rainfall[1] = 4.5;
-  MOCK.rainfall[2] = 12.8;
-  MOCK.inflow[0] = 42; MOCK.inflow[1] = 49; MOCK.inflow[2] = 55;
-  MOCK.level[0] = 87.25; MOCK.level[1] = 87.61; MOCK.level[2] = 87.94;
-  MOCK.capacity[0] = 4620; MOCK.capacity[1] = 4711; MOCK.capacity[2] = 4795;
-  MOCK.outflow[0] = 41; MOCK.outflow[1] = 40; MOCK.outflow[2] = 37;
-  MOCK.evaporation[0] = 2.2; MOCK.evaporation[1] = 2.3; MOCK.evaporation[2] = 2.5;
-  MOCK.inFlowRate[0] = 32; MOCK.inFlowRate[1] = 42; MOCK.inFlowRate[2] = 50;
-
-  let historyList = [
-    { id: '20260801001', type: 'short', name: '20260801001短期来水预测（对应模型名称）', time: '2026/08/01 14:36' },
-    { id: '20260801002', type: 'short', name: '20260801002短期来水预测（对应模型名称）', time: '2026/08/01 15:00' },
-    { id: '20260801003', type: 'short', name: '20260801003短期来水预测（对应模型名称）', time: '2026/08/01 15:30' },
-    { id: '20260801004', type: 'short', name: '20260801004短期来水预测（对应模型名称）', time: '2026/08/01 16:00' },
-    { id: '20260801005', type: 'short', name: '20260801005短期来水预测（对应模型名称）', time: '2026/08/01 16:30' },
-    { id: '20260801006', type: 'short', name: '20260801006短期来水预测（对应模型名称）', time: '2026/08/01 17:00' },
-    { id: '20260802001', type: 'mid', name: '20260802001中长期来水预测（对应模型名称）', time: '2026/08/02 09:12' },
-    { id: '20260802002', type: 'mid', name: '20260802002中长期来水预测（对应模型名称）', time: '2026/08/02 10:05' },
-    { id: '20260802003', type: 'mid', name: '20260802003中长期来水预测（对应模型名称）', time: '2026/08/02 11:20' },
-    { id: '20260802004', type: 'mid', name: '20260802004中长期来水预测（对应模型名称）', time: '2026/08/02 14:36' },
-    { id: '20260802005', type: 'mid', name: '20260802005中长期来水预测（对应模型名称）', time: '2026/08/02 15:48' },
-    { id: '20260802006', type: 'mid', name: '20260802006中长期来水预测（对应模型名称）', time: '2026/08/02 16:30' },
-    { id: '20260803001', type: 'demand', name: '20260803001需水预测（对应模型名称）', time: '2026/08/03 09:10' },
-    { id: '20260803002', type: 'demand', name: '20260803002需水预测（对应模型名称）', time: '2026/08/03 10:22' },
-    { id: '20260803003', type: 'demand', name: '20260803003需水预测（对应模型名称）', time: '2026/08/03 11:05' },
-    { id: '20260803004', type: 'demand', name: '20260803004需水预测（对应模型名称）', time: '2026/08/03 14:18' },
-    { id: '20260803005', type: 'demand', name: '20260803005需水预测（对应模型名称）', time: '2026/08/03 15:40' },
-    { id: '20260803006', type: 'demand', name: '20260803006需水预测（对应模型名称）', time: '2026/08/03 16:55' },
-    { id: '20260804001', type: 'loss', name: '20260804001水量损失预测（对应模型名称）', time: '2026/08/04 09:20' },
-    { id: '20260804002', type: 'loss', name: '20260804002水量损失预测（对应模型名称）', time: '2026/08/04 10:35' },
-    { id: '20260804003', type: 'loss', name: '20260804003水量损失预测（对应模型名称）', time: '2026/08/04 11:48' },
-    { id: '20260804004', type: 'loss', name: '20260804004水量损失预测（对应模型名称）', time: '2026/08/04 14:12' },
-    { id: '20260804005', type: 'loss', name: '20260804005水量损失预测（对应模型名称）', time: '2026/08/04 15:30' },
-    { id: '20260804006', type: 'loss', name: '20260804006水量损失预测（对应模型名称）', time: '2026/08/04 16:40' }
-  ];
-
+  let historyList = [];
   let historyType = 'short';
   let editingId = null;
   let detailPage = 1;
@@ -1537,76 +1497,53 @@ tbody tr:hover td{background:#fafafa}
   let charts = {};
   let demandTab = 'canal';
   let demandFilter = '';
+  let demandFile = null;
   let demandUploaded = false;
   let demandHasResult = false;
   let demandPage = 1;
   const DEMAND_PAGE_SIZE = 10;
-  const DEMAND_PERIODS = ['5月上旬', '5月中旬', '5月下旬', '6月上旬', '6月中旬', '6月下旬'];
-
-  const DEMAND_MOCK = {
-    summary: { total: 8048, area: '105.83', peak: '7月中旬' },
-    rows: [
-      { area: '东部片区', district: '徐桥灌区', canal: '东干一支渠', size: 7400, crop: '水稻', v: [25, 34, 42, 47, 48, 46] },
-      { area: '东部片区', district: '大石灌区', canal: '东干二支渠', size: 8360, crop: '水稻', v: [38, 45, 50, 52, 50, 45] },
-      { area: '东部片区', district: '新仓灌区', canal: '东干三支渠', size: 9320, crop: '油菜', v: [28, 36, 41, 44, 43, 38] },
-      { area: '北部片区', district: '北中灌区', canal: '北干一支渠', size: 10280, crop: '水稻', v: [58, 59, 57, 52, 45, 39] },
-      { area: '北部片区', district: '北西灌区', canal: '北干二支渠', size: 8640, crop: '小麦', v: [32, 35, 38, 36, 33, 30] },
-      { area: '北部片区', district: '江塘灌区', canal: '北干三支渠', size: 7180, crop: '混合作物', v: [41, 44, 46, 43, 40, 36] },
-      { area: '南部片区', district: '小池灌区', canal: '南干二支渠', size: 13160, crop: '蔬菜', v: [63, 56, 50, 45, 43, 45] },
-      { area: '南部片区', district: '小池灌区', canal: '南干一支渠', size: 9840, crop: '水稻', v: [48, 52, 55, 51, 47, 42] },
-      { area: '南部片区', district: '下仓灌区', canal: '南干三支渠', size: 6520, crop: '油菜', v: [22, 26, 30, 28, 25, 21] },
-      { area: '西部片区', district: '西部灌区', canal: '西干一支渠', size: 8960, crop: '水稻', v: [46, 49, 53, 50, 46, 41] },
-      { area: '西部片区', district: '西部灌区', canal: '西干二支渠', size: 5740, crop: '小麦', v: [19, 23, 27, 26, 24, 20] },
-      { area: '西部片区', district: '宿怀灌区', canal: '太宿支渠', size: 6680, crop: '混合作物', v: [31, 35, 39, 37, 34, 29] }
-    ]
-  };
+  const DEMAND_PERIODS_DEFAULT = [
+    '5月上旬', '5月中旬', '5月下旬', '6月上旬', '6月中旬', '6月下旬',
+    '7月上旬', '7月中旬', '7月下旬', '8月上旬', '8月中旬', '8月下旬',
+    '9月上旬', '9月中旬', '9月下旬', '10月上旬', '10月中旬', '10月下旬'
+  ];
 
   let lossPage = 1;
   let lossFilter = '';
   let lossCalcType = 'mid';
   const LOSS_PAGE_SIZE = 10;
-  const LOSS_SCHEMES = {
-    short: ['短期来水预报1', '短期来水预报2', '短期来水预报3'],
-    mid: ['中长期来水预报1', '中长期来水预报2', '中长期来水预报3']
-  };
   const LOSS_DECADE_LABELS = [];
   for (let m = 1; m <= 12; m++) {
     ['上旬', '中旬', '下旬'].forEach(p => LOSS_DECADE_LABELS.push(m + '月' + p));
   }
-  const LOSS_MOCK = {
-    short: DATES.map((d, i) => ({
-      date: d,
-      predict: +(10 + seeded(i + 70, 0, 8)).toFixed(1),
-      loss: +(2 + seeded(i + 90, 0, 4)).toFixed(1)
-    })),
-    midRows: Array.from({ length: 36 }, (_, i) => {
-      const d = new Date(2026, 6, 1);
-      d.setDate(d.getDate() + i);
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return {
-        date: y + '-' + m + '-' + day,
-        predict: +(10 + seeded(i + 150, 0, 8)).toFixed(1),
-        loss: +(2 + seeded(i + 170, 0, 4)).toFixed(1)
-      };
-    }),
-    midChart: LOSS_DECADE_LABELS.map((_, i) => +(30 + seeded(i + 190, 0, 55)).toFixed(1))
-  };
-  // 对齐截图样例前几行
-  [
-    [12.5, 3.2], [13.1, 2.9], [11.8, 3.5], [14.2, 2.7], [10.6, 4.1],
-    [12.9, 3.0], [13.6, 2.8], [11.2, 3.7], [14.8, 2.5], [12.0, 3.3]
-  ].forEach((pair, i) => {
-    if (LOSS_MOCK.short[i]) {
-      LOSS_MOCK.short[i].predict = pair[0];
-      LOSS_MOCK.short[i].loss = pair[1];
-    }
-    if (LOSS_MOCK.midRows[i]) {
-      LOSS_MOCK.midRows[i].predict = pair[0];
-      LOSS_MOCK.midRows[i].loss = pair[1];
-    }
-  });
+
+  const DECADE_LABELS = [];
+  const DECADE_PERIODS = ['上', '中', '下'];
+  for (let m = 1; m <= 12; m++) {
+    DECADE_PERIODS.forEach(p => DECADE_LABELS.push(m + '月' + p));
+  }
+  const MONTH_LABELS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0') + '月');
+
+  function apiByType(type) {
+    if (type === 'short') return API.short;
+    if (type === 'mid') return API.long;
+    if (type === 'demand') return API.demand;
+    if (type === 'loss') return API.loss;
+    return null;
+  }
+  function mapHistoryItem(rec, type) {
+    return {
+      id: rec.id,
+      type: type,
+      name: rec.schemeName || rec.id,
+      time: API.fmtDateTime(rec.createdAt),
+      status: rec.status,
+      errorMsg: rec.errorMsg || ''
+    };
+  }
+  function numOrDash(v, digits) {
+    return API.fmtNum(v, digits == null ? 2 : digits);
+  }
 
   /* ========== 工具 ========== */
   function $(id) { return document.getElementById(id); }
@@ -1625,9 +1562,7 @@ tbody tr:hover td{background:#fafafa}
     return p[1] + '/' + p[2];
   }
   function daysBetween(a, b) {
-    const d1 = new Date(a + 'T00:00:00');
-    const d2 = new Date(b + 'T00:00:00');
-    return Math.round((d2 - d1) / 86400000);
+    return API.daysBetween(a, b);
   }
   function eachDate(start, end) {
     const list = [];
@@ -1643,54 +1578,33 @@ tbody tr:hover td{background:#fafafa}
     return list;
   }
   function renderStats(containerId, s) {
+    if (!s) {
+      $(containerId).innerHTML = '';
+      return;
+    }
     $(containerId).innerHTML = [
-      { label: '最高水位', value: s.maxLevel, unit: 'm' },
-      { label: '累计入库水量', value: s.totalIn.toLocaleString(), unit: '万m³' },
-      { label: '累计出库水量', value: s.totalOut.toLocaleString(), unit: '万m³' },
-      { label: '峰值入库流量', value: s.peakInFlow, unit: 'm³/s' }
+      { label: '最高水位', value: numOrDash(s.maxLevel, 2), unit: 'm' },
+      { label: '累计入库水量', value: numOrDash(s.totalIn, 2), unit: '万m³' },
+      { label: '累计出库水量', value: numOrDash(s.totalOut, 2), unit: '万m³' },
+      { label: '峰值入库流量', value: numOrDash(s.peakInFlow, 2), unit: 'm³/s' }
     ].map(it =>
       `<div class="stat-card"><div class="label">${it.label}</div><div class="value">${it.value}<span class="unit">${it.unit}</span></div></div>`
     ).join('');
   }
 
-  function renderMidStats(containerId) {
-    const s = MID_MOCK.summary;
+  function renderMidStats(containerId, s) {
+    if (!s) {
+      $(containerId).innerHTML = '';
+      return;
+    }
     $(containerId).innerHTML = [
-      { label: '全年预测水量', value: s.annual.toLocaleString(), unit: '万m³' },
-      { label: '最大旬水量', value: s.maxDecade, unit: '万m³', period: s.maxPeriod },
-      { label: '最小旬水量', value: s.minDecade, unit: '万m³', period: s.minPeriod }
+      { label: '全年预测水量', value: numOrDash(s.annual, 2), unit: '万m³' },
+      { label: '最大旬水量', value: numOrDash(s.maxDecade, 2), unit: '万m³', period: s.maxPeriod },
+      { label: '最小旬水量', value: numOrDash(s.minDecade, 2), unit: '万m³', period: s.minPeriod }
     ].map(it =>
       `<div class="stat-card"><div class="label">${it.label}</div><div class="value-row"><div class="value">${it.value}<span class="unit">${it.unit}</span></div>${it.period ? `<div class="period">${it.period}</div>` : ''}</div></div>`
     ).join('');
   }
-
-  /* ========== 中长期 Mock ========== */
-  const DECADE_LABELS = [];
-  const DECADE_PERIODS = ['上', '中', '下'];
-  for (let m = 1; m <= 12; m++) {
-    DECADE_PERIODS.forEach(p => DECADE_LABELS.push(m + '月' + p));
-  }
-  const MONTH_LABELS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0') + '月');
-  const MID_MOCK = {
-    summary: { annual: 12486, maxDecade: 368, maxPeriod: '7月中旬', minDecade: 163, minPeriod: '12月下旬' },
-    decade: DECADE_LABELS.map((_, i) => {
-      const base = 220 + Math.sin(i / 3.2) * 70 + Math.cos(i / 5) * 40;
-      return Math.round(base + seeded(i + 20, 0, 50));
-    }),
-    month: MONTH_LABELS.map((_, i) => Math.round(700 + seeded(i + 40, 0, 350) + Math.sin(i / 2) * 120))
-  };
-  // 对齐截图：峰值在 7 月中旬、谷值在 12 月下旬
-  MID_MOCK.decade[19] = 368; // 7月中
-  MID_MOCK.decade[35] = 163; // 12月下
-  MID_MOCK.month = MID_MOCK.decade.reduce((acc, v, i) => {
-    const mi = Math.floor(i / 3);
-    acc[mi] = (acc[mi] || 0) + v;
-    return acc;
-  }, []);
-  // 与设计稿统计值对齐
-  MID_MOCK.summary.annual = 12486;
-  MID_MOCK.summary.maxDecade = 368;
-  MID_MOCK.summary.minDecade = 163;
 
   /* ========== 自定义出库列表 ========== */
   function rebuildOutflowList() {
@@ -1717,8 +1631,9 @@ tbody tr:hover td{background:#fafafa}
     return {
       color: ['#1677ff'],
       tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, data: ['降雨量'], itemWidth: 10, itemHeight: 10 },
-      grid: { left: 48, right: 20, top: 36, bottom: 48 },
+      legend: { top: 4, data: ['降雨量'], itemWidth: 10, itemHeight: 10 },
+      grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
       xAxis: {
         type: 'category',
         data: axisDates(dates),
@@ -1727,7 +1642,7 @@ tbody tr:hover td{background:#fafafa}
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
       yAxis: {
-        type: 'value', min: 0, max: 50, splitNumber: 2,
+        type: 'value', min: 0,
         axisLabel: { color: '#999' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
@@ -1741,15 +1656,16 @@ tbody tr:hover td{background:#fafafa}
     return {
       color: ['#1677ff', '#52c41a'],
       tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, data: ['入库水量', '出库水量'] },
-      grid: { left: 48, right: 20, top: 28, bottom: 48 },
+      legend: { top: 4, data: ['入库水量', '出库水量'] },
+      grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
       xAxis: {
         type: 'category', boundaryGap: false, data: axisDates(dates),
         axisLabel: { rotate: 40, fontSize: 10, color: '#999', interval: 0 },
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
       yAxis: {
-        type: 'value', min: 0, max: 900, splitNumber: 3,
+        type: 'value', min: 0,
         axisLabel: { color: '#999' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
@@ -1776,8 +1692,9 @@ tbody tr:hover td{background:#fafafa}
     return {
       color: ['#722ed1', '#1677ff'],
       tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, data: ['库容', '水位'] },
-      grid: { left: 52, right: 48, top: 28, bottom: 48 },
+      legend: { top: 4, data: ['库容', '水位'] },
+      grid: { left: 16, right: 48, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
       xAxis: {
         type: 'category', data: axisDates(dates),
         axisLabel: { rotate: 40, fontSize: 10, color: '#999', interval: 0 },
@@ -1790,7 +1707,7 @@ tbody tr:hover td{background:#fafafa}
           splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
         },
         {
-          type: 'value', name: '', min: 80, max: 100,
+          type: 'value', name: '',
           axisLabel: { color: '#999' },
           splitLine: { show: false }
         }
@@ -1808,95 +1725,171 @@ tbody tr:hover td{background:#fafafa}
     charts[key] = echarts.init(el);
     return charts[key];
   }
+  function applyShortDetail(detail) {
+    shortDetail = detail || null;
+    const dailies = (detail && detail.dailies) || [];
+    const rec = (detail && detail.record) || {};
+    shortDates = dailies.map(d => API.fmtIsoDate(d.forecastDate));
+    shortSeries = {
+      summary: {
+        maxLevel: rec.maxWaterLevel,
+        totalIn: rec.totalInflow,
+        totalOut: rec.totalOutflow,
+        peakInFlow: rec.peakInflowRate
+      },
+      rainfall: dailies.map(d => d.rainfall),
+      inflow: dailies.map(d => d.inflowVolume),
+      outflow: dailies.map(d => d.outflowVolume),
+      level: dailies.map(d => d.waterLevel),
+      capacity: dailies.map(d => d.storage),
+      evaporation: dailies.map(d => d.evaporation),
+      inFlowRate: dailies.map(d => d.inflowRate),
+      outFlowRate: dailies.map(d => d.outflowRate)
+    };
+  }
+  function showShortResult() {
+    if (!shortSeries) return;
+    $('result-empty').style.display = 'none';
+    $('result-content').style.display = 'block';
+    renderStats('main-stats', shortSeries.summary);
+    renderMainCharts();
+    detailPage = 1;
+    detailFilter = '';
+    if ($('detail-filter')) $('detail-filter').value = '';
+  }
   function renderMainCharts() {
+    if (!shortSeries || !shortDates.length) return;
     const rain = ensureChart('mainRain', $('chart-rain'));
-    rain.setOption(rainOption(DATES, MOCK.rainfall));
-    // 主图入库/出库用更接近截图量级的曲线
-    const inSeries = DATES.map((_, i) => Math.round(300 + seeded(i, 0, 500)));
-    const outSeries = DATES.map((_, i) => Math.round(280 + seeded(i + 5, 0, 480)));
+    rain.setOption(rainOption(shortDates, shortSeries.rainfall));
     const io = ensureChart('mainIo', $('chart-io'));
-    io.setOption(ioOption(DATES, inSeries, outSeries));
+    io.setOption(ioOption(shortDates, shortSeries.inflow, shortSeries.outflow));
   }
   function renderViewCharts() {
-    ensureChart('viewRain', $('view-chart-rain')).setOption(rainOption(DATES, MOCK.rainfall));
-    ensureChart('viewCap', $('view-chart-cap')).setOption(capOption(DATES, MOCK.capacity, MOCK.level));
-    const inSeries = DATES.map((_, i) => Math.round(300 + seeded(i, 0, 500)));
-    const outSeries = DATES.map((_, i) => Math.round(280 + seeded(i + 5, 0, 480)));
-    ensureChart('viewIo', $('view-chart-io')).setOption(ioOption(DATES, inSeries, outSeries));
+    if (!shortSeries || !shortDates.length) return;
+    ensureChart('viewRain', $('view-chart-rain')).setOption(rainOption(shortDates, shortSeries.rainfall));
+    ensureChart('viewCap', $('view-chart-cap')).setOption(capOption(shortDates, shortSeries.capacity, shortSeries.level));
+    ensureChart('viewIo', $('view-chart-io')).setOption(ioOption(shortDates, shortSeries.inflow, shortSeries.outflow));
     setTimeout(() => {
       Object.values(charts).forEach(c => c && c.resize());
     }, 50);
   }
 
-  function decadeOption() {
+  function decadeOption(labels, data) {
     return {
       color: ['#1677ff'],
       tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, data: ['来水量'] },
-      grid: { left: 48, right: 20, top: 28, bottom: 56 },
+      legend: { top: 4, data: ['来水量'] },
+      grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
       xAxis: {
-        type: 'category', boundaryGap: false, data: DECADE_LABELS,
+        type: 'category', boundaryGap: false, data: labels || DECADE_LABELS,
         axisLabel: { rotate: 40, fontSize: 10, color: '#999', interval: 0 },
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
       yAxis: {
-        type: 'value', min: 100, max: 400, splitNumber: 3,
+        type: 'value', min: 0,
         axisLabel: { color: '#999' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
       series: [{
         name: '来水量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6,
-        data: MID_MOCK.decade,
+        data: data || [],
         areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
           { offset: 0, color: 'rgba(22,119,255,.28)' }, { offset: 1, color: 'rgba(22,119,255,.02)' }
         ]}}
       }]
     };
   }
-  function monthOption() {
+  function monthOption(labels, data) {
     return {
       color: ['#1677ff'],
       tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, data: ['预测水量'], itemWidth: 10, itemHeight: 10 },
-      grid: { left: 48, right: 20, top: 28, bottom: 48 },
+      legend: { top: 4, data: ['预测水量'], itemWidth: 10, itemHeight: 10 },
+      grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
       xAxis: {
-        type: 'category', data: MONTH_LABELS,
+        type: 'category', data: labels || MONTH_LABELS,
         axisLabel: { color: '#999' },
         axisTick: { alignWithLabel: true },
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
       yAxis: {
-        type: 'value', min: 0, max: 1000, splitNumber: 5,
+        type: 'value', min: 0,
         axisLabel: { color: '#999' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
       series: [{
-        name: '预测水量', type: 'bar', data: MID_MOCK.month, barMaxWidth: 28
+        name: '预测水量', type: 'bar', data: data || [], barMaxWidth: 28
       }]
     };
   }
+  function applyMidDetail(detail) {
+    midDetail = detail || null;
+    const rec = (detail && detail.record) || {};
+    const tendays = (detail && detail.tendays) || [];
+    const monthlies = (detail && detail.monthlies) || [];
+    let maxPeriod = '—';
+    let minPeriod = '—';
+    if (tendays.length) {
+      let maxV = -Infinity, minV = Infinity;
+      tendays.forEach(t => {
+        const v = Number(t.predictVolume);
+        if (!Number.isNaN(v)) {
+          if (v > maxV) { maxV = v; maxPeriod = t.tendayLabel || '—'; }
+          if (v < minV) { minV = v; minPeriod = t.tendayLabel || '—'; }
+        }
+      });
+    }
+    midSeries = {
+      summary: {
+        annual: rec.annualPredictVolume,
+        maxDecade: rec.maxTendayVolume,
+        minDecade: rec.minTendayVolume,
+        maxPeriod: maxPeriod,
+        minPeriod: minPeriod
+      },
+      decadeLabels: tendays.map(t => t.tendayLabel),
+      decade: tendays.map(t => t.predictVolume),
+      monthLabels: monthlies.map(m => {
+        const ym = m.yearMonth || '';
+        const parts = ym.split('-');
+        return parts.length === 2 ? parts[1] + '月' : ym;
+      }),
+      month: monthlies.map(m => m.predictTotal)
+    };
+  }
+  function showMidResult() {
+    if (!midSeries) return;
+    $('mid-result-empty').style.display = 'none';
+    $('mid-result-content').style.display = 'block';
+    renderMidStats('mid-stats', midSeries.summary);
+    renderMidCharts();
+  }
   function renderMidCharts() {
-    ensureChart('midDecade', $('chart-decade')).setOption(decadeOption());
-    ensureChart('midMonth', $('chart-month')).setOption(monthOption());
+    if (!midSeries) return;
+    ensureChart('midDecade', $('chart-decade')).setOption(decadeOption(midSeries.decadeLabels, midSeries.decade));
+    ensureChart('midMonth', $('chart-month')).setOption(monthOption(midSeries.monthLabels, midSeries.month));
   }
   function renderMidViewCharts() {
-    ensureChart('midViewDecade', $('mid-view-chart-decade')).setOption(decadeOption());
-    ensureChart('midViewMonth', $('mid-view-chart-month')).setOption(monthOption());
+    if (!midSeries) return;
+    ensureChart('midViewDecade', $('mid-view-chart-decade')).setOption(decadeOption(midSeries.decadeLabels, midSeries.decade));
+    ensureChart('midViewMonth', $('mid-view-chart-month')).setOption(monthOption(midSeries.monthLabels, midSeries.month));
     setTimeout(() => Object.values(charts).forEach(c => c && c.resize()), 50);
   }
 
   /* ========== 明细表 ========== */
   function buildDetailRows() {
-    return DATES.map((dt, i) => ({
+    if (!shortSeries || !shortDates.length) return [];
+    return shortDates.map((dt, i) => ({
       date: dt,
-      rain: MOCK.rainfall[i],
-      inflow: MOCK.inflow[i],
-      level: MOCK.level[i],
-      capacity: MOCK.capacity[i],
-      outflow: MOCK.outflow[i],
-      evaporation: MOCK.evaporation[i],
-      inFlow: MOCK.inFlowRate[i],
-      outFlow: MOCK.outFlowRate[i]
+      rain: numOrDash(shortSeries.rainfall[i], 2),
+      inflow: numOrDash(shortSeries.inflow[i], 2),
+      level: numOrDash(shortSeries.level[i], 2),
+      capacity: numOrDash(shortSeries.capacity[i], 2),
+      outflow: numOrDash(shortSeries.outflow[i], 2),
+      evaporation: numOrDash(shortSeries.evaporation[i], 2),
+      inFlow: numOrDash(shortSeries.inFlowRate[i], 2),
+      outFlow: numOrDash(shortSeries.outFlowRate[i], 2)
     }));
   }
   function filteredRows() {
@@ -1929,13 +1922,7 @@ tbody tr:hover td{background:#fafafa}
     const from = total ? start + 1 : 0;
     const to = Math.min(start + DETAIL_PAGE_SIZE, total);
     $('detail-pg-info').textContent = `共 ${total} 条，本页显示 ${from}-${to} 条`;
-
-    const btns = $('detail-pg-btns');
-    let html = '';
-    for (let p = 1; p <= pages; p++) {
-      html += `<button class="pg-btn${p === detailPage ? ' active' : ''}" data-page="${p}">${p}</button>`;
-    }
-    btns.innerHTML = html;
+    $('detail-pg-btns').innerHTML = API.pagerHtml(detailPage, pages);
   }
 
   /* ========== 历史列表 ========== */
@@ -1944,28 +1931,35 @@ tbody tr:hover td{background:#fafafa}
   }
   function renderHistory() {
     const list = currentHistory();
-    $('history-list').innerHTML = list.map(item =>
-      `<div class="hist-item" data-id="${item.id}">
-        <div class="hist-name" title="${item.name}">${item.name}</div>
+    $('history-list').innerHTML = list.map(item => {
+      const tip = item.status && item.status !== 'completed'
+        ? '（' + API.statusLabel(item.status) + '）'
+        : '';
+      const title = item.errorMsg ? String(item.errorMsg).replace(/"/g, '&quot;') : item.name;
+      return `<div class="hist-item" data-id="${item.id}">
+        <div class="hist-name" title="${title}">${item.name}${tip}</div>
         <div class="hist-time">${item.time}</div>
         <div class="hist-acts">
           <button type="button" data-act="view">查看</button>
           <button type="button" data-act="edit">编辑名称</button>
+          <button type="button" data-act="del">删除</button>
         </div>
-      </div>`
-    ).join('') || '<div style="padding:48px;text-align:center;color:#bbb">暂无历史记录</div>';
+      </div>`;
+    }).join('') || '<div style="padding:48px;text-align:center;color:#bbb">暂无历史记录</div>';
   }
 
-  function pushHistory(type, label) {
-    const now = new Date();
-    const sameType = historyList.filter(h => h.type === type).length;
-    const id = now.getFullYear().toString()
-      + String(now.getMonth() + 1).padStart(2, '0')
-      + String(now.getDate()).padStart(2, '0')
-      + String(sameType + 1).padStart(3, '0');
-    const pad = n => String(n).padStart(2, '0');
-    const time = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    historyList.unshift({ id, type, name: id + label + '（对应模型名称）', time });
+  async function loadHistory(type) {
+    const mod = apiByType(type);
+    if (!mod) return;
+    try {
+      const list = await mod.list();
+      historyList = historyList.filter(h => h.type !== type).concat(
+        (list || []).map(r => mapHistoryItem(r, type))
+      );
+      if (historyType === type) renderHistory();
+    } catch (err) {
+      toast(err.message || '历史方案加载失败');
+    }
   }
 
   /* ========== 交互 ========== */
@@ -2000,6 +1994,17 @@ tbody tr:hover td{background:#fafafa}
   });
 
   // 典型年份 → 历史年份
+  function fillHistYearOptions() {
+    const sel = $('hist-year');
+    if (!sel || sel.dataset.filled === '1') return;
+    const cur = new Date().getFullYear();
+    let html = '<option value="">请选择年份</option>';
+    for (let y = cur; y >= 1950; y--) {
+      html += `<option value="${y}">${y}年</option>`;
+    }
+    sel.innerHTML = html;
+    sel.dataset.filled = '1';
+  }
   function syncHistYear() {
     const mode = document.querySelector('input[name="typical-year"]:checked').value;
     const input = $('hist-year');
@@ -2007,6 +2012,7 @@ tbody tr:hover td{background:#fafafa}
     input.disabled = !enable;
     if (!enable) input.value = '';
   }
+  fillHistYearOptions();
   document.querySelectorAll('input[name="typical-year"]').forEach(r => {
     r.addEventListener('change', syncHistYear);
   });
@@ -2016,94 +2022,197 @@ tbody tr:hover td{background:#fafafa}
   $('end-date').addEventListener('change', rebuildOutflowList);
 
   // 短期模型计算
-  $('calc-btn').addEventListener('click', () => {
+  $('calc-btn').addEventListener('click', async () => {
     const start = $('start-date').value;
     const end = $('end-date').value;
     const level = $('start-level').value;
     if (!start || !end) return toast('请选择预测时间');
     if (end < start) return toast('截止时间不能早于开始时间');
-    const span = daysBetween(start, end);
-    if (span < 1 || span > 30) return toast('预测时段需满足 1 ≤ 天数 ≤ 30');
+    const days = daysBetween(start, end);
+    if (days < 1 || days > 30) return toast('预测时段需满足 1 ≤ 天数 ≤ 30');
     if (!level && level !== '0') return toast('请输入起始水位');
     if ($('custom-rain-chk').checked && !$('custom-rain').value) return toast('请输入自定义总降雨量');
-    if (document.querySelector('input[name="outflow-mode"]:checked').value === 'custom') {
+    const dischargeMode = document.querySelector('input[name="outflow-mode"]:checked').value;
+    let customDischarge;
+    if (dischargeMode === 'custom') {
       const vals = [...document.querySelectorAll('.outflow-val')];
       if (!vals.length || vals.some(i => i.value === '')) return toast('请完善自定义出库水量');
+      customDischarge = vals.map(i => Number(i.value));
     }
+
+    const floodVal = $('typical-flood').value;
+    const useTypical = floodVal !== '';
+    const body = {
+      startDate: start,
+      days: days,
+      useTypical: useTypical,
+      initialWaterLevel: Number(level),
+      dischargeMode: dischargeMode
+    };
+    if (useTypical) {
+      body.floodIdx = Number(floodVal);
+    } else {
+      body.rainfall = API.zeros(days);
+    }
+    if ($('custom-rain-chk').checked) {
+      body.adjustRainfall = true;
+      body.targetTotal = Number($('custom-rain').value);
+    }
+    if (dischargeMode === 'custom') body.customDischarge = customDischarge;
 
     const btn = $('calc-btn');
     btn.classList.add('is-loading');
-    setTimeout(() => {
-      btn.classList.remove('is-loading');
-      $('result-empty').style.display = 'none';
-      $('result-content').style.display = 'block';
-      renderStats('main-stats', MOCK.summary);
-      renderMainCharts();
-      pushHistory('short', '短期来水预测');
+    API.showLoading('短期来水模型计算中，请稍候…');
+    try {
+      const { recordId } = await API.short.submit(body);
+      await API.short.wait(recordId);
+      const detail = await API.short.detail(recordId);
+      applyShortDetail(detail);
+      showShortResult();
       toast('计算完成');
-    }, 600);
+      loadHistory('short');
+    } catch (err) {
+      toast(API.friendlyError(err, '计算失败'));
+    } finally {
+      API.hideLoading();
+      btn.classList.remove('is-loading');
+    }
   });
 
   // 中长期模型计算
-  $('mid-calc-btn').addEventListener('click', () => {
-    const start = $('mid-start-date').value;
-    const end = $('mid-end-date').value;
-    if (!start || !end) return toast('请选择预测时间');
-    if (end < start) return toast('截止时间不能早于开始时间');
+  $('mid-calc-btn').addEventListener('click', async () => {
     const mode = document.querySelector('input[name="typical-year"]:checked').value;
     if (mode === 'none' && !$('hist-year').value) return toast('请选择历史年份');
 
+    const body = { retrain: false };
+    if (mode === 'none') {
+      body.useHistorical = true;
+      body.historicalYear = Number($('hist-year').value);
+    } else {
+      body.useHistorical = false;
+      body.scenario = mode === 'wet' ? '丰' : mode === 'dry' ? '枯' : '平';
+    }
+
     const btn = $('mid-calc-btn');
     btn.classList.add('is-loading');
-    setTimeout(() => {
-      btn.classList.remove('is-loading');
-      $('mid-result-empty').style.display = 'none';
-      $('mid-result-content').style.display = 'block';
-      renderMidStats('mid-stats');
-      renderMidCharts();
-      pushHistory('mid', '中长期来水预测');
+    API.showLoading('中长期来水模型计算中，请稍候…');
+    try {
+      const { recordId } = await API.long.submit(body);
+      await API.long.wait(recordId);
+      const detail = await API.long.detail(recordId);
+      applyMidDetail(detail);
+      showMidResult();
       toast('计算完成');
-    }, 600);
+      loadHistory('mid');
+    } catch (err) {
+      toast(API.friendlyError(err, '计算失败'));
+    } finally {
+      API.hideLoading();
+      btn.classList.remove('is-loading');
+    }
   });
 
   /* ========== 需水预测 ========== */
+  function applyDemandDetail(detail) {
+    demandDetail = detail || null;
+    const branches = (detail && detail.branchDetails) || [];
+    const periods = [];
+    const seen = new Set();
+    branches.forEach(b => {
+      if (b.tendayLabel && !seen.has(b.tendayLabel)) {
+        seen.add(b.tendayLabel);
+        periods.push(b.tendayLabel);
+      }
+    });
+    demandPeriods = periods.length ? periods : DEMAND_PERIODS_DEFAULT.slice();
+
+    const map = {};
+    branches.forEach(b => {
+      const key = (b.district || '') + '|' + (b.subDistrict || '') + '|' + (b.branchName || '');
+      if (!map[key]) {
+        map[key] = {
+          area: b.district || '—',
+          district: b.subDistrict || '—',
+          canal: b.branchName || '—',
+          size: b.area != null ? b.area : 0,
+          crop: b.cropTypes || '—',
+          v: demandPeriods.map(() => 0)
+        };
+      }
+      const idx = demandPeriods.indexOf(b.tendayLabel);
+      if (idx >= 0) map[key].v[idx] = Number(b.demandVolume) || 0;
+    });
+    demandRowsCache = Object.values(map);
+
+    demandTopoMap = {};
+    branches.forEach(b => {
+      const name = b.branchName || '';
+      if (!name) return;
+      demandTopoMap[name] = (demandTopoMap[name] || 0) + (Number(b.demandVolume) || 0);
+    });
+  }
+
   function renderDemandStats(containerId) {
-    const s = DEMAND_MOCK.summary;
+    const rec = (demandDetail && demandDetail.record) || {};
+    const areaMu = rec.irrigatedArea;
+    const areaWan = areaMu != null ? +(Number(areaMu) / 10000).toFixed(2) : null;
     $(containerId).innerHTML = [
-      { label: '全灌区总需水', value: s.total.toLocaleString(), unit: '万m³' },
-      { label: '灌溉面积', value: s.area, unit: '万亩' },
-      { label: '需水高峰旬', value: s.peak, unit: '' }
+      { label: '全灌区总需水', value: numOrDash(rec.totalDemand, 2), unit: '万m³' },
+      { label: '灌溉面积', value: numOrDash(areaWan, 2), unit: '万亩' },
+      { label: '需水高峰旬', value: rec.peakTenday || '—', unit: '' }
     ].map(it =>
       `<div class="stat-card"><div class="label">${it.label}</div><div class="value">${it.value}${it.unit ? `<span class="unit">${it.unit}</span>` : ''}</div></div>`
     ).join('');
   }
 
   function demandRowsByTab() {
-    const rows = DEMAND_MOCK.rows;
+    const rows = demandRowsCache;
+    const n = demandPeriods.length || DEMAND_PERIODS_DEFAULT.length;
+    const zeroV = () => Array.from({ length: n }, () => 0);
     if (demandTab === 'canal') return rows.map(r => ({ ...r, v: r.v.slice() }));
     if (demandTab === 'district') {
+      const summaries = ((demandDetail && demandDetail.areaSummaries) || []).filter(s => s.summaryType === '分灌区');
+      if (summaries.length) {
+        const map = {};
+        summaries.forEach(s => {
+          if (!map[s.areaName]) map[s.areaName] = { area: '—', district: s.areaName, canal: '—', size: 0, crop: '—', v: zeroV() };
+          const idx = demandPeriods.indexOf(s.tendayLabel);
+          if (idx >= 0) map[s.areaName].v[idx] += Number(s.demandVolume) || 0;
+        });
+        return Object.values(map);
+      }
       const map = {};
       rows.forEach(r => {
         const k = r.area + '|' + r.district;
-        if (!map[k]) map[k] = { area: r.area, district: r.district, canal: '—', size: 0, crop: '—', v: [0, 0, 0, 0, 0, 0] };
+        if (!map[k]) map[k] = { area: r.area, district: r.district, canal: '—', size: 0, crop: '—', v: zeroV() };
         map[k].size += r.size;
-        map[k].v = map[k].v.map((x, i) => x + r.v[i]);
+        map[k].v = map[k].v.map((x, i) => x + (r.v[i] || 0));
       });
       return Object.values(map);
     }
     if (demandTab === 'area') {
+      const summaries = ((demandDetail && demandDetail.areaSummaries) || []).filter(s => s.summaryType === '片区');
+      if (summaries.length) {
+        const map = {};
+        summaries.forEach(s => {
+          if (!map[s.areaName]) map[s.areaName] = { area: s.areaName, district: '—', canal: '—', size: 0, crop: '—', v: zeroV() };
+          const idx = demandPeriods.indexOf(s.tendayLabel);
+          if (idx >= 0) map[s.areaName].v[idx] += Number(s.demandVolume) || 0;
+        });
+        return Object.values(map);
+      }
       const map = {};
       rows.forEach(r => {
-        if (!map[r.area]) map[r.area] = { area: r.area, district: '—', canal: '—', size: 0, crop: '—', v: [0, 0, 0, 0, 0, 0] };
+        if (!map[r.area]) map[r.area] = { area: r.area, district: '—', canal: '—', size: 0, crop: '—', v: zeroV() };
         map[r.area].size += r.size;
-        map[r.area].v = map[r.area].v.map((x, i) => x + r.v[i]);
+        map[r.area].v = map[r.area].v.map((x, i) => x + (r.v[i] || 0));
       });
       return Object.values(map);
     }
-    const total = { area: '合计', district: '—', canal: '—', size: 0, crop: '—', v: [0, 0, 0, 0, 0, 0] };
+    const total = { area: '合计', district: '—', canal: '—', size: 0, crop: '—', v: zeroV() };
     rows.forEach(r => {
       total.size += r.size;
-      total.v = total.v.map((x, i) => x + r.v[i]);
+      total.v = total.v.map((x, i) => x + (r.v[i] || 0));
     });
     return [total];
   }
@@ -2117,12 +2226,13 @@ tbody tr:hover td{background:#fafafa}
   }
 
   function demandColumns() {
+    const periods = demandPeriods.length ? demandPeriods : DEMAND_PERIODS_DEFAULT;
     const cols = [{ key: 'area', label: '片区' }];
     if (demandTab === 'canal' || demandTab === 'district') cols.push({ key: 'district', label: '分灌区' });
     if (demandTab === 'canal') cols.push({ key: 'canal', label: '支渠' });
     cols.push({ key: 'size', label: '灌区面积' });
     if (demandTab === 'canal') cols.push({ key: 'crop', label: '种植作物种类' });
-    DEMAND_PERIODS.forEach((label, i) => cols.push({ key: 'v' + i, label, periodIndex: i }));
+    periods.forEach((label, i) => cols.push({ key: 'v' + i, label, periodIndex: i }));
     return cols;
   }
 
@@ -2134,7 +2244,10 @@ tbody tr:hover td{background:#fafafa}
 
   function demandRowHtml(r, cols) {
     return '<tr>' + cols.map(c => {
-      if (c.periodIndex != null) return `<td>${r.v[c.periodIndex]}</td>`;
+      if (c.periodIndex != null) {
+        const v = r.v[c.periodIndex];
+        return `<td>${v == null ? '—' : (+v).toFixed ? Number(v).toFixed(2).replace(/\.00$/, '') : v}</td>`;
+      }
       return `<td>${r[c.key]}</td>`;
     }).join('') + '</tr>';
   }
@@ -2148,12 +2261,7 @@ tbody tr:hover td{background:#fafafa}
     const from = total ? (demandPage - 1) * DEMAND_PAGE_SIZE + 1 : 0;
     const to = Math.min(demandPage * DEMAND_PAGE_SIZE, total);
     info.textContent = `共 ${total} 条` + (total ? `，本页显示 ${from}-${to} 条` : '');
-    let html = `<button class="pg-btn" data-page="${demandPage - 1}" ${demandPage <= 1 ? 'disabled' : ''}>‹</button>`;
-    for (let i = 1; i <= pages; i++) {
-      html += `<button class="pg-btn${i === demandPage ? ' active' : ''}" data-page="${i}">${i}</button>`;
-    }
-    html += `<button class="pg-btn" data-page="${demandPage + 1}" ${demandPage >= pages ? 'disabled' : ''}>›</button>`;
-    btns.innerHTML = html;
+    btns.innerHTML = API.pagerHtml(demandPage, pages);
   }
 
   function renderDemandTable(tbodyId, opts) {
@@ -2188,11 +2296,11 @@ tbody tr:hover td{background:#fafafa}
   }
 
   /* ========== ECharts graph 拓扑（图一整体 / 图二上半轴 / 图三下半轴） ========== */
-  function topoTagValue(i) {
-    const scope = $('demand-scope').value;
-    const a = +(40 + seeded(i + (scope === 'area' ? 10 : scope === 'district' ? 20 : 0), 0, 20)).toFixed(2);
-    const b = Math.round(2000 + seeded(i + 5, 0, 15000));
-    return a + '/' + b;
+  function topoTagValue(branchName) {
+    if (!demandHasResult || !demandDetail) return '—';
+    const v = demandTopoMap[branchName];
+    if (v == null) return '—';
+    return Number(v).toFixed(1);
   }
 
   function buildTopoGraphOption() {
@@ -2545,7 +2653,7 @@ tbody tr:hover td{background:#fafafa}
     L('j_ng1', 's_xc', 2.4, '#333');
 
     tagList.forEach((t, i) => {
-      const val = topoTagValue(i);
+      const val = topoTagValue(t.name);
       const w = t.vertical ? 15 : Math.max(52, val.length * 6.5);
       const h = t.vertical ? 52 : 15;
       nodes.push({
@@ -2699,7 +2807,7 @@ tbody tr:hover td{background:#fafafa}
     const boxes = [];
 
     branches.forEach((b, i) => {
-      const val = (+(40 + seeded(i + ($('demand-scope').value === 'area' ? 10 : $('demand-scope').value === 'district' ? 20 : 0), 0, 20)).toFixed(1)).toFixed(1);
+      const val = topoTagValue(b.name);
       const tw = Math.max(26, val.length * 5.2 + padX * 2);
       const fs = b.fs || 10;
       const nameH = b.name.length * (fs + 1);
@@ -2791,38 +2899,60 @@ tbody tr:hover td{background:#fafafa}
   $('demand-file').addEventListener('change', e => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
+    demandFile = f;
     demandUploaded = true;
     $('demand-file-name').textContent = '已上传：' + f.name;
     toast('附件已上传');
   });
-  $('demand-tpl-btn').addEventListener('click', () => {
-    if (window.XLSX) {
-      const header = ['片区', '分灌区', '支渠', '灌区面积', '种植作物种类', '5月上旬', '5月中旬', '5月下旬', '6月上旬', '6月中旬', '6月下旬'];
-      const ws = XLSX.utils.aoa_to_sheet([header]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, '需水基础数据');
-      XLSX.writeFile(wb, '需水基础数据收集表模板.xlsx');
-    } else {
-      toast('模板下载组件未加载');
+  $('demand-tpl-btn').addEventListener('click', async () => {
+    try {
+      await API.demand.template('需水基础数据收集表模板.xlsx');
+    } catch (err) {
+      toast(err.message || '模板下载失败');
     }
   });
 
-  $('demand-calc-btn').addEventListener('click', () => {
-    if (!$('demand-model').value) return toast('请选择中长期来水预报模型计算结果');
-    if (!demandUploaded) return toast('请上传需水基础数据收集表');
+  function getDemandGuaranteeRate() {
+    const v = document.querySelector('input[name="irrig-rate"]:checked').value;
+    return v === 'avg' ? '多年平均' : v;
+  }
+
+  $('demand-calc-btn').addEventListener('click', async () => {
+    const guaranteeRate = getDemandGuaranteeRate();
+    const canalEff = 0.589;
     const btn = $('demand-calc-btn');
     btn.classList.add('is-loading');
-    setTimeout(() => {
-      btn.classList.remove('is-loading');
+    API.showLoading('需水模型计算中，请稍候…');
+    try {
+      let recordId;
+      if (demandUploaded && demandFile) {
+        const fd = new FormData();
+        fd.append('file', demandFile);
+        fd.append('guaranteeRate', guaranteeRate);
+        fd.append('canalEff', String(canalEff));
+        const res = await API.demand.upload(fd);
+        recordId = res.recordId;
+      } else {
+        const res = await API.demand.submit({ guaranteeRate, canalEff });
+        recordId = res.recordId;
+      }
+      await API.demand.wait(recordId);
+      const detail = await API.demand.detail(recordId);
+      applyDemandDetail(detail);
       demandTab = 'canal';
       demandFilter = '';
       demandPage = 1;
       $('demand-filter').value = '';
       document.querySelectorAll('#demand-subtabs .sub-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'canal'));
       showDemandResult();
-      pushHistory('demand', '需水预测');
       toast('计算完成');
-    }, 600);
+      loadHistory('demand');
+    } catch (err) {
+      toast(API.friendlyError(err, '计算失败'));
+    } finally {
+      API.hideLoading();
+      btn.classList.remove('is-loading');
+    }
   });
 
   $('demand-subtabs').addEventListener('click', e => {
@@ -2932,15 +3062,44 @@ tbody tr:hover td{background:#fafafa}
     const el = document.querySelector('input[name="loss-type"]:checked');
     return el ? el.value : 'mid';
   }
-  function syncLossScheme() {
+  function lossApiMode() {
+    return getLossType() === 'short' ? 'short' : 'long';
+  }
+  async function syncLossScheme() {
     const type = getLossType();
-    const list = LOSS_SCHEMES[type] || [];
     const sel = $('loss-scheme');
-    sel.innerHTML = list.map((name, i) => `<option value="${type}_${i}">${name}</option>`).join('');
+    try {
+      const list = type === 'short' ? await API.short.list() : await API.long.list();
+      API.fillSelect(sel, list || [], { onlyCompleted: true, placeholder: '请选择方案' });
+    } catch (err) {
+      sel.innerHTML = '<option value="">方案加载失败</option>';
+      toast(err.message || '方案列表加载失败');
+    }
+  }
+  function applyLossDetail(detail) {
+    lossDetail = detail || null;
+    const mode = (detail && detail.record && detail.record.mode) || lossApiMode();
+    lossCalcType = mode === 'short' ? 'short' : 'mid';
+    const details = (detail && detail.details) || [];
+    lossRowsCache = details.map(d => ({
+      date: API.fmtIsoDate(d.dataDate),
+      predict: d.predictVolume == null ? '—' : numOrDash(d.predictVolume, 2),
+      loss: numOrDash(d.lossVolume, 2),
+      lossRaw: d.lossVolume
+    }));
+    if (lossCalcType === 'short') {
+      lossChartCats = lossRowsCache.map(r => fmtMD(r.date));
+      lossChartData = lossRowsCache.map(r => r.lossRaw);
+    } else {
+      lossChartCats = details.map((d, i) => {
+        // prefer decade labels by index when long mode
+        return LOSS_DECADE_LABELS[i] || API.fmtIsoDate(d.dataDate);
+      });
+      lossChartData = details.map(d => d.lossVolume);
+    }
   }
   function lossRows() {
-    const type = lossCalcType;
-    const rows = type === 'short' ? LOSS_MOCK.short : LOSS_MOCK.midRows;
+    const rows = lossRowsCache;
     const q = lossFilter.trim();
     if (!q) return rows.slice();
     return rows.filter(r => [r.date, r.predict, r.loss].some(v => String(v).includes(q)));
@@ -2949,8 +3108,9 @@ tbody tr:hover td{background:#fafafa}
     return {
       color: ['#1677ff'],
       tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, data: ['损失水量'] },
-      grid: { left: 48, right: 24, top: 28, bottom: 56 },
+      legend: { top: 4, data: ['损失水量'] },
+      grid: { left: 16, right: 24, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
       xAxis: {
         type: 'category',
         boundaryGap: false,
@@ -2959,7 +3119,7 @@ tbody tr:hover td{background:#fafafa}
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
       yAxis: {
-        type: 'value', min: 0, max: 100, splitNumber: 5,
+        type: 'value', min: 0,
         axisLabel: { color: '#999' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
@@ -2986,15 +3146,7 @@ tbody tr:hover td{background:#fafafa}
   function renderLossChart(chartId) {
     const el = $(chartId || 'chart-loss');
     if (!el || !window.echarts) return;
-    const type = lossCalcType;
-    let option;
-    if (type === 'short') {
-      const cats = LOSS_MOCK.short.map(r => fmtMD(r.date));
-      const data = LOSS_MOCK.short.map(r => r.loss);
-      option = lossLineOption(cats, data, 40);
-    } else {
-      option = lossLineOption(LOSS_DECADE_LABELS, LOSS_MOCK.midChart, 40);
-    }
+    const option = lossLineOption(lossChartCats, lossChartData, 40);
     const key = chartId === 'loss-view-chart' ? 'lossView' : 'lossMain';
     ensureChart(key, el).setOption(option, true);
   }
@@ -3014,14 +3166,7 @@ tbody tr:hover td{background:#fafafa}
       const info = $('loss-pg-info');
       const btns = $('loss-pg-btns');
       if (info) info.textContent = `共 ${rows.length} 条` + (rows.length ? `，本页显示 ${from}-${to} 条` : '');
-      if (btns) {
-        let html = `<button class="pg-btn" data-page="${lossPage - 1}" ${lossPage <= 1 ? 'disabled' : ''}>‹</button>`;
-        for (let i = 1; i <= pages; i++) {
-          html += `<button class="pg-btn${i === lossPage ? ' active' : ''}" data-page="${i}">${i}</button>`;
-        }
-        html += `<button class="pg-btn" data-page="${lossPage + 1}" ${lossPage >= pages ? 'disabled' : ''}>›</button>`;
-        btns.innerHTML = html;
-      }
+      if (btns) btns.innerHTML = API.pagerHtml(lossPage, pages);
     }
     tbody.innerHTML = pageRows.map(r =>
       `<tr><td>${r.date}</td><td>${r.predict}</td><td>${r.loss}</td></tr>`
@@ -3047,30 +3192,31 @@ tbody tr:hover td{background:#fafafa}
   document.querySelectorAll('input[name="loss-type"]').forEach(r => {
     r.addEventListener('change', () => {
       syncLossScheme();
-      // 切换类型后若已有结果，按新类型刷新图表/表格
-      if ($('loss-result-content').style.display !== 'none') {
-        lossCalcType = getLossType();
-        lossPage = 1;
-        lossFilter = '';
-        $('loss-filter').value = '';
-        renderLossChart('chart-loss');
-        renderLossTable('loss-tbody');
-      }
     });
   });
-  $('loss-calc-btn').addEventListener('click', () => {
-    if (!$('loss-scheme').value) return toast('请选择方案');
+  $('loss-calc-btn').addEventListener('click', async () => {
+    const sourceRecordId = $('loss-scheme').value;
+    if (!sourceRecordId) return toast('请选择方案');
+    const mode = lossApiMode();
     const btn = $('loss-calc-btn');
     btn.classList.add('is-loading');
-    setTimeout(() => {
-      btn.classList.remove('is-loading');
-      lossCalcType = getLossType();
+    API.showLoading('水量损失模型计算中，请稍候…');
+    try {
+      const { recordId } = await API.loss.submit({ mode, sourceRecordId });
+      await API.loss.wait(recordId);
+      const detail = await API.loss.detail(recordId);
+      applyLossDetail(detail);
       lossFilter = '';
       $('loss-filter').value = '';
       showLossResult();
-      pushHistory('loss', '水量损失预测');
       toast('计算完成');
-    }, 600);
+      loadHistory('loss');
+    } catch (err) {
+      toast(API.friendlyError(err, '计算失败'));
+    } finally {
+      API.hideLoading();
+      btn.classList.remove('is-loading');
+    }
   });
   $('loss-filter').addEventListener('input', e => {
     lossFilter = e.target.value;
@@ -3104,11 +3250,12 @@ tbody tr:hover td{background:#fafafa}
   });
 
   // 抽屉
-  function openDrawer(type) {
+  async function openDrawer(type) {
     historyType = type;
-    renderHistory();
+    $('history-list').innerHTML = '<div style="padding:48px;text-align:center;color:#bbb">加载中…</div>';
     $('drawer-mask').classList.add('show');
     $('history-drawer').classList.add('show');
+    await loadHistory(type);
   }
   function closeDrawer() {
     $('drawer-mask').classList.remove('show');
@@ -3121,20 +3268,49 @@ tbody tr:hover td{background:#fafafa}
   $('drawer-mask').addEventListener('click', closeDrawer);
   $('drawer-close').addEventListener('click', closeDrawer);
 
-  $('history-list').addEventListener('click', e => {
+  $('history-list').addEventListener('click', async e => {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const item = historyList.find(h => h.id === btn.closest('.hist-item').dataset.id);
     if (!item) return;
+    const mod = apiByType(item.type);
     if (btn.dataset.act === 'edit') {
       editingId = item.id;
       $('edit-name').value = item.name;
       $('edit-overlay').classList.add('show');
+    } else if (btn.dataset.act === 'del') {
+      if (!confirm('确认删除该方案？')) return;
+      try {
+        await mod.remove(item.id);
+        historyList = historyList.filter(h => !(h.id === item.id && h.type === item.type));
+        renderHistory();
+        toast('已删除');
+      } catch (err) {
+        toast(err.message || '删除失败');
+      }
     } else if (btn.dataset.act === 'view') {
-      if (item.type === 'mid') openMidView(item);
-      else if (item.type === 'demand') openDemandView(item);
-      else if (item.type === 'loss') openLossView(item);
-      else openView(item);
+      try {
+        API.assertViewable(item);
+        API.showLoading('加载方案详情…');
+        const detail = await mod.detail(item.id);
+        if (item.type === 'mid') {
+          applyMidDetail(detail);
+          openMidView(item);
+        } else if (item.type === 'demand') {
+          applyDemandDetail(detail);
+          openDemandView(item);
+        } else if (item.type === 'loss') {
+          applyLossDetail(detail);
+          openLossView(item);
+        } else {
+          applyShortDetail(detail);
+          openView(item);
+        }
+      } catch (err) {
+        toast(API.friendlyError(err, '详情加载失败'));
+      } finally {
+        API.hideLoading();
+      }
     }
   });
 
@@ -3145,20 +3321,26 @@ tbody tr:hover td{background:#fafafa}
   $('edit-overlay').addEventListener('click', e => {
     if (e.target === $('edit-overlay')) $('edit-overlay').classList.remove('show');
   });
-  $('edit-confirm').addEventListener('click', () => {
+  $('edit-confirm').addEventListener('click', async () => {
     const name = $('edit-name').value.trim();
     if (!name) return toast('请输入名称');
     const item = historyList.find(h => h.id === editingId);
-    if (item) item.name = name;
-    renderHistory();
-    $('edit-overlay').classList.remove('show');
-    toast('已保存');
+    if (!item) return;
+    try {
+      await apiByType(item.type).rename(item.id, name);
+      item.name = name;
+      renderHistory();
+      $('edit-overlay').classList.remove('show');
+      toast('已保存');
+    } catch (err) {
+      toast(err.message || '重命名失败');
+    }
   });
 
   // 查看详情（短期）
   function openView(item) {
-    $('view-title').textContent = '短期来水预测（对应模型）';
-    renderStats('view-stats', MOCK.summary);
+    $('view-title').textContent = (item && item.name) || '短期来水预测';
+    renderStats('view-stats', shortSeries && shortSeries.summary);
     detailPage = 1;
     detailFilter = '';
     $('detail-filter').value = '';
@@ -3172,7 +3354,7 @@ tbody tr:hover td{background:#fafafa}
 
   // 查看详情（中长期）
   function openMidView() {
-    renderMidStats('mid-view-stats');
+    renderMidStats('mid-view-stats', midSeries && midSeries.summary);
     $('mid-view-overlay').classList.add('show');
     requestAnimationFrame(() => renderMidViewCharts());
   }
@@ -3224,12 +3406,17 @@ tbody tr:hover td{background:#fafafa}
     Object.values(charts).forEach(c => c && c.resize());
   });
 
-  // init
+  // init — 保持空态，不自动展示图表
   rebuildOutflowList();
   renderHistory();
   renderTopoTags();
   renderDemandTable('demand-tbody');
   syncLossScheme();
+  API.probeHealth();
+  // 可选：填充需水侧中长期方案下拉
+  API.long.list().then(list => {
+    API.fillSelect($('demand-model'), list || [], { onlyCompleted: true, placeholder: '不关联' });
+  }).catch(() => {});
 })();
 </script>
 </body>

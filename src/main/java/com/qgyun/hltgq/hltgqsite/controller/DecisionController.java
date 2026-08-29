@@ -11,6 +11,7 @@ import com.qgyun.hltgq.hltgqsite.model.client.ModelClient;
 import com.qgyun.hltgq.hltgqsite.model.service.DecisionService;
 import com.qgyun.hltgq.hltgqsite.model.service.ModelRecordCommonService;
 import com.qgyun.hltgq.hltgqsite.model.util.BoolTextUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.DecisionSubmitRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -84,7 +85,7 @@ public class DecisionController {
         }
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=灌溉需水逐旬明细_" + recordId + ".xlsx")
+                        DownloadHeaderUtils.attachment("灌溉需水逐旬明细_" + recordId + ".xlsx"))
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(bytes);
     }

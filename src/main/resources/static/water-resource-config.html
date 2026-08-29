@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>水资源配置</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/model-api.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -74,7 +76,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .chart-card{border:1px solid #f0f0f0;border-radius:8px;padding:16px 16px 8px;margin-bottom:16px}
 .chart-card .chart-title{font-size:14px;font-weight:500;color:#333;margin-bottom:2px}
 .chart-card .chart-unit{font-size:12px;color:#999;margin-bottom:4px}
-.chart-box{width:100%;height:280px}
+.chart-box{width:100%;height:320px}
 
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:420px;color:#bbb;padding:40px 20px}
 .empty-state svg{margin-bottom:16px;opacity:.85}
@@ -94,8 +96,9 @@ tbody tr:hover td{background:#fafafa}
 
 .pg-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 0 0;gap:8px;flex-wrap:wrap}
 .pg-info{color:#666;font-size:13px}
-.pg-btns{display:flex;align-items:center;gap:4px}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-ellipsis{min-width:20px;height:28px;display:inline-flex;align-items:center;justify-content:center;color:#999;font-size:13px;user-select:none;letter-spacing:1px}
 .pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
 .pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
 .pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
@@ -165,9 +168,7 @@ tbody tr:hover td{background:#fafafa}
             <label class="form-label">中长期来水预报模型方案</label>
             <div class="select-wrap">
               <select class="field" id="cfg-mid">
-                <option value="mid1">中长期来水预报方案1</option>
-                <option value="mid2">中长期来水预报方案2</option>
-                <option value="mid3">中长期来水预报方案3</option>
+                <option value="">请选择方案</option>
               </select>
               <span class="select-arrow"></span>
             </div>
@@ -176,9 +177,7 @@ tbody tr:hover td{background:#fafafa}
             <label class="form-label">需水预测模型方案</label>
             <div class="select-wrap">
               <select class="field" id="cfg-demand">
-                <option value="d1">需水预测模型方案1</option>
-                <option value="d2">需水预测模型方案2</option>
-                <option value="d3">需水预测模型方案3</option>
+                <option value="">请选择方案</option>
               </select>
               <span class="select-arrow"></span>
             </div>
@@ -187,9 +186,7 @@ tbody tr:hover td{background:#fafafa}
             <label class="form-label">水量损失预测</label>
             <div class="select-wrap">
               <select class="field" id="cfg-loss">
-                <option value="l1">水量损失预测方案1</option>
-                <option value="l2">水量损失预测方案2</option>
-                <option value="l3">水量损失预测方案3</option>
+                <option value="">请选择方案</option>
               </select>
               <span class="select-arrow"></span>
             </div>
@@ -397,6 +394,7 @@ tbody tr:hover td{background:#fafafa}
 
 <script>
 (function () {
+  const API = window.ModelApi;
   function $(id) { return document.getElementById(id); }
   function toast(msg) {
     const el = $('toast');
@@ -405,91 +403,82 @@ tbody tr:hover td{background:#fafafa}
     clearTimeout(toast._t);
     toast._t = setTimeout(() => el.classList.remove('show'), 1800);
   }
-  function seeded(i, base, amp) {
-    const n = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
-    return +(base + (n - Math.floor(n)) * amp).toFixed(2);
+  function num(v) {
+    return API.fmtNum(v, 2);
   }
 
-  const MONTHS = Array.from({ length: 12 }, (_, i) => '2027-' + String(i + 1).padStart(2, '0'));
-  const MONTH_CN = Array.from({ length: 12 }, (_, i) => (i + 1) + '月');
   const PAGE_SIZE = 12;
 
-  const MOCK = {
-    summary: { inflow: 12486, demand: 10672, supply: 10601, shortage: 71, spill: 264 },
-    inflow: [820, 760, 890, 980, 1120, 1340, 1540, 1420, 1180, 960, 860, 740],
-    demand: [710, 690, 780, 860, 980, 1120, 1240, 1180, 980, 840, 760, 680],
-    compareIn: [36.13, 66.63, 48.2, 72.5, 88.4, 95.1, 102.3, 91.6, 78.4, 62.1, 51.8, 42.6],
-    compareDemand: [72.52, 95.79, 68.4, 84.2, 91.5, 98.6, 105.2, 96.8, 82.3, 70.5, 61.2, 55.4],
-    level: [86.2, 85.4, 84.8, 85.6, 86.8, 87.9, 88.6, 87.4, 86.1, 85.2, 84.6, 83.9],
-    capacity: [4280, 4120, 4010, 4180, 4420, 4680, 4860, 4620, 4380, 4160, 4020, 3880]
-  };
-
-  // 对齐设计稿样例前几行
-  const SAMPLE = [
-    [820, 30, 540, 57, 28, 85, 710],
-    [760, 27, 524, 55, 28, 83, 690],
-    [890, 33, 590, 62, 31, 97, 780],
-    [980, 36, 650, 68, 34, 108, 860],
-    [1120, 42, 740, 78, 39, 123, 980],
-    [1340, 48, 850, 88, 44, 138, 1120],
-    [1540, 55, 942, 99, 50, 149, 1240],
-    [1420, 51, 896, 94, 47, 143, 1180],
-    [1180, 44, 742, 78, 39, 121, 980],
-    [960, 36, 636, 67, 34, 103, 840],
-    [860, 32, 576, 61, 31, 92, 760],
-    [740, 27, 516, 55, 28, 81, 680]
-  ];
-
-  const ROWS = MONTH_CN.map((m, i) => {
-    const s = SAMPLE[i];
-    const demand = s[6];
-    const supply = Math.max(0, demand - Math.round(seeded(i + 3, 0, 12)));
-    const shortage = Math.max(0, demand - supply);
-    const spill = Math.round(seeded(i + 8, 5, 40));
-    return {
-      date: m,
-      bp: s[0],
-      evap: s[1],
-      irrig: s[2],
-      urban: s[3],
-      rural: s[4],
-      eco: s[5],
-      demand,
-      supply,
-      shortage,
-      spill,
-      level: MOCK.level[i],
-      capacity: MOCK.capacity[i]
-    };
-  });
-  MOCK.summary = { inflow: 12486, demand: 10672, supply: 10601, shortage: 71, spill: 264 };
-
   let mode = 'exist';
-  let uploaded = false;
+  let uploadedFile = null;
   let page = 1;
   let filter = '';
+  let viewFilter = '';
   let charts = {};
   let editingId = null;
-  let historyList = [
-    { id: '20260805001', name: '20260805001水资源配置预测（对应模型名称）', time: '2026/08/05 09:18' },
-    { id: '20260805002', name: '20260805002水资源配置预测（对应模型名称）', time: '2026/08/05 10:26' },
-    { id: '20260805003', name: '20260805003水资源配置预测（对应模型名称）', time: '2026/08/05 11:40' },
-    { id: '20260805004', name: '20260805004水资源配置预测（对应模型名称）', time: '2026/08/05 14:05' },
-    { id: '20260805005', name: '20260805005水资源配置预测（对应模型名称）', time: '2026/08/05 15:22' },
-    { id: '20260805006', name: '20260805006水资源配置预测（对应模型名称）', time: '2026/08/05 16:48' }
-  ];
+  let historyList = [];
+  let resultSummary = null;
+  let resultRows = [];
+  let viewSummary = null;
+  let viewRows = [];
 
-  function renderStats(id) {
-    const s = MOCK.summary;
+  function mapTendays(detail) {
+    const tendays = (detail.tendays || []).slice().sort(function (a, b) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    });
+    return tendays.map(function (t) {
+      return {
+        date: t.tendayLabel || '',
+        bp: t.bpInflow,
+        evap: t.evaporation,
+        irrig: t.irrigationDemand,
+        urban: t.urbanDemand,
+        rural: t.ruralDemand,
+        eco: t.ecoDemand,
+        demand: t.totalDemand,
+        supply: t.totalSupply,
+        shortage: t.demandGtSupply,
+        spill: t.spill,
+        level: t.endWaterLevel,
+        capacity: t.endStorage
+      };
+    });
+  }
+
+  function mapSummary(record) {
+    const r = record || {};
+    return {
+      inflow: r.totalInflow,
+      demand: r.totalDemand,
+      supply: r.totalSupply,
+      shortage: r.deficit,
+      spill: r.spill
+    };
+  }
+
+  function applyDetail(detail, target) {
+    const summary = mapSummary(detail.record);
+    const rows = mapTendays(detail);
+    if (target === 'view') {
+      viewSummary = summary;
+      viewRows = rows;
+    } else {
+      resultSummary = summary;
+      resultRows = rows;
+    }
+  }
+
+  function renderStats(id, summary) {
+    const s = summary || {};
     $(id).innerHTML = [
-      { label: '总来水', value: s.inflow.toLocaleString(), unit: '万m³' },
-      { label: '总需水', value: s.demand.toLocaleString(), unit: '万m³' },
-      { label: '总供水', value: s.supply.toLocaleString(), unit: '万m³' },
-      { label: '缺水量', value: s.shortage.toLocaleString(), unit: '万m³' },
-      { label: '弃水量', value: s.spill.toLocaleString(), unit: '万m³' }
-    ].map(it =>
-      `<div class="stat-card"><div class="label">${it.label}</div><div class="value">${it.value}<span class="unit">${it.unit}</span></div></div>`
-    ).join('');
+      { label: '总来水', value: num(s.inflow), unit: '万m³' },
+      { label: '总需水', value: num(s.demand), unit: '万m³' },
+      { label: '总供水', value: num(s.supply), unit: '万m³' },
+      { label: '缺水量', value: num(s.shortage), unit: '万m³' },
+      { label: '弃水量', value: num(s.spill), unit: '万m³' }
+    ].map(function (it) {
+      return '<div class="stat-card"><div class="label">' + it.label + '</div><div class="value">' + it.value + '<span class="unit">' + it.unit + '</span></div></div>';
+    }).join('');
   }
 
   function ensureChart(key, el) {
@@ -498,16 +487,18 @@ tbody tr:hover td{background:#fafafa}
     return charts[key];
   }
 
-  function compareOption() {
+  function compareOption(rows) {
+    const labels = rows.map(function (r) { return r.date; });
     return {
       color: ['#7A96EC', '#9BD6AD'],
       tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, data: ['来水', '需水'] },
-      grid: { left: 48, right: 20, top: 36, bottom: 48 },
+      legend: { top: 4, data: ['来水', '需水'] },
+      grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
       xAxis: {
         type: 'category',
-        data: MONTHS,
-        axisLabel: { color: '#999', fontSize: 11 },
+        data: labels,
+        axisLabel: { color: '#999', fontSize: 10, rotate: labels.length > 18 ? 40 : 0 },
         axisTick: { alignWithLabel: true },
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
@@ -518,39 +509,41 @@ tbody tr:hover td{background:#fafafa}
       },
       series: [
         {
-          name: '来水', type: 'bar', data: MOCK.compareIn, barMaxWidth: 18,
-          label: { show: true, position: 'top', fontSize: 9, color: '#666' }
+          name: '来水', type: 'bar', data: rows.map(function (r) { return r.bp; }), barMaxWidth: 18,
+          label: { show: rows.length <= 18, position: 'top', fontSize: 9, color: '#666' }
         },
         {
-          name: '需水', type: 'bar', data: MOCK.compareDemand, barMaxWidth: 18,
-          label: { show: true, position: 'top', fontSize: 9, color: '#666' }
+          name: '需水', type: 'bar', data: rows.map(function (r) { return r.demand; }), barMaxWidth: 18,
+          label: { show: rows.length <= 18, position: 'top', fontSize: 9, color: '#666' }
         }
       ]
     };
   }
 
-  function levelOption() {
+  function levelOption(rows) {
+    const labels = rows.map(function (r) { return r.date; });
     return {
       color: ['#5D7EE9', '#73C892'],
       tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, data: ['水位', '库容'] },
-      grid: { left: 52, right: 56, top: 28, bottom: 48 },
+      legend: { top: 4, data: ['水位', '库容'] },
+      grid: { left: 16, right: 56, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
       xAxis: {
         type: 'category',
         boundaryGap: false,
-        data: MONTHS,
-        axisLabel: { color: '#999', fontSize: 11 },
+        data: labels,
+        axisLabel: { color: '#999', fontSize: 10, rotate: labels.length > 18 ? 40 : 0 },
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
       yAxis: [
         {
-          type: 'value', name: '水位: m', min: 80, max: 90, splitNumber: 5,
+          type: 'value', name: '水位: m',
           nameTextStyle: { color: '#999', fontSize: 11 },
           axisLabel: { color: '#999' },
           splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
         },
         {
-          type: 'value', name: '库容: 万方', min: 3000, max: 5000, splitNumber: 4,
+          type: 'value', name: '库容: 万方',
           nameTextStyle: { color: '#999', fontSize: 11 },
           axisLabel: { color: '#999' },
           splitLine: { show: false }
@@ -559,125 +552,151 @@ tbody tr:hover td{background:#fafafa}
       series: [
         {
           name: '水位', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7,
-          data: MOCK.level
+          data: rows.map(function (r) { return r.level; })
         },
         {
           name: '库容', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7, yAxisIndex: 1,
-          data: MOCK.capacity
+          data: rows.map(function (r) { return r.capacity; })
         }
       ]
     };
   }
 
-  function renderCharts(compareId, levelId) {
-    ensureChart(compareId, $(compareId)).setOption(compareOption());
-    ensureChart(levelId, $(levelId)).setOption(levelOption());
+  function renderCharts(compareId, levelId, rows) {
+    const data = rows || [];
+    ensureChart(compareId, $(compareId)).setOption(compareOption(data));
+    ensureChart(levelId, $(levelId)).setOption(levelOption(data));
   }
 
-  function filteredRows() {
-    const q = filter.trim();
-    if (!q) return ROWS.slice();
-    return ROWS.filter(r => Object.values(r).some(v => String(v).includes(q)));
+  function filteredRows(sourceRows, q) {
+    const query = (q || '').trim();
+    if (!query) return sourceRows.slice();
+    return sourceRows.filter(function (r) {
+      return Object.values(r).some(function (v) { return String(v).includes(query); });
+    });
   }
 
   function rowHtml(r) {
-    return `<tr>
-      <td>${r.date}</td><td>${r.bp}</td><td>${r.evap}</td><td>${r.irrig}</td>
-      <td>${r.urban}</td><td>${r.rural}</td><td>${r.eco}</td><td>${r.demand}</td>
-      <td>${r.supply}</td><td>${r.shortage}</td><td>${r.spill}</td>
-      <td>${r.level}</td><td>${r.capacity}</td>
-    </tr>`;
+    return '<tr>' +
+      '<td>' + (r.date || '') + '</td><td>' + num(r.bp) + '</td><td>' + num(r.evap) + '</td><td>' + num(r.irrig) + '</td>' +
+      '<td>' + num(r.urban) + '</td><td>' + num(r.rural) + '</td><td>' + num(r.eco) + '</td><td>' + num(r.demand) + '</td>' +
+      '<td>' + num(r.supply) + '</td><td>' + num(r.shortage) + '</td><td>' + num(r.spill) + '</td>' +
+      '<td>' + num(r.level) + '</td><td>' + num(r.capacity) + '</td>' +
+      '</tr>';
   }
 
   function renderTable(tbodyId, opts) {
     const options = opts || {};
-    const rows = filteredRows();
+    const source = options.rows || resultRows;
+    const q = options.filter != null ? options.filter : filter;
+    const rows = filteredRows(source, q);
     const tbody = $(tbodyId);
     let pageRows = rows;
     if (!options.noPager) {
-      const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+      const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE) || 1);
       if (page > pages) page = pages;
       const start = (page - 1) * PAGE_SIZE;
       pageRows = rows.slice(start, start + PAGE_SIZE);
       const from = rows.length ? start + 1 : 0;
       const to = Math.min(start + PAGE_SIZE, rows.length);
-      $('pg-info').textContent = `共 ${rows.length} 条` + (rows.length ? `，本页显示 ${from}-${to} 条` : '');
-      let html = `<button class="pg-btn" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>‹</button>`;
-      for (let i = 1; i <= pages; i++) {
-        html += `<button class="pg-btn${i === page ? ' active' : ''}" data-page="${i}">${i}</button>`;
-      }
-      html += `<button class="pg-btn" data-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>›</button>`;
-      $('pg-btns').innerHTML = html;
+      $('pg-info').textContent = '共 ' + rows.length + ' 条' + (rows.length ? '，本页显示 ' + from + '-' + to + ' 条' : '');
+      $('pg-btns').innerHTML = API.pagerHtml(page, pages);
     }
     tbody.innerHTML = pageRows.map(rowHtml).join('')
-      || `<tr><td colspan="13" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+      || '<tr><td colspan="13" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>';
   }
 
   function showResult() {
     $('result-empty').style.display = 'none';
     $('result-content').style.display = 'block';
     page = 1;
-    renderStats('stats');
-    renderCharts('chart-compare', 'chart-level');
+    filter = '';
+    $('filter').value = '';
+    renderStats('stats', resultSummary);
+    renderCharts('chart-compare', 'chart-level', resultRows);
     renderTable('tbody');
-    setTimeout(() => Object.values(charts).forEach(c => c && c.resize()), 50);
-  }
-
-  function pushHistory() {
-    const now = new Date();
-    const same = historyList.length;
-    const id = now.getFullYear().toString()
-      + String(now.getMonth() + 1).padStart(2, '0')
-      + String(now.getDate()).padStart(2, '0')
-      + String(same + 1).padStart(3, '0');
-    const pad = n => String(n).padStart(2, '0');
-    const time = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    historyList.unshift({ id, name: id + '水资源配置预测（对应模型名称）', time });
-    renderHistory();
+    setTimeout(function () { Object.values(charts).forEach(function (c) { if (c) c.resize(); }); }, 50);
   }
 
   function renderHistory() {
-    $('history-list').innerHTML = historyList.map(h =>
-      `<div class="hist-item" data-id="${h.id}">
-        <div class="hist-name" title="${h.name}">${h.name}</div>
-        <div class="hist-time">${h.time}</div>
-        <div class="hist-acts">
-          <button data-act="view">查看</button>
-          <button data-act="edit">编辑名称</button>
-        </div>
-      </div>`
-    ).join('') || '<div style="padding:40px;text-align:center;color:#bbb">暂无记录</div>';
+    $('history-list').innerHTML = historyList.map(function (h) {
+      const name = h.schemeName || h.id;
+      const time = API.fmtDateTime(h.createdAt);
+      const statusTip = h.status && h.status !== 'completed'
+        ? '（' + API.statusLabel(h.status) + '）'
+        : '';
+      const title = (h.errorMsg || name + statusTip).replace(/"/g, '&quot;');
+      return '<div class="hist-item" data-id="' + h.id + '">' +
+        '<div class="hist-name" title="' + title + '">' + name + statusTip + '</div>' +
+        '<div class="hist-time">' + time + '</div>' +
+        '<div class="hist-acts">' +
+          '<button data-act="view">查看</button>' +
+          '<button data-act="edit">编辑名称</button>' +
+          '<button data-act="remove">删除</button>' +
+        '</div>' +
+      '</div>';
+    }).join('') || '<div style="padding:40px;text-align:center;color:#bbb">暂无记录</div>';
+  }
+
+  async function loadHistory() {
+    try {
+      const list = await API.allocation.list();
+      historyList = Array.isArray(list) ? list : [];
+      renderHistory();
+    } catch (e) {
+      historyList = [];
+      renderHistory();
+      toast(e.message || '历史方案加载失败');
+    }
+  }
+
+  async function loadSchemeSelects() {
+    try {
+      const results = await Promise.all([
+        API.long.list(),
+        API.demand.list(),
+        API.loss.list()
+      ]);
+      API.fillSelect($('cfg-mid'), results[0], { onlyCompleted: true });
+      API.fillSelect($('cfg-demand'), results[1], { onlyCompleted: true });
+      API.fillSelect($('cfg-loss'), results[2], { onlyCompleted: true });
+    } catch (e) {
+      toast(e.message || '方案列表加载失败');
+    }
   }
 
   // 左侧 Tab
-  $('mode-tabs').addEventListener('click', e => {
+  $('mode-tabs').addEventListener('click', function (e) {
     const tab = e.target.closest('.side-tab');
     if (!tab) return;
-    document.querySelectorAll('.side-tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.side-tab').forEach(function (t) { t.classList.toggle('active', t === tab); });
     mode = tab.dataset.mode;
     $('mode-exist').style.display = mode === 'exist' ? 'block' : 'none';
     $('mode-manual').style.display = mode === 'manual' ? 'block' : 'none';
   });
 
-  $('upload-btn').addEventListener('click', () => $('file-input').click());
-  $('file-input').addEventListener('change', e => {
+  $('upload-btn').addEventListener('click', function () { $('file-input').click(); });
+  $('file-input').addEventListener('change', function (e) {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
-    uploaded = true;
+    uploadedFile = f;
     $('file-name').textContent = '已上传：' + f.name;
     toast('附件已上传');
   });
-  $('tpl-btn').addEventListener('click', () => {
-    if (!window.XLSX) return toast('模板下载组件未加载');
-    const header = ['日期', 'BP预测来水量(万方)', '库面蒸发数据(万方)', '灌溉需水', '城镇需水', '农村生活需水量', '河道生态需水总量'];
-    const ws = XLSX.utils.aoa_to_sheet([header]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '配水基础数据');
-    XLSX.writeFile(wb, '配水基础数据收集表模板.xlsx');
+  $('tpl-btn').addEventListener('click', async function () {
+    try {
+      await API.allocation.template('配水基础数据收集表.xlsx');
+    } catch (e) {
+      toast(e.message || '模板下载失败');
+    }
   });
 
-  $('calc-btn').addEventListener('click', () => {
-    if (mode === 'manual' && !uploaded) return toast('请上传配水基础数据收集表');
+  $('calc-btn').addEventListener('click', async function () {
+    if (mode === 'exist') {
+      if (!$('cfg-mid').value) return toast('请选择中长期来水预报模型方案');
+      if (!$('cfg-demand').value) return toast('请选择需水预测模型方案');
+    }
+    if (mode === 'manual' && !uploadedFile) return toast('请上传配水基础数据收集表');
     const start = $('start-level').value;
     const flood = $('flood-level').value;
     const max = $('max-level').value;
@@ -687,32 +706,64 @@ tbody tr:hover td{background:#fafafa}
 
     const btn = $('calc-btn');
     btn.classList.add('is-loading');
-    setTimeout(() => {
-      btn.classList.remove('is-loading');
+    API.showLoading('水资源配置模型计算中，请稍候…');
+    try {
+      let res;
+      if (mode === 'exist') {
+        const body = {
+          mode: 'auto',
+          longPredictRecordId: $('cfg-mid').value,
+          demandRecordId: $('cfg-demand').value,
+          startLevel: +start,
+          floodLimitLevel: +flood,
+          maxLevel: +max
+        };
+        const lossId = $('cfg-loss').value;
+        if (lossId) body.lossRecordId = lossId;
+        res = await API.allocation.submit(body);
+      } else {
+        const fd = new FormData();
+        fd.append('file', uploadedFile);
+        fd.append('startLevel', start);
+        fd.append('floodLimitLevel', flood);
+        fd.append('maxLevel', max);
+        res = await API.allocation.upload(fd);
+      }
+      const recordId = res.recordId || res.id;
+      await API.allocation.wait(recordId);
+      const detail = await API.allocation.detail(recordId);
+      applyDetail(detail, 'main');
       showResult();
-      pushHistory();
+      await loadHistory();
       toast('计算完成');
-    }, 600);
+    } catch (e) {
+      toast(API.friendlyError(e, '计算失败'));
+    } finally {
+      API.hideLoading();
+      btn.classList.remove('is-loading');
+    }
   });
 
-  $('filter').addEventListener('input', e => {
+  $('filter').addEventListener('input', function (e) {
     filter = e.target.value;
     page = 1;
     renderTable('tbody');
   });
-  $('pg-btns').addEventListener('click', e => {
+  $('pg-btns').addEventListener('click', function (e) {
     const btn = e.target.closest('[data-page]');
     if (!btn || btn.disabled) return;
     page = +btn.dataset.page;
     renderTable('tbody');
   });
-  $('export-btn').addEventListener('click', () => {
-    const rows = filteredRows();
+  $('export-btn').addEventListener('click', function () {
+    const rows = filteredRows(resultRows, filter);
     if (!rows.length) return toast('暂无数据可导出');
     const header = ['日期', 'BP预测来水量(万方)', '库面蒸发数据(万方)', '灌溉需水', '城镇需水', '农村生活需水量', '河道生态需水总量', '总需水量(万方)', '总供水量(万方)', '缺水量(万方)', '弃水量(万方)', '月末水位(m)', '月末库容(万方)'];
-    const data = rows.map(r => [r.date, r.bp, r.evap, r.irrig, r.urban, r.rural, r.eco, r.demand, r.supply, r.shortage, r.spill, r.level, r.capacity]);
+    const data = rows.map(function (r) {
+      return [r.date, r.bp, r.evap, r.irrig, r.urban, r.rural, r.eco, r.demand, r.supply, r.shortage, r.spill, r.level, r.capacity];
+    });
     if (window.XLSX) {
-      const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+      const ws = XLSX.utils.aoa_to_sheet([header].concat(data));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '配置明细');
       XLSX.writeFile(wb, '水资源配置预测详细结果.xlsx');
@@ -720,7 +771,7 @@ tbody tr:hover td{background:#fafafa}
   });
 
   function openDrawer() {
-    renderHistory();
+    loadHistory();
     $('drawer-mask').classList.add('show');
     $('history-drawer').classList.add('show');
   }
@@ -732,55 +783,87 @@ tbody tr:hover td{background:#fafafa}
   $('drawer-mask').addEventListener('click', closeDrawer);
   $('drawer-close').addEventListener('click', closeDrawer);
 
-  $('history-list').addEventListener('click', e => {
+  $('history-list').addEventListener('click', async function (e) {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
-    const item = historyList.find(h => h.id === btn.closest('.hist-item').dataset.id);
+    const id = btn.closest('.hist-item').dataset.id;
+    const item = historyList.find(function (h) { return h.id === id; });
     if (!item) return;
     if (btn.dataset.act === 'edit') {
       editingId = item.id;
-      $('edit-name').value = item.name;
+      $('edit-name').value = item.schemeName || '';
       $('edit-overlay').classList.add('show');
-    } else {
-      closeDrawer();
-      renderStats('view-stats');
-      filter = '';
+      return;
+    }
+    if (btn.dataset.act === 'remove') {
+      if (!confirm('确定删除该方案？')) return;
+      try {
+        await API.allocation.remove(item.id);
+        toast('已删除');
+        await loadHistory();
+      } catch (err) {
+        toast(err.message || '删除失败');
+      }
+      return;
+    }
+    if (item.status && item.status !== 'completed') {
+      try {
+        API.assertViewable(item);
+      } catch (err) {
+        return toast(err.message);
+      }
+    }
+    try {
+      API.showLoading('加载方案详情…');
+      const detail = await API.allocation.detail(item.id);
+      applyDetail(detail, 'view');
+      viewFilter = '';
       $('view-filter').value = '';
-      renderCharts('view-chart-compare', 'view-chart-level');
-      renderTable('view-tbody', { noPager: true });
+      renderStats('view-stats', viewSummary);
+      renderCharts('view-chart-compare', 'view-chart-level', viewRows);
+      renderTable('view-tbody', { noPager: true, rows: viewRows, filter: viewFilter });
       $('view-overlay').classList.add('show');
-      setTimeout(() => Object.values(charts).forEach(c => c && c.resize()), 50);
+      setTimeout(function () { Object.values(charts).forEach(function (c) { if (c) c.resize(); }); }, 50);
+    } catch (err) {
+      toast(API.friendlyError(err, '详情加载失败'));
+    } finally {
+      API.hideLoading();
     }
   });
 
-  document.querySelectorAll('[data-close]').forEach(el => {
-    el.addEventListener('click', () => $(el.dataset.close).classList.remove('show'));
+  document.querySelectorAll('[data-close]').forEach(function (el) {
+    el.addEventListener('click', function () { $(el.dataset.close).classList.remove('show'); });
   });
-  $('edit-overlay').addEventListener('click', e => {
+  $('edit-overlay').addEventListener('click', function (e) {
     if (e.target === $('edit-overlay')) $('edit-overlay').classList.remove('show');
   });
-  $('view-overlay').addEventListener('click', e => {
+  $('view-overlay').addEventListener('click', function (e) {
     if (e.target === $('view-overlay')) $('view-overlay').classList.remove('show');
   });
-  $('edit-confirm').addEventListener('click', () => {
+  $('edit-confirm').addEventListener('click', async function () {
     const name = $('edit-name').value.trim();
     if (!name) return toast('请输入名称');
-    const item = historyList.find(h => h.id === editingId);
-    if (item) item.name = name;
-    renderHistory();
-    $('edit-overlay').classList.remove('show');
-    toast('已保存');
+    try {
+      await API.allocation.rename(editingId, name);
+      $('edit-overlay').classList.remove('show');
+      toast('已保存');
+      await loadHistory();
+    } catch (e) {
+      toast(e.message || '重命名失败');
+    }
   });
-  $('view-filter').addEventListener('input', e => {
-    filter = e.target.value;
-    renderTable('view-tbody', { noPager: true });
+  $('view-filter').addEventListener('input', function (e) {
+    viewFilter = e.target.value;
+    renderTable('view-tbody', { noPager: true, rows: viewRows, filter: viewFilter });
   });
 
-  window.addEventListener('resize', () => {
-    Object.values(charts).forEach(c => c && c.resize());
+  window.addEventListener('resize', function () {
+    Object.values(charts).forEach(function (c) { if (c) c.resize(); });
   });
 
-  renderHistory();
+  loadSchemeSelects();
+  loadHistory();
+  API.probeHealth();
 })();
 </script>
 </body>
