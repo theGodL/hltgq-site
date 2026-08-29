@@ -1,10 +1,13 @@
 package com.qgyun.hltgq.hltgqsite.controller;
 
+import com.qgyun.hltgq.hltgqsite.archive.client.ArchiveClient;
+import com.qgyun.hltgq.hltgqsite.archive.service.ArchiveSyncService;
 import com.qgyun.hltgq.hltgqsite.auth.SessionContextService;
 import com.qgyun.hltgq.hltgqsite.auth.ThreeDimensionalSsoService;
 import com.qgyun.hltgq.hltgqsite.auth.UserContext;
 import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
 import com.qgyun.hltgq.hltgqsite.service.AuthService;
+import com.qgyun.hltgq.hltgqsite.vo.ArchiveSsoVO;
 import com.qgyun.hltgq.hltgqsite.vo.AuthRequestVO;
 import com.qgyun.hltgq.hltgqsite.vo.AuthResponseVO;
 import com.qgyun.hltgq.hltgqsite.vo.CurrentUserVO;
@@ -34,6 +37,12 @@ public class AuthController {
 
     @Autowired
     private ThreeDimensionalSsoService threeDimensionalSsoService;
+
+    @Autowired
+    private ArchiveSyncService archiveSyncService;
+
+    @Autowired
+    private ArchiveClient archiveClient;
 
     /**
      * 登录接口
@@ -67,6 +76,19 @@ public class AuthController {
         UserContext user = resolveCurrentUser(request);
         String loginName = sessionContextService.resolveLoginName(user);
         return new ThreeDimensionalTokenVO(threeDimensionalSsoService.getToken(loginName));
+    }
+
+    /**
+     * 档案系统单点登录凭证接口：返回 {token, userId}。
+     * <p>前端以 http://172.27.177.30:8090/archive/index/index?UserID=userId&token=token 跳转即可单点登录。
+     * <p>userId 缺失时由 ensureArchiveUserId 兜底调用人员同步获取，保证一定返回 userId。
+     */
+    @PostMapping("/archive-token")
+    public ArchiveSsoVO archiveToken(HttpServletRequest request) {
+        UserContext user = resolveCurrentUser(request);
+        String loginName = sessionContextService.resolveLoginName(user);
+        String archiveUserId = archiveSyncService.ensureArchiveUserId(loginName);
+        return new ArchiveSsoVO(archiveClient.getToken(), archiveUserId);
     }
 
     /**

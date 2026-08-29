@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.archive.service;
 
+import com.qgyun.hltgq.hltgqsite.archive.client.ArchiveCallException;
 import com.qgyun.hltgq.hltgqsite.archive.client.ArchiveClient;
 import com.qgyun.hltgq.hltgqsite.mapper.ArchiveSyncMapper;
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -91,7 +93,7 @@ public class ArchiveSyncService {
         try {
             List<Map<String, Object>> userRows = buildUserRows(full ? mapper.selectUsersAll() : mapper.selectUsersSince(sinceStr));
             if (!userRows.isEmpty()) {
-                client.syncUsers(client.getToken(), userRows);
+                backfillNameSpell(client.syncUsers(client.getToken(), userRows));
             } else {
                 log.info("archive user sync skipped: no rows to sync");
             }
@@ -214,6 +216,57 @@ public class ArchiveSyncService {
             return name;
         }
         return calcFullName(parent, orgMap, visited) + "_" + name;
+    }
+
+    /**
+     * 确保该登录名用户在浩微档案系统存在并返回其 userId（单点登录兜底，保证一定返回）：
+     * 1) 优先读回写字段 t_apaas_uc_user.name_spell（历史同步已回写）；
+     * 2) 缺失时按单用户实时调用 organizationByUser 获取 userId 并回写。
+     *
+     * @param loginName 当前登录人 t_apaas_uc_user.login_name
+     * @return 浩微档案系统 userId
+     */
+    public String ensureArchiveUserId(String loginName) {
+        String archiveUserId = mapper.selectNameSpellByLoginName(loginName);
+        if (archiveUserId != null && !archiveUserId.isEmpty()) {
+            return archiveUserId;
+        }
+        log.info("archive sso: name_spell empty for loginName={}, sync single user to fetch userId", loginName);
+        Map<String, Object> user = mapper.selectUserByLoginName(loginName);
+        if (user == null) {
+            throw new ArchiveCallException("404", "企效用户[" + loginName + "]不存在，无法同步档案系统");
+        }
+        List<Map<String, Object>> rows = buildUserRows(Collections.singletonList(user));
+        if (rows.isEmpty()) {
+            throw new ArchiveCallException("404", "用户[" + loginName + "]无部门信息，无法同步档案系统获取 userId");
+        }
+        List<Map<String, Object>> result = client.syncUsers(client.getToken(), rows);
+        for (Map<String, Object> item : result) {
+            String userId = str(item.get("userId"));
+            if (loginName.equals(str(item.get("loginId"))) && userId != null && !userId.isEmpty()) {
+                mapper.updateNameSpell(loginName, userId);
+                log.info("archive sso: backfilled userId for loginName={}", loginName);
+                return userId;
+            }
+        }
+        throw new ArchiveCallException("200", "档案系统未返回用户[" + loginName + "]的 userId，请联系浩微排查");
+    }
+
+    /** 人员同步成功后，按 loginId 对应关系回写浩微 userId 到 name_spell（单点登录用） */
+    private void backfillNameSpell(List<Map<String, Object>> userIdList) {
+        int updated = 0;
+        for (Map<String, Object> item : userIdList) {
+            String loginId = str(item.get("loginId"));
+            String userId = str(item.get("userId"));
+            if (loginId == null || loginId.isEmpty() || userId == null || userId.isEmpty()) {
+                continue;
+            }
+            mapper.updateNameSpell(loginId, userId);
+            updated++;
+        }
+        if (updated > 0) {
+            log.info("archive backfilled userId to name_spell for {} users", updated);
+        }
     }
 
     /** 用户行构建：字段映射 + 无部门跳过 + 无岗位兜底 */

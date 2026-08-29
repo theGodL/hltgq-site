@@ -15,6 +15,8 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -99,11 +101,26 @@ public class ArchiveClient {
         log.info("archive syncDepts success, rows={}", rows.size());
     }
 
-    /** 同步用户基础信息 */
-    public void syncUsers(String token, List<Map<String, Object>> rows) {
+    /**
+     * 同步用户基础信息，返回浩微为每行分配的 userId 映射列表（[{userId, loginId}, ...]），
+     * 供调用方回写 t_apaas_uc_user.name_spell（单点登录用）。
+     * <p>响应 data 非数组时返回空列表，不阻塞同步主流程。
+     */
+    public List<Map<String, Object>> syncUsers(String token, List<Map<String, Object>> rows) {
         Map<String, Object> body = buildRowsBody(token, rows);
-        postJson(PATH_SYNC_USER, body);
+        JsonNode node = postJson(PATH_SYNC_USER, body);
+        List<Map<String, Object>> result = new ArrayList<>();
+        JsonNode data = node.path("data");
+        if (data.isArray()) {
+            for (JsonNode item : data) {
+                Map<String, Object> m = new HashMap<>();
+                m.put("userId", item.path("userId").asText(null));
+                m.put("loginId", item.path("loginId").asText(null));
+                result.add(m);
+            }
+        }
         log.info("archive syncUsers success, rows={}", rows.size());
+        return result;
     }
 
     private Map<String, Object> buildRowsBody(String token, List<Map<String, Object>> rows) {
