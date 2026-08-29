@@ -1489,8 +1489,22 @@ function onTableClick(e) {
 
 /* ===== 流量计算参数（南山寺节制闸、渠首进水闸、渠首电站防洪闸、双庙湖节制闸） ===== */
 const DISCHARGE_SITES = ['南山寺节制闸', '渠首进水闸', '渠首电站防洪闸', '双庙湖节制闸'];
-/* 编辑开关：已开放编辑（输入框可编辑 + 显示保存按钮）；后端写开关 sluice-discharge.write-enabled 已同步开启 */
-const DISCHARGE_EDITABLE = true;
+/* 编辑开关：默认只读，页面初始化时按登录人 superAdmin（/auth/current-user）开放编辑；
+   后端另做强制校验（@RequireAdmin，非系统管理员调保存接口返回 403） */
+let DISCHARGE_EDITABLE = false;
+
+/** 按登录人权限决定流量参数是否可编辑（仅系统管理员） */
+async function loadDischargeEditable() {
+  try {
+    const res = await fetch(`${API}/auth/current-user`);
+    if (res.ok) {
+      const u = await res.json();
+      DISCHARGE_EDITABLE = !!(u && String(u.superAdmin) === 'true');
+    }
+  } catch (e) {
+    console.error(e); // 获取失败保持只读，安全优先
+  }
+}
 const DISCHARGE = { row: null }; // 当前弹窗站点（保存时使用）
 const DC_FIELDS = [
   { id: 'dc-full-open-free', key: 'fullOpenFreeCoeff', label: '流量系数（全开自由流）' },
@@ -1571,6 +1585,13 @@ async function saveDischarge() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    if (res.status === 403) {
+      hint.textContent = '无操作权限，仅系统管理员可修改流量参数';
+      DISCHARGE_EDITABLE = false; // 权限变更兜底：关掉编辑入口
+      fillDischargeForm(null);
+      $('dc-save-btn').hidden = true;
+      return;
+    }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const saved = await res.json();
     fillDischargeForm(saved);
@@ -2136,6 +2157,7 @@ async function init() {
   $('tbl-body').addEventListener('click', onTableClick);
   bindAsyncClick($('dc-save-btn'), saveDischarge);
   renderMthEmpty();
+  await loadDischargeEditable();
   await loadGateSites();
   await loadList();
 }

@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
@@ -36,6 +37,9 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Autowired
     private SessionContextService sessionContextService;
 
+    @Autowired
+    private RolePermissionService rolePermissionService;
+
     /** 代码固定白名单（不受配置影响） */
     private static final Set<String> FIXED_WHITE_LIST = new HashSet<>(Arrays.asList(
             "/auth/login",
@@ -60,6 +64,9 @@ public class AuthInterceptor implements HandlerInterceptor {
             }
             UserContext user = sessionContextService.resolveUser(sessionId);
             UserContextHolder.set(user);
+            if (!checkAdminPermission(request, response, handler, relativePath, user)) {
+                return false;
+            }
             return true;
         } catch (UnauthorizedException e) {
             log.warn("未登录：{} {} - {}", request.getMethod(), relativePath, e.getMessage());
@@ -76,6 +83,41 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         UserContextHolder.clear();
+    }
+
+    /**
+     * 系统管理员权限校验：方法/类标注 @RequireAdmin 的敏感写接口，
+     * 校验当前登录人是否拥有系统管理员角色，非管理员返回 403。
+     * <p>权限判定服务异常（Redis/库均不可用）时不降级放行，返回 503（与登录鉴权同策略）。
+     */
+    private boolean checkAdminPermission(HttpServletRequest request, HttpServletResponse response,
+                                         Object handler, String relativePath, UserContext user) throws Exception {
+        if (!(handler instanceof HandlerMethod)) {
+            return true;
+        }
+        HandlerMethod handlerMethod = (HandlerMethod) handler;
+        RequireAdmin requireAdmin = handlerMethod.getMethodAnnotation(RequireAdmin.class);
+        if (requireAdmin == null) {
+            requireAdmin = handlerMethod.getBeanType().getAnnotation(RequireAdmin.class);
+        }
+        if (requireAdmin == null) {
+            return true;
+        }
+        String userId = user == null ? null : user.getUserId();
+        try {
+            if (userId != null && rolePermissionService.isSystemAdmin(userId)) {
+                return true;
+            }
+            log.warn("无操作权限：{} {} userId={}", request.getMethod(), relativePath, userId);
+            writeJson(response, HttpServletResponse.SC_FORBIDDEN,
+                    "{\"code\":403,\"message\":\"无操作权限，仅系统管理员可操作\"}");
+            return false;
+        } catch (Exception e) {
+            log.error("权限判定服务不可用：{} {} - {}", request.getMethod(), relativePath, e.getMessage());
+            writeJson(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "{\"code\":503,\"message\":\"权限服务不可用，请稍后重试\"}");
+            return false;
+        }
     }
 
     /**
