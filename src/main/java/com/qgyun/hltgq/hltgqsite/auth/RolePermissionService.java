@@ -53,6 +53,26 @@ public class RolePermissionService {
     private final ConcurrentHashMap<String, CachedEntry> localCache = new ConcurrentHashMap<>();
 
     /**
+     * 权限判定入口：平台超管直放行，否则走角色判定（isSystemAdmin）。
+     * <p>平台超管（会话 superAdmin="true"/"1"）可能未绑定任何角色，仅查角色会误判非管理员，
+     * 必须直放行；同时前端编辑入口以同一 superAdmin 字段开关，两层判定口径统一，
+     * 避免"前端可编辑、后端 403"的不一致。
+     *
+     * @param user 当前登录人上下文（拦截器已解析）
+     * @return true = 可执行敏感操作
+     */
+    public boolean isAdmin(UserContext user) {
+        if (user == null) {
+            return false;
+        }
+        String superAdmin = user.getSuperAdmin();
+        if ("true".equalsIgnoreCase(superAdmin) || "1".equals(superAdmin)) {
+            return true;
+        }
+        return isSystemAdmin(user.getUserId());
+    }
+
+    /**
      * 判定用户是否为系统管理员（拥有 hltgq_default_admin 角色）
      *
      * @param userId 用户主键（t_apaas_uc_user.id）
@@ -73,15 +93,20 @@ public class RolePermissionService {
     }
 
     /**
-     * 真实判定：Redis 角色缓存优先（命中即信任，含"无角色"占位），未命中/异常走查库兜底。
+     * 真实判定：Redis 角色缓存仅作快捷放行层（明确命中 admin 才放行），
+     * 未命中 admin（miss/缓存陈旧/无角色占位）/异常一律查库兜底，正确性优先。
      */
     private boolean resolveAdmin(String userId) {
         try {
             List<String> roleIds = redisTemplate.opsForList().range(roleCacheKeyPrefix + "user." + userId, 0, -1);
             if (roleIds != null && !roleIds.isEmpty()) {
-                // Redis 命中（空角色列表存 "0" 占位）：遍历角色详情比对 code
-                for (String roleId : roleIds) {
-                    if (roleId == null || roleId.isEmpty() || NO_ROLE_PLACEHOLDER.equals(roleId)) {
+                for (String rawRoleId : roleIds) {
+                    if (rawRoleId == null || rawRoleId.isEmpty()) {
+                        continue;
+                    }
+                    // roleId 与 Hash 值同理可能带 JSON 引号，先剥再拼 key，否则必然 miss
+                    String roleId = stripQuotes(rawRoleId);
+                    if (roleId.isEmpty() || NO_ROLE_PLACEHOLDER.equals(roleId)) {
                         continue;
                     }
                     Object codeValue = redisTemplate.opsForHash().get(roleCacheKeyPrefix + "role." + roleId, "code");
@@ -89,9 +114,8 @@ public class RolePermissionService {
                         return true;
                     }
                 }
-                return false;
             }
-            // Redis 未命中 → 查库兜底
+            // Redis 未明确命中 admin → 查库兜底（缓存陈旧/角色刚指派等场景查库才是准的）
             return roleMapper.existsAdminRole(userId) > 0;
         } catch (Exception e) {
             log.warn("Redis 角色缓存不可用，降级查库判定 userId={}：{}", userId, e.getMessage());

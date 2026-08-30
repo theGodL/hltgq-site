@@ -105,7 +105,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
         String userId = user == null ? null : user.getUserId();
         try {
-            if (userId != null && rolePermissionService.isSystemAdmin(userId)) {
+            if (rolePermissionService.isAdmin(user)) {
                 return true;
             }
             log.warn("无操作权限：{} {} userId={}", request.getMethod(), relativePath, userId);
