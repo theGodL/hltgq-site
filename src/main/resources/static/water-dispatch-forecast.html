@@ -10,16 +10,19 @@
 <script src="./lib/model-api.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+/* 嵌在灌区主题 iframe 时：禁止文档层滚动，只保留左右面板内部一条滚动条 */
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
-.page-wrap{min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:12px}
-.breadcrumb{color:#999;font-size:13px}
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden}
+.breadcrumb{color:#999;font-size:13px;flex-shrink:0}
 .breadcrumb .sep{margin:0 6px}
 .breadcrumb .cur{color:#333}
-.main-layout{display:flex;gap:12px;flex:1;min-height:0;align-items:stretch}
-.left-panel{width:320px;flex-shrink:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;max-height:calc(100vh - 60px);overflow:hidden}
-.left-scroll{flex:1;overflow-y:auto;padding:20px 20px 12px}
-.right-panel{flex:1;min-width:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;max-height:calc(100vh - 60px);overflow:hidden}
-.right-scroll{flex:1;overflow-y:auto;padding:20px}
+/* 左右布局：高度吃满剩余空间，勿用 100vh（iframe 内会撑出文档第二根滚动条） */
+.main-layout{display:flex;gap:12px;flex:1;min-height:0;min-width:0;width:100%;max-width:100%;align-items:stretch}
+.left-panel{width:320px;max-width:100%;flex-shrink:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.left-scroll{flex:1;overflow-y:auto;padding:20px 20px 12px;min-height:0}
+.right-panel{flex:1;min-width:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.right-scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px;min-width:0;min-height:0}
 .form-item{margin-bottom:18px}
 .form-label{display:block;color:#333;font-size:14px;margin-bottom:8px;line-height:22px}
 .form-label .req{color:#ff4d4f;margin-right:2px}
@@ -55,11 +58,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .map-toolbar .chart-title{margin:0;font-size:14px;font-weight:500;color:#333}
 .map-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .map-filters .field{width:auto;min-width:140px}
-.topo-wrap{position:relative;border:1px solid #f0f0f0;border-radius:8px;background:#fff;overflow:hidden;min-height:480px}
-.topo-svg{display:block;width:100%;height:100%;padding:0;user-select:none;pointer-events:none;text-rendering:geometricPrecision;shape-rendering:geometricPrecision}
-.topo-viewport{height:580px;overflow:hidden;cursor:grab;background:#fafafa;touch-action:none}
+.topo-wrap{position:relative;border:1px solid #f0f0f0;border-radius:8px;background:#fff;overflow:hidden;min-height:480px;width:100%;max-width:100%}
+.topo-svg{display:block;width:1880px;height:1020px;padding:0;user-select:none;pointer-events:none;text-rendering:geometricPrecision;shape-rendering:geometricPrecision}
+.topo-viewport{height:min(580px,calc(100vh - 280px));width:100%;max-width:100%;overflow:hidden;cursor:grab;background:#fafafa;touch-action:none}
 .topo-viewport.is-dragging{cursor:grabbing}
-.topo-canvas{width:100%;height:100%;transform:none}
+.topo-canvas{width:1880px;height:1020px;transform-origin:0 0;will-change:transform}
+.topo-wrap:fullscreen,.topo-wrap:-webkit-full-screen{
+  display:flex;align-items:center;justify-content:center;
+  width:100%;height:100%;min-height:0;border:none;border-radius:0;background:#f0f2f5;
+}
+.topo-wrap:fullscreen .topo-viewport,.topo-wrap:-webkit-full-screen .topo-viewport{
+  width:100%;height:100%;max-width:none;max-height:none;
+}
 .topo-pan-hint{position:absolute;left:12px;bottom:10px;z-index:2;font-size:12px;color:#999;background:rgba(255,255,255,.9);padding:2px 8px;border-radius:4px;pointer-events:none}
 .topo-var-pill{fill:#3d9a48;stroke:#2d7a36;stroke-width:.75}
 .topo-var-pill.main{fill:#1677ff;stroke:#0958d9;stroke-width:.85}
@@ -1399,18 +1409,29 @@ tbody tr:hover td{background:#fafafa}
 
   function initTopoPanZoom() {
     const vp = $('topo-viewport');
+    const canvas = $('topo-canvas');
     const svg = $('topo-svg');
-    if (!vp || !svg) return;
+    if (!vp || !canvas || !svg) return;
     const BASE_W = 1880, BASE_H = 1020;
-    let x = 20, y = 10, scale = 0.72;
+    svg.setAttribute('viewBox', '0 0 ' + BASE_W + ' ' + BASE_H);
+    let x = 0, y = 0, scale = 1;
     let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
     function apply() {
-      const vw = BASE_W / scale;
-      const vh = BASE_H / scale;
-      svg.setAttribute('viewBox', (-x / scale) + ' ' + (-y / scale) + ' ' + vw + ' ' + vh);
+      canvas.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + scale + ')';
     }
-    apply();
+    function fitToScreen() {
+      const rect = vp.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const pad = 16;
+      const next = Math.min((rect.width - pad * 2) / BASE_W, (rect.height - pad * 2) / BASE_H);
+      scale = Math.max(0.15, Math.min(2.4, next));
+      x = (rect.width - BASE_W * scale) / 2;
+      y = (rect.height - BASE_H * scale) / 2;
+      apply();
+    }
+    fitToScreen();
     vp.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
       dragging = true; vp.classList.add('is-dragging');
       sx = e.clientX; sy = e.clientY; ox = x; oy = y;
       vp.setPointerCapture(e.pointerId);
@@ -1421,18 +1442,31 @@ tbody tr:hover td{background:#fafafa}
       y = oy + (e.clientY - sy);
       apply();
     });
-    vp.addEventListener('pointerup', () => { dragging = false; vp.classList.remove('is-dragging'); });
+    function endDrag(e) {
+      dragging = false;
+      vp.classList.remove('is-dragging');
+      try { vp.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    vp.addEventListener('pointerup', endDrag);
+    vp.addEventListener('pointercancel', endDrag);
     vp.addEventListener('wheel', e => {
       e.preventDefault();
       const rect = vp.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const prev = scale;
-      scale = Math.min(2.8, Math.max(0.35, scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
-      x = mx - (mx - x) * (scale / prev);
-      y = my - (my - y) * (scale / prev);
+      const next = Math.min(2.4, Math.max(0.15, scale * (e.deltaY < 0 ? 1.1 : 0.91)));
+      x = mx - (mx - x) * (next / prev);
+      y = my - (my - y) * (next / prev);
+      scale = next;
       apply();
     }, { passive: false });
+    window.addEventListener('resize', fitToScreen);
+    document.addEventListener('fullscreenchange', () => {
+      setTimeout(fitToScreen, 50);
+      setTimeout(fitToScreen, 200);
+    });
+    initTopoPanZoom.fitToScreen = fitToScreen;
   }
 
   $('calc-btn').addEventListener('click', async () => {
@@ -1610,6 +1644,7 @@ tbody tr:hover td{background:#fafafa}
 
   window.addEventListener('resize', () => {
     Object.values(charts).forEach(c => c && c.resize());
+    if (typeof initTopoPanZoom.fitToScreen === 'function') initTopoPanZoom.fitToScreen();
   });
 
   renderStats();
