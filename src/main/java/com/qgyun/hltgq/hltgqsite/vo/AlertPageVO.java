@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.vo;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -40,4 +41,16 @@ public class AlertPageVO {
 
     /** 处理状态：#1# 未确认、#2# 已确认、#3# 处理中、#4# 已关闭 */
     private String status;
+
+    /** 告警类型：#1# 阈值超限、#2# 异常告警 */
+    private String type;
+
+    /** 站点类型（站点表 epjutj，多类型 | 分隔，如 #1#|#2#）：#1# 水位、#2# 雨量、#3# 流量、#4# 闸门、#5# 视频、#7# 墒情、#8# 水质 */
+    private String siteType;
+
+    /** 站点经度（站点表 bviiio_x） */
+    private BigDecimal lon;
+
+    /** 站点纬度（站点表 bviiio_y） */
+    private BigDecimal lat;
 }
