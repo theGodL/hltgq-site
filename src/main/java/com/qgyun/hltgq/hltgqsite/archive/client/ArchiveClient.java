@@ -23,8 +23,8 @@ import java.util.Map;
 /**
  * 浩微档案系统客户端（archive.base-url，默认 http://10.68.18.12:8090）。
  * <p>统一解析响应约定 {rc,msg,data}：rc=200 成功，非 200 抛 {@link ArchiveCallException}。
- * <p>Token 5 分钟有效，内存缓存复用，超时（默认 270 秒）自动重新获取；
- * 网络异常/5xx 重试 3 次间隔 3 秒。
+ * <p>Token 每次实时调用浩微 getToken 获取，不做缓存（避免失效 token 被复用，
+ * 登录失败时责任边界清晰）；网络异常/5xx 重试 3 次间隔 3 秒。
  */
 @Component
 public class ArchiveClient {
@@ -42,21 +42,14 @@ public class ArchiveClient {
     private final ObjectMapper objectMapper;
     private final String baseUrl;
     private final String clientId;
-    private final long tokenValidMillis;
-
-    /** Token 缓存：非空且未过有效期则复用 */
-    private volatile String cachedToken;
-    private volatile long tokenObtainedAt;
 
     public ArchiveClient(@Value("${archive.base-url}") String baseUrl,
                          @Value("${archive.client-id}") String clientId,
-                         @Value("${archive.token-valid-seconds:270}") long tokenValidSeconds,
                          @Value("${archive.connect-timeout-ms:5000}") int connectTimeoutMs,
                          @Value("${archive.read-timeout-ms:30000}") int readTimeoutMs,
                          ObjectMapper objectMapper) {
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.clientId = clientId;
-        this.tokenValidMillis = tokenValidSeconds * 1000L;
         this.objectMapper = objectMapper;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(connectTimeoutMs);
@@ -64,34 +57,17 @@ public class ArchiveClient {
         this.restTemplate = new RestTemplate(factory);
     }
 
-    /** 获取 Token：缓存未过期则复用，否则重新获取 */
+    /** 获取 Token：每次实时调用浩微 getToken，不做缓存 */
     public String getToken() {
-        String token = cachedToken;
-        if (token != null && System.currentTimeMillis() - tokenObtainedAt < tokenValidMillis) {
-            return token;
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("clientid", clientId);
+        JsonNode node = postForm(PATH_GET_TOKEN, form);
+        String token = node.path("data").path("token").asText();
+        if (token == null || token.isEmpty()) {
+            throw new ArchiveCallException("200", "获取Token失败：响应中无 token 字段");
         }
-        synchronized (this) {
-            token = cachedToken;
-            if (token != null && System.currentTimeMillis() - tokenObtainedAt < tokenValidMillis) {
-                return token;
-            }
-            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-            form.add("clientid", clientId);
-            JsonNode node = postForm(PATH_GET_TOKEN, form);
-            String newToken = node.path("data").path("token").asText();
-            if (newToken == null || newToken.isEmpty()) {
-                throw new ArchiveCallException("200", "获取Token失败：响应中无 token 字段");
-            }
-            cachedToken = newToken;
-            tokenObtainedAt = System.currentTimeMillis();
-            log.info("archive getToken success");
-            return newToken;
-        }
-    }
-
-    /** 强制失效缓存的 Token（同步接口返回鉴权错误时调用，下次重新获取） */
-    public void invalidateToken() {
-        cachedToken = null;
+        log.info("archive getToken success");
+        return token;
     }
 
     /** 同步组织架构：rows 按 dpLv 升序（父部门先于子部门） */

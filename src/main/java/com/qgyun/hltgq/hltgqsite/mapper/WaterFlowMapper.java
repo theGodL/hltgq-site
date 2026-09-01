@@ -268,6 +268,7 @@ public interface WaterFlowMapper {
             "AND f.tm &gt;= #{startTime} " +
             "AND f.tm &lt;= #{endTime} " +
             "AND f.z IS NOT NULL " +
+            "AND f.z NOT IN (-999, -9991) " +
             "ORDER BY f.stcd, f.tm ASC" +
             "</script>")
     List<Map<String, Object>> selectPeriodRawRecords(
