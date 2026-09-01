@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>旱情趋势分析</title>
+<script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-data-zoom.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden}
+.breadcrumb{color:#999;font-size:13px;flex-shrink:0}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.main-layout{display:flex;gap:12px;flex:1;min-height:0;min-width:0;width:100%;align-items:stretch}
+.left-panel{width:260px;max-width:100%;flex-shrink:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.left-search{padding:14px 14px 10px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.search-box{flex:1;position:relative;min-width:0}
+.search-box input{width:100%;height:32px;border:1px solid #d9d9d9;border-radius:16px;padding:0 12px 0 34px;font-size:13px;outline:none;background:#fff;color:#333}
+.search-box input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.search-box .ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#bfbfbf;pointer-events:none;display:flex}
+.search-collapse{width:28px;height:28px;border:none;background:transparent;cursor:pointer;color:#999;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.search-collapse:hover{background:#f5f5f5;color:#1677ff}
+.left-list{flex:1;overflow-y:auto;min-height:0;padding:0 0 8px}
+.list-item{padding:12px 18px 12px 15px;cursor:pointer;color:#333;font-size:14px;line-height:22px;user-select:none;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:3px solid transparent}
+.list-item:hover{background:#f5f5f5}
+.list-item.active{background:#e6f4ff;color:#1677ff;font-weight:500;border-left-color:#1677ff}
+
+.right-panel{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.chart-card{flex:1;min-height:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px;display:flex;flex-direction:column}
+.filter-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;flex-shrink:0}
+.filter-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.filter-left .lbl{color:#666;font-size:14px;white-space:nowrap}
+.date-range{display:flex;align-items:center;gap:6px}
+.date-range .field{width:140px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;color:#333}
+.date-range .field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.date-sep{color:#999}
+.filter-actions{display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.chart-box{flex:1;min-height:280px;width:100%}
+
+@media (max-width:1100px){
+  .main-layout{flex-direction:column}
+  .left-panel{width:100%;max-height:220px}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>旱情监测</span><span class="sep">/</span>
+    <span class="cur">旱情趋势分析</span>
+  </div>
+
+  <div class="main-layout">
+    <div class="left-panel">
+      <div class="left-search">
+        <div class="search-box">
+          <span class="ico">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </span>
+          <input type="text" id="station-search" placeholder="请输入关键字" autocomplete="off">
+        </div>
+        <button type="button" class="search-collapse" id="station-collapse" title="收起/展开">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h10M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="left-list" id="station-list"></div>
+    </div>
+
+    <div class="right-panel">
+      <div class="chart-card">
+        <div class="filter-bar">
+          <div class="filter-left">
+            <span class="lbl">日期</span>
+            <div class="date-range">
+              <input type="date" class="field" id="start-date" value="2027-07-14">
+              <span class="date-sep">—</span>
+              <input type="date" class="field" id="end-date" value="2027-07-28">
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button type="button" class="btn btn-primary" id="query-btn">查询</button>
+            <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+          </div>
+        </div>
+        <div class="chart-box" id="chart-trend"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function $(id) { return document.getElementById(id); }
+
+  var DEPTHS = [
+    { key: 'd10', name: '10cm', color: '#867AF7', base: 22 },
+    { key: 'd20', name: '20cm', color: '#F0978E', base: 24 },
+    { key: 'd30', name: '30cm', color: '#66C0DC', base: 26 },
+    { key: 'd40', name: '40cm', color: '#F3B25F', base: 25 },
+    { key: 'd50', name: '50cm', color: '#5D7EE9', base: 27 },
+    { key: 'd60', name: '60cm', color: '#87CF9A', base: 28 },
+    { key: 'd80', name: '80cm', color: '#8665D3', base: 29 },
+    { key: 'd100', name: '100cm', color: '#5BB4D8', base: 30 }
+  ];
+
+  var STATIONS = [
+    { id: 1, name: '太湖毕岭', seed: 11 },
+    { id: 2, name: '望江', seed: 22 },
+    { id: 3, name: '太怀监测站', seed: 33 },
+    { id: 4, name: '宿松', seed: 44 },
+    { id: 5, name: '怀宁麻塘湖', seed: 55 }
+  ];
+
+  var DEFAULT_START = '2027-07-14';
+  var DEFAULT_END = '2027-07-28';
+  var activeId = 1;
+  var listCollapsed = false;
+  var chart = null;
+  var queryStart = DEFAULT_START;
+  var queryEnd = DEFAULT_END;
+
+  function rand(seed) {
+    var x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  }
+
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+  function parseDate(str) {
+    var p = String(str || '').split('-');
+    if (p.length < 3) return null;
+    return new Date(+p[0], +p[1] - 1, +p[2], 0, 0, 0, 0);
+  }
+
+  function getActive() {
+    return STATIONS.find(function (s) { return s.id === activeId; }) || STATIONS[0];
+  }
+
+  function buildSeries(station, startStr, endStr) {
+    var start = parseDate(startStr);
+    var end = parseDate(endStr);
+    var empty = { labels: [], series: {} };
+    DEPTHS.forEach(function (d) { empty.series[d.key] = []; });
+    if (!start || !end || end < start) return empty;
+
+    var labels = [];
+    var series = {};
+    DEPTHS.forEach(function (d) { series[d.key] = []; });
+
+    var seed = station.seed || 1;
+    var cur = new Date(start.getTime());
+    // 每天采 2 个点（04:01 / 16:01），贴近设计稿双行时间轴
+    var hours = [4, 16];
+    var i = 0;
+    while (cur <= end) {
+      for (var h = 0; h < hours.length; h++) {
+        var md = pad2(cur.getMonth() + 1) + '/' + pad2(cur.getDate());
+        var hm = pad2(hours[h]) + ':01';
+        labels.push(md + '\n' + hm);
+        DEPTHS.forEach(function (d, di) {
+          var wave = Math.sin((i + di * 0.7) / 3.2) * 3.2;
+          var noise = (rand(seed * 13 + i * 7.1 + di * 19) - 0.5) * 2.4;
+          var val = d.base + wave + noise;
+          if (val < 15) val = 15 + rand(seed + i + di);
+          if (val > 35) val = 35 - rand(seed + i + di);
+          series[d.key].push(+val.toFixed(1));
+        });
+        i++;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    return { labels: labels, series: series };
+  }
+
+  function renderList() {
+    var q = ($('station-search').value || '').trim();
+    var html = STATIONS.filter(function (s) {
+      return !q || s.name.indexOf(q) >= 0;
+    }).map(function (s) {
+      return '<div class="list-item' + (s.id === activeId ? ' active' : '') + '" data-id="' + s.id + '">' + s.name + '</div>';
+    }).join('');
+    $('station-list').innerHTML = html || '<div style="padding:24px;text-align:center;color:#bbb">无匹配站点</div>';
+  }
+
+  function ensureChart() {
+    var el = $('chart-trend');
+    if (!el || !window.echarts) return null;
+    if (!chart) chart = echarts.init(el);
+    return chart;
+  }
+
+  function renderChart() {
+    var station = getActive();
+    var data = buildSeries(station, queryStart, queryEnd);
+    var c = ensureChart();
+    if (!c) return;
+    var gridBottom = (window.CHART_DATA_ZOOM_GRID_BOTTOM || 58) + 28;
+    var zoom = typeof window.buildChartDataZoom === 'function' ? window.buildChartDataZoom(0, 100) : [];
+    var legendNames = DEPTHS.map(function (d) { return d.name; });
+    var seriesOpt = DEPTHS.map(function (d) {
+      return {
+        name: d.name,
+        type: 'line',
+        smooth: true,
+        symbol: 'emptyCircle',
+        symbolSize: 7,
+        showSymbol: true,
+        itemStyle: { color: d.color },
+        lineStyle: {
+          color: d.color,
+          width: 2,
+          shadowColor: 'rgba(0,0,0,0.08)',
+          shadowBlur: 6,
+          shadowOffsetY: 3
+        },
+        data: data.series[d.key]
+      };
+    });
+
+    c.setOption({
+      color: DEPTHS.map(function (d) { return d.color; }),
+      tooltip: {
+        trigger: 'axis',
+        valueFormatter: function (v) { return v + '%'; }
+      },
+      legend: {
+        bottom: (window.CHART_DATA_ZOOM_GRID_BOTTOM || 58) - 6,
+        data: legendNames,
+        itemWidth: 18,
+        itemHeight: 10,
+        textStyle: { color: '#666', fontSize: 12 }
+      },
+      grid: { left: 16, right: 24, top: 24, bottom: gridBottom, containLabel: true },
+      dataZoom: zoom,
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: data.labels,
+        axisLabel: {
+          color: '#999',
+          fontSize: 11,
+          lineHeight: 14,
+          interval: 'auto'
+        },
+        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisTick: { show: false }
+      },
+      yAxis: {
+        type: 'value',
+        name: '%',
+        min: 15,
+        max: 35,
+        interval: 4,
+        nameTextStyle: { color: '#999', fontSize: 12, padding: [0, 28, 0, 0] },
+        axisLabel: { color: '#999', formatter: '{value}' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: seriesOpt
+    }, true);
+  }
+
+  function loadStation(id) {
+    activeId = id;
+    renderList();
+    renderChart();
+    setTimeout(function () { if (chart) chart.resize(); }, 40);
+  }
+
+  function doQuery() {
+    queryStart = $('start-date').value || DEFAULT_START;
+    queryEnd = $('end-date').value || DEFAULT_END;
+    if (parseDate(queryEnd) < parseDate(queryStart)) {
+      queryEnd = queryStart;
+      $('end-date').value = queryEnd;
+    }
+    renderChart();
+  }
+
+  function doReset() {
+    $('start-date').value = DEFAULT_START;
+    $('end-date').value = DEFAULT_END;
+    queryStart = DEFAULT_START;
+    queryEnd = DEFAULT_END;
+    renderChart();
+  }
+
+  $('station-list').addEventListener('click', function (e) {
+    var item = e.target.closest('.list-item');
+    if (!item) return;
+    loadStation(+item.dataset.id);
+  });
+  $('station-search').addEventListener('input', renderList);
+  $('station-collapse').addEventListener('click', function () {
+    listCollapsed = !listCollapsed;
+    $('station-list').style.display = listCollapsed ? 'none' : '';
+  });
+  $('query-btn').addEventListener('click', doQuery);
+  $('reset-btn').addEventListener('click', doReset);
+
+  window.addEventListener('resize', function () {
+    if (chart) chart.resize();
+  });
+
+  loadStation(1);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运行管理决策</title>
+<script src="./lib/echarts.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden}
+.breadcrumb{color:#999;font-size:13px;flex-shrink:0}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+
+.filter-card{padding:14px 16px;flex-shrink:0}
+.filter-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.filter-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.filter-left .lbl{color:#666;font-size:14px;white-space:nowrap}
+.date-range{display:flex;align-items:center;gap:6px}
+.date-range .field{width:140px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;color:#333}
+.date-range .field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.date-sep{color:#999}
+.filter-actions{display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+
+.main-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px;padding-right:2px}
+
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;flex-shrink:0}
+.stat-card{position:relative;padding:22px 24px;min-height:110px;overflow:hidden}
+.stat-card .label{color:#999;font-size:13px;margin-bottom:14px;line-height:20px}
+.stat-card .value{font-size:32px;font-weight:700;color:#1f1f1f;line-height:1.2}
+.stat-deco{position:absolute;right:-18px;top:-18px;width:96px;height:96px;border-radius:50%;pointer-events:none;opacity:.9}
+.stat-deco.orange{background:radial-gradient(circle at 40% 40%,#FFE4C4 0%,#FFD4A8 55%,transparent 70%)}
+.stat-deco.cyan{background:radial-gradient(circle at 40% 40%,#D8F3F5 0%,#BFECEF 55%,transparent 70%)}
+.stat-deco.purple{background:radial-gradient(circle at 40% 40%,#E6E0F8 0%,#D4CBF3 55%,transparent 70%)}
+
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:360px}
+.chart-card{padding:16px;display:flex;flex-direction:column;min-height:360px}
+.chart-title{font-size:14px;font-weight:700;color:#1f1f1f;margin-bottom:8px;line-height:22px;flex-shrink:0}
+.chart-box{flex:1;min-height:280px;width:100%}
+
+@media (max-width:1100px){
+  .stats-row{grid-template-columns:1fr}
+  .charts-row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>智能决策</span><span class="sep">/</span>
+    <span class="cur">运行管理决策</span>
+  </div>
+
+  <div class="card filter-card">
+    <div class="filter-bar">
+      <div class="filter-left">
+        <span class="lbl">日期</span>
+        <div class="date-range">
+          <input type="date" class="field" id="start-date" value="2027-05-18">
+          <span class="date-sep">—</span>
+          <input type="date" class="field" id="end-date" value="2027-05-21">
+        </div>
+      </div>
+      <div class="filter-actions">
+        <button type="button" class="btn btn-primary" id="query-btn">查询</button>
+        <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-scroll" id="main-scroll">
+    <div class="stats-row" id="stats-row">
+      <div class="card stat-card">
+        <div class="stat-deco orange"></div>
+        <div class="label">巡查总次数</div>
+        <div class="value" id="stat-patrol">45</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-deco cyan"></div>
+        <div class="label">问题上报数</div>
+        <div class="value" id="stat-issue">26</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-deco purple"></div>
+        <div class="label">工单数</div>
+        <div class="value" id="stat-order">13</div>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="card chart-card">
+        <div class="chart-title">问题状态分布</div>
+        <div class="chart-box" id="chart-issue"></div>
+      </div>
+      <div class="card chart-card">
+        <div class="chart-title">工单状态分布</div>
+        <div class="chart-box" id="chart-order"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function $(id) { return document.getElementById(id); }
+
+  var BAR_COLOR = '#7A96EB';
+  var GHOST_COLOR = '#F0F2F5';
+  var DEFAULT_START = '2027-05-18';
+  var DEFAULT_END = '2027-05-21';
+
+  var MOCK = {
+    summary: { patrol: 45, issue: 26, order: 13 },
+    issueStatus: [
+      { name: '待处理', value: 18 },
+      { name: '处理中', value: 11 },
+      { name: '已转工单', value: 4 },
+      { name: '已关闭', value: 10 },
+      { name: '已作废', value: 15 }
+    ],
+    orderStatus: [
+      { name: '待指派', value: 14 },
+      { name: '处理中', value: 4 },
+      { name: '已关闭', value: 18 },
+      { name: '已取消', value: 7 }
+    ]
+  };
+
+  var charts = { issue: null, order: null };
+
+  function parseDate(str) {
+    var p = String(str || '').split('-');
+    if (p.length < 3) return null;
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  }
+
+  function ensureChart(key, el) {
+    if (!el || !window.echarts) return null;
+    if (!charts[key]) charts[key] = echarts.init(el);
+    return charts[key];
+  }
+
+  /** 带灰底幽灵柱 + 数值标注的柱状图 */
+  function barOption(categories, values) {
+    var yMax = 20;
+    var ghost = categories.map(function () { return yMax; });
+    return {
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: function (params) {
+          var p = (params || []).find(function (it) { return it.seriesName === '数量'; });
+          if (!p) return '';
+          return p.name + '<br/>' + p.marker + ' ' + p.value;
+        }
+      },
+      grid: { left: 12, right: 12, top: 28, bottom: 8, containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: categories,
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLabel: { color: '#666', fontSize: 12, interval: 0 }
+      },
+      yAxis: {
+        type: 'value',
+        min: 0,
+        max: yMax,
+        interval: 4,
+        axisLabel: { color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [
+        {
+          name: '底柱',
+          type: 'bar',
+          barGap: '-100%',
+          barMaxWidth: 52,
+          data: ghost,
+          itemStyle: { color: GHOST_COLOR, borderRadius: [4, 4, 0, 0] },
+          silent: true,
+          z: 1,
+          tooltip: { show: false }
+        },
+        {
+          name: '数量',
+          type: 'bar',
+          barMaxWidth: 52,
+          data: values,
+          itemStyle: { color: BAR_COLOR, borderRadius: [4, 4, 0, 0] },
+          label: {
+            show: true,
+            position: 'top',
+            color: '#666',
+            fontSize: 12,
+            distance: 4
+          },
+          z: 2
+        }
+      ]
+    };
+  }
+
+  function renderSummary(s) {
+    $('stat-patrol').textContent = s.patrol;
+    $('stat-issue').textContent = s.issue;
+    $('stat-order').textContent = s.order;
+  }
+
+  function renderCharts(data) {
+    var issueCats = data.issueStatus.map(function (d) { return d.name; });
+    var issueVals = data.issueStatus.map(function (d) { return d.value; });
+    var orderCats = data.orderStatus.map(function (d) { return d.name; });
+    var orderVals = data.orderStatus.map(function (d) { return d.value; });
+
+    var c1 = ensureChart('issue', $('chart-issue'));
+    if (c1) c1.setOption(barOption(issueCats, issueVals), true);
+
+    var c2 = ensureChart('order', $('chart-order'));
+    if (c2) c2.setOption(barOption(orderCats, orderVals), true);
+  }
+
+  function loadData() {
+    // mock：按日期微调，保证查询有反馈
+    var start = $('start-date').value || DEFAULT_START;
+    var end = $('end-date').value || DEFAULT_END;
+    var s = parseDate(start);
+    var e = parseDate(end);
+    var days = 1;
+    if (s && e && e >= s) {
+      days = Math.round((e - s) / 86400000) + 1;
+    }
+    var factor = Math.max(0.6, Math.min(1.4, days / 4));
+    var data = {
+      summary: {
+        patrol: Math.round(MOCK.summary.patrol * factor),
+        issue: Math.round(MOCK.summary.issue * factor),
+        order: Math.round(MOCK.summary.order * factor)
+      },
+      issueStatus: MOCK.issueStatus.map(function (d) {
+        return { name: d.name, value: Math.min(20, Math.max(1, Math.round(d.value * factor))) };
+      }),
+      orderStatus: MOCK.orderStatus.map(function (d) {
+        return { name: d.name, value: Math.min(20, Math.max(1, Math.round(d.value * factor))) };
+      })
+    };
+    renderSummary(data.summary);
+    renderCharts(data);
+    setTimeout(resizeCharts, 40);
+  }
+
+  function doQuery() {
+    var start = $('start-date').value || DEFAULT_START;
+    var end = $('end-date').value || DEFAULT_END;
+    if (parseDate(end) < parseDate(start)) {
+      $('end-date').value = start;
+    }
+    loadData();
+  }
+
+  function doReset() {
+    $('start-date').value = DEFAULT_START;
+    $('end-date').value = DEFAULT_END;
+    loadData();
+  }
+
+  function resizeCharts() {
+    Object.keys(charts).forEach(function (k) {
+      if (charts[k]) charts[k].resize();
+    });
+  }
+
+  $('query-btn').addEventListener('click', doQuery);
+  $('reset-btn').addEventListener('click', doReset);
+  window.addEventListener('resize', resizeCharts);
+
+  loadData();
+})();
+</script>
+</body>
+</html>

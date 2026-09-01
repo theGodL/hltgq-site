@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>水质演变趋势</title>
+<script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-data-zoom.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden}
+.breadcrumb{color:#999;font-size:13px;flex-shrink:0}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.main-layout{display:flex;gap:12px;flex:1;min-height:0;min-width:0;width:100%;align-items:stretch}
+.left-panel{width:260px;max-width:100%;flex-shrink:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.left-search{padding:14px 14px 10px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.search-box{flex:1;position:relative;min-width:0}
+.search-box input{width:100%;height:32px;border:1px solid #d9d9d9;border-radius:16px;padding:0 12px 0 34px;font-size:13px;outline:none;background:#fff;color:#333}
+.search-box input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.search-box .ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#bfbfbf;pointer-events:none;display:flex}
+.search-collapse{width:28px;height:28px;border:none;background:transparent;cursor:pointer;color:#999;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.search-collapse:hover{background:#f5f5f5;color:#1677ff}
+.left-list{flex:1;overflow-y:auto;min-height:0;padding:0 0 8px}
+.list-item{padding:12px 18px 12px 15px;cursor:pointer;color:#333;font-size:14px;line-height:22px;user-select:none;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:3px solid transparent}
+.list-item:hover{background:#f5f5f5}
+.list-item.active{background:#e6f4ff;color:#1677ff;font-weight:500;border-left-color:#1677ff}
+
+.right-panel{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;overflow:hidden;gap:12px}
+
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);overflow:hidden;flex-shrink:0}
+.stat-card{padding:20px 20px;position:relative;min-height:96px}
+.stat-card:not(:last-child)::after{content:'';position:absolute;right:0;top:22%;bottom:22%;width:1px;background:#f0f0f0}
+.stat-card .label{color:#999;font-size:13px;margin-bottom:12px;line-height:20px}
+.stat-card .value{font-size:26px;font-weight:700;color:#1f1f1f;line-height:1.2}
+.stat-card .value .unit{font-size:13px;font-weight:400;color:#999;margin-left:6px}
+
+.chart-card{flex:1;min-height:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 16px 12px;display:flex;flex-direction:column}
+.chart-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;flex-shrink:0}
+.chart-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#1f1f1f;line-height:22px}
+.chart-title::before{content:'';width:3px;height:14px;background:#1677ff;border-radius:1px;flex-shrink:0}
+.date-range{display:flex;align-items:center;gap:6px}
+.date-range .field{width:140px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;color:#333}
+.date-range .field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.date-sep{color:#999}
+.chart-box{flex:1;min-height:280px;width:100%}
+
+@media (max-width:1100px){
+  .main-layout{flex-direction:column}
+  .left-panel{width:100%;max-height:220px}
+  .stats-row{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:640px){
+  .stats-row{grid-template-columns:1fr}
+  .stat-card::after{display:none !important}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>水质监测</span><span class="sep">/</span>
+    <span class="cur">水质演变趋势</span>
+  </div>
+
+  <div class="main-layout">
+    <div class="left-panel">
+      <div class="left-search">
+        <div class="search-box">
+          <span class="ico">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </span>
+          <input type="text" id="station-search" placeholder="请输入关键字" autocomplete="off">
+        </div>
+        <button type="button" class="search-collapse" id="station-collapse" title="收起/展开">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h10M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="left-list" id="station-list"></div>
+    </div>
+
+    <div class="right-panel">
+      <div class="stats-row" id="stats-row"></div>
+
+      <div class="chart-card">
+        <div class="chart-hd">
+          <div class="chart-title">主要水质指标变化趋势</div>
+          <div class="date-range">
+            <input type="date" class="field" id="start-date" value="2027-10-01">
+            <span class="date-sep">—</span>
+            <input type="date" class="field" id="end-date" value="2027-10-29">
+          </div>
+        </div>
+        <div class="chart-box" id="chart-trend"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function $(id) { return document.getElementById(id); }
+
+  var STATIONS = [
+    {
+      id: 1, name: '太湖毕岭',
+      summary: { grade: 'II 类', do: 7.8, codmn: 3.2, nh3: 0.45 },
+      seed: 11
+    },
+    {
+      id: 2, name: '望江',
+      summary: { grade: 'III 类', do: 6.9, codmn: 4.1, nh3: 0.62 },
+      seed: 22
+    },
+    {
+      id: 3, name: '太怀监测站',
+      summary: { grade: 'II 类', do: 7.5, codmn: 2.8, nh3: 0.38 },
+      seed: 33
+    },
+    {
+      id: 4, name: '宿松',
+      summary: { grade: 'III 类', do: 6.4, codmn: 4.6, nh3: 0.71 },
+      seed: 44
+    },
+    {
+      id: 5, name: '怀宁麻塘湖',
+      summary: { grade: 'II 类', do: 7.2, codmn: 3.5, nh3: 0.51 },
+      seed: 55
+    }
+  ];
+
+  var activeId = 1;
+  var listCollapsed = false;
+  var chart = null;
+
+  function rand(seed) {
+    var x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  }
+
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+  function parseDate(str) {
+    var p = String(str || '').split('-');
+    if (p.length < 3) return null;
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  }
+
+  function fmtAxis(d) {
+    return (d.getMonth() + 1) + '-' + d.getDate();
+  }
+
+  function buildSeries(station, startStr, endStr) {
+    var start = parseDate(startStr);
+    var end = parseDate(endStr);
+    if (!start || !end || end < start) {
+      return { labels: [], ph: [], doVal: [], nh3: [], turb: [] };
+    }
+    var labels = [];
+    var ph = [];
+    var doVal = [];
+    var nh3 = [];
+    var turb = [];
+    var cur = new Date(start.getTime());
+    var i = 0;
+    var seed = station.seed || 1;
+    while (cur <= end) {
+      labels.push(fmtAxis(cur));
+      var t = rand(seed * 17 + i * 3.1);
+      var t2 = rand(seed * 29 + i * 5.7);
+      var t3 = rand(seed * 41 + i * 2.3);
+      ph.push(+(6.8 + t * 0.6).toFixed(2));
+      doVal.push(+(6.2 + t2 * 1.8).toFixed(2));
+      nh3.push(+(0.2 + t3 * 0.5).toFixed(2));
+      // 浊度：中旬附近出现尖峰，贴近设计稿
+      var day = cur.getDate();
+      var base = 8 + t * 6;
+      if (day >= 6 && day <= 9) base = 35 + t2 * 15;
+      else if (day >= 10 && day <= 12) base = 18 + t * 8;
+      turb.push(+base.toFixed(1));
+      cur.setDate(cur.getDate() + 1);
+      i++;
+    }
+    return { labels: labels, ph: ph, doVal: doVal, nh3: nh3, turb: turb };
+  }
+
+  function getActive() {
+    return STATIONS.find(function (s) { return s.id === activeId; }) || STATIONS[0];
+  }
+
+  function renderList() {
+    var q = ($('station-search').value || '').trim();
+    var html = STATIONS.filter(function (s) {
+      return !q || s.name.indexOf(q) >= 0;
+    }).map(function (s) {
+      return '<div class="list-item' + (s.id === activeId ? ' active' : '') + '" data-id="' + s.id + '">' + s.name + '</div>';
+    }).join('');
+    $('station-list').innerHTML = html || '<div style="padding:24px;text-align:center;color:#bbb">无匹配站点</div>';
+  }
+
+  function renderStats(summary) {
+    var items = [
+      { label: '当前综合水质等级', value: summary.grade, unit: '' },
+      { label: '溶解氧', value: summary.do, unit: 'mg/L' },
+      { label: '高锰酸盐指数', value: summary.codmn, unit: 'mg/L' },
+      { label: '氨氮', value: summary.nh3, unit: 'mg/L' }
+    ];
+    $('stats-row').innerHTML = items.map(function (it) {
+      return '<div class="stat-card"><div class="label">' + it.label + '</div><div class="value">' +
+        it.value + (it.unit ? '<span class="unit">' + it.unit + '</span>' : '') +
+        '</div></div>';
+    }).join('');
+  }
+
+  function ensureChart() {
+    var el = $('chart-trend');
+    if (!el || !window.echarts) return null;
+    if (!chart) chart = echarts.init(el);
+    return chart;
+  }
+
+  function renderChart() {
+    var station = getActive();
+    var series = buildSeries(station, $('start-date').value, $('end-date').value);
+    var c = ensureChart();
+    if (!c) return;
+    var gridBottom = window.CHART_DATA_ZOOM_GRID_BOTTOM || 58;
+    var zoom = typeof window.buildChartDataZoom === 'function' ? window.buildChartDataZoom(0, 100) : [];
+    var colors = {
+      ph: '#5A6FC0',
+      do: '#9ECA7F',
+      nh3: '#E13C39',
+      turb: '#EFB041'
+    };
+    c.setOption({
+      color: [colors.ph, colors.do, colors.nh3, colors.turb],
+      tooltip: { trigger: 'axis' },
+      legend: {
+        top: 4,
+        data: ['pH值', '溶解氧(mg/L)', '氨氮(mg/L)', '浊度(NTU)']
+      },
+      grid: { left: 16, right: 56, top: 48, bottom: gridBottom, containLabel: true },
+      dataZoom: zoom,
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: series.labels,
+        axisLabel: { color: '#999', fontSize: 11 },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: [
+        {
+          type: 'value',
+          name: 'pH / DO',
+          min: 0,
+          max: 8,
+          nameTextStyle: { color: '#5A6FC0', fontSize: 11 },
+          axisLabel: { color: '#5A6FC0' },
+          axisLine: { show: true, lineStyle: { color: '#5A6FC0' } },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value',
+          name: '氨氮 / 浊度',
+          min: 0,
+          max: 50,
+          nameTextStyle: { color: '#EFB041', fontSize: 11 },
+          axisLabel: { color: '#EFB041' },
+          axisLine: { show: true, lineStyle: { color: '#EFB041' } },
+          splitLine: { show: false }
+        }
+      ],
+      series: [
+        {
+          name: 'pH值', type: 'line', smooth: true,
+          symbol: 'emptyCircle', symbolSize: 7,
+          itemStyle: { color: colors.ph }, lineStyle: { color: colors.ph, width: 2 },
+          data: series.ph
+        },
+        {
+          name: '溶解氧(mg/L)', type: 'line', smooth: true,
+          symbol: 'emptyCircle', symbolSize: 7,
+          itemStyle: { color: colors.do }, lineStyle: { color: colors.do, width: 2 },
+          data: series.doVal
+        },
+        {
+          name: '氨氮(mg/L)', type: 'line', smooth: true, yAxisIndex: 1,
+          symbol: 'emptyCircle', symbolSize: 7,
+          itemStyle: { color: colors.nh3 }, lineStyle: { color: colors.nh3, width: 2 },
+          data: series.nh3
+        },
+        {
+          name: '浊度(NTU)', type: 'line', smooth: true, yAxisIndex: 1,
+          symbol: 'emptyCircle', symbolSize: 7,
+          itemStyle: { color: colors.turb }, lineStyle: { color: colors.turb, width: 2 },
+          data: series.turb
+        }
+      ]
+    }, true);
+  }
+
+  function loadStation(id) {
+    activeId = id;
+    var station = getActive();
+    renderList();
+    renderStats(station.summary);
+    renderChart();
+    setTimeout(function () { if (chart) chart.resize(); }, 40);
+  }
+
+  $('station-list').addEventListener('click', function (e) {
+    var item = e.target.closest('.list-item');
+    if (!item) return;
+    loadStation(+item.dataset.id);
+  });
+  $('station-search').addEventListener('input', renderList);
+  $('station-collapse').addEventListener('click', function () {
+    listCollapsed = !listCollapsed;
+    $('station-list').style.display = listCollapsed ? 'none' : '';
+  });
+  $('start-date').addEventListener('change', renderChart);
+  $('end-date').addEventListener('change', renderChart);
+
+  window.addEventListener('resize', function () {
+    if (chart) chart.resize();
+  });
+
+  loadStation(1);
+})();
+</script>
+</body>
+</html>

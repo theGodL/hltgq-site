@@ -144,6 +144,27 @@ public class WaterForecastController {
         QueryWrapper<LongPredictTenday> tendayWrapper = new QueryWrapper<>();
         tendayWrapper.eq("\"record_id\"", id).orderByAsc("\"predict_date\"");
         List<LongPredictTenday> tendays = longTendayMapper.selectList(tendayWrapper);
+        // 计算展示字段：最大/最小旬水量对应标签、预测起止日期（非落库，随 record 一并返回）
+        Double maxVolume = null;
+        Double minVolume = null;
+        for (LongPredictTenday t : tendays) {
+            Double v = t.getPredictVolume();
+            if (v == null) {
+                continue;
+            }
+            if (maxVolume == null || v > maxVolume) {
+                maxVolume = v;
+                record.setMaxTendayLabel(t.getTendayLabel());
+            }
+            if (minVolume == null || v < minVolume) {
+                minVolume = v;
+                record.setMinTendayLabel(t.getTendayLabel());
+            }
+        }
+        if (!tendays.isEmpty()) {
+            record.setStartDate(tendays.get(0).getPredictDate());
+            record.setEndDate(tendays.get(tendays.size() - 1).getPredictDate());
+        }
         QueryWrapper<LongPredictMonthly> monthlyWrapper = new QueryWrapper<>();
         monthlyWrapper.eq("\"record_id\"", id).orderByAsc("\"stat_date\"");
         List<LongPredictMonthly> monthlies = longMonthlyMapper.selectList(monthlyWrapper);

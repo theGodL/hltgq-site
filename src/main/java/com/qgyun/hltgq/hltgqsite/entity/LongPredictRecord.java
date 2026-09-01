@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.time.LocalDateTime;
+
 /**
  * 中长期来水预测方案主表（t_auto_hltgq_water_long_predict_record）。
  */
@@ -80,4 +82,20 @@ public class LongPredictRecord extends BaseRecordEntity {
     /** SMAPE 指标（val_metrics） */
     @TableField("\"smape\"")
     private Double smape;
+
+    /** 最大旬水量对应旬标签（如"7月中旬"），详情接口按 tendays 计算返回，非落库字段 */
+    @TableField(exist = false)
+    private String maxTendayLabel;
+
+    /** 最小旬水量对应旬标签（如"12月下旬"），详情接口按 tendays 计算返回，非落库字段 */
+    @TableField(exist = false)
+    private String minTendayLabel;
+
+    /** 预测起始日期（tendays 首行 predict_date），详情接口计算返回，非落库字段 */
+    @TableField(exist = false)
+    private LocalDateTime startDate;
+
+    /** 预测结束日期（tendays 末行 predict_date），详情接口计算返回，非落库字段 */
+    @TableField(exist = false)
+    private LocalDateTime endDate;
 }

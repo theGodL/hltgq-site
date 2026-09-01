@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>配水决策</title>
+<script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-data-zoom.js"></script>
+<script src="./lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden}
+.breadcrumb{color:#999;font-size:13px;flex-shrink:0}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.main-layout{display:flex;gap:12px;flex:1;min-height:0;min-width:0;width:100%;align-items:stretch}
+.left-panel{width:260px;max-width:100%;flex-shrink:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.left-search{padding:14px 14px 10px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.search-box{flex:1;position:relative;min-width:0}
+.search-box input{width:100%;height:32px;border:1px solid #d9d9d9;border-radius:16px;padding:0 12px 0 34px;font-size:13px;outline:none;background:#fff;color:#333}
+.search-box input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.search-box .ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#bfbfbf;pointer-events:none;display:flex}
+.search-collapse{width:28px;height:28px;border:none;background:transparent;cursor:pointer;color:#999;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.search-collapse:hover{background:#f5f5f5;color:#1677ff}
+.left-list{flex:1;overflow-y:auto;min-height:0;padding:0 0 8px}
+.list-item{padding:12px 18px 12px 15px;cursor:pointer;color:#333;font-size:14px;line-height:22px;user-select:none;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:3px solid transparent}
+.list-item:hover{background:#f5f5f5}
+.list-item.active{background:#e6f4ff;color:#1677ff;font-weight:500;border-left-color:#1677ff}
+
+.right-panel{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.right-scroll{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;min-width:0;display:flex;flex-direction:column;gap:16px;padding-right:2px}
+
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);overflow:hidden;flex-shrink:0}
+.stat-card{padding:20px 20px;position:relative;min-height:96px}
+.stat-card:not(:last-child)::after{content:'';position:absolute;right:0;top:22%;bottom:22%;width:1px;background:#f0f0f0}
+.stat-card .label{color:#999;font-size:13px;margin-bottom:12px;line-height:20px}
+.stat-card .value{font-size:26px;font-weight:700;color:#1f1f1f;line-height:1.2}
+.stat-card .value .unit{font-size:13px;font-weight:400;color:#999;margin-left:6px}
+
+.chart-card{padding:18px 16px 14px}
+.chart-card .chart-title{font-size:14px;font-weight:700;color:#1f1f1f;margin-bottom:4px;line-height:22px}
+.chart-card .chart-unit{font-size:12px;color:#999;margin-bottom:10px}
+.chart-box{width:100%;height:340px}
+
+.detail-card{padding:16px}
+.detail-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+.detail-hd h4{font-size:14px;font-weight:700;color:#1f1f1f}
+.detail-tools{display:flex;align-items:center;gap:8px}
+.detail-tools .field{width:180px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;color:#333}
+.detail-tools .field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
+.btn-default{color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+
+.tbl-wrap{overflow-x:auto;max-width:100%;scrollbar-width:none}
+.tbl-wrap::-webkit-scrollbar{height:0;display:none}
+.tbl-sticky-x{display:none;height:14px;overflow-x:auto;overflow-y:hidden;background:#fff;border-top:1px solid #f0f0f0;box-shadow:0 -2px 8px rgba(0,0,0,.04)}
+.tbl-sticky-x.is-pinned{display:block;position:fixed;z-index:20}
+.tbl-sticky-x-inner{height:1px;pointer-events:none}
+table{width:max-content;min-width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e8e8e8}
+thead tr{background:#fafafa}
+th{padding:10px 12px;text-align:center;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
+td{padding:10px 12px;border:1px solid #e8e8e8;color:#000000d9;white-space:nowrap;text-align:center}
+tbody tr:nth-child(even) td{background:#fafafa}
+tbody tr:hover td{background:#f5f5f5}
+
+.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;line-height:20px;font-weight:700;border:none}
+.tag-ok{background:#E4F1EC;color:#346E5E}
+.tag-partial{background:#FDF3DF;color:#9B6727}
+.tag-fail{background:#FDECEC;color:#C45656}
+
+.pg-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 0 0;gap:8px;flex-wrap:wrap}
+.pg-info{color:#666;font-size:13px}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-btn{min-width:28px;height:28px;padding:0 4px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
+
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+
+@media (max-width:1100px){
+  .main-layout{flex-direction:column}
+  .left-panel{width:100%;max-height:220px}
+  .stats-row{grid-template-columns:repeat(3,1fr)}
+}
+@media (max-width:640px){
+  .stats-row{grid-template-columns:1fr}
+  .stat-card::after{display:none !important}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>智能决策</span><span class="sep">/</span>
+    <span class="cur">配水决策</span>
+  </div>
+
+  <div class="main-layout">
+    <div class="left-panel">
+      <div class="left-search">
+        <div class="search-box">
+          <span class="ico">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </span>
+          <input type="text" id="scheme-search" placeholder="请输入关键字" autocomplete="off">
+        </div>
+        <button type="button" class="search-collapse" id="scheme-collapse" title="收起/展开">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h10M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="left-list" id="scheme-list"></div>
+    </div>
+
+    <div class="right-panel">
+      <div class="right-scroll" id="main-scroll">
+        <div class="stats-row" id="stats-row">
+          <div class="stat-card"><div class="label">总来水</div><div class="value">12,486<span class="unit">万m³</span></div></div>
+          <div class="stat-card"><div class="label">总需水</div><div class="value">10,672<span class="unit">万m³</span></div></div>
+          <div class="stat-card"><div class="label">总供水</div><div class="value">10,601<span class="unit">万m³</span></div></div>
+          <div class="stat-card"><div class="label">缺水量</div><div class="value">71<span class="unit">万m³</span></div></div>
+          <div class="stat-card"><div class="label">弃水量</div><div class="value">264<span class="unit">万m³</span></div></div>
+        </div>
+
+        <div class="card chart-card">
+          <div class="chart-title">来水需水对比</div>
+          <div class="chart-unit">单位: 万方</div>
+          <div class="chart-box" id="chart-compare"></div>
+        </div>
+
+        <div class="card chart-card">
+          <div class="chart-title">月末水位与库容</div>
+          <div class="chart-box" id="chart-level"></div>
+        </div>
+
+        <div class="card detail-card">
+          <div class="detail-hd">
+            <h4>水资源配置预测详细结果</h4>
+            <div class="detail-tools">
+              <input type="text" class="field" id="table-filter" placeholder="筛选当前结果">
+              <button type="button" class="btn btn-default" id="export-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                导出
+              </button>
+            </div>
+          </div>
+          <div class="tbl-wrap" id="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>BP预测来水量(万方)</th>
+                  <th>库面蒸发数据(万方)</th>
+                  <th>灌溉需水</th>
+                  <th>城镇需水</th>
+                  <th>农村生活需水量</th>
+                  <th>河道生态需水总量</th>
+                  <th>总需水量(万方)</th>
+                  <th>需&gt;供</th>
+                  <th>供&gt;需</th>
+                  <th>差值(来水-需水)</th>
+                  <th>弃水</th>
+                  <th>下泄+弃水</th>
+                  <th>月末库容</th>
+                  <th>月末水位</th>
+                  <th>塘坝可供水量(万方)</th>
+                  <th>水厂供水</th>
+                  <th>花凉亭水库灌溉供水</th>
+                  <th>总供水</th>
+                  <th>是否满足需水</th>
+                  <th>月份</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="tbl-sticky-x" id="tbl-x" aria-hidden="true"><div class="tbl-sticky-x-inner"></div></div>
+          <div class="pg-bar">
+            <div class="pg-info" id="pg-info">共 0 条</div>
+            <div class="pg-btns" id="pg-btns"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  function $(id) { return document.getElementById(id); }
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmt1(n) { return (Math.round(n * 10) / 10).toFixed(1); }
+  function fmt0(n) { return String(Math.round(n)); }
+  function seeded(seed) {
+    var x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  }
+
+  var PAGE_SIZE = 12;
+  var charts = {};
+  var page = 1;
+  var filter = '';
+  var activeId = 1;
+  var currentRows = [];
+  var listCollapsed = false;
+
+  function buildSchemes() {
+    var list = [];
+    for (var i = 1; i <= 9; i++) {
+      var rows = [];
+      var level = 86.2 + seeded(i * 2.2) * 1.2;
+      var capacity = 4200 + seeded(i * 4.1) * 200;
+      var sumIn = 0, sumDemand = 0, sumSupply = 0, sumShortage = 0, sumSpill = 0;
+      for (var m = 1; m <= 12; m++) {
+        var bp = Math.round(700 + seeded(i * 11 + m) * 450);
+        if (m === 4 || m === 7 || m === 10) bp = Math.round(bp * 1.25);
+        var evap = Math.round(40 + seeded(i * 3 + m) * 50);
+        var irrig = Math.round(500 + seeded(i * 7 + m) * 350);
+        var urban = Math.round(80 + seeded(i * 5 + m) * 60);
+        var rural = Math.round(50 + seeded(i * 9 + m) * 40);
+        var eco = Math.round(60 + seeded(i * 6 + m) * 50);
+        var demand = irrig + urban + rural + eco;
+        var pond = Math.round(60 + seeded(i * 8 + m) * 50);
+        var plant = Math.round(90 + seeded(i * 2 + m) * 70);
+        var irrigSupply = Math.round(Math.min(demand * 0.85, bp * 0.7) + seeded(i + m) * 40);
+        var supply = pond + plant + irrigSupply;
+        var deficit = Math.max(0, demand - supply);
+        var surplus = Math.max(0, supply - demand);
+        var diff = bp - demand;
+        var spill = Math.max(0, Math.round(diff * 0.35 + (seeded(i * 12 + m) - 0.4) * 40));
+        if (diff < 0) spill = 0;
+        var releaseSpill = spill + Math.round(30 + seeded(i + m * 3) * 40);
+        capacity = Math.max(3200, Math.min(5200, capacity + diff * 0.15 - spill * 0.2));
+        level = Math.max(82, Math.min(89.5, 80 + (capacity - 3000) / 280));
+        var satisfied = deficit === 0 ? 'ok' : (deficit < demand * 0.15 ? 'partial' : 'no');
+        /* 方案1 的 8 月按设计稿为部分满足 */
+        if (i === 1 && m === 8) {
+          deficit = 0;
+          surplus = 240;
+          diff = 240;
+          spill = 160;
+          releaseSpill = 240;
+          capacity = 5344;
+          level = 88.2;
+          pond = 89;
+          plant = 133;
+          irrigSupply = 887;
+          supply = 1109;
+          satisfied = 'partial';
+        }
+        rows.push({
+          date: m + '月',
+          label: '2027-' + pad(m),
+          bp: bp,
+          evap: evap,
+          irrig: irrig,
+          urban: urban,
+          rural: rural,
+          eco: eco,
+          demand: demand,
+          deficit: deficit,
+          surplus: surplus,
+          diff: diff,
+          spill: spill,
+          releaseSpill: releaseSpill,
+          capacity: Math.round(capacity),
+          level: +level.toFixed(1),
+          pond: pond,
+          plant: plant,
+          irrigSupply: irrigSupply,
+          supply: supply,
+          satisfied: satisfied
+        });
+        sumIn += bp;
+        sumDemand += demand;
+        sumSupply += supply;
+        sumShortage += deficit;
+        sumSpill += spill;
+      }
+      list.push({
+        id: i,
+        name: '水资源调度结果' + i,
+        summary: {
+          inflow: sumIn,
+          demand: sumDemand,
+          supply: sumSupply,
+          shortage: sumShortage,
+          spill: sumSpill
+        },
+        rows: rows
+      });
+    }
+    list[0].summary = { inflow: 12486, demand: 10672, supply: 10601, shortage: 71, spill: 264 };
+    return list;
+  }
+
+  var SCHEMES = buildSchemes();
+
+  function applyAllocationIo(io) {
+    if (!io || !io.allocation || !io.allocation.rows || !io.allocation.rows.length) return;
+    var baseRows = io.allocation.rows.map(function (r) {
+      return {
+        date: r.date,
+        label: r.label || r.date,
+        bp: +r.bp,
+        evap: +r.evap,
+        irrig: +r.irrig,
+        urban: +r.urban,
+        rural: +r.rural,
+        eco: +r.eco,
+        demand: +r.demand,
+        deficit: +r.deficit,
+        surplus: +r.surplus,
+        diff: +r.diff,
+        spill: +r.spill,
+        releaseSpill: +r.releaseSpill,
+        capacity: +r.capacity,
+        level: +r.level,
+        pond: +r.pond,
+        plant: +r.plant,
+        irrigSupply: +r.irrigSupply,
+        supply: +r.supply,
+        satisfied: r.satisfied || 'ok',
+        month: r.month
+      };
+    });
+    var baseSummary = Object.assign({}, io.allocation.summary);
+    var list = [];
+    for (var i = 1; i <= 9; i++) {
+      var factor = 1 + (i - 1) * 0.02;
+      var rows = baseRows.map(function (r) {
+        if (i === 1) return Object.assign({}, r);
+        return {
+          date: r.date,
+          label: r.label,
+          bp: Math.round(r.bp * factor),
+          evap: Math.round(r.evap * factor),
+          irrig: Math.round(r.irrig * factor),
+          urban: Math.round(r.urban * factor),
+          rural: Math.round(r.rural * factor),
+          eco: Math.round(r.eco * factor),
+          demand: Math.round(r.demand * factor),
+          deficit: Math.round(r.deficit * factor),
+          surplus: Math.round(r.surplus * factor),
+          diff: Math.round(r.diff * factor),
+          spill: Math.max(0, Math.round(r.spill * factor)),
+          releaseSpill: Math.round(r.releaseSpill * factor),
+          capacity: Math.round(r.capacity),
+          level: +r.level.toFixed(2),
+          pond: Math.round(r.pond * factor),
+          plant: Math.round(r.plant * factor),
+          irrigSupply: Math.round(r.irrigSupply * factor),
+          supply: Math.round(r.supply * factor),
+          satisfied: r.satisfied,
+          month: r.month
+        };
+      });
+      var summary = i === 1 ? {
+        inflow: Math.round(baseSummary.inflow || 0),
+        demand: Math.round(baseSummary.demand || 0),
+        supply: Math.round(baseSummary.supply || 0),
+        shortage: Math.round(baseSummary.shortage || 0),
+        spill: Math.round(baseSummary.spill || 0)
+      } : {
+        inflow: rows.reduce(function (s, r) { return s + r.bp; }, 0),
+        demand: rows.reduce(function (s, r) { return s + r.demand; }, 0),
+        supply: rows.reduce(function (s, r) { return s + r.supply; }, 0),
+        shortage: rows.reduce(function (s, r) { return s + r.deficit; }, 0),
+        spill: rows.reduce(function (s, r) { return s + r.spill; }, 0)
+      };
+      list.push({
+        id: i,
+        name: '水资源调度结果' + i,
+        summary: summary,
+        rows: rows
+      });
+    }
+    SCHEMES = list;
+  }
+
+  function filteredSchemes() {
+    var q = ($('scheme-search').value || '').trim();
+    if (!q) return SCHEMES.slice();
+    return SCHEMES.filter(function (s) { return s.name.indexOf(q) >= 0; });
+  }
+
+  function renderSchemeList() {
+    var items = filteredSchemes();
+    $('scheme-list').innerHTML = items.map(function (s) {
+      return '<div class="list-item' + (s.id === activeId ? ' active' : '') + '" data-id="' + s.id + '">' + s.name + '</div>';
+    }).join('') || '<div style="padding:24px;text-align:center;color:#bbb;font-size:13px">无匹配结果</div>';
+  }
+
+  function getActiveScheme() {
+    return SCHEMES.find(function (s) { return s.id === activeId; }) || SCHEMES[0];
+  }
+
+  function renderStats(summary) {
+    var items = [
+      { label: '总来水', value: summary.inflow.toLocaleString('en-US') },
+      { label: '总需水', value: summary.demand.toLocaleString('en-US') },
+      { label: '总供水', value: summary.supply.toLocaleString('en-US') },
+      { label: '缺水量', value: summary.shortage.toLocaleString('en-US') },
+      { label: '弃水量', value: summary.spill.toLocaleString('en-US') }
+    ];
+    $('stats-row').innerHTML = items.map(function (it) {
+      return '<div class="stat-card"><div class="label">' + it.label + '</div><div class="value">' + it.value + '<span class="unit">万m³</span></div></div>';
+    }).join('');
+  }
+
+  function ensureChart(key, el) {
+    if (!el) return null;
+    if (charts[key]) charts[key].dispose();
+    charts[key] = echarts.init(el);
+    return charts[key];
+  }
+
+  function renderCharts(rows) {
+    var labels = rows.map(function (r) { return r.label; });
+    var zoom = typeof buildChartDataZoom === 'function' ? buildChartDataZoom() : [];
+    var gridBottom = 78;
+
+    var c1 = ensureChart('compare', $('chart-compare'));
+    if (c1) c1.setOption({
+      color: ['#5D7EE9', '#5AD8A6'],
+      tooltip: { trigger: 'axis' },
+      legend: { top: 4, data: ['来水', '需水'] },
+      grid: { left: 16, right: 20, top: 40, bottom: gridBottom, containLabel: true },
+      dataZoom: zoom,
+      xAxis: {
+        type: 'category', data: labels,
+        axisLabel: { color: '#999', fontSize: 11 },
+        axisTick: { alignWithLabel: true },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [
+        {
+          name: '来水', type: 'bar', barMaxWidth: 18,
+          data: rows.map(function (r) { return r.bp; }),
+          label: { show: true, position: 'top', fontSize: 9, color: '#666' }
+        },
+        {
+          name: '需水', type: 'bar', barMaxWidth: 18,
+          data: rows.map(function (r) { return r.demand; }),
+          label: { show: true, position: 'top', fontSize: 9, color: '#666' }
+        }
+      ]
+    });
+
+    var c2 = ensureChart('level', $('chart-level'));
+    if (c2) c2.setOption({
+      color: ['#5D7EE9', '#73C892'],
+      tooltip: { trigger: 'axis' },
+      legend: { top: 4, data: ['水位', '库容'] },
+      grid: { left: 16, right: 56, top: 44, bottom: gridBottom, containLabel: true },
+      dataZoom: zoom,
+      xAxis: {
+        type: 'category', boundaryGap: false, data: labels,
+        axisLabel: { color: '#999', fontSize: 11 },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: [
+        {
+          type: 'value', name: '水位: m',
+          scale: true,
+          nameTextStyle: { color: '#999', fontSize: 11 },
+          axisLabel: { color: '#999' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', name: '库容: 万方',
+          scale: true,
+          nameTextStyle: { color: '#999', fontSize: 11 },
+          axisLabel: { color: '#999' },
+          splitLine: { show: false }
+        }
+      ],
+      series: [
+        {
+          name: '水位', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7,
+          itemStyle: { color: '#5D7EE9' }, lineStyle: { color: '#5D7EE9' },
+          areaStyle: { color: 'rgba(93,126,233,0.12)' },
+          data: rows.map(function (r) { return r.level; })
+        },
+        {
+          name: '库容', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7, yAxisIndex: 1,
+          itemStyle: { color: '#73C892' }, lineStyle: { color: '#73C892' },
+          areaStyle: { color: 'rgba(115,200,146,0.10)' },
+          data: rows.map(function (r) { return r.capacity; })
+        }
+      ]
+    });
+  }
+
+  function monthLabel(dateStr) {
+    if (dateStr == null) return '-';
+    if (typeof dateStr === 'number') return dateStr + '月';
+    var s = String(dateStr);
+    if (/^\d{1,2}月$/.test(s)) return s;
+    var m = s.match(/-(\d{1,2})$/);
+    if (m) return parseInt(m[1], 10) + '月';
+    m = s.match(/^(\d{1,2})/);
+    if (m) return parseInt(m[1], 10) + '月';
+    return s || '-';
+  }
+
+  function statusHtml(s) {
+    if (s === 'ok') return '<span class="tag tag-ok">满足</span>';
+    if (s === 'partial') return '<span class="tag tag-partial">部分满足</span>';
+    return '<span class="tag tag-fail">不满足</span>';
+  }
+
+  function filteredRows() {
+    var q = (filter || '').trim();
+    if (!q) return currentRows.slice();
+    return currentRows.filter(function (r) {
+      return Object.keys(r).some(function (k) { return String(r[k]).indexOf(q) >= 0; });
+    });
+  }
+
+  function pagerHtml(cur, pages) {
+    var html = '';
+    for (var i = 1; i <= pages; i++) {
+      html += '<button type="button" class="pg-btn' + (i === cur ? ' active' : '') + '" data-page="' + i + '">' + i + '</button>';
+    }
+    return html;
+  }
+
+  function renderTable() {
+    var rows = filteredRows();
+    var pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE) || 1);
+    if (page > pages) page = pages;
+    var start = (page - 1) * PAGE_SIZE;
+    var pageRows = rows.slice(start, start + PAGE_SIZE);
+    var from = rows.length ? start + 1 : 0;
+    var to = Math.min(start + PAGE_SIZE, rows.length);
+    $('pg-info').textContent = '共 ' + rows.length + ' 条' + (rows.length ? '，本页显示 ' + from + '-' + to + ' 条' : '');
+    $('pg-btns').innerHTML = pagerHtml(page, pages);
+    $('tbody').innerHTML = pageRows.map(function (r) {
+      return '<tr>' +
+        '<td>' + r.date + '</td>' +
+        '<td>' + fmt0(r.bp) + '</td>' +
+        '<td>' + fmt0(r.evap) + '</td>' +
+        '<td>' + fmt0(r.irrig) + '</td>' +
+        '<td>' + fmt0(r.urban) + '</td>' +
+        '<td>' + fmt0(r.rural) + '</td>' +
+        '<td>' + fmt0(r.eco) + '</td>' +
+        '<td>' + fmt0(r.demand) + '</td>' +
+        '<td>' + fmt0(r.deficit) + '</td>' +
+        '<td>' + fmt0(r.surplus) + '</td>' +
+        '<td>' + fmt0(r.diff) + '</td>' +
+        '<td>' + fmt0(r.spill) + '</td>' +
+        '<td>' + fmt0(r.releaseSpill) + '</td>' +
+        '<td>' + fmt0(r.capacity) + '</td>' +
+        '<td>' + fmt1(r.level) + '</td>' +
+        '<td>' + fmt0(r.pond) + '</td>' +
+        '<td>' + fmt0(r.plant) + '</td>' +
+        '<td>' + fmt0(r.irrigSupply) + '</td>' +
+        '<td>' + fmt0(r.supply) + '</td>' +
+        '<td>' + statusHtml(r.satisfied) + '</td>' +
+        '<td>' + monthLabel(r.date) + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="21" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>';
+    requestAnimationFrame(refreshStickyHScroll);
+  }
+
+  function bindStickyHScroll(wrapId, barId, scrollParent) {
+    var wrap = $(wrapId);
+    var bar = $(barId);
+    if (!wrap || !bar || !scrollParent) return null;
+    var inner = bar.querySelector('.tbl-sticky-x-inner');
+    var syncing = false;
+    function layout() {
+      var table = wrap.querySelector('table');
+      if (!table || !inner) {
+        bar.classList.remove('is-pinned');
+        bar.style.display = 'none';
+        return;
+      }
+      var needX = table.scrollWidth > wrap.clientWidth + 1;
+      inner.style.width = Math.max(table.scrollWidth, wrap.clientWidth) + 'px';
+      if (!needX) {
+        bar.classList.remove('is-pinned');
+        bar.style.display = 'none';
+        return;
+      }
+      var parentRect = scrollParent.getBoundingClientRect();
+      var wrapRect = wrap.getBoundingClientRect();
+      var intersects = wrapRect.top < parentRect.bottom - 4 && wrapRect.bottom > parentRect.top + 40;
+      if (!intersects) {
+        bar.classList.remove('is-pinned');
+        bar.style.display = 'none';
+        return;
+      }
+      bar.style.display = 'block';
+      bar.classList.add('is-pinned');
+      bar.style.width = wrapRect.width + 'px';
+      bar.style.left = wrapRect.left + 'px';
+      bar.style.bottom = Math.max(0, window.innerHeight - parentRect.bottom) + 'px';
+      if (!syncing) bar.scrollLeft = wrap.scrollLeft;
+    }
+    wrap.addEventListener('scroll', function () {
+      if (syncing) return;
+      syncing = true;
+      bar.scrollLeft = wrap.scrollLeft;
+      syncing = false;
+    });
+    bar.addEventListener('scroll', function () {
+      if (syncing) return;
+      syncing = true;
+      wrap.scrollLeft = bar.scrollLeft;
+      syncing = false;
+    });
+    scrollParent.addEventListener('scroll', layout, { passive: true });
+    window.addEventListener('resize', layout);
+    return layout;
+  }
+
+  var stickyLayout = bindStickyHScroll('tbl-wrap', 'tbl-x', $('main-scroll'));
+  function refreshStickyHScroll() { if (stickyLayout) stickyLayout(); }
+
+  function loadScheme(id) {
+    activeId = id;
+    var scheme = getActiveScheme();
+    currentRows = scheme.rows.slice();
+    page = 1;
+    filter = '';
+    $('table-filter').value = '';
+    renderSchemeList();
+    renderStats(scheme.summary);
+    renderCharts(currentRows);
+    renderTable();
+    setTimeout(function () {
+      Object.keys(charts).forEach(function (k) { if (charts[k]) charts[k].resize(); });
+      refreshStickyHScroll();
+    }, 40);
+  }
+
+  $('scheme-list').addEventListener('click', function (e) {
+    var item = e.target.closest('.list-item');
+    if (!item) return;
+    loadScheme(+item.dataset.id);
+  });
+  $('scheme-search').addEventListener('input', renderSchemeList);
+  $('scheme-collapse').addEventListener('click', function () {
+    listCollapsed = !listCollapsed;
+    $('scheme-list').style.display = listCollapsed ? 'none' : '';
+  });
+  $('table-filter').addEventListener('input', function (e) {
+    filter = e.target.value;
+    page = 1;
+    renderTable();
+  });
+  $('pg-btns').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-page]');
+    if (!btn || btn.disabled) return;
+    page = +btn.dataset.page;
+    renderTable();
+  });
+  $('export-btn').addEventListener('click', function () {
+    var rows = filteredRows();
+    if (!rows.length) return toast('暂无数据可导出');
+    var header = ['日期','BP预测来水量(万方)','库面蒸发数据(万方)','灌溉需水','城镇需水','农村生活需水量','河道生态需水总量','总需水量(万方)','需>供','供>需','差值(来水-需水)','弃水','下泄+弃水','月末库容','月末水位','塘坝可供水量(万方)','水厂供水','花凉亭水库灌溉供水','总供水','是否满足需水','月份'];
+    var data = rows.map(function (r) {
+      return [r.date, r.bp, r.evap, r.irrig, r.urban, r.rural, r.eco, r.demand, r.deficit, r.surplus, r.diff, r.spill, r.releaseSpill, r.capacity, r.level, r.pond, r.plant, r.irrigSupply, r.supply, r.satisfied === 'ok' ? '满足' : (r.satisfied === 'partial' ? '部分满足' : '不满足'), monthLabel(r.date)];
+    });
+    if (window.XLSX) {
+      var ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '配水明细');
+      XLSX.writeFile(wb, (getActiveScheme().name || '配水决策') + '.xlsx');
+    } else toast('导出组件未加载');
+  });
+
+  window.addEventListener('resize', function () {
+    Object.keys(charts).forEach(function (k) { if (charts[k]) charts[k].resize(); });
+    refreshStickyHScroll();
+  });
+
+  fetch('./mock/water-model-io.json')
+    .then(function (res) { return res.ok ? res.json() : Promise.reject(res.status); })
+    .then(function (io) {
+      applyAllocationIo(io);
+      loadScheme(1);
+    })
+    .catch(function () {
+      loadScheme(1);
+    });
+})();
+</script>
+</body>
+</html>
