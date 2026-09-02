@@ -17,7 +17,9 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 登录验证拦截器：白名单放行 → 解析会话 → 用户上下文写入 ThreadLocal。
+ * 登录验证拦截器：白名单放行 → 提取会话（Authorization/Cookie）→ 会话有效性校验 → 用户上下文写入 ThreadLocal。
+ * <p>登录判定：authorization 头或 sessionId Cookie 携带 sessionId（形如 dev_hltgq_session:xxxx）
+ * 且 Redis 中存在有效会话才算登录；无效/过期会话按未登录处理。
  * <p>未登录：浏览器导航（Accept 含 text/html）302 跳转平台登录页；AJAX/API 返回 401 JSON。
  * <p>会话服务不可用（Redis 故障）：503 JSON，禁止降级放行（安全取舍，区别于天气缓存降级）。
  */
@@ -55,21 +57,24 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // 登录判定：authorization 头或 sessionId Cookie 携带 sessionId 且 Redis 会话有效才算登录
+        String sessionId = sessionContextService.extractSessionId(request);
+        if (sessionId == null) {
+            log.warn("未登录：{} {} 未携带会话 ID（Authorization/Cookie 均缺失）", request.getMethod(), relativePath);
+            handleUnauthorized(request, response);
+            return false;
+        }
         try {
-            String sessionId = sessionContextService.extractSessionId(request);
-            if (sessionId == null) {
-                log.warn("未登录：{} {} 未携带会话 ID", request.getMethod(), relativePath);
-                handleUnauthorized(request, response);
-                return false;
-            }
+            // 严格校验会话有效性：Redis 中无该会话（无效/过期）抛 UnauthorizedException
             UserContext user = sessionContextService.resolveUser(sessionId);
-            UserContextHolder.set(user);
-            if (!checkAdminPermission(request, response, handler, relativePath, user)) {
-                return false;
+            // 静态资源（*.html、/lib、/templates 等无处理器方法）仅需会话有效，无需用户上下文
+            if (!(handler instanceof HandlerMethod)) {
+                return true;
             }
-            return true;
+            UserContextHolder.set(user);
+            return checkAdminPermission(request, response, handler, relativePath, user);
         } catch (UnauthorizedException e) {
-            log.warn("未登录：{} {} - {}", request.getMethod(), relativePath, e.getMessage());
+            log.warn("未登录或会话无效：{} {} - {}", request.getMethod(), relativePath, e.getMessage());
             handleUnauthorized(request, response);
             return false;
         } catch (SessionUnavailableException e) {
@@ -92,9 +97,7 @@ public class AuthInterceptor implements HandlerInterceptor {
      */
     private boolean checkAdminPermission(HttpServletRequest request, HttpServletResponse response,
                                          Object handler, String relativePath, UserContext user) throws Exception {
-        if (!(handler instanceof HandlerMethod)) {
-            return true;
-        }
+        // 前置条件：preHandle 已保证 handler 为 HandlerMethod（静态资源仅校验凭证）
         HandlerMethod handlerMethod = (HandlerMethod) handler;
         RequireAdmin requireAdmin = handlerMethod.getMethodAnnotation(RequireAdmin.class);
         if (requireAdmin == null) {

@@ -10,7 +10,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 /**
  * Web MVC 配置：注册登录验证拦截器。
  * <p>总开关 auth.enabled（默认 false），验证通过后置 true 灰度；关闭时全量接口不受影响。
- * <p>静态页面资源（*.html、lib、templates）放行，页面内接口请求仍走拦截器鉴权。
+ * <p>所有页面（*.html）、静态资源（/lib、/templates）与接口均走拦截器 sessionId 验证：
+ * 未登录访问页面 302 跳转平台登录页，登录后 Cookie 携带 sessionId 放行。
  */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
@@ -29,6 +30,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
         }
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/**")
-                .excludePathPatterns("/*.html", "/lib/**", "/templates/**", "/error");
+                .excludePathPatterns("/error");
     }
 }

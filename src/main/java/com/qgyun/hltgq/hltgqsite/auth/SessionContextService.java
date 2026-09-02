@@ -90,14 +90,16 @@ public class SessionContextService {
     }
 
     /**
-     * 按会话 ID 解析用户上下文：HGETALL {sessionId}，空 Hash 视为未登录/已过期。
+     * 按会话 ID 严格解析用户上下文：HGETALL {sessionId}，空 Hash 视为未登录/已过期。
+     * <p>登录判定以本方法为准：携带 sessionId 后还须 Redis 中存在有效会话才算登录，
+     * 供拦截器校验会话有效性与 /auth/current-user 等业务接口解析身份使用。
      */
     public UserContext resolveUser(String sessionId) {
         Map<Object, Object> entries;
         try {
             entries = redisTemplate.opsForHash().entries(sessionId);
         } catch (Exception e) {
-            // 鉴权场景禁止降级放行：Redis 不可达时快速失败
+            // 会话有效性无法确认时禁止降级放行：Redis 不可达快速失败
             log.error("会话服务不可用：HGETALL {} 异常", sessionId, e);
             throw new SessionUnavailableException("会话服务不可用，请稍后重试", e);
         }
@@ -105,9 +107,14 @@ public class SessionContextService {
             log.warn("未登录或会话过期：session {} 无用户上下文", sessionId);
             throw new UnauthorizedException("未登录或会话已过期");
         }
+        return parseUserContext(sessionId, entries);
+    }
 
+    /**
+     * 解析会话 Hash 为用户上下文（仅取实际存在的字段，登录名由 resolveLoginName 查库兜底）。
+     */
+    private UserContext parseUserContext(String sessionId, Map<Object, Object> entries) {
         UserContext user = new UserContext();
-        // 仅解析会话 Hash 实际存在的字段（登录名由 resolveLoginName 查库兜底）
         user.setUserId(firstOf(entries, "userId", "user_id", "id"));
         user.setCorpCode(firstOf(entries, "corpCode", "corp_code"));
         user.setSuperAdmin(firstOf(entries, "superAdmin", "super_admin"));
