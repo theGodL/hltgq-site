@@ -27,6 +27,9 @@ public class SessionContextService {
     /** Header 传递会话 ID（平台服务端代理场景） */
     public static final String HEADER_SESSION_ID = "X-Session-Id";
 
+    /** Authorization 头传递会话 ID（标准头，值形如 dev_hltgq_session:xxxx，可选带 Bearer 前缀） */
+    public static final String HEADER_AUTHORIZATION = "Authorization";
+
     /** Cookie 传递会话 ID（浏览器直连场景） */
     public static final String COOKIE_SESSION_ID = "sessionId";
 
@@ -43,7 +46,7 @@ public class SessionContextService {
     private final ConcurrentHashMap<String, LoginNameEntry> loginNameCache = new ConcurrentHashMap<>();
 
     /**
-     * 从请求提取会话 ID：优先 Header（X-Session-Id），其次 Cookie（sessionId）
+     * 从请求提取会话 ID：优先 Header（X-Session-Id），其次 Header（Authorization），最后 Cookie（sessionId）
      *
      * @return 会话 ID，未携带返回 null
      */
@@ -51,6 +54,17 @@ public class SessionContextService {
         String headerValue = request.getHeader(HEADER_SESSION_ID);
         if (StringUtils.hasText(headerValue)) {
             return headerValue.trim();
+        }
+        String authValue = request.getHeader(HEADER_AUTHORIZATION);
+        if (StringUtils.hasText(authValue)) {
+            String trimmed = authValue.trim();
+            // 兼容标准 "Bearer xxx" 前缀，剥离后剩余部分即会话键
+            if (trimmed.regionMatches(true, 0, "Bearer ", 0, 7)) {
+                trimmed = trimmed.substring(7).trim();
+            }
+            if (StringUtils.hasText(trimmed)) {
+                return trimmed;
+            }
         }
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
@@ -69,7 +83,7 @@ public class SessionContextService {
     public UserContext resolveCurrentUser(HttpServletRequest request) {
         String sessionId = extractSessionId(request);
         if (sessionId == null) {
-            log.warn("未登录：请求未携带会话 ID（Header/Cookie 均缺失）");
+            log.warn("未登录：请求未携带会话 ID（X-Session-Id/Authorization/Cookie 均缺失）");
             throw new UnauthorizedException("未登录：缺少会话 ID");
         }
         return resolveUser(sessionId);
