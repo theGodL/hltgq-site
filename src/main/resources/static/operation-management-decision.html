@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>运行管理决策</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/model-api.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
@@ -28,6 +29,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-primary[disabled]{opacity:.55;cursor:not-allowed}
 .btn-default{color:#333;border-color:#d9d9d9}
 .btn-default:hover{color:#1677ff;border-color:#1677ff}
 
@@ -47,6 +49,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .chart-title{font-size:14px;font-weight:700;color:#1f1f1f;margin-bottom:8px;line-height:22px;flex-shrink:0}
 .chart-box{flex:1;min-height:280px;width:100%}
 
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+
 @media (max-width:1100px){
   .stats-row{grid-template-columns:1fr}
   .charts-row{grid-template-columns:1fr}
@@ -65,9 +70,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       <div class="filter-left">
         <span class="lbl">日期</span>
         <div class="date-range">
-          <input type="date" class="field" id="start-date" value="2027-05-18">
+          <input type="date" class="field" id="start-date">
           <span class="date-sep">—</span>
-          <input type="date" class="field" id="end-date" value="2027-05-21">
+          <input type="date" class="field" id="end-date">
         </div>
       </div>
       <div class="filter-actions">
@@ -82,17 +87,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       <div class="card stat-card">
         <div class="stat-deco orange"></div>
         <div class="label">巡查总次数</div>
-        <div class="value" id="stat-patrol">45</div>
+        <div class="value" id="stat-patrol">—</div>
       </div>
       <div class="card stat-card">
         <div class="stat-deco cyan"></div>
         <div class="label">问题上报数</div>
-        <div class="value" id="stat-issue">26</div>
+        <div class="value" id="stat-issue">—</div>
       </div>
       <div class="card stat-card">
         <div class="stat-deco purple"></div>
         <div class="label">工单数</div>
-        <div class="value" id="stat-order">13</div>
+        <div class="value" id="stat-order">—</div>
       </div>
     </div>
 
@@ -109,39 +114,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
 (function () {
   function $(id) { return document.getElementById(id); }
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
 
+  var API = window.ModelApi;
   var BAR_COLOR = '#7A96EB';
   var GHOST_COLOR = '#F0F2F5';
-  var DEFAULT_START = '2027-05-18';
-  var DEFAULT_END = '2027-05-21';
-
-  var MOCK = {
-    summary: { patrol: 45, issue: 26, order: 13 },
-    issueStatus: [
-      { name: '待处理', value: 18 },
-      { name: '处理中', value: 11 },
-      { name: '已转工单', value: 4 },
-      { name: '已关闭', value: 10 },
-      { name: '已作废', value: 15 }
-    ],
-    orderStatus: [
-      { name: '待指派', value: 14 },
-      { name: '处理中', value: 4 },
-      { name: '已关闭', value: 18 },
-      { name: '已取消', value: 7 }
-    ]
-  };
-
   var charts = { issue: null, order: null };
-
-  function parseDate(str) {
-    var p = String(str || '').split('-');
-    if (p.length < 3) return null;
-    return new Date(+p[0], +p[1] - 1, +p[2]);
-  }
+  var loading = false;
 
   function ensureChart(key, el) {
     if (!el || !window.echarts) return null;
@@ -149,9 +139,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     return charts[key];
   }
 
-  /** 带灰底幽灵柱 + 数值标注的柱状图 */
   function barOption(categories, values) {
-    var yMax = 20;
+    var maxVal = 0;
+    (values || []).forEach(function (v) {
+      var n = Number(v) || 0;
+      if (n > maxVal) maxVal = n;
+    });
+    var yMax = Math.max(4, Math.ceil(maxVal / 4) * 4);
+    if (yMax === maxVal && maxVal > 0) yMax += 4;
     var ghost = categories.map(function () { return yMax; });
     return {
       tooltip: {
@@ -175,7 +170,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         type: 'value',
         min: 0,
         max: yMax,
-        interval: 4,
+        interval: Math.max(1, yMax / 5),
         axisLabel: { color: '#999' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
@@ -211,77 +206,76 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   }
 
   function renderSummary(s) {
-    $('stat-patrol').textContent = s.patrol;
-    $('stat-issue').textContent = s.issue;
-    $('stat-order').textContent = s.order;
+    s = s || {};
+    $('stat-patrol').textContent = s.patrolCount != null ? s.patrolCount : '—';
+    $('stat-issue').textContent = s.issueCount != null ? s.issueCount : '—';
+    $('stat-order').textContent = s.orderCount != null ? s.orderCount : '—';
   }
 
   function renderCharts(data) {
-    var issueCats = data.issueStatus.map(function (d) { return d.name; });
-    var issueVals = data.issueStatus.map(function (d) { return d.value; });
-    var orderCats = data.orderStatus.map(function (d) { return d.name; });
-    var orderVals = data.orderStatus.map(function (d) { return d.value; });
-
+    var issueStatus = (data && data.issueStatus) || [];
+    var orderStatus = (data && data.orderStatus) || [];
     var c1 = ensureChart('issue', $('chart-issue'));
-    if (c1) c1.setOption(barOption(issueCats, issueVals), true);
-
+    if (c1) {
+      c1.setOption(barOption(
+        issueStatus.map(function (d) { return d.name; }),
+        issueStatus.map(function (d) { return d.value; })
+      ), true);
+    }
     var c2 = ensureChart('order', $('chart-order'));
-    if (c2) c2.setOption(barOption(orderCats, orderVals), true);
+    if (c2) {
+      c2.setOption(barOption(
+        orderStatus.map(function (d) { return d.name; }),
+        orderStatus.map(function (d) { return d.value; })
+      ), true);
+    }
   }
 
-  function loadData() {
-    // mock：按日期微调，保证查询有反馈
-    var start = $('start-date').value || DEFAULT_START;
-    var end = $('end-date').value || DEFAULT_END;
-    var s = parseDate(start);
-    var e = parseDate(end);
-    var days = 1;
-    if (s && e && e >= s) {
-      days = Math.round((e - s) / 86400000) + 1;
-    }
-    var factor = Math.max(0.6, Math.min(1.4, days / 4));
-    var data = {
-      summary: {
-        patrol: Math.round(MOCK.summary.patrol * factor),
-        issue: Math.round(MOCK.summary.issue * factor),
-        order: Math.round(MOCK.summary.order * factor)
-      },
-      issueStatus: MOCK.issueStatus.map(function (d) {
-        return { name: d.name, value: Math.min(20, Math.max(1, Math.round(d.value * factor))) };
-      }),
-      orderStatus: MOCK.orderStatus.map(function (d) {
-        return { name: d.name, value: Math.min(20, Math.max(1, Math.round(d.value * factor))) };
-      })
-    };
-    renderSummary(data.summary);
-    renderCharts(data);
-    setTimeout(resizeCharts, 40);
+  function setLoading(on) {
+    loading = !!on;
+    $('query-btn').disabled = loading;
+    $('query-btn').textContent = loading ? '查询中…' : '查询';
   }
 
-  function doQuery() {
-    var start = $('start-date').value || DEFAULT_START;
-    var end = $('end-date').value || DEFAULT_END;
-    if (parseDate(end) < parseDate(start)) {
-      $('end-date').value = start;
+  async function loadData() {
+    if (!API || !API.operation) {
+      toast('接口客户端未加载');
+      return;
     }
-    loadData();
+    var start = ($('start-date').value || '').trim();
+    var end = ($('end-date').value || '').trim();
+    if (start && end && start > end) {
+      toast('起始日期不能晚于截止日期');
+      return;
+    }
+    setLoading(true);
+    try {
+      var data = await API.operation.summary(start || null, end || null);
+      renderSummary(data.summary || {});
+      renderCharts(data);
+    } catch (e) {
+      renderSummary({});
+      renderCharts({ issueStatus: [], orderStatus: [] });
+      toast((e && e.message) || '查询失败');
+    } finally {
+      setLoading(false);
+      setTimeout(function () {
+        Object.keys(charts).forEach(function (k) { if (charts[k]) charts[k].resize(); });
+      }, 40);
+    }
   }
 
   function doReset() {
-    $('start-date').value = DEFAULT_START;
-    $('end-date').value = DEFAULT_END;
+    $('start-date').value = '';
+    $('end-date').value = '';
     loadData();
   }
 
-  function resizeCharts() {
-    Object.keys(charts).forEach(function (k) {
-      if (charts[k]) charts[k].resize();
-    });
-  }
-
-  $('query-btn').addEventListener('click', doQuery);
+  $('query-btn').addEventListener('click', loadData);
   $('reset-btn').addEventListener('click', doReset);
-  window.addEventListener('resize', resizeCharts);
+  window.addEventListener('resize', function () {
+    Object.keys(charts).forEach(function (k) { if (charts[k]) charts[k].resize(); });
+  });
 
   loadData();
 })();

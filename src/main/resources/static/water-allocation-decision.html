@@ -7,6 +7,7 @@
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/model-api.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
@@ -29,6 +30,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .list-item{padding:12px 18px 12px 15px;cursor:pointer;color:#333;font-size:14px;line-height:22px;user-select:none;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:3px solid transparent}
 .list-item:hover{background:#f5f5f5}
 .list-item.active{background:#e6f4ff;color:#1677ff;font-weight:500;border-left-color:#1677ff}
+.list-item.is-muted{color:#999}
+.list-item .status-tip{font-size:12px;color:#999;margin-left:4px}
 
 .right-panel{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .right-scroll{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;min-width:0;display:flex;flex-direction:column;gap:16px;padding-right:2px}
@@ -121,11 +124,11 @@ tbody tr:hover td{background:#f5f5f5}
     <div class="right-panel">
       <div class="right-scroll" id="main-scroll">
         <div class="stats-row" id="stats-row">
-          <div class="stat-card"><div class="label">总来水</div><div class="value">12,486<span class="unit">万m³</span></div></div>
-          <div class="stat-card"><div class="label">总需水</div><div class="value">10,672<span class="unit">万m³</span></div></div>
-          <div class="stat-card"><div class="label">总供水</div><div class="value">10,601<span class="unit">万m³</span></div></div>
-          <div class="stat-card"><div class="label">缺水量</div><div class="value">71<span class="unit">万m³</span></div></div>
-          <div class="stat-card"><div class="label">弃水量</div><div class="value">264<span class="unit">万m³</span></div></div>
+          <div class="stat-card"><div class="label">总来水</div><div class="value">—<span class="unit">万m³</span></div></div>
+          <div class="stat-card"><div class="label">总需水</div><div class="value">—<span class="unit">万m³</span></div></div>
+          <div class="stat-card"><div class="label">总供水</div><div class="value">—<span class="unit">万m³</span></div></div>
+          <div class="stat-card"><div class="label">缺水量</div><div class="value">—<span class="unit">万m³</span></div></div>
+          <div class="stat-card"><div class="label">弃水量</div><div class="value">—<span class="unit">万m³</span></div></div>
         </div>
 
         <div class="card chart-card">
@@ -195,6 +198,7 @@ tbody tr:hover td{background:#f5f5f5}
 
 <script>
 (function () {
+  var API = window.ModelApi;
   function $(id) { return document.getElementById(id); }
   function toast(msg) {
     var el = $('toast');
@@ -203,223 +207,122 @@ tbody tr:hover td{background:#f5f5f5}
     clearTimeout(toast._t);
     toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
   }
-  function pad(n) { return n < 10 ? '0' + n : '' + n; }
-  function fmt1(n) { return (Math.round(n * 10) / 10).toFixed(1); }
-  function fmt0(n) { return String(Math.round(n)); }
-  function seeded(seed) {
-    var x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
+  function num(v, digits) {
+    return API && API.fmtNum ? API.fmtNum(v, digits == null ? 2 : digits) : (v == null ? '—' : String(v));
+  }
+  function escapeAttr(s) {
+    return String(s == null ? '' : s).replace(/"/g, '&quot;');
   }
 
   var PAGE_SIZE = 12;
   var charts = {};
   var page = 1;
   var filter = '';
-  var activeId = 1;
+  var activeId = '';
+  var schemeList = [];
+  var currentRecord = null;
   var currentRows = [];
   var listCollapsed = false;
 
-  function buildSchemes() {
-    var list = [];
-    for (var i = 1; i <= 9; i++) {
-      var rows = [];
-      var level = 86.2 + seeded(i * 2.2) * 1.2;
-      var capacity = 4200 + seeded(i * 4.1) * 200;
-      var sumIn = 0, sumDemand = 0, sumSupply = 0, sumShortage = 0, sumSpill = 0;
-      for (var m = 1; m <= 12; m++) {
-        var bp = Math.round(700 + seeded(i * 11 + m) * 450);
-        if (m === 4 || m === 7 || m === 10) bp = Math.round(bp * 1.25);
-        var evap = Math.round(40 + seeded(i * 3 + m) * 50);
-        var irrig = Math.round(500 + seeded(i * 7 + m) * 350);
-        var urban = Math.round(80 + seeded(i * 5 + m) * 60);
-        var rural = Math.round(50 + seeded(i * 9 + m) * 40);
-        var eco = Math.round(60 + seeded(i * 6 + m) * 50);
-        var demand = irrig + urban + rural + eco;
-        var pond = Math.round(60 + seeded(i * 8 + m) * 50);
-        var plant = Math.round(90 + seeded(i * 2 + m) * 70);
-        var irrigSupply = Math.round(Math.min(demand * 0.85, bp * 0.7) + seeded(i + m) * 40);
-        var supply = pond + plant + irrigSupply;
-        var deficit = Math.max(0, demand - supply);
-        var surplus = Math.max(0, supply - demand);
-        var diff = bp - demand;
-        var spill = Math.max(0, Math.round(diff * 0.35 + (seeded(i * 12 + m) - 0.4) * 40));
-        if (diff < 0) spill = 0;
-        var releaseSpill = spill + Math.round(30 + seeded(i + m * 3) * 40);
-        capacity = Math.max(3200, Math.min(5200, capacity + diff * 0.15 - spill * 0.2));
-        level = Math.max(82, Math.min(89.5, 80 + (capacity - 3000) / 280));
-        var satisfied = deficit === 0 ? 'ok' : (deficit < demand * 0.15 ? 'partial' : 'no');
-        /* 方案1 的 8 月按设计稿为部分满足 */
-        if (i === 1 && m === 8) {
-          deficit = 0;
-          surplus = 240;
-          diff = 240;
-          spill = 160;
-          releaseSpill = 240;
-          capacity = 5344;
-          level = 88.2;
-          pond = 89;
-          plant = 133;
-          irrigSupply = 887;
-          supply = 1109;
-          satisfied = 'partial';
-        }
-        rows.push({
-          date: m + '月',
-          label: '2027-' + pad(m),
-          bp: bp,
-          evap: evap,
-          irrig: irrig,
-          urban: urban,
-          rural: rural,
-          eco: eco,
-          demand: demand,
-          deficit: deficit,
-          surplus: surplus,
-          diff: diff,
-          spill: spill,
-          releaseSpill: releaseSpill,
-          capacity: Math.round(capacity),
-          level: +level.toFixed(1),
-          pond: pond,
-          plant: plant,
-          irrigSupply: irrigSupply,
-          supply: supply,
-          satisfied: satisfied
-        });
-        sumIn += bp;
-        sumDemand += demand;
-        sumSupply += supply;
-        sumShortage += deficit;
-        sumSpill += spill;
-      }
-      list.push({
-        id: i,
-        name: '水资源调度结果' + i,
-        summary: {
-          inflow: sumIn,
-          demand: sumDemand,
-          supply: sumSupply,
-          shortage: sumShortage,
-          spill: sumSpill
-        },
-        rows: rows
-      });
-    }
-    list[0].summary = { inflow: 12486, demand: 10672, supply: 10601, shortage: 71, spill: 264 };
-    return list;
+  /** 「2027年1月上旬」→「1月上旬」 */
+  function displayTendayLabel(label) {
+    if (label == null || label === '') return '—';
+    return String(label).replace(/^\d{4}年/, '') || '—';
   }
 
-  var SCHEMES = buildSchemes();
+  function monthFromTenday(label) {
+    var s = displayTendayLabel(label);
+    var m = s.match(/(\d{1,2})\s*月/);
+    return m ? parseInt(m[1], 10) + '月' : '—';
+  }
 
-  function applyAllocationIo(io) {
-    if (!io || !io.allocation || !io.allocation.rows || !io.allocation.rows.length) return;
-    var baseRows = io.allocation.rows.map(function (r) {
-      return {
-        date: r.date,
-        label: r.label || r.date,
-        bp: +r.bp,
-        evap: +r.evap,
-        irrig: +r.irrig,
-        urban: +r.urban,
-        rural: +r.rural,
-        eco: +r.eco,
-        demand: +r.demand,
-        deficit: +r.deficit,
-        surplus: +r.surplus,
-        diff: +r.diff,
-        spill: +r.spill,
-        releaseSpill: +r.releaseSpill,
-        capacity: +r.capacity,
-        level: +r.level,
-        pond: +r.pond,
-        plant: +r.plant,
-        irrigSupply: +r.irrigSupply,
-        supply: +r.supply,
-        satisfied: r.satisfied || 'ok',
-        month: r.month
-      };
-    });
-    var baseSummary = Object.assign({}, io.allocation.summary);
-    var list = [];
-    for (var i = 1; i <= 9; i++) {
-      var factor = 1 + (i - 1) * 0.02;
-      var rows = baseRows.map(function (r) {
-        if (i === 1) return Object.assign({}, r);
+  function statusHtml(flag) {
+    if (API && API.isYes(flag)) return '<span class="tag tag-ok">满足</span>';
+    return '<span class="tag tag-fail">不满足</span>';
+  }
+
+  function satisfiedText(flag) {
+    return API && API.isYes(flag) ? '满足' : '不满足';
+  }
+
+  function mapTendays(tendays) {
+    return (tendays || [])
+      .slice()
+      .sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); })
+      .map(function (t) {
+        var raw = t.tendayLabel || '';
+        var display = displayTendayLabel(raw);
         return {
-          date: r.date,
-          label: r.label,
-          bp: Math.round(r.bp * factor),
-          evap: Math.round(r.evap * factor),
-          irrig: Math.round(r.irrig * factor),
-          urban: Math.round(r.urban * factor),
-          rural: Math.round(r.rural * factor),
-          eco: Math.round(r.eco * factor),
-          demand: Math.round(r.demand * factor),
-          deficit: Math.round(r.deficit * factor),
-          surplus: Math.round(r.surplus * factor),
-          diff: Math.round(r.diff * factor),
-          spill: Math.max(0, Math.round(r.spill * factor)),
-          releaseSpill: Math.round(r.releaseSpill * factor),
-          capacity: Math.round(r.capacity),
-          level: +r.level.toFixed(2),
-          pond: Math.round(r.pond * factor),
-          plant: Math.round(r.plant * factor),
-          irrigSupply: Math.round(r.irrigSupply * factor),
-          supply: Math.round(r.supply * factor),
-          satisfied: r.satisfied,
-          month: r.month
+          tendayLabel: raw,
+          displayLabel: display,
+          bpInflow: t.bpInflow,
+          evaporation: t.evaporation,
+          irrigationDemand: t.irrigationDemand,
+          urbanDemand: t.urbanDemand,
+          ruralDemand: t.ruralDemand,
+          ecoDemand: t.ecoDemand,
+          totalDemand: t.totalDemand,
+          demandGtSupply: t.demandGtSupply,
+          supplyGtDemand: t.supplyGtDemand,
+          diffInflowDemand: t.diffInflowDemand,
+          spill: t.spill,
+          dischargePlusSpill: t.dischargePlusSpill,
+          endStorage: t.endStorage,
+          endWaterLevel: t.endWaterLevel,
+          pondSupply: t.pondSupply,
+          waterworksSupply: t.waterworksSupply,
+          reservoirIrrigation: t.reservoirIrrigation,
+          totalSupply: t.totalSupply,
+          isSatisfied: t.isSatisfied,
+          month: monthFromTenday(raw),
+          sortOrder: t.sortOrder
         };
       });
-      var summary = i === 1 ? {
-        inflow: Math.round(baseSummary.inflow || 0),
-        demand: Math.round(baseSummary.demand || 0),
-        supply: Math.round(baseSummary.supply || 0),
-        shortage: Math.round(baseSummary.shortage || 0),
-        spill: Math.round(baseSummary.spill || 0)
-      } : {
-        inflow: rows.reduce(function (s, r) { return s + r.bp; }, 0),
-        demand: rows.reduce(function (s, r) { return s + r.demand; }, 0),
-        supply: rows.reduce(function (s, r) { return s + r.supply; }, 0),
-        shortage: rows.reduce(function (s, r) { return s + r.deficit; }, 0),
-        spill: rows.reduce(function (s, r) { return s + r.spill; }, 0)
-      };
-      list.push({
-        id: i,
-        name: '水资源调度结果' + i,
-        summary: summary,
-        rows: rows
-      });
-    }
-    SCHEMES = list;
   }
 
   function filteredSchemes() {
     var q = ($('scheme-search').value || '').trim();
-    if (!q) return SCHEMES.slice();
-    return SCHEMES.filter(function (s) { return s.name.indexOf(q) >= 0; });
+    if (!q) return schemeList.slice();
+    return schemeList.filter(function (s) {
+      return String(s.schemeName || s.id || '').indexOf(q) >= 0;
+    });
+  }
+
+  function getSchemeById(id) {
+    var sid = String(id == null ? '' : id);
+    return schemeList.find(function (s) { return String(s.id) === sid; }) || null;
   }
 
   function renderSchemeList() {
     var items = filteredSchemes();
     $('scheme-list').innerHTML = items.map(function (s) {
-      return '<div class="list-item' + (s.id === activeId ? ' active' : '') + '" data-id="' + s.id + '">' + s.name + '</div>';
+      var id = String(s.id);
+      var name = s.schemeName || id;
+      var done = s.status === 'completed';
+      var tip = !done && s.status
+        ? '<span class="status-tip">（' + (API.statusLabel ? API.statusLabel(s.status) : s.status) + '）</span>'
+        : '';
+      var title = escapeAttr(s.errorMsg || name);
+      var cls = 'list-item'
+        + (id === String(activeId) ? ' active' : '')
+        + (done ? '' : ' is-muted');
+      return '<div class="' + cls + '" data-id="' + escapeAttr(id) + '" title="' + title + '">' +
+        name + tip + '</div>';
     }).join('') || '<div style="padding:24px;text-align:center;color:#bbb;font-size:13px">无匹配结果</div>';
   }
 
-  function getActiveScheme() {
-    return SCHEMES.find(function (s) { return s.id === activeId; }) || SCHEMES[0];
-  }
-
-  function renderStats(summary) {
+  function renderStats(record) {
+    var r = record || {};
     var items = [
-      { label: '总来水', value: summary.inflow.toLocaleString('en-US') },
-      { label: '总需水', value: summary.demand.toLocaleString('en-US') },
-      { label: '总供水', value: summary.supply.toLocaleString('en-US') },
-      { label: '缺水量', value: summary.shortage.toLocaleString('en-US') },
-      { label: '弃水量', value: summary.spill.toLocaleString('en-US') }
+      { label: '总来水', value: num(r.totalInflow) },
+      { label: '总需水', value: num(r.totalDemand) },
+      { label: '总供水', value: num(r.totalSupply) },
+      { label: '缺水量', value: num(r.deficit) },
+      { label: '弃水量', value: num(r.spill) }
     ];
     $('stats-row').innerHTML = items.map(function (it) {
-      return '<div class="stat-card"><div class="label">' + it.label + '</div><div class="value">' + it.value + '<span class="unit">万m³</span></div></div>';
+      return '<div class="stat-card"><div class="label">' + it.label + '</div><div class="value">' +
+        it.value + '<span class="unit">万m³</span></div></div>';
     }).join('');
   }
 
@@ -431,9 +334,11 @@ tbody tr:hover td{background:#f5f5f5}
   }
 
   function renderCharts(rows) {
-    var labels = rows.map(function (r) { return r.label; });
+    var data = rows || [];
+    var labels = data.map(function (r) { return r.displayLabel; });
+    var many = labels.length > 18;
     var zoom = typeof buildChartDataZoom === 'function' ? buildChartDataZoom() : [];
-    var gridBottom = 78;
+    var gridBottom = typeof CHART_DATA_ZOOM_GRID_BOTTOM === 'number' ? CHART_DATA_ZOOM_GRID_BOTTOM + 20 : 78;
 
     var c1 = ensureChart('compare', $('chart-compare'));
     if (c1) c1.setOption({
@@ -444,7 +349,7 @@ tbody tr:hover td{background:#f5f5f5}
       dataZoom: zoom,
       xAxis: {
         type: 'category', data: labels,
-        axisLabel: { color: '#999', fontSize: 11 },
+        axisLabel: { color: '#999', fontSize: 11, rotate: many ? 40 : 0 },
         axisTick: { alignWithLabel: true },
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
@@ -456,13 +361,13 @@ tbody tr:hover td{background:#f5f5f5}
       series: [
         {
           name: '来水', type: 'bar', barMaxWidth: 18,
-          data: rows.map(function (r) { return r.bp; }),
-          label: { show: true, position: 'top', fontSize: 9, color: '#666' }
+          data: data.map(function (r) { return r.bpInflow; }),
+          label: { show: !many, position: 'top', fontSize: 9, color: '#666' }
         },
         {
           name: '需水', type: 'bar', barMaxWidth: 18,
-          data: rows.map(function (r) { return r.demand; }),
-          label: { show: true, position: 'top', fontSize: 9, color: '#666' }
+          data: data.map(function (r) { return r.totalDemand; }),
+          label: { show: !many, position: 'top', fontSize: 9, color: '#666' }
         }
       ]
     });
@@ -476,7 +381,7 @@ tbody tr:hover td{background:#f5f5f5}
       dataZoom: zoom,
       xAxis: {
         type: 'category', boundaryGap: false, data: labels,
-        axisLabel: { color: '#999', fontSize: 11 },
+        axisLabel: { color: '#999', fontSize: 11, rotate: many ? 40 : 0 },
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
       yAxis: [
@@ -500,34 +405,16 @@ tbody tr:hover td{background:#f5f5f5}
           name: '水位', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7,
           itemStyle: { color: '#5D7EE9' }, lineStyle: { color: '#5D7EE9' },
           areaStyle: { color: 'rgba(93,126,233,0.12)' },
-          data: rows.map(function (r) { return r.level; })
+          data: data.map(function (r) { return r.endWaterLevel; })
         },
         {
           name: '库容', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7, yAxisIndex: 1,
           itemStyle: { color: '#73C892' }, lineStyle: { color: '#73C892' },
           areaStyle: { color: 'rgba(115,200,146,0.10)' },
-          data: rows.map(function (r) { return r.capacity; })
+          data: data.map(function (r) { return r.endStorage; })
         }
       ]
     });
-  }
-
-  function monthLabel(dateStr) {
-    if (dateStr == null) return '-';
-    if (typeof dateStr === 'number') return dateStr + '月';
-    var s = String(dateStr);
-    if (/^\d{1,2}月$/.test(s)) return s;
-    var m = s.match(/-(\d{1,2})$/);
-    if (m) return parseInt(m[1], 10) + '月';
-    m = s.match(/^(\d{1,2})/);
-    if (m) return parseInt(m[1], 10) + '月';
-    return s || '-';
-  }
-
-  function statusHtml(s) {
-    if (s === 'ok') return '<span class="tag tag-ok">满足</span>';
-    if (s === 'partial') return '<span class="tag tag-partial">部分满足</span>';
-    return '<span class="tag tag-fail">不满足</span>';
   }
 
   function filteredRows() {
@@ -536,14 +423,6 @@ tbody tr:hover td{background:#f5f5f5}
     return currentRows.filter(function (r) {
       return Object.keys(r).some(function (k) { return String(r[k]).indexOf(q) >= 0; });
     });
-  }
-
-  function pagerHtml(cur, pages) {
-    var html = '';
-    for (var i = 1; i <= pages; i++) {
-      html += '<button type="button" class="pg-btn' + (i === cur ? ' active' : '') + '" data-page="' + i + '">' + i + '</button>';
-    }
-    return html;
   }
 
   function renderTable() {
@@ -555,33 +434,86 @@ tbody tr:hover td{background:#f5f5f5}
     var from = rows.length ? start + 1 : 0;
     var to = Math.min(start + PAGE_SIZE, rows.length);
     $('pg-info').textContent = '共 ' + rows.length + ' 条' + (rows.length ? '，本页显示 ' + from + '-' + to + ' 条' : '');
-    $('pg-btns').innerHTML = pagerHtml(page, pages);
+    $('pg-btns').innerHTML = API && API.pagerHtml
+      ? API.pagerHtml(page, pages)
+      : '';
     $('tbody').innerHTML = pageRows.map(function (r) {
       return '<tr>' +
-        '<td>' + r.date + '</td>' +
-        '<td>' + fmt0(r.bp) + '</td>' +
-        '<td>' + fmt0(r.evap) + '</td>' +
-        '<td>' + fmt0(r.irrig) + '</td>' +
-        '<td>' + fmt0(r.urban) + '</td>' +
-        '<td>' + fmt0(r.rural) + '</td>' +
-        '<td>' + fmt0(r.eco) + '</td>' +
-        '<td>' + fmt0(r.demand) + '</td>' +
-        '<td>' + fmt0(r.deficit) + '</td>' +
-        '<td>' + fmt0(r.surplus) + '</td>' +
-        '<td>' + fmt0(r.diff) + '</td>' +
-        '<td>' + fmt0(r.spill) + '</td>' +
-        '<td>' + fmt0(r.releaseSpill) + '</td>' +
-        '<td>' + fmt0(r.capacity) + '</td>' +
-        '<td>' + fmt1(r.level) + '</td>' +
-        '<td>' + fmt0(r.pond) + '</td>' +
-        '<td>' + fmt0(r.plant) + '</td>' +
-        '<td>' + fmt0(r.irrigSupply) + '</td>' +
-        '<td>' + fmt0(r.supply) + '</td>' +
-        '<td>' + statusHtml(r.satisfied) + '</td>' +
-        '<td>' + monthLabel(r.date) + '</td>' +
+        '<td>' + r.displayLabel + '</td>' +
+        '<td>' + num(r.bpInflow) + '</td>' +
+        '<td>' + num(r.evaporation) + '</td>' +
+        '<td>' + num(r.irrigationDemand) + '</td>' +
+        '<td>' + num(r.urbanDemand) + '</td>' +
+        '<td>' + num(r.ruralDemand) + '</td>' +
+        '<td>' + num(r.ecoDemand) + '</td>' +
+        '<td>' + num(r.totalDemand) + '</td>' +
+        '<td>' + num(r.demandGtSupply) + '</td>' +
+        '<td>' + num(r.supplyGtDemand) + '</td>' +
+        '<td>' + num(r.diffInflowDemand) + '</td>' +
+        '<td>' + num(r.spill) + '</td>' +
+        '<td>' + num(r.dischargePlusSpill) + '</td>' +
+        '<td>' + num(r.endStorage) + '</td>' +
+        '<td>' + num(r.endWaterLevel) + '</td>' +
+        '<td>' + num(r.pondSupply) + '</td>' +
+        '<td>' + num(r.waterworksSupply) + '</td>' +
+        '<td>' + num(r.reservoirIrrigation) + '</td>' +
+        '<td>' + num(r.totalSupply) + '</td>' +
+        '<td>' + statusHtml(r.isSatisfied) + '</td>' +
+        '<td>' + r.month + '</td>' +
         '</tr>';
     }).join('') || '<tr><td colspan="21" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>';
     requestAnimationFrame(refreshStickyHScroll);
+  }
+
+  function clearDetail() {
+    currentRecord = null;
+    currentRows = [];
+    page = 1;
+    filter = '';
+    $('table-filter').value = '';
+    renderStats({});
+    renderCharts([]);
+    renderTable();
+  }
+
+  function applyDetail(detail) {
+    currentRecord = (detail && detail.record) || {};
+    currentRows = mapTendays(detail && detail.tendays);
+    page = 1;
+    filter = '';
+    $('table-filter').value = '';
+    renderStats(currentRecord);
+    renderCharts(currentRows);
+    renderTable();
+    setTimeout(function () {
+      Object.keys(charts).forEach(function (k) { if (charts[k]) charts[k].resize(); });
+      refreshStickyHScroll();
+    }, 40);
+  }
+
+  async function loadScheme(id) {
+    var sid = String(id == null ? '' : id);
+    var scheme = getSchemeById(sid);
+    if (!scheme) return;
+    if (scheme.status !== 'completed') {
+      try {
+        if (API && API.assertViewable) API.assertViewable(scheme);
+      } catch (e) {
+        toast(scheme.errorMsg || e.message || '该方案不可查看');
+        return;
+      }
+      toast(scheme.errorMsg || '该方案尚未计算完成，无法查看');
+      return;
+    }
+    activeId = sid;
+    renderSchemeList();
+    try {
+      var detail = await API.allocation.detail(sid);
+      applyDetail(detail);
+    } catch (e) {
+      clearDetail();
+      toast(e.message || '方案详情加载失败');
+    }
   }
 
   function bindStickyHScroll(wrapId, barId, scrollParent) {
@@ -639,27 +571,10 @@ tbody tr:hover td{background:#f5f5f5}
   var stickyLayout = bindStickyHScroll('tbl-wrap', 'tbl-x', $('main-scroll'));
   function refreshStickyHScroll() { if (stickyLayout) stickyLayout(); }
 
-  function loadScheme(id) {
-    activeId = id;
-    var scheme = getActiveScheme();
-    currentRows = scheme.rows.slice();
-    page = 1;
-    filter = '';
-    $('table-filter').value = '';
-    renderSchemeList();
-    renderStats(scheme.summary);
-    renderCharts(currentRows);
-    renderTable();
-    setTimeout(function () {
-      Object.keys(charts).forEach(function (k) { if (charts[k]) charts[k].resize(); });
-      refreshStickyHScroll();
-    }, 40);
-  }
-
   $('scheme-list').addEventListener('click', function (e) {
     var item = e.target.closest('.list-item');
     if (!item) return;
-    loadScheme(+item.dataset.id);
+    loadScheme(item.dataset.id);
   });
   $('scheme-search').addEventListener('input', renderSchemeList);
   $('scheme-collapse').addEventListener('click', function () {
@@ -682,13 +597,22 @@ tbody tr:hover td{background:#f5f5f5}
     if (!rows.length) return toast('暂无数据可导出');
     var header = ['日期','BP预测来水量(万方)','库面蒸发数据(万方)','灌溉需水','城镇需水','农村生活需水量','河道生态需水总量','总需水量(万方)','需>供','供>需','差值(来水-需水)','弃水','下泄+弃水','月末库容','月末水位','塘坝可供水量(万方)','水厂供水','花凉亭水库灌溉供水','总供水','是否满足需水','月份'];
     var data = rows.map(function (r) {
-      return [r.date, r.bp, r.evap, r.irrig, r.urban, r.rural, r.eco, r.demand, r.deficit, r.surplus, r.diff, r.spill, r.releaseSpill, r.capacity, r.level, r.pond, r.plant, r.irrigSupply, r.supply, r.satisfied === 'ok' ? '满足' : (r.satisfied === 'partial' ? '部分满足' : '不满足'), monthLabel(r.date)];
+      return [
+        r.displayLabel, r.bpInflow, r.evaporation, r.irrigationDemand, r.urbanDemand,
+        r.ruralDemand, r.ecoDemand, r.totalDemand, r.demandGtSupply, r.supplyGtDemand,
+        r.diffInflowDemand, r.spill, r.dischargePlusSpill, r.endStorage, r.endWaterLevel,
+        r.pondSupply, r.waterworksSupply, r.reservoirIrrigation, r.totalSupply,
+        satisfiedText(r.isSatisfied), r.month
+      ];
     });
     if (window.XLSX) {
       var ws = XLSX.utils.aoa_to_sheet([header].concat(data));
       var wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '配水明细');
-      XLSX.writeFile(wb, (getActiveScheme().name || '配水决策') + '.xlsx');
+      var name = (currentRecord && currentRecord.schemeName) ||
+        (getSchemeById(activeId) && getSchemeById(activeId).schemeName) ||
+        '配水决策';
+      XLSX.writeFile(wb, name + '.xlsx');
     } else toast('导出组件未加载');
   });
 
@@ -697,15 +621,36 @@ tbody tr:hover td{background:#f5f5f5}
     refreshStickyHScroll();
   });
 
-  fetch('./mock/water-model-io.json')
-    .then(function (res) { return res.ok ? res.json() : Promise.reject(res.status); })
-    .then(function (io) {
-      applyAllocationIo(io);
-      loadScheme(1);
-    })
-    .catch(function () {
-      loadScheme(1);
-    });
+  async function init() {
+    if (!API || !API.allocation) {
+      toast('ModelApi 未加载');
+      clearDetail();
+      return;
+    }
+    if (API.probeHealth) {
+      try { await API.probeHealth(); } catch (e) { /* optional */ }
+    }
+    try {
+      var list = await API.allocation.list();
+      schemeList = Array.isArray(list) ? list : [];
+      renderSchemeList();
+      var firstDone = schemeList.find(function (s) { return s.status === 'completed'; });
+      if (firstDone) {
+        await loadScheme(firstDone.id);
+      } else {
+        activeId = '';
+        clearDetail();
+        if (schemeList.length) toast('暂无已完成的配水方案');
+      }
+    } catch (e) {
+      schemeList = [];
+      renderSchemeList();
+      clearDetail();
+      toast(e.message || '方案列表加载失败');
+    }
+  }
+
+  init();
 })();
 </script>
 </body>

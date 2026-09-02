@@ -496,7 +496,30 @@
           '配水调度明细_' + recordId + '.xlsx'
         );
       }
-    })
+    }),
+    /** 运行管理决策汇总（智能决策接口第三章） */
+    operation: {
+      summary: function (startDate, endDate) {
+        var q = [];
+        if (startDate) q.push('startDate=' + encodeURIComponent(startDate));
+        if (endDate) q.push('endDate=' + encodeURIComponent(endDate));
+        return getJson(
+          '/operation/decision-summary' + (q.length ? '?' + q.join('&') : '')
+        );
+      }
+    },
+    /** 旱情趋势（复用墒情监测） */
+    soilMoisture: {
+      sites: function () {
+        return getJson('/soil-moisture/sites');
+      },
+      trend: function (stcd, startTime, endTime) {
+        var q = ['stcd=' + encodeURIComponent(stcd)];
+        if (startTime) q.push('startTime=' + encodeURIComponent(startTime));
+        if (endTime) q.push('endTime=' + encodeURIComponent(endTime));
+        return getJson('/soil-moisture/trend?' + q.join('&'));
+      }
+    }
   };
 
   global.ModelApi = ModelApi;
