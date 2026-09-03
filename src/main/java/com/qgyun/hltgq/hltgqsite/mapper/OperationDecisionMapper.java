@@ -29,21 +29,8 @@ public interface OperationDecisionMapper {
                      @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 问题上报数：按发现时间 time 过滤区间，全状态计数。
-     */
-    @Select("<script>" +
-            "SELECT COUNT(*) " +
-            "FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" " +
-            "<where>" +
-            "<if test='startTime != null'>AND time &gt;= #{startTime} </if>" +
-            "<if test='endTime != null'>AND time &lt;= #{endTime} </if>" +
-            "</where>" +
-            "</script>")
-    long countIssue(@Param("startTime") LocalDateTime startTime,
-                    @Param("endTime") LocalDateTime endTime);
-
-    /**
      * 问题状态分布：name = status 编码（如 #1#），value = 计数。
+     * 问题上报数与问题符合度由本结果在 Controller 内存聚合（同源一致）。
      * 列别名与 StatusItem 属性同名自动映射（map-underscore-to-camel-case=false）。
      */
     @Select("<script>" +
@@ -71,6 +58,35 @@ public interface OperationDecisionMapper {
             "</script>")
     long countOrder(@Param("startTime") LocalDateTime startTime,
                     @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 巡查符合度分母：区间内应完成巡检计划数（排除草稿 #1# 与已取消 #4#），按计划开始时间 start_time 过滤。
+     */
+    @Select("<script>" +
+            "SELECT COUNT(*) " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_schedule\" " +
+            "WHERE status IN ('#2#', '#3#') " +
+            "<if test='startTime != null'>AND start_time &gt;= #{startTime} </if>" +
+            "<if test='endTime != null'>AND start_time &lt;= #{endTime} </if>" +
+            "</script>")
+    long countDuePatrolSchedules(@Param("startTime") LocalDateTime startTime,
+                                 @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 巡查符合度分子：区间内应完成计划中「已存在已提交巡检记录」的计划数。
+     * 与分母同源（同按计划 start_time 过滤、同 status 白名单），保证符合度恒 ≤ 100%。
+     */
+    @Select("<script>" +
+            "SELECT COUNT(DISTINCT p.id) " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_schedule\" p " +
+            "WHERE p.status IN ('#2#', '#3#') " +
+            "<if test='startTime != null'>AND p.start_time &gt;= #{startTime} </if>" +
+            "<if test='endTime != null'>AND p.start_time &lt;= #{endTime} </if>" +
+            "AND EXISTS (SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" r " +
+            "            WHERE r.patrol_schedule = p.id AND r.status = '#2#')" +
+            "</script>")
+    long countCompliantPatrolSchedules(@Param("startTime") LocalDateTime startTime,
+                                       @Param("endTime") LocalDateTime endTime);
 
     /**
      * 工单状态分布：name = status 编码（如 #1#），value = 计数。

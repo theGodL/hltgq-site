@@ -33,9 +33,9 @@ public class OperationDecisionController {
             {"#5#", "已作废"},
     };
 
-    /** 工单状态编码 → 中文名（demo 页面文案为"待指派"，对应表 status=#1# 待处理） */
+    /** 工单状态编码 → 中文名（status=#1# 业务定义为「待处理」） */
     private static final String[][] ORDER_STATUS = {
-            {"#1#", "待指派"},
+            {"#1#", "待处理"},
             {"#2#", "处理中"},
             {"#3#", "已关闭"},
             {"#4#", "已取消"},
@@ -45,9 +45,11 @@ public class OperationDecisionController {
     private OperationDecisionMapper operationDecisionMapper;
 
     /**
-     * 运行管理决策总览：巡查总次数 / 问题上报数 / 工单数 + 问题状态分布 + 工单状态分布。
+     * 运行管理决策总览：4 指标卡（巡查总次数/巡查符合度/工单数/问题符合度）+ 问题状态分布 + 工单状态分布。
      * <p>统计口径：巡查总次数仅统计已提交巡检记录（排除草稿），按巡检时间 time 过滤；
      * 问题按发现时间 time 过滤；工单按平台公共字段 created_at 过滤。
+     * <p>巡查符合度 = 区间内应完成计划中「已存在已提交记录」的计划占比（分子分母同源，恒 ≤ 100%）；
+     * 问题符合度 = 已处置（已转工单 + 已关闭）问题占比，由状态分布内存聚合。
      * <p>状态分布固定项返回：无记录的状态补 0，保证前端柱状图坐标稳定。
      *
      * @param startDate 统计起始日期（含），格式 yyyy-MM-dd，可选（不传 = 不限）
@@ -63,12 +65,38 @@ public class OperationDecisionController {
         OperationDecisionVO vo = new OperationDecisionVO();
         OperationDecisionVO.Summary summary = new OperationDecisionVO.Summary();
         summary.setPatrolCount(operationDecisionMapper.countPatrol(startTime, endTime));
-        summary.setIssueCount(operationDecisionMapper.countIssue(startTime, endTime));
         summary.setOrderCount(operationDecisionMapper.countOrder(startTime, endTime));
+
+        // 巡查符合度：分子分母同源（区间内应完成计划中有已提交记录的计划占比）
+        long duePatrols = operationDecisionMapper.countDuePatrolSchedules(startTime, endTime);
+        long compliantPatrols = operationDecisionMapper.countCompliantPatrolSchedules(startTime, endTime);
+        summary.setPatrolCompliance(duePatrols == 0 ? 0.0 : round1(compliantPatrols * 100.0 / duePatrols));
+
+        // 问题上报数与符合度：由状态分布内存聚合（减少 SQL 且与分布同源一致）
+        List<OperationDecisionVO.StatusItem> issueStatusRows =
+                operationDecisionMapper.groupIssueStatus(startTime, endTime);
+        List<OperationDecisionVO.StatusItem> issueStatus = buildStatus(ISSUE_STATUS, issueStatusRows);
+        long issueTotal = 0;
+        long issueHandled = 0;
+        for (OperationDecisionVO.StatusItem row : issueStatusRows) {
+            long value = row.getValue() == null ? 0 : row.getValue();
+            issueTotal += value;
+            if ("#3#".equals(row.getName()) || "#4#".equals(row.getName())) {
+                issueHandled += value;
+            }
+        }
+        summary.setIssueCount(issueTotal);
+        summary.setIssueCompliance(issueTotal == 0 ? 0.0 : round1(issueHandled * 100.0 / issueTotal));
+
         vo.setSummary(summary);
-        vo.setIssueStatus(buildStatus(ISSUE_STATUS, operationDecisionMapper.groupIssueStatus(startTime, endTime)));
+        vo.setIssueStatus(issueStatus);
         vo.setOrderStatus(buildStatus(ORDER_STATUS, operationDecisionMapper.groupOrderStatus(startTime, endTime)));
         return vo;
+    }
+
+    /** 保留 1 位小数的百分数（85.55 → 85.6） */
+    private double round1(double value) {
+        return Math.round(value * 10.0) / 10.0;
     }
 
     /**

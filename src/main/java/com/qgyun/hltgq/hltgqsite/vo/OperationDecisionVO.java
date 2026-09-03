@@ -16,7 +16,7 @@ public class OperationDecisionVO {
     /** 问题状态分布（固定 5 项：待处理/处理中/已转工单/已关闭/已作废，无记录补 0） */
     private List<StatusItem> issueStatus;
 
-    /** 工单状态分布（固定 4 项：待指派/处理中/已关闭/已取消，无记录补 0） */
+    /** 工单状态分布（固定 4 项：待处理/处理中/已关闭/已取消，无记录补 0） */
     private List<StatusItem> orderStatus;
 
     /** 总览计数 */
@@ -26,8 +26,14 @@ public class OperationDecisionVO {
         /** 巡查总次数（仅已提交巡检记录，排除草稿） */
         private long patrolCount;
 
+        /** 巡查符合度：0~100 百分数（如 85.5 = 85.5%），分母为 0 时返回 0 */
+        private double patrolCompliance;
+
         /** 问题上报数 */
         private long issueCount;
+
+        /** 问题符合度：0~100 百分数，分母为 0 时返回 0 */
+        private double issueCompliance;
 
         /** 工单数 */
         private long orderCount;

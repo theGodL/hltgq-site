@@ -1,6 +1,8 @@
 package com.qgyun.hltgq.hltgqsite.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.qgyun.hltgq.hltgqsite.decision.service.WaterBranchService;
+import com.qgyun.hltgq.hltgqsite.decision.vo.WaterBranchVO;
 import com.qgyun.hltgq.hltgqsite.entity.DecisionBranchDetail;
 import com.qgyun.hltgq.hltgqsite.entity.DecisionRecord;
 import com.qgyun.hltgq.hltgqsite.entity.DecisionScaleFactor;
@@ -60,6 +62,9 @@ public class DecisionController {
     @Autowired
     private DecisionBranchDetailMapper branchDetailMapper;
 
+    @Autowired
+    private WaterBranchService waterBranchService;
+
     /** 提交配水调度（秒回 recordId），后台异步调模型计算 */
     @PostMapping
     public Map<String, Object> submit(@RequestBody DecisionSubmitRequest req) {
@@ -117,6 +122,20 @@ public class DecisionController {
     @GetMapping("/list")
     public List<DecisionRecord> list() {
         return commonService.list(recordMapper);
+    }
+
+    /**
+     * 拓扑按旬支渠数据：日期映射到对应旬（不传 = 方案首旬）。
+     * 拓扑每支渠单值展示（无旬维度），重名支渠靠 key 与拓扑节点精确命中。
+     *
+     * @param id        方案 ID
+     * @param startDate 起始日期 yyyy-MM-dd，可选；不传 = 方案首旬
+     */
+    @GetMapping("/{id}/branches")
+    public WaterBranchVO branches(@PathVariable String id,
+                                  @RequestParam(required = false) String startDate) {
+        commonService.require(id, recordMapper);
+        return waterBranchService.branches(id, startDate);
     }
 
     /** 调度方案重命名：body {"name": "新名称"} */
