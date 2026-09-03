@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工程管理决策</title>
+<script src="./lib/echarts.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden}
+.breadcrumb{color:#999;font-size:13px;flex-shrink:0}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.main-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px;padding-right:2px}
+
+.chart-card{padding:16px 16px 12px;display:flex;flex-direction:column;min-height:0}
+.chart-title{font-size:14px;font-weight:700;color:#1f1f1f;margin-bottom:8px;line-height:22px;flex-shrink:0}
+.chart-risk{width:100%;height:360px}
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:360px}
+.chart-pie{width:100%;height:340px}
+
+@media (max-width:1100px){
+  .charts-row{grid-template-columns:1fr}
+  .chart-risk{height:400px}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>智能决策</span><span class="sep">/</span>
+    <span class="cur">工程管理决策</span>
+  </div>
+
+  <div class="main-scroll">
+    <div class="card chart-card">
+      <div class="chart-title">站点问题风险等级分布</div>
+      <div class="chart-risk" id="chart-risk"></div>
+    </div>
+
+    <div class="charts-row">
+      <div class="card chart-card">
+        <div class="chart-title">工单类型分布</div>
+        <div class="chart-pie" id="chart-order-type"></div>
+      </div>
+      <div class="card chart-card">
+        <div class="chart-title">问题状态分布</div>
+        <div class="chart-pie" id="chart-issue-status"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var charts = { risk: null, orderType: null, issueStatus: null };
+
+  var RISK_COLORS = {
+    low: '#73C892',
+    mid: '#F7CB6B',
+    high: '#E98481'
+  };
+
+  /** mock：接口就绪后替换 */
+  function loadMockData() {
+    return {
+      stations: [
+        { name: '站点名称', low: 4, mid: 3, high: 1 },
+        { name: '站点名称', low: 5, mid: 4, high: 2 },
+        { name: '站点名称', low: 3, mid: 5, high: 1 },
+        { name: '站点名称', low: 6, mid: 3, high: 2 },
+        { name: '站点名称', low: 4, mid: 6, high: 3 },
+        { name: '站点名称', low: 7, mid: 5, high: 2 },
+        { name: '站点名称', low: 5, mid: 4, high: 3 },
+        { name: '站点名称', low: 8, mid: 6, high: 4 },
+        { name: '站点名称', low: 6, mid: 7, high: 3 },
+        { name: '站点名称', low: 9, mid: 8, high: 3 },
+        { name: '站点名称', low: 9, mid: 8, high: 3 }
+      ],
+      orderTypes: [
+        { name: '日常巡检', value: 10, color: '#9B87F5' },
+        { name: '设备维护', value: 9, color: '#F5C26B' },
+        { name: '设备故障抢修', value: 8, color: '#5ECBC8' },
+        { name: '水工建筑物维护', value: 7, color: '#F08C8C' },
+        { name: '渠道及附属设施养护', value: 6, color: '#5B6EE1' },
+        { name: '计量与监测维护', value: 6, color: '#73C892' },
+        { name: '信息化与通信网', value: 5, color: '#8B6FD6' },
+        { name: '安全隐患整改', value: 4, color: '#6EC8F2' },
+        { name: '应急处置', value: 3, color: '#4A82E7' },
+        { name: '其他', value: 2, color: '#A8D8F0' }
+      ],
+      issueStatus: [
+        { name: '待处理', value: 7, color: '#7E76E6' },
+        { name: '处理中', value: 8, color: '#EE8B88' },
+        { name: '已转工单', value: 5, color: '#57BED3' },
+        { name: '已关闭', value: 3, color: '#F9B552' },
+        { name: '已作废', value: 0, color: '#4A82E7' }
+      ]
+    };
+  }
+
+  function ensureChart(key, el) {
+    if (!el || !window.echarts) return null;
+    if (!charts[key]) charts[key] = echarts.init(el);
+    return charts[key];
+  }
+
+  function renderRisk(data) {
+    var chart = ensureChart('risk', document.getElementById('chart-risk'));
+    if (!chart) return;
+    var stations = data.stations || [];
+    var names = stations.map(function (s) { return s.name; });
+    chart.setOption({
+      color: [RISK_COLORS.low, RISK_COLORS.mid, RISK_COLORS.high],
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: function (params) {
+          var lines = (params[0] && params[0].name) ? params[0].name + '<br/>' : '';
+          (params || []).forEach(function (p) {
+            if (p.value != null) lines += p.marker + ' ' + p.seriesName + '：' + p.value + '<br/>';
+          });
+          return lines;
+        }
+      },
+      legend: {
+        bottom: 0,
+        left: 'center',
+        itemWidth: 12,
+        itemHeight: 12,
+        textStyle: { color: '#666', fontSize: 12 },
+        data: ['低风险', '中风险', '高风险']
+      },
+      grid: { left: 48, right: 24, top: 24, bottom: 48 },
+      xAxis: {
+        type: 'category',
+        data: names,
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLabel: { color: '#666', fontSize: 12, interval: 0 }
+      },
+      yAxis: {
+        type: 'value',
+        min: 0,
+        max: 20,
+        interval: 4,
+        axisLabel: { color: '#999', fontSize: 12 },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [
+        {
+          name: '低风险',
+          type: 'bar',
+          stack: 'risk',
+          barMaxWidth: 36,
+          itemStyle: { color: RISK_COLORS.low },
+          label: {
+            show: true,
+            position: 'inside',
+            color: '#fff',
+            fontSize: 12,
+            formatter: function (p) { return p.value > 0 ? p.value : ''; }
+          },
+          data: stations.map(function (s) { return s.low; })
+        },
+        {
+          name: '中风险',
+          type: 'bar',
+          stack: 'risk',
+          barMaxWidth: 36,
+          itemStyle: { color: RISK_COLORS.mid },
+          label: {
+            show: true,
+            position: 'inside',
+            color: '#fff',
+            fontSize: 12,
+            formatter: function (p) { return p.value > 0 ? p.value : ''; }
+          },
+          data: stations.map(function (s) { return s.mid; })
+        },
+        {
+          name: '高风险',
+          type: 'bar',
+          stack: 'risk',
+          barMaxWidth: 36,
+          itemStyle: { color: RISK_COLORS.high, borderRadius: [4, 4, 0, 0] },
+          label: {
+            show: true,
+            position: 'inside',
+            color: '#fff',
+            fontSize: 12,
+            formatter: function (p) { return p.value > 0 ? p.value : ''; }
+          },
+          data: stations.map(function (s) { return s.high; })
+        }
+      ]
+    }, true);
+  }
+
+  function pieOption(items) {
+    var total = items.reduce(function (s, it) { return s + (Number(it.value) || 0); }, 0);
+    return {
+      tooltip: {
+        trigger: 'item',
+        formatter: function (p) {
+          return p.name + '<br/>' + p.value + '（' + p.percent + '%）';
+        }
+      },
+      legend: {
+        bottom: 0,
+        left: 'center',
+        itemWidth: 10,
+        itemHeight: 10,
+        textStyle: { color: '#666', fontSize: 11 },
+        data: items.map(function (it) { return it.name; })
+      },
+      series: [{
+        type: 'pie',
+        radius: ['0%', '58%'],
+        center: ['50%', '44%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderColor: '#fff', borderWidth: 2 },
+        label: {
+          show: true,
+          formatter: function (p) {
+            if (!p.value) return '';
+            var pct = total ? (p.value / total * 100).toFixed(2) : '0.00';
+            return p.value + ' ' + pct + '%';
+          },
+          color: '#666',
+          fontSize: 11
+        },
+        labelLine: {
+          show: true,
+          length: 12,
+          length2: 8,
+          lineStyle: { color: '#ccc' }
+        },
+        data: items.map(function (it) {
+          return {
+            name: it.name,
+            value: it.value,
+            itemStyle: { color: it.color }
+          };
+        })
+      }]
+    };
+  }
+
+  function renderPies(data) {
+    var c1 = ensureChart('orderType', document.getElementById('chart-order-type'));
+    if (c1) c1.setOption(pieOption(data.orderTypes || []), true);
+    var c2 = ensureChart('issueStatus', document.getElementById('chart-issue-status'));
+    if (c2) c2.setOption(pieOption(data.issueStatus || []), true);
+  }
+
+  function init() {
+    var data = loadMockData();
+    renderRisk(data);
+    renderPies(data);
+    window.addEventListener('resize', function () {
+      Object.keys(charts).forEach(function (k) {
+        if (charts[k]) charts[k].resize();
+      });
+    });
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网络资源设备监控</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
+.page-wrap{height:100%;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.breadcrumb{color:#999;font-size:13px;flex-shrink:0}
+.breadcrumb .sep{margin:0 6px}
+.breadcrumb .cur{color:#333}
+
+.board{flex:1;min-height:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;padding:20px 24px 16px;overflow:auto}
+
+/* ===== 顶部汇总卡 ===== */
+.summary-wrap{display:flex;justify-content:center;flex-shrink:0}
+.summary-card{width:min(760px,94%);border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(28,72,184,.18);border:1px solid #d6e4ff}
+.summary-head{height:46px;background:#1C48B8;display:flex;align-items:center;justify-content:center;gap:10px;color:#fff;font-size:17px;font-weight:600;letter-spacing:.5px}
+.summary-logo{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.summary-body{background:#fff;padding:20px 32px 22px;display:flex;align-items:center;gap:36px}
+.summary-total{flex-shrink:0;font-size:22px;font-weight:700;color:#1f1f1f;white-space:nowrap}
+.summary-total span{color:#1C48B8;margin-left:8px;font-size:28px}
+.summary-stats{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;min-width:0}
+.stat-item{text-align:center;padding:4px 0}
+.stat-label{display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:#666;margin-bottom:6px}
+.stat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.stat-value{font-size:22px;font-weight:700;line-height:1.2}
+.stat-value .pct{font-size:13px;font-weight:500;margin-left:4px;opacity:.9}
+.stat-online .stat-value{color:#52c41a}
+.stat-offline .stat-value{color:#8c8c8c}
+.stat-alarm .stat-value{color:#faad14}
+.stat-fault .stat-value{color:#f5222d}
+.dot-online{background:#52c41a}
+.dot-offline{background:#8c8c8c}
+.dot-alarm{background:#faad14}
+.dot-fault{background:#f5222d}
+
+/* ===== 拓扑连接线 ===== */
+.topo-link{position:relative;height:52px;flex-shrink:0;margin:0 2px}
+.topo-link svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+
+/* ===== 七列分类 ===== */
+.cols{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;flex:1;min-height:0;align-items:stretch}
+.cat-card{background:#fff;border:1px solid #ebebeb;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.05);display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:14px 12px 10px}
+.cat-head{display:flex;align-items:center;gap:8px;padding-bottom:12px;margin-bottom:0;flex-shrink:0;border-bottom:1px solid #e8e8e8}
+.cat-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff}
+.cat-title{font-size:15px;font-weight:600;color:#1f1f1f;line-height:1.3;white-space:nowrap}
+.cat-title .cnt{font-weight:500;color:#595959;margin-left:2px}
+
+.cat-stats{display:flex;flex-direction:column;gap:8px;padding:12px 2px;margin-bottom:0;flex-shrink:0;border-bottom:1px solid #e8e8e8}
+.cat-stat{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;line-height:1.4;color:#595959}
+.cat-stat .lbl{color:#595959}
+.cat-stat .num{font-weight:600;color:#333;margin-left:auto}
+
+.device-list{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:6px;padding-top:10px}
+.device-item{display:flex;align-items:flex-start;gap:8px;padding:1px 0;border-radius:6px;flex-shrink:0}
+.device-item:hover{background:#f7f9fc}
+.dev-icon{width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:transparent !important;border-radius:0;margin-top:1px}
+.dev-icon svg{width:18px;height:18px}
+.dev-icon.offline{color:#8c8c8c}
+.dev-icon.alarm{color:#faad14}
+.dev-icon.fault{color:#f5222d}
+.dev-meta{min-width:0;flex:1}
+.dev-name{font-size:13px;color:#333;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dev-status{font-size:12px;margin-top:1px;line-height:1.2}
+.dev-status.online{color:#52c41a}
+.dev-status.offline{color:#8c8c8c}
+.dev-status.alarm{color:#faad14}
+.dev-status.fault{color:#f5222d}
+.more-dots{text-align:center;color:#bfbfbf;font-size:14px;letter-spacing:2px;line-height:1;padding:4px 0 2px;flex-shrink:0}
+
+.view-all{display:flex;align-items:center;justify-content:center;gap:2px;margin-top:4px;padding-top:8px;border-top:1px solid #f0f0f0;color:#1677ff;font-size:13px;cursor:pointer;user-select:none;flex-shrink:0;background:none;border-left:none;border-right:none;border-bottom:none;width:100%}
+.view-all:hover{color:#4096ff}
+
+/* ===== 图例 ===== */
+.legend{flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:28px;padding:14px 0 4px;color:#666;font-size:13px}
+.legend-item{display:flex;align-items:center;gap:6px}
+.legend-item .dot{width:8px;height:8px;border-radius:50%}
+
+/* ===== 弹窗 ===== */
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:none;align-items:center;justify-content:center;padding:24px}
+.modal-mask.show{display:flex}
+.modal{width:min(560px,100%);max-height:min(72vh,640px);background:#fff;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.15);display:flex;flex-direction:column;overflow:hidden}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #f0f0f0}
+.modal-hd h3{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+.modal-close{width:28px;height:28px;border:none;background:transparent;border-radius:4px;cursor:pointer;color:#999;font-size:18px;line-height:1}
+.modal-close:hover{background:#f5f5f5;color:#333}
+.modal-bd{padding:12px 18px 18px;overflow:auto;flex:1;min-height:0}
+.modal-list{display:flex;flex-direction:column;gap:6px}
+.modal-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:#fafafa;border:1px solid #f0f0f0}
+.modal-row .name{flex:1;min-width:0;font-size:14px;color:#333}
+.modal-row .tag{font-size:12px;padding:2px 8px;border-radius:4px;font-weight:500}
+.tag-online{background:#f6ffed;color:#52c41a}
+.tag-offline{background:#f5f5f5;color:#8c8c8c}
+.tag-alarm{background:#fffbe6;color:#faad14}
+.tag-fault{background:#fff1f0;color:#f5222d}
+
+@media (max-width:1280px){
+  .summary-body{flex-direction:column;align-items:stretch;gap:14px}
+  .summary-total{text-align:center}
+  .cols{gap:8px}
+  .cat-card{padding:12px 8px 8px}
+  .cat-title{font-size:13px}
+}
+@media (max-width:980px){
+  html,body{overflow:auto}
+  .page-wrap{height:auto;min-height:100%;overflow:visible}
+  .cols{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .topo-link{display:none}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="breadcrumb">
+    <span>水利工程安全运行监测</span><span class="sep">/</span>
+    <span class="cur">网络资源设备监控</span>
+  </div>
+
+  <div class="board">
+    <div class="summary-wrap">
+      <div class="summary-card" id="summary-card">
+        <div class="summary-head">
+          <span class="summary-logo" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M12 3C12 3 6.5 10.2 6.5 14.2a5.5 5.5 0 0 0 11 0C17.5 10.2 12 3 12 3z" fill="#fff" opacity=".95"/>
+              <path d="M10.2 15.2c.6 1.4 2 2.2 3.4 1.8" stroke="#1C48B8" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span id="summary-name">花凉亭灌区</span>
+        </div>
+        <div class="summary-body">
+          <div class="summary-total">设备总数 <span id="total-count">—</span></div>
+          <div class="summary-stats" id="summary-stats"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="topo-link" id="topo-link" aria-hidden="true">
+      <svg id="topo-svg" preserveAspectRatio="none"></svg>
+    </div>
+
+    <div class="cols" id="category-cols"></div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="dot dot-online"></span>在线 (正常)</div>
+      <div class="legend-item"><span class="dot dot-offline"></span>离线 (无响应)</div>
+      <div class="legend-item"><span class="dot dot-alarm"></span>告警 (异常)</div>
+      <div class="legend-item"><span class="dot dot-fault"></span>故障 (损坏)</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="modal-mask">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-hd">
+      <h3 id="modal-title">设备列表</h3>
+      <button type="button" class="modal-close" id="modal-close" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-list" id="modal-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const STATUS_LABEL = { online: '在线', offline: '离线', alarm: '告警', fault: '故障' };
+
+  const ICONS = {
+    waterLevel: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 18h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 18V9.5M12 18V7M17 18v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4.5 13.5c1.2-1 2.5-1 3.8 0s2.6 1 3.8 0 2.6-1 3.9 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+    rainfall: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M8.5 10a3.5 3.5 0 0 1 .3-6.9A4.5 4.5 0 0 1 17 6.5a3 3 0 0 1 .2 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 14.5l-1 3M12.5 14l-1 3.5M16 14.5l-1 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    flow: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 8.5c2.2-1.8 4.4-1.8 6.6 0s4.4 1.8 6.6 0M4 12.5c2.2-1.8 4.4-1.8 6.6 0s4.4 1.8 6.6 0M4 16.5c2.2-1.8 4.4-1.8 6.6 0s4.4 1.8 6.6 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+    gate: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 19V9.5L12 5l7 4.5V19" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 19v-6h6v6" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 13v6" stroke="currentColor" stroke-width="1.5"/></svg>',
+    video: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="7" width="11" height="10" rx="1.8" stroke="currentColor" stroke-width="1.7"/><path d="M14.5 10.5L20 7.8v8.4l-5.5-2.7V10.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>',
+    soil: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 4.5c0 3.2-2.2 5-2.2 7.2A2.2 2.2 0 0 0 12 13.9a2.2 2.2 0 0 0 2.2-2.2C14.2 9.5 12 7.7 12 4.5z" stroke="currentColor" stroke-width="1.6"/><path d="M5 18.5c2.5-2.2 4.8-2.2 7-1.2 2.2-1 4.5-1 7 1.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.5 20.5h15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    quality: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 4.2C12 4.2 7.2 10.2 7.2 13.6a4.8 4.8 0 0 0 9.6 0C16.8 10.2 12 4.2 12 4.2z" stroke="currentColor" stroke-width="1.6"/><path d="M12 11.2v4.2M10.4 13.8h3.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'
+  };
+
+  const STATUS_COLOR = {
+    online: '#52c41a',
+    offline: '#8c8c8c',
+    alarm: '#faad14',
+    fault: '#f5222d'
+  };
+
+  /** mock：后续接口就绪后替换 loadMockData */
+  function loadMockData() {
+    // 预览前 5 条固定覆盖 在线/在线/离线/告警/故障，其余按计数补齐
+    const mk = (prefix, total, counts) => {
+      const previewStatus = ['online', 'online', 'offline', 'alarm', 'fault'];
+      const restPool = [];
+      const used = { online: 2, offline: 1, alarm: 1, fault: 1 };
+      ['online', 'offline', 'alarm', 'fault'].forEach((s) => {
+        const remain = Math.max(0, (counts[s] || 0) - used[s]);
+        for (let i = 0; i < remain; i++) restPool.push(s);
+      });
+      while (previewStatus.length + restPool.length < total) restPool.push('online');
+      const statuses = previewStatus.concat(restPool).slice(0, total);
+      const devices = statuses.map((status, i) => ({
+        id: `${prefix}-${i + 1}`,
+        name: `花凉亭${prefix}${i + 1}`,
+        status
+      }));
+      return { total, counts, devices };
+    };
+
+    return {
+      regionName: '花凉亭灌区',
+      total: 186,
+      summary: {
+        online: { count: 142, percent: 76 },
+        offline: { count: 32, percent: 17 },
+        alarm: { count: 8, percent: 4 },
+        fault: { count: 4, percent: 2 }
+      },
+      categories: [
+        {
+          key: 'waterLevel', name: '水位', color: '#2355D8', icon: 'waterLevel',
+          ...mk('水位站', 28, { online: 22, offline: 4, alarm: 1, fault: 1 })
+        },
+        {
+          key: 'rainfall', name: '雨量', color: '#4EA450', icon: 'rainfall',
+          ...mk('雨量站', 25, { online: 20, offline: 3, alarm: 1, fault: 1 })
+        },
+        {
+          key: 'flow', name: '流量', color: '#4497C9', icon: 'flow',
+          ...mk('流量站', 24, { online: 19, offline: 3, alarm: 1, fault: 1 })
+        },
+        {
+          key: 'gate', name: '闸门', color: '#6B3FDD', icon: 'gate',
+          ...mk('闸门站', 27, { online: 21, offline: 4, alarm: 1, fault: 1 })
+        },
+        {
+          key: 'video', name: '视频', color: '#2354CD', icon: 'video',
+          ...mk('视频站', 30, { online: 23, offline: 5, alarm: 1, fault: 1 })
+        },
+        {
+          key: 'soil', name: '墒情', color: '#99683E', icon: 'soil',
+          ...mk('墒情站', 26, { online: 20, offline: 4, alarm: 1, fault: 1 })
+        },
+        {
+          key: 'quality', name: '水质', color: '#4EA7AD', icon: 'quality',
+          ...mk('水质站', 26, { online: 17, offline: 7, alarm: 1, fault: 1 })
+        }
+      ]
+    };
+  }
+
+  let DATA = null;
+  let previewCount = 8;
+
+  function calcPreviewCount() {
+    const cols = document.getElementById('category-cols');
+    if (!cols) return 8;
+    const h = cols.clientHeight || 0;
+    // 标题区 + 统计区 + 省略号 + 查看全部 + 内边距
+    const reserved = 248;
+    const itemH = 36;
+    return Math.max(6, Math.min(18, Math.floor((h - reserved) / itemH) || 8));
+  }
+
+  function renderSummary(data) {
+    document.getElementById('summary-name').textContent = data.regionName;
+    document.getElementById('total-count').textContent = data.total;
+    const s = data.summary;
+    document.getElementById('summary-stats').innerHTML = [
+      ['online', '在线', s.online],
+      ['offline', '离线', s.offline],
+      ['alarm', '告警', s.alarm],
+      ['fault', '故障', s.fault]
+    ].map(([k, label, v]) => `
+      <div class="stat-item stat-${k}">
+        <div class="stat-label"><span class="stat-dot dot-${k}"></span>${label}</div>
+        <div class="stat-value">${v.count}<span class="pct">(${v.percent}%)</span></div>
+      </div>
+    `).join('');
+  }
+
+  function renderDeviceItem(cat, d) {
+    const iconColor = d.status === 'online' ? cat.color : STATUS_COLOR[d.status];
+    return `
+      <div class="device-item" title="${d.name}">
+        <div class="dev-icon ${d.status}" style="color:${iconColor}">${ICONS[cat.icon]}</div>
+        <div class="dev-meta">
+          <div class="dev-name">${d.name}</div>
+          <div class="dev-status ${d.status}">${STATUS_LABEL[d.status]}</div>
+        </div>
+      </div>`;
+  }
+
+  function renderCategories(data) {
+    previewCount = calcPreviewCount();
+    const root = document.getElementById('category-cols');
+    root.innerHTML = data.categories.map((cat) => {
+      const count = Math.min(previewCount, cat.devices.length);
+      const preview = cat.devices.slice(0, count);
+      const hasMore = cat.devices.length > count;
+      return `
+        <div class="cat-card" data-key="${cat.key}">
+          <div class="cat-head">
+            <div class="cat-icon" style="background:${cat.color}">${ICONS[cat.icon]}</div>
+            <div class="cat-title">${cat.name} <span class="cnt">(${cat.total})</span></div>
+          </div>
+          <div class="cat-stats">
+            <div class="cat-stat online"><span class="stat-dot dot-online"></span><span class="lbl">在线</span> <span class="num">${cat.counts.online}</span></div>
+            <div class="cat-stat offline"><span class="stat-dot dot-offline"></span><span class="lbl">离线</span> <span class="num">${cat.counts.offline}</span></div>
+            <div class="cat-stat alarm"><span class="stat-dot dot-alarm"></span><span class="lbl">告警</span> <span class="num">${cat.counts.alarm}</span></div>
+            <div class="cat-stat fault"><span class="stat-dot dot-fault"></span><span class="lbl">故障</span> <span class="num">${cat.counts.fault}</span></div>
+          </div>
+          <div class="device-list">
+            ${preview.map((d) => renderDeviceItem(cat, d)).join('')}
+          </div>
+          ${hasMore ? '<div class="more-dots">······</div>' : ''}
+          <button type="button" class="view-all" data-key="${cat.key}">查看全部 &gt;</button>
+        </div>
+      `;
+    }).join('');
+
+    root.querySelectorAll('.view-all').forEach((btn) => {
+      btn.addEventListener('click', () => openModal(btn.dataset.key));
+    });
+
+    // 二次校准：按真实剩余高度再补/减几条，尽量铺满
+    fillDeviceLists(data);
+  }
+
+  function fillDeviceLists(data) {
+    const cards = document.querySelectorAll('.cat-card');
+    cards.forEach((card) => {
+      const key = card.dataset.key;
+      const cat = data.categories.find((c) => c.key === key);
+      if (!cat) return;
+      const list = card.querySelector('.device-list');
+      const dots = card.querySelector('.more-dots');
+      const viewAll = card.querySelector('.view-all');
+      if (!list) return;
+
+      const cardH = card.clientHeight;
+      const headH = card.querySelector('.cat-head')?.offsetHeight || 0;
+      const statsH = card.querySelector('.cat-stats')?.offsetHeight || 0;
+      const footerH = (dots?.offsetHeight || 22) + (viewAll?.offsetHeight || 36) + 8;
+      const avail = cardH - headH - statsH - footerH - 14;
+      const sample = list.querySelector('.device-item');
+      const itemH = sample ? sample.offsetHeight + 6 : 36;
+      let n = Math.max(5, Math.floor(avail / itemH));
+      // 若还有更多数据，预留省略号空间
+      if (cat.devices.length > n) n = Math.max(5, n);
+      n = Math.min(n, cat.devices.length);
+
+      list.innerHTML = cat.devices.slice(0, n).map((d) => renderDeviceItem(cat, d)).join('');
+      const hasMore = cat.devices.length > n;
+      if (hasMore && !dots) {
+        list.insertAdjacentHTML('afterend', '<div class="more-dots">······</div>');
+      } else if (!hasMore && dots) {
+        dots.remove();
+      }
+    });
+  }
+
+  function drawTopo() {
+    const link = document.getElementById('topo-link');
+    const svg = document.getElementById('topo-svg');
+    const cols = document.getElementById('category-cols');
+    const cards = [...cols.querySelectorAll('.cat-card')];
+    if (!cards.length) return;
+
+    const linkRect = link.getBoundingClientRect();
+    const w = linkRect.width;
+    const h = linkRect.height;
+    if (w < 10 || h < 10) return;
+
+    const centers = cards.map((card) => {
+      const r = card.getBoundingClientRect();
+      return r.left + r.width / 2 - linkRect.left;
+    });
+    const midY = 10;
+    const stemTop = 0;
+    const left = centers[0];
+    const right = centers[centers.length - 1];
+    const rootX = w / 2;
+
+    const parts = [];
+    parts.push(`<line x1="${rootX}" y1="${stemTop}" x2="${rootX}" y2="${midY}" stroke="#1C48B8" stroke-width="2"/>`);
+    parts.push(`<line x1="${left}" y1="${midY}" x2="${right}" y2="${midY}" stroke="#1C48B8" stroke-width="2"/>`);
+    centers.forEach((x) => {
+      parts.push(`<line x1="${x}" y1="${midY}" x2="${x}" y2="${h - 8}" stroke="#1C48B8" stroke-width="2"/>`);
+      parts.push(`<polygon points="${x-5},${h-10} ${x+5},${h-10} ${x},${h-2}" fill="#1C48B8"/>`);
+    });
+
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.innerHTML = parts.join('');
+  }
+
+  function openModal(key) {
+    const cat = DATA.categories.find((c) => c.key === key);
+    if (!cat) return;
+    document.getElementById('modal-title').innerHTML = `
+      <span class="cat-icon" style="width:28px;height:28px;background:${cat.color}">${ICONS[cat.icon]}</span>
+      ${cat.name}设备（${cat.total}）
+    `;
+    document.getElementById('modal-list').innerHTML = cat.devices.map((d) => {
+      const iconColor = d.status === 'online' ? cat.color : STATUS_COLOR[d.status];
+      return `
+      <div class="modal-row">
+        <div class="dev-icon ${d.status}" style="color:${iconColor}">${ICONS[cat.icon]}</div>
+        <div class="name">${d.name}</div>
+        <span class="tag tag-${d.status}">${STATUS_LABEL[d.status]}</span>
+      </div>`;
+    }).join('');
+    document.getElementById('modal-mask').classList.add('show');
+  }
+
+  function closeModal() {
+    document.getElementById('modal-mask').classList.remove('show');
+  }
+
+  function refreshLayout() {
+    if (!DATA) return;
+    renderCategories(DATA);
+    drawTopo();
+  }
+
+  function init() {
+    DATA = loadMockData();
+    renderSummary(DATA);
+    renderCategories(DATA);
+    requestAnimationFrame(() => {
+      drawTopo();
+      requestAnimationFrame(() => {
+        fillDeviceLists(DATA);
+        drawTopo();
+      });
+    });
+
+    document.getElementById('modal-close').addEventListener('click', closeModal);
+    document.getElementById('modal-mask').addEventListener('click', (e) => {
+      if (e.target.id === 'modal-mask') closeModal();
+    });
+    window.addEventListener('resize', () => {
+      clearTimeout(window.__topoTimer);
+      window.__topoTimer = setTimeout(refreshLayout, 120);
+    });
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
