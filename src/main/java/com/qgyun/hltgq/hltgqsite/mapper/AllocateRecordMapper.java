@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @Mapper
 public interface AllocateRecordMapper extends BaseMapper<AllocateRecord> {
 
-    /** 启动清理：遗留 calculating 超时置 failed，返回影响行数 */
+    /** 启动清理：遗留 calculating 超时置 failed，返回影响行数（status 纯值口径） */
     @Update("UPDATE \"qixiao-apaas\".\"t_auto_hltgq_water_allocate_record\" " +
             "SET \"status\" = 'failed', \"error_msg\" = #{errorMsg}, \"updated_at\" = #{now} " +
             "WHERE \"status\" = 'calculating' AND \"created_at\" < #{deadline}")

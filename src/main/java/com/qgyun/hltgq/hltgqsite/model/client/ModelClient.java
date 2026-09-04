@@ -37,6 +37,7 @@ public class ModelClient {
 
     public static final String PATH_HEALTH = "/health";
     public static final String PATH_FORECAST = "/forecast";
+    public static final String PATH_MOISTURE = "/moisture";
     public static final String PATH_PREDICT = "/predict";
     public static final String PATH_DEMAND = "/demand";
     public static final String PATH_LOSS = "/loss";

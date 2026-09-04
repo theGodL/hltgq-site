@@ -13,6 +13,8 @@ import java.time.format.DateTimeFormatter;
 public final class JsonFieldUtils {
 
     private static final DateTimeFormatter DATE_ONLY = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter HOUR_MINUTE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final DateTimeFormatter HOUR_SECOND = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private JsonFieldUtils() {
     }
@@ -72,6 +74,37 @@ public final class JsonFieldUtils {
         }
         try {
             return LocalDate.parse(value, DATE_ONLY);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 兼容 "yyyy-MM-dd HH:mm:ss"、"yyyy-MM-dd HH:mm"、"yyyy/M/d H:mm" 等小时级格式，解析失败返回 null */
+    public static LocalDateTime parseHourDateTime(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return null;
+        }
+        String value = text.trim().replace('/', '-');
+        String[] parts = value.split("\\s+");
+        if (parts.length < 2) {
+            return null;
+        }
+        String[] dateParts = parts[0].split("-");
+        String[] timeParts = parts[1].split(":");
+        if (dateParts.length != 3 || timeParts.length < 2) {
+            return null;
+        }
+        try {
+            // 模型输出存在单数字段（如 2026/9/3 2:00），统一补零后解析
+            StringBuilder normalized = new StringBuilder();
+            normalized.append(String.format("%04d-%02d-%02d %02d:%02d",
+                    Integer.parseInt(dateParts[0]), Integer.parseInt(dateParts[1]), Integer.parseInt(dateParts[2]),
+                    Integer.parseInt(timeParts[0]), Integer.parseInt(timeParts[1])));
+            if (timeParts.length > 2) {
+                normalized.append(String.format(":%02d", Integer.parseInt(timeParts[2])));
+            }
+            return LocalDateTime.parse(normalized.toString(),
+                    normalized.length() == 16 ? HOUR_MINUTE : HOUR_SECOND);
         } catch (Exception e) {
             return null;
         }

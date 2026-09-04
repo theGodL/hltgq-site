@@ -20,6 +20,12 @@ import java.util.Map;
 @Service
 public class ModelRecordCommonService {
 
+    /** 执行状态（纯值口径）：6 张预测主表平台未配字典、防洪抗旱任务由前端轮询判断，均为纯值。
+     * 仅 moisture_record 平台配单选字典，用 # 编码常量（见 MoisturePredictService）。 */
+    public static final String STATUS_CALCULATING = "calculating";
+    public static final String STATUS_COMPLETED = "completed";
+    public static final String STATUS_FAILED = "failed";
+
     /** 按主键查询，不存在抛 404 */
     public <T extends BaseRecordEntity> T require(String id, BaseMapper<T> mapper) {
         T record = mapper.selectById(id);

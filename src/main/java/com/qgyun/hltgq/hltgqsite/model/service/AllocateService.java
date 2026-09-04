@@ -136,7 +136,7 @@ public class AllocateService {
 
         // 写主表（参数留存 + 请求归档，calculating）
         record.setSchemeName(buildSchemeName(req, mode));
-        record.setStatus("calculating");
+        record.setStatus(ModelRecordCommonService.STATUS_CALCULATING);
         record.setDelFlag(BoolTextUtils.FALSE);
         record.setDemandRecordId(demandRecordId);
         record.setCorpCode(corpCode);
@@ -294,7 +294,7 @@ public class AllocateService {
                     record.setTotalSupply(round2(totalSupply));
                     record.setDeficit(round2(Math.max(totalDemand - totalSupply, 0)));
                     record.setSpill(round2(spillTotal));
-                    record.setStatus("completed");
+                    record.setStatus(ModelRecordCommonService.STATUS_COMPLETED);
                     record.setUpdatedAt(LocalDateTime.now());
                     recordMapper.updateById(record);
                 }
@@ -310,7 +310,7 @@ public class AllocateService {
         String errorMsg = msg.length() > 500 ? msg.substring(0, 500) : msg;
         AllocateRecord record = new AllocateRecord();
         record.setId(recordId);
-        record.setStatus("failed");
+        record.setStatus(ModelRecordCommonService.STATUS_FAILED);
         record.setErrorMsg(errorMsg);
         record.setUpdatedAt(LocalDateTime.now());
         recordMapper.updateById(record);

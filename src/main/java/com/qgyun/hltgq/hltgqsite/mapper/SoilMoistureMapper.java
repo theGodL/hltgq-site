@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.mapper;
 
+import com.qgyun.hltgq.hltgqsite.vo.MoistureInitVO;
 import com.qgyun.hltgq.hltgqsite.vo.SoilMoistureVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import org.apache.ibatis.annotations.Mapper;
@@ -184,6 +185,52 @@ public interface SoilMoistureMapper {
             @Param("stcd") String stcd,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 墒情预测初始墒情：指定站点各自最新一条三层含水量均有效的数据（模型 /moisture init_states）。
+     * <p>过滤条件：mten/mtwenty/mthirty 非空且非负（-999 设备不存在、-9991 设备异常均排除）。
+     *
+     * @param stcds 站点标识列表（必填，四站点 9000000132~135）
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT ON (t.skey) t.skey AS stcd, t.tm, t.mten, t.mtwenty, t.mthirty " +
+            "FROM ( " +
+            "  SELECT COALESCE(n.stcd, n.site) AS skey, n.tm, n.mten, n.mtwenty, n.mthirty " +
+            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
+            "  WHERE (n.stcd IN " +
+            "  <foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
+            "   OR n.site IN " +
+            "  <foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
+            "  ) " +
+            "  AND n.mten IS NOT NULL AND n.mten &gt;= 0 " +
+            "  AND n.mtwenty IS NOT NULL AND n.mtwenty &gt;= 0 " +
+            "  AND n.mthirty IS NOT NULL AND n.mthirty &gt;= 0 " +
+            ") t " +
+            "ORDER BY t.skey, t.tm DESC" +
+            "</script>")
+    @Results({
+            @Result(column = "stcd", property = "stcd"),
+            @Result(column = "tm", property = "tm"),
+            @Result(column = "mten", property = "mten"),
+            @Result(column = "mtwenty", property = "mtwenty"),
+            @Result(column = "mthirty", property = "mthirty")
+    })
+    List<MoistureInitVO> selectLatestValidPerStation(@Param("stcds") List<String> stcds);
+
+    /**
+     * 墒情预测明细落库用：四站 stcd → 站点ID（平台档案表主键 UUID）。
+     * <p>明细表 site 列存站点ID（不是 stcd），与平台表单模型 site 关联字段口径一致。
+     *
+     * @param stcds 四站点编号（9000000132~135）
+     * @return 每行 {stcd: 站点编号, id: 站点ID}
+     */
+    @Select("<script>" +
+            "SELECT iofhpi AS stcd, id " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
+            "WHERE iofhpi IN " +
+            "<foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
+            "</script>")
+    List<Map<String, String>> selectStationIdsByStcds(@Param("stcds") List<String> stcds);
 
     /**
      * 墒情监测全部站点（站点标识 = COALESCE(stcd, site)，MQTT 站点无 stcd 时以 site 主键兜底；

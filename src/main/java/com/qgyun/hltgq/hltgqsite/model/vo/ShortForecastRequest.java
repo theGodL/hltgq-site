@@ -5,41 +5,31 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * 短期来水预测提交入参（/water-forecast/short）。
+ * 短期来水预测提交入参（/water-forecast/short），小时尺度新契约（模型 /forecast V3）。
+ * <p>起调水位不再由用户输入：后端自动取花凉亭坝上最新水位；
+ * 逐小时降雨未传时后端自动拉取气象 16 天逐小时数据（缺失小时填 0）。
  */
 @Data
 public class ShortForecastRequest {
 
-    /** 方案名称（可选，默认自动生成 "短期预报_<起始日期>_<天数>天"） */
+    /** 方案名称（可选，默认自动生成 "短期预报_<开始时间>_<小时数>小时"） */
     private String schemeName;
 
-    /** 起始日期 YYYY-MM-DD（必填） */
-    private String startDate;
+    /** 预报开始时间 YYYY-MM-DD HH:mm（必填，模型 start，与气象逐小时数据对齐） */
+    private String start;
 
-    /** 预报天数 1~30（默认30；模型契约上限 30） */
-    private Integer days;
+    /** 预报结束时间 YYYY-MM-DD HH:mm（必填，模型 end；窗口含端点，跨度 1~384 小时） */
+    private String end;
 
-    /** 是否使用典型洪水（默认 false） */
-    private Boolean useTypical;
+    /** 是否启用发电下泄（默认 false） */
+    private Boolean enablePower;
 
-    /** 典型洪水样本编号 0~5（useTypical=true 时生效） */
-    private Integer floodIdx;
+    /** 是否启用泄洪隧洞（默认 false） */
+    private Boolean enableTunnel;
 
-    /** 逐日降雨量(mm)（useTypical=false 时必填，长度==days） */
+    /** 是否启用溢洪道（默认 false） */
+    private Boolean enableSpillway;
+
+    /** 逐小时降雨量(mm)（可选：不传则自动取气象数据；传则长度必须等于 start→end 逐小时步数） */
     private List<Double> rainfall;
-
-    /** 是否调整降雨（默认 false） */
-    private Boolean adjustRainfall;
-
-    /** 目标总降雨量(mm)（adjustRainfall=true 时必须 >0） */
-    private Double targetTotal;
-
-    /** 初始库水位(m)（默认 79.89） */
-    private Double initialWaterLevel;
-
-    /** 下泄模式：max / none / custom（默认 max） */
-    private String dischargeMode;
-
-    /** 自定义逐日下泄量（dischargeMode=custom 时必填，长度==days） */
-    private List<Double> customDischarge;
 }

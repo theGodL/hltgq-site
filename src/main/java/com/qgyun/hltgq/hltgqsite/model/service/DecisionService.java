@@ -134,7 +134,7 @@ public class DecisionService {
         // 写主表（参数留存 + 请求归档，calculating）
         DecisionRecord record = new DecisionRecord();
         record.setSchemeName(buildSchemeName(req, allocateRecord.getSchemeName()));
-        record.setStatus("calculating");
+        record.setStatus(ModelRecordCommonService.STATUS_CALCULATING);
         record.setDelFlag(BoolTextUtils.FALSE);
         record.setCanalEff(canalEff);
         record.setSource(source);
@@ -243,7 +243,7 @@ public class DecisionService {
                     record.setTotalDemand(round2(totals[0]));
                     record.setTotalSupply(round2(totals[1]));
                     record.setUnsatisfiedCount((double) unsatisfiedBranches.size());
-                    record.setStatus("completed");
+                    record.setStatus(ModelRecordCommonService.STATUS_COMPLETED);
                     record.setUpdatedAt(LocalDateTime.now());
                     recordMapper.updateById(record);
                     log.info("配水调度完成：recordId={}, 不满足支渠{}条", recordId, unsatisfiedBranches.size());
@@ -314,7 +314,7 @@ public class DecisionService {
         String errorMsg = msg.length() > 500 ? msg.substring(0, 500) : msg;
         DecisionRecord record = new DecisionRecord();
         record.setId(recordId);
-        record.setStatus("failed");
+        record.setStatus(ModelRecordCommonService.STATUS_FAILED);
         record.setErrorMsg(errorMsg);
         record.setUpdatedAt(LocalDateTime.now());
         recordMapper.updateById(record);

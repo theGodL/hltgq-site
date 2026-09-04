@@ -88,13 +88,21 @@ public class LongPredictService {
         }
         boolean useHistorical = Boolean.TRUE.equals(req.getUseHistorical());
         boolean retrain = Boolean.TRUE.equals(req.getRetrain());
+        // 历史年份：会议定稿 2013~2025（前端验证不够可靠，后端同步校验）
+        Integer historicalYear = null;
+        if (useHistorical) {
+            historicalYear = req.getHistoricalYear() == null ? 2020 : req.getHistoricalYear();
+            if (historicalYear < 2013 || historicalYear > 2025) {
+                throw new IllegalArgumentException("历史年份必须在 2013~2025 之间");
+            }
+        }
 
         // 组装模型请求体
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("scenario", scenario);
         body.put("use_historical", useHistorical);
         if (useHistorical) {
-            body.put("historical_year", req.getHistoricalYear() == null ? 2020 : req.getHistoricalYear());
+            body.put("historical_year", historicalYear);
         }
         body.put("retrain", retrain);
         if (retrain) {
@@ -105,13 +113,13 @@ public class LongPredictService {
 
         // 写主表（参数留存 + 请求归档，calculating）
         LongPredictRecord record = new LongPredictRecord();
-        record.setSchemeName(buildSchemeName(req, scenario));
-        record.setStatus("calculating");
+        record.setSchemeName(buildSchemeName(req, scenario, historicalYear));
+        record.setStatus(ModelRecordCommonService.STATUS_CALCULATING);
         record.setDelFlag(BoolTextUtils.FALSE);
         record.setScenario(scenario);
         record.setUseHistorical(BoolTextUtils.boolToText(useHistorical));
         if (useHistorical) {
-            record.setHistoricalYear((double) (req.getHistoricalYear() == null ? 2020 : req.getHistoricalYear()));
+            record.setHistoricalYear(historicalYear.doubleValue());
         }
         record.setRetrain(BoolTextUtils.boolToText(retrain));
         if (retrain) {
@@ -137,11 +145,16 @@ public class LongPredictService {
         return recordId;
     }
 
-    private String buildSchemeName(LongPredictRequest req, String scenario) {
+    /** 默认方案命名规范（会议定稿统一）：历史模式 "中长期预报_<年份>-<情景>"（如 中长期预报_2016-丰），非历史模式 "中长期预报_<情景或原始>" */
+    private String buildSchemeName(LongPredictRequest req, String scenario, Integer historicalYear) {
         if (req.getSchemeName() != null && !req.getSchemeName().trim().isEmpty()) {
             return req.getSchemeName().trim();
         }
-        return "中长期预报_" + (scenario == null ? "原始" : scenario);
+        String suffix = scenario == null ? "原始" : scenario;
+        if (historicalYear != null) {
+            return "中长期预报_" + historicalYear + "-" + suffix;
+        }
+        return "中长期预报_" + suffix;
     }
 
     /**
@@ -237,7 +250,7 @@ public class LongPredictService {
                         record.setMaxTendayVolume(round2(maxVolume));
                         record.setMinTendayVolume(round2(minVolume));
                     }
-                    record.setStatus("completed");
+                    record.setStatus(ModelRecordCommonService.STATUS_COMPLETED);
                     record.setUpdatedAt(LocalDateTime.now());
                     recordMapper.updateById(record);
                 }
@@ -280,7 +293,7 @@ public class LongPredictService {
         String errorMsg = msg.length() > 500 ? msg.substring(0, 500) : msg;
         LongPredictRecord record = new LongPredictRecord();
         record.setId(recordId);
-        record.setStatus("failed");
+        record.setStatus(ModelRecordCommonService.STATUS_FAILED);
         record.setErrorMsg(errorMsg);
         record.setUpdatedAt(LocalDateTime.now());
         recordMapper.updateById(record);

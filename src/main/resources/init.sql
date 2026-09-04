@@ -55,6 +55,13 @@ CREATE INDEX idx_decision_branch_detail_record_satisfied ON t_auto_hltgq_water_d
 ALTER TABLE t_auto_hltgq_water_short_forecast_record ALTER COLUMN request_json TYPE TEXT;
 ALTER TABLE t_auto_hltgq_water_short_forecast_record ALTER COLUMN rainfall_json TYPE TEXT;
 ALTER TABLE t_auto_hltgq_water_short_forecast_record ALTER COLUMN custom_discharge_json TYPE TEXT;
+-- 2026-09 小时尺度重构：/forecast V3 契约（end/start_level/三开关）
+ALTER TABLE t_auto_hltgq_water_short_forecast_record ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;
+ALTER TABLE t_auto_hltgq_water_short_forecast_record ADD COLUMN IF NOT EXISTS start_level DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_short_forecast_record ADD COLUMN IF NOT EXISTS enable_power TEXT;
+ALTER TABLE t_auto_hltgq_water_short_forecast_record ADD COLUMN IF NOT EXISTS enable_tunnel TEXT;
+ALTER TABLE t_auto_hltgq_water_short_forecast_record ADD COLUMN IF NOT EXISTS enable_spillway TEXT;
+CREATE INDEX IF NOT EXISTS idx_short_forecast_record_end_date ON t_auto_hltgq_water_short_forecast_record(end_date);
 
 -- 中长期来水预测
 ALTER TABLE t_auto_hltgq_water_long_predict_record ALTER COLUMN request_json TYPE TEXT;
@@ -77,3 +84,47 @@ ALTER TABLE t_auto_hltgq_water_allocate_record ALTER COLUMN request_json TYPE TE
 -- 配水调度预测
 ALTER TABLE t_auto_hltgq_water_decision_record ALTER COLUMN request_json TYPE TEXT;
 ALTER TABLE t_auto_hltgq_water_decision_record ALTER COLUMN tens TYPE TEXT;
+
+-- ========== 墒情预测（2026-09 新增，模型 /moisture） ==========
+-- 注意平台命名：moisture_detail 为方案主表（含 scheme_name），moisture_record 为逐小时明细（含 record_id）
+CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_moisture_detail (
+    id VARCHAR(64) PRIMARY KEY,
+    scheme_name VARCHAR(255),
+    status VARCHAR(32),
+    del_flag VARCHAR(8),
+    error_msg TEXT,
+    start_time TIMESTAMP,
+    end_time TIMESTAMP,
+    station_count DOUBLE PRECISION,
+    request_json TEXT,
+    corp_code VARCHAR(64),
+    created_at TIMESTAMP,
+    created_by VARCHAR(64),
+    updated_at TIMESTAMP,
+    updated_by VARCHAR(64)
+);
+CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_moisture_record (
+    id VARCHAR(64) PRIMARY KEY,
+    record_id VARCHAR(64),
+    site VARCHAR(64),
+    tm TIMESTAMP,
+    rainfall DOUBLE PRECISION,
+    mten DOUBLE PRECISION,
+    mtwenty DOUBLE PRECISION,
+    mthirty DOUBLE PRECISION,
+    g_value DOUBLE PRECISION,
+    drought_level VARCHAR(32),
+    corp_code VARCHAR(64),
+    created_at TIMESTAMP,
+    created_by VARCHAR(64),
+    updated_at TIMESTAMP,
+    updated_by VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_moisture_detail_created ON t_auto_hltgq_water_moisture_detail(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_moisture_record_detail_tm ON t_auto_hltgq_water_moisture_record(record_id, site, tm);
+-- 列兜底（平台已建表但缺 2026-09 新增列时补齐，幂等）
+ALTER TABLE t_auto_hltgq_water_moisture_detail ADD COLUMN IF NOT EXISTS start_time TIMESTAMP;
+ALTER TABLE t_auto_hltgq_water_moisture_detail ADD COLUMN IF NOT EXISTS end_time TIMESTAMP;
+ALTER TABLE t_auto_hltgq_water_moisture_detail ADD COLUMN IF NOT EXISTS station_count DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_moisture_record ADD COLUMN IF NOT EXISTS g_value DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_moisture_record ADD COLUMN IF NOT EXISTS drought_level VARCHAR(32);

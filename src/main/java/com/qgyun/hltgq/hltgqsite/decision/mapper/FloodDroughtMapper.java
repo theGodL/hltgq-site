@@ -59,6 +59,13 @@ public interface FloodDroughtMapper {
                                        @Param("start") LocalDateTime start,
                                        @Param("end") LocalDateTime end);
 
+    /** 站点最新一条水位值（模型 /forecast 起调水位 start_level），无数据 null。 */
+    @Select("SELECT \"Z\" AS \"value\" " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info " +
+            "WHERE \"STCD\" = #{stcd} " +
+            "ORDER BY \"TM\" DESC LIMIT 1")
+    Double selectLatestLevel(@Param("stcd") String stcd);
+
     /** 流量原始采集点（每日 8 时整点值由 Service 内存挑选）；站点键兼容 stcd 编号与 site UUID（MQTT 站无 stcd）。 */
     @Select("SELECT \"tm\" AS tm, \"q\" AS \"value\" " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" " +

@@ -18,14 +18,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 水量损失预测接口（/water-forecast/loss）。
- * <p>入参：mode(short/long) + 参数来源方案ID，参数从所选历史方案 request_json 提取复现。
+ * <p>入参：mode(long，短期已下线) + 参数来源方案ID（中长期方案），
+ * 参数从所选历史方案 request_json 提取复现。
  */
 @RestController
 @RequestMapping("/water-forecast/loss")
@@ -70,10 +74,35 @@ public class LossController {
         return result;
     }
 
-    /** 损失历史方案列表 */
+    /** 损失历史方案列表（历史方案抽屉数据源：全量含 failed/calculating，前端展示状态与 errorMsg） */
     @GetMapping("/list")
     public List<LossRecord> list() {
         return commonService.list(recordMapper);
+    }
+
+    /**
+     * 损失方案下拉数据源（水资源配置页 cfg-loss 下拉）：仅 completed + 同名去重保留最新。
+     * <p>独立于 /list：/list 同时服务损失页历史方案抽屉（需全量展示 failed/calculating 及错误信息），
+     * 过滤去重只能落在下拉专用接口，避免抽屉丢失失败记录。
+     */
+    @GetMapping("/options")
+    public List<LossRecord> options() {
+        List<LossRecord> all = commonService.list(recordMapper);
+        List<LossRecord> result = new ArrayList<>();
+        Set<String> seenNames = new HashSet<>();
+        for (LossRecord rec : all) {
+            // 无效记录过滤：仅 completed 可参与下拉选择
+            if (!ModelRecordCommonService.STATUS_COMPLETED.equals(rec.getStatus())) {
+                continue;
+            }
+            // 重复记录过滤：同名方案保留最新一条（created_at 倒序）
+            String name = rec.getSchemeName() == null ? "" : rec.getSchemeName();
+            if (!seenNames.add(name)) {
+                continue;
+            }
+            result.add(rec);
+        }
+        return result;
     }
 
     /** 损失方案重命名：body {"name": "新名称"} */

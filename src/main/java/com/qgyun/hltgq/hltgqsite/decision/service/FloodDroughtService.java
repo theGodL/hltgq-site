@@ -9,6 +9,7 @@ import com.qgyun.hltgq.hltgqsite.decision.vo.HydroTaskVO;
 import com.qgyun.hltgq.hltgqsite.decision.vo.ObsDailyVO;
 import com.qgyun.hltgq.hltgqsite.decision.vo.ObsPointVO;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelClient;
+import com.qgyun.hltgq.hltgqsite.model.service.ModelRecordCommonService;
 import com.qgyun.hltgq.hltgqsite.model.task.ModelTaskExecutor;
 import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
@@ -124,25 +125,47 @@ public class FloodDroughtService {
      * Redis 不可达时抛 502：任务状态存储是唯一跟踪途径，不可静默丢失。
      * <p>同区间幂等：24h 内同 (startDate, endDate) 复用同一任务（completed 直接复用结果、
      * calculating 复用排队中任务），防连点重复创建；failed 后清除去重键允许重试。
+     * 键占位用 SET NX 原子操作，并发同区间提交仅首个请求创建任务。
      */
     public String submit(HydroSubmitRequest req) {
         LocalDate[] range = parseRange(req);
         LocalDate start = range[0];
         LocalDate end = range[1];
         String dedupKey = DEDUP_PREFIX + start + "_" + end;
+        // 去重命中：completed/calculating 复用；failed 残留（Redis 异常导致清除失败）或
+        // 任务已过期（键残留指向不存在任务）→ 清键后重新创建，避免 24h 内无法重试
         String existingId = getDedupId(dedupKey);
         if (existingId != null) {
-            log.info("防洪抗旱水文任务同区间复用：id={}, 区间 {} ~ {}", existingId, start, end);
-            return existingId;
+            HydroTaskVO existing = readTask(existingId);
+            if (existing != null && !ModelRecordCommonService.STATUS_FAILED.equals(existing.getStatus())) {
+                log.info("防洪抗旱水文任务同区间复用：id={}, 区间 {} ~ {}", existingId, start, end);
+                return existingId;
+            }
+            deleteDedupId(dedupKey);
         }
         String id = idGenerator.nextUUID(null);
+        // 原子占位（SET NX）：拿到键者为主提交者；未拿到说明并发请求已创建，复用其任务
+        if (saveDedupIdIfAbsent(dedupKey, id)) {
+            HydroTaskVO task = new HydroTaskVO();
+            task.setId(id);
+            task.setStatus(ModelRecordCommonService.STATUS_CALCULATING);
+            saveTask(task);
+            taskExecutor.submit(() -> execute(id, start, end, dedupKey));
+            log.info("防洪抗旱水文任务已提交：id={}, 区间 {} ~ {}", id, start, end);
+            return id;
+        }
+        String winner = getDedupId(dedupKey);
+        if (winner != null) {
+            log.info("防洪抗旱水文任务同区间并发复用：id={}, 区间 {} ~ {}", winner, start, end);
+            return winner;
+        }
+        // 极端竞态（键在占位与读取间过期）：本请求继续创建执行，去重降级为可用性优先
         HydroTaskVO task = new HydroTaskVO();
         task.setId(id);
-        task.setStatus("calculating");
+        task.setStatus(ModelRecordCommonService.STATUS_CALCULATING);
         saveTask(task);
-        saveDedupId(dedupKey, id);
         taskExecutor.submit(() -> execute(id, start, end, dedupKey));
-        log.info("防洪抗旱水文任务已提交：id={}, 区间 {} ~ {}", id, start, end);
+        log.info("防洪抗旱水文任务已提交（去重键过期降级）：id={}, 区间 {} ~ {}", id, start, end);
         return id;
     }
 
@@ -158,9 +181,9 @@ public class FloodDroughtService {
     /** 图数据查询：仅 completed 后可用；未完成 409、无记录 404。 */
     public HydroChartVO detail(String id) {
         HydroTaskVO task = require(id);
-        if (!"completed".equals(task.getStatus()) || task.getChart() == null) {
+        if (!ModelRecordCommonService.STATUS_COMPLETED.equals(task.getStatus()) || task.getChart() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "failed".equals(task.getStatus()) ? "任务执行失败" : "任务尚未完成");
+                    ModelRecordCommonService.STATUS_FAILED.equals(task.getStatus()) ? "任务执行失败" : "任务尚未完成");
         }
         return task.getChart();
     }
@@ -172,7 +195,7 @@ public class FloodDroughtService {
             HydroChartVO chart = buildChart(start, end);
             HydroTaskVO task = new HydroTaskVO();
             task.setId(id);
-            task.setStatus("completed");
+            task.setStatus(ModelRecordCommonService.STATUS_COMPLETED);
             task.setChart(chart);
             saveTaskQuietly(task);
             log.info("防洪抗旱水文任务完成：id={}, 实测 {} 天，预测至 {}", id, chart.getSplit(),
@@ -180,7 +203,7 @@ public class FloodDroughtService {
         } catch (Exception e) {
             HydroTaskVO task = new HydroTaskVO();
             task.setId(id);
-            task.setStatus("failed");
+            task.setStatus(ModelRecordCommonService.STATUS_FAILED);
             task.setErrorMsg(truncate(e.getMessage()));
             saveTaskQuietly(task);
             // 失败清除去重键：同区间允许重试（模型故障恢复后重新提交可重算）
@@ -243,26 +266,31 @@ public class FloodDroughtService {
             for (int i = split; i < n && i < split + MAX_FORECAST_DAYS; i++) {
                 rainPred.set(i, weatherRain[i]);
             }
-            // 模型 /forecast 新契约：start/end 逐小时窗口（含端点），rainfall 为等长逐小时序列
-            // （线上实测：rainfall 长度须 = start→end 逐小时步数；缺失小时填 0）
+            // 模型 /forecast 新契约（2026-09 手册）：start/end 逐小时窗口（含端点），rainfall 为等长逐小时序列
+            // （缺失小时填 0）；start_level 自动取坝上最新水位（无则不传，模型默认 80.0）；
+            // 三类下泄开关（发电/泄洪隧洞/溢洪道）默认均 false（会议 2 口径）
             LocalDateTime modelStart = LocalDate.parse(dates.get(predStart), DATE_FMT).atStartOfDay();
             LocalDateTime modelEnd = LocalDate.parse(dates.get(predStart + predDays - 1), DATE_FMT).atStartOfDay();
             int steps = (int) ChronoUnit.HOURS.between(modelStart, modelEnd) + 1;
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("start", modelStart.format(HOUR_FMT));
             body.put("end", modelEnd.format(HOUR_FMT));
-            body.put("use_typical", false);
+            Double startLevel = loadLatestLevel(levelStcd);
+            if (startLevel != null) {
+                body.put("start_level", startLevel);
+            }
+            body.put("enable_power", false);
+            body.put("enable_tunnel", false);
+            body.put("enable_spillway", false);
             List<Double> rainfall = new ArrayList<>(steps);
             for (int i = 0; i < steps; i++) {
                 Double v = hourlyRain.get(modelStart.plusHours(i));
                 rainfall.add(v == null ? 0.0 : round1(v));
             }
             body.put("rainfall", rainfall);
-            body.put("adjust_rainfall", false);
-            body.put("discharge_mode", "none");
             JsonNode response = modelClient.postJson(ModelClient.PATH_FORECAST, body);
-            // 新契约响应：curve 为水位-泄量曲线表（无「时间」字段），逐小时模拟位于另一数组字段
-            // （线上实测 curve 条数=28 < meta.hours=145，键名随模型版本变化）→ 不依赖键名，
+            // 新契约响应：meta/summary/data（逐小时演算表，含「时间」）/curve（水位-泄量曲线表，无「时间」）。
+            // 线上曾实测逐小时数组键名随模型版本变化（curve 条数 < meta.hours）→ 不依赖键名，
             // 遍历根级所有数组字段，凡含合法「时间」的逐小时条目一律收集
             List<String> rootFields = new ArrayList<>();
             Map<LocalDateTime, JsonNode> byHour = new TreeMap<>();
@@ -320,6 +348,19 @@ public class FloodDroughtService {
         chart.setFlowPred(flowPred);
         chart.setForecastEndDate(forecastEndDate);
         return chart;
+    }
+
+    /** 模型 /forecast 起调水位：取坝上最新一条水位；无数据返回 null（不传则模型默认 80.0）。 */
+    private Double loadLatestLevel(String levelStcd) {
+        if (levelStcd == null) {
+            return null;
+        }
+        Double value = mapper.selectLatestLevel(levelStcd);
+        if (value == null) {
+            log.warn("防洪抗旱：水位站 {} 无最新水位数据，start_level 不传（模型默认 80.0）", levelStcd);
+            return null;
+        }
+        return round3(value);
     }
 
     // ==================== 实测段聚合 ====================
@@ -543,12 +584,19 @@ public class FloodDroughtService {
         }
     }
 
-    /** 写同区间去重键（TTL 与任务一致）；失败仅记日志（去重失效但主链路可用）。 */
-    private void saveDedupId(String dedupKey, String id) {
+    /**
+     * 原子占位同区间去重键（SET NX + TTL，与任务 TTL 一致）：
+     * 成功返回 true（本请求为主提交者）；键已存在返回 false（并发提交复用已有任务）。
+     * Redis 不可达时降级返回 true（去重失效但主链路可用）。
+     */
+    private boolean saveDedupIdIfAbsent(String dedupKey, String id) {
         try {
-            redisTemplate.opsForValue().set(dedupKey, id, cacheTtlHours, TimeUnit.HOURS);
+            Boolean acquired = redisTemplate.opsForValue()
+                    .setIfAbsent(dedupKey, id, cacheTtlHours, TimeUnit.HOURS);
+            return acquired == null || acquired;
         } catch (Exception e) {
-            log.warn("防洪抗旱去重键写入失败: {}", e.getMessage());
+            log.warn("防洪抗旱去重键占位失败（降级允许提交）: {}", e.getMessage());
+            return true;
         }
     }
 

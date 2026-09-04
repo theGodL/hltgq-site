@@ -33,7 +33,7 @@ import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.textOf;
 
 /**
  * 需水预测服务。
- * <p>写参数(calculating) → 调 /demand(guarantee_rate/canal_eff，表格数据仅归档) →
+ * <p>写参数(calculating) → 调 /demand(guarantee_rate/canal_eff/target_total，表格直传 demand_table) →
  * 支渠明细纵向展开 18 旬 + 片区/分灌区汇总(summary_type) →
  * irrigated_area 按支渠去重求和、peak_tenday 分组 argmax 回写 → completed。
  */
@@ -89,20 +89,20 @@ public class DemandService {
             throw new IllegalArgumentException("目标总毛需水量必须大于 0");
         }
 
-        // 组装模型请求体（表格数据改造前仅归档 table_rows，不传模型）
+        // 组装模型请求体（tableRows 直传模型 demand_table；未传则模型沿用服务器默认需水预测表）
         Map<String, Object> modelBody = new LinkedHashMap<>();
         modelBody.put("guarantee_rate", guaranteeRate);
         modelBody.put("canal_eff", canalEff);
         modelBody.put("target_total", targetTotal);
-        Map<String, Object> archiveBody = new LinkedHashMap<>(modelBody);
-        if (req.getTableRows() != null) {
-            archiveBody.put("table_rows", req.getTableRows());
+        if (req.getTableRows() != null && !req.getTableRows().isEmpty()) {
+            modelBody.put("demand_table", req.getTableRows());
         }
+        Map<String, Object> archiveBody = new LinkedHashMap<>(modelBody);
 
         // 写主表（参数留存 + 请求归档，calculating）
         DemandRecord record = new DemandRecord();
         record.setSchemeName(buildSchemeName(req, guaranteeRate));
-        record.setStatus("calculating");
+        record.setStatus(ModelRecordCommonService.STATUS_CALCULATING);
         record.setDelFlag(BoolTextUtils.FALSE);
         record.setGuaranteeRate(guaranteeRate);
         record.setCanalEff(canalEff);
@@ -205,7 +205,7 @@ public class DemandService {
                     }
                     record.setIrrigatedArea(round2(irrigatedArea));
                     record.setPeakTenday(argmax(tendayTotal));
-                    record.setStatus("completed");
+                    record.setStatus(ModelRecordCommonService.STATUS_COMPLETED);
                     record.setUpdatedAt(LocalDateTime.now());
                     recordMapper.updateById(record);
                 }
@@ -262,7 +262,7 @@ public class DemandService {
         String errorMsg = msg.length() > 500 ? msg.substring(0, 500) : msg;
         DemandRecord record = new DemandRecord();
         record.setId(recordId);
-        record.setStatus("failed");
+        record.setStatus(ModelRecordCommonService.STATUS_FAILED);
         record.setErrorMsg(errorMsg);
         record.setUpdatedAt(LocalDateTime.now());
         recordMapper.updateById(record);
