@@ -2,7 +2,6 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
-import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.qgyun.hltgq.hltgqsite.entity.StRiverR;
@@ -43,6 +42,13 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
 
     /** 水情简报/多年同期水情覆盖的水情站（周家河、花凉亭坝下、花凉亭坝上），顺序即展示顺序 */
     private static final List<String> WATER_STATION_STCDS = Arrays.asList("3206400001", "320640000A", "3206400007");
+
+    /**
+     * 河道/水库水情表排序（业主口径）：站点权威顺序 周家河 > 花凉亭坝上 > 花凉亭坝下，
+     * 同一站点数据连续成组不交错，组内按时间倒序（最新在前）。
+     */
+    private static final String REGIME_ORDER_BY =
+            "ORDER BY CASE \"STCD\" WHEN '3206400001' THEN 1 WHEN '3206400007' THEN 2 WHEN '320640000A' THEN 3 ELSE 4 END, \"TM\" DESC";
 
     /**
      * 旧 STCD → 新 STCD（过渡期兼容：客户端可能仍持有旧页面/旧缓存，收到旧编号时自动映射到新编号）
@@ -211,14 +217,15 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
                 "河道水位站仅支持: 周家河、花凉亭坝下");
         Map<String, BigDecimal[]> thresholds = queryThresholdMap(stations);
 
-        // 2. 多站合并分页查询（时间倒序，最新在前）
+        // 2. 多站合并分页查询（站点权威顺序分组 + 组内时间倒序，同站数据连续不交错）
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<>();
         wrapper.in("STCD", new ArrayList<>(stations.keySet()));
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        wrapper.last(REGIME_ORDER_BY);
 
         Page<StRiverR> rawPage = (Page<StRiverR>) this.page(
-                new Page<StRiverR>(page, size).addOrder(OrderItem.desc("TM")), wrapper);
+                new Page<StRiverR>(page, size), wrapper);
 
         // 3. 转换为 RiverRegimeVO
         List<RiverRegimeVO> records = rawPage.getRecords().stream()
@@ -238,9 +245,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         Map<String, BigDecimal[]> thresholds = queryThresholdMap(stations);
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<>();
         wrapper.in("STCD", new ArrayList<>(stations.keySet()));
-        wrapper.orderByDesc("TM");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        wrapper.last(REGIME_ORDER_BY);
         return this.list(wrapper).stream()
                 .map(r -> toRiverVO(r, stations, thresholds))
                 .collect(Collectors.toList());
@@ -267,14 +274,15 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
                 "水库水位站仅支持: 花凉亭坝上");
         Map<String, BigDecimal[]> thresholds = queryThresholdMap(stations);
 
-        // 2. 多站合并分页查询（时间倒序，最新在前）
+        // 2. 多站合并分页查询（站点权威顺序分组 + 组内时间倒序，同站数据连续不交错）
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<>();
         wrapper.in("STCD", new ArrayList<>(stations.keySet()));
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        wrapper.last(REGIME_ORDER_BY);
 
         Page<StRiverR> rawPage = (Page<StRiverR>) this.page(
-                new Page<StRiverR>(page, size).addOrder(OrderItem.desc("TM")), wrapper);
+                new Page<StRiverR>(page, size), wrapper);
 
         // 3. 转换为 ReservoirRegimeVO
         List<ReservoirRegimeVO> records = rawPage.getRecords().stream()
@@ -294,9 +302,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         Map<String, BigDecimal[]> thresholds = queryThresholdMap(stations);
         QueryWrapper<StRiverR> wrapper = new QueryWrapper<>();
         wrapper.in("STCD", new ArrayList<>(stations.keySet()));
-        wrapper.orderByDesc("TM");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        wrapper.last(REGIME_ORDER_BY);
         return this.list(wrapper).stream()
                 .map(r -> toReservoirVO(r, stations, thresholds))
                 .collect(Collectors.toList());

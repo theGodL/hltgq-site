@@ -48,6 +48,17 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     /** -999 = 设备不存在：视为缺失转 null 返回（-9991 设备异常保留，透传由前端展示 '--'） */
     private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
 
+    /**
+     * 水位水情站权威展示顺序（业主口径）：周家河 > 花凉亭坝上 > 花凉亭坝下。
+     * 日时段水情表按此顺序分组输出，不受前端传入 stcds 顺序影响。
+     */
+    private static final List<String> WATER_STATION_ORDER = Arrays.asList("周家河", "花凉亭坝上", "花凉亭坝下");
+
+    private static int stationRank(String stnm) {
+        int idx = WATER_STATION_ORDER.indexOf(stnm);
+        return idx >= 0 ? idx : WATER_STATION_ORDER.size();
+    }
+
     private static BigDecimal nullIfMissing(BigDecimal v) {
         return (v != null && v.compareTo(DEVICE_MISSING) == 0) ? null : v;
     }
@@ -273,11 +284,16 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
                 resolvedStcds, slotStart.minusHours(interval), slotEnd);
 
         // 4. 构建结果：N站 × M槽 = 完整 VO 列表
+        // 站点按权威顺序分组（周家河 > 花凉亭坝上 > 花凉亭坝下），同站数据连续不交错；
+        // 组内槽位按时间降序（最新在前）
         // 槽位匹配策略（业主口径）：记录 tm ∈ (prevSlot, slot] 左开右闭 → 归属 slot；
         // 同槽位多条取 tm 最大的（最新）。整点整点的记录归该整点槽位（如 11:00:00 归 11 点），
         // 整点之后归下一整点，保证前一时段数值在进入下一时段后固定不动
+        List<Map.Entry<String, String>> orderedStations = new ArrayList<>(stcdToName.entrySet());
+        orderedStations.sort(Comparator.comparingInt(e -> stationRank(e.getValue())));
+
         List<PeriodRegimeVO> result = new ArrayList<>();
-        for (Map.Entry<String, String> entry : stcdToName.entrySet()) {
+        for (Map.Entry<String, String> entry : orderedStations) {
             String stcd = entry.getKey();
             String stnm = entry.getValue();
 
@@ -315,8 +331,9 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
                 }
             }
 
-            // 为该站点的每个槽位生成 VO
-            for (LocalDateTime slot : slots) {
+            // 为该站点的每个槽位生成 VO（时间降序：从次日 07:00 最新槽位到 08:00 最旧槽位）
+            for (int i = slots.size() - 1; i >= 0; i--) {
+                LocalDateTime slot = slots.get(i);
                 PeriodRegimeVO vo = new PeriodRegimeVO();
                 vo.setStcd(stcd);
                 vo.setStnm(stnm);

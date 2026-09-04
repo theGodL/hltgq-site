@@ -437,8 +437,9 @@ const fmtCmp = v => {
   return isNaN(n) ? v : (n > 0 ? '+' : '') + n.toFixed(2);
 };
 const fmtAuto = v => {
-  if (v === null || v === undefined || v === '') return '-';
-  if (isMissing(v)) return '';
+  // 水情表口径（业主要求）：时段无数据（null/空）、-999 设备不存在、-9991 设备异常 → 一律展示 '--'
+  if (v === null || v === undefined || v === '') return '--';
+  if (isMissing(v)) return '--';
   if (isErr(v)) return '--';
   const n = +v;
   return isNaN(n) ? v : n.toFixed(2);
@@ -486,7 +487,7 @@ const S = { page: 1, size: 20, total: 0, rows: [], current: null, resTab: 'river
   resRows: { river: [], reservoir: [], brief: [] },
   resRiverStcds: ['3206400001', '320640000A'], resReservoirStcds: ['3206400007'],
   resYearsRows: [], resYearsStations: [],
-  periodInterval: 1, periodStcds: ['3206400001','320640000A','3206400007'], resPeriodRows: [],
+  periodInterval: 1, periodStcds: ['3206400001','3206400007','320640000A'], resPeriodRows: [],
   resPager: { river: { page: 1, total: 0 }, reservoir: { page: 1, total: 0 } }, resSize: 20 };
 let chart = null;
 
