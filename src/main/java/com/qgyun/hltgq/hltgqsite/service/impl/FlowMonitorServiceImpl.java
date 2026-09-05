@@ -265,9 +265,19 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
         List<String> resolvedStcds = new ArrayList<>(stcdToName.keySet());
 
-        // 2. 生成时间槽位：选中日期 08:00 起，按 interval 小时递增，到次日 07:00 止
+        // 2. 生成时间槽位：选中日期 08:00 起，按 interval 小时递增，到次日 07:00 止；
+        // 最新槽位不得超过「当前最近整点」（如现在 18:27 → 18:00）：未来时段尚无采集数据，
+        // 若照旧生成到次日 07:00 会产生大量全空白槽位行（选中今天时尤为明显）
         LocalDateTime slotStart = date.atTime(LocalTime.of(8, 0));
         LocalDateTime slotEnd = date.plusDays(1).atTime(LocalTime.of(7, 0));
+        LocalDateTime nowHour = LocalDateTime.now().truncatedTo(ChronoUnit.HOURS);
+        if (slotEnd.isAfter(nowHour)) {
+            slotEnd = nowHour;
+        }
+        // 选中今天且当前尚未到 08:00，或选中未来日期：无任何已到时段的槽位，返回空
+        if (slotStart.isAfter(slotEnd)) {
+            return Collections.emptyList();
+        }
         List<LocalDateTime> slots = new ArrayList<>();
         LocalDateTime t = slotStart;
         while (!t.isAfter(slotEnd)) {

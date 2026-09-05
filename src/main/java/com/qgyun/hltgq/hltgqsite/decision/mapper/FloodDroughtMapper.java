@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.decision.mapper;
 
 import com.qgyun.hltgq.hltgqsite.decision.vo.ObsDailyVO;
 import com.qgyun.hltgq.hltgqsite.decision.vo.ObsPointVO;
+import com.qgyun.hltgq.hltgqsite.decision.vo.StationOptionVO;
 import lombok.Data;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -25,7 +26,26 @@ public interface FloodDroughtMapper {
             "ORDER BY iofhpi LIMIT 1")
     String selectStationByType(@Param("typeCode") String typeCode);
 
-    /** 站点经纬度（雨量站坐标，天气预测用）。 */
+    /**
+     * 按站点类型编码列出候选站（GET /flood-drought/stations 下拉用）。
+     * <p>epjutj 多值以 | 分隔（如 #1#|#2#），LIKE 匹配子串即可。
+     */
+    @Select("SELECT iofhpi AS stcd, zzkaec AS stnm " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
+            "WHERE epjutj LIKE CONCAT('%', #{typeCode}, '%') " +
+            "ORDER BY iofhpi")
+    List<StationOptionVO> selectStationsByType(@Param("typeCode") String typeCode);
+
+    /** 站点名称（档案表 zzkaec）；查不到 null（上层回退 stcd）。 */
+    @Select("SELECT zzkaec AS stnm " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
+            "WHERE iofhpi = #{stcd} LIMIT 1")
+    String selectStationName(@Param("stcd") String stcd);
+
+    /**
+     * 站点经纬度（雨量站坐标，天气预测用）。
+     * <p>注意：此查询服务 ModelWeatherRainService（短期/墒情模型降雨输入），非防洪页本身。
+     */
     @Select("SELECT bviiio_x AS lon, bviiio_y AS lat " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
             "WHERE iofhpi = #{stcd} LIMIT 1")
@@ -59,7 +79,7 @@ public interface FloodDroughtMapper {
                                        @Param("start") LocalDateTime start,
                                        @Param("end") LocalDateTime end);
 
-    /** 站点最新一条水位值（模型 /forecast 起调水位 start_level），无数据 null。 */
+    /** 站点最新一条水位值（短期预报 /forecast 起调水位 start_level），无数据 null。 */
     @Select("SELECT \"Z\" AS \"value\" " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info " +
             "WHERE \"STCD\" = #{stcd} " +
