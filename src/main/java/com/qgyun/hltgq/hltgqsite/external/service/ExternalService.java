@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -87,7 +89,7 @@ public class ExternalService {
         LocalDateTime flowTm = null;
         if (flow != null) {
             flowTm = timeOf(flow.get("tm"));
-            vo.setQ(round3(flow.get("q")));
+            vo.setQ(truncate3(flow.get("q")));
         }
 
         LocalDateTime latest = laterOf(gateTm, flowTm);
@@ -193,8 +195,8 @@ public class ExternalService {
         return map;
     }
 
-    /** 水位清洗：-999/-9991 → null；截断到 3 位小数（契约精度） */
-    private Double cleanLevel(Object value) {
+    /** 水位清洗：-999/-9991 → null；2 位小数截断补零（业主口径：水位 2 位，不四舍五入） */
+    private BigDecimal cleanLevel(Object value) {
         if (value == null) {
             return null;
         }
@@ -202,16 +204,16 @@ public class ExternalService {
         if (d == INVALID_LEVEL || d == INVALID_LEVEL_1) {
             return null;
         }
-        return Math.round(d * 1000.0) / 1000.0;
+        return BigDecimal.valueOf(d).setScale(2, RoundingMode.DOWN);
     }
 
-    /** 数值截断到 3 位小数（契约精度，SQL 层已过滤无效值） */
-    private Double round3(Object value) {
+    /** 瞬时流量：3 位小数截断（业主口径：瞬时流量 3 位，不四舍五入；SQL 层已过滤无效值） */
+    private BigDecimal truncate3(Object value) {
         if (value == null) {
             return null;
         }
         double d = ((Number) value).doubleValue();
-        return Math.round(d * 1000.0) / 1000.0;
+        return BigDecimal.valueOf(d).setScale(3, RoundingMode.DOWN);
     }
 
     private Long longOf(Object value) {

@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.external.vo;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -35,12 +36,12 @@ public final class ExternalVO {
         private String stcd;
         /** 站点名称（固定：渠首进水闸） */
         private String stnm;
-        /** 闸前（上游）水位 m，无数据 null */
-        private Double upZ;
-        /** 闸后（下游）水位 m，无数据 null */
-        private Double downZ;
-        /** 瞬时流量 m³/s，无数据 null */
-        private Double q;
+        /** 闸前（上游）水位 m，2 位小数（截断补零），无数据 null */
+        private BigDecimal upZ;
+        /** 闸后（下游）水位 m，2 位小数（截断补零），无数据 null */
+        private BigDecimal downZ;
+        /** 瞬时流量 m³/s，3 位小数（截断），无数据 null */
+        private BigDecimal q;
         /** 数据时间 yyyy-MM-dd HH:mm:ss（取水位/流量较新者） */
         private String tm;
         /** 管理单位（固定：花凉亭灌区） */

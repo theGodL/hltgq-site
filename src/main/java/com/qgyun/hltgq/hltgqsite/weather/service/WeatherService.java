@@ -16,6 +16,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -294,7 +296,9 @@ public class WeatherService {
             vo.setLocation(location);
             vo.setWeather(translateWeatherCode(code));
             vo.setTemperature((int) Math.round(temps.get(i).asDouble()));
-            vo.setRainfall(precips.get(i).asDouble());
+            // 雨量 2 位小数截断（业主口径：雨量 2 位，不四舍五入）
+            vo.setRainfall(BigDecimal.valueOf(precips.get(i).asDouble())
+                    .setScale(2, RoundingMode.DOWN).doubleValue());
             vo.setWindDirection(translateWindDirection(windDirs.get(i).asInt()));
             vo.setWindLevel(calculateWindLevel(windSpeeds.get(i).asDouble()));
             vo.setWindSpeed((int) Math.round(windSpeeds.get(i).asDouble()));

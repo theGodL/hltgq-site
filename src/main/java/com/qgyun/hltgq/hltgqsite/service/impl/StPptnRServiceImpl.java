@@ -457,12 +457,12 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             ReservoirRainfallVO.DayRainfall dr = new ReservoirRainfallVO.DayRainfall();
             dr.setDay(bucket);
             Map<String, BigDecimal> values = bucketMap.getOrDefault(bucket, Collections.emptyMap());
-            // 补充缺失站点的 0 值，同时计算平均值
+            // 补充缺失站点的 0 值，同时计算平均值；雨量统一 2 位小数（截断补零，业主口径）
             Map<String, BigDecimal> fullValues = new LinkedHashMap<>();
             BigDecimal sum = BigDecimal.ZERO;
             for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
                 String stcd = entry.getKey();
-                BigDecimal val = values.getOrDefault(stcd, BigDecimal.ZERO);
+                BigDecimal val = values.getOrDefault(stcd, BigDecimal.ZERO).setScale(2, BigDecimal.ROUND_DOWN);
                 fullValues.put(stcd, val);
                 sum = sum.add(val);
             }
@@ -550,6 +550,12 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
         // 6. 组装站点信息（实时快照：最新观测时间 + 所在水文日累计雨量）
         List<ReservoirRainfallVO.StationInfo> stations = buildStationInfos(resolved, records);
+        // 雨量数值统一 2 位小数（截断补零，业主口径）
+        for (ReservoirRainfallVO.StationInfo si : stations) {
+            if (si.getLatestDrp() != null) {
+                si.setLatestDrp(si.getLatestDrp().setScale(2, BigDecimal.ROUND_DOWN));
+            }
+        }
 
         // 7. 组装逐日数据（日雨情视角）
         List<ReservoirRainfallVO.DayRainfall> days = new ArrayList<>();
@@ -557,12 +563,12 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             ReservoirRainfallVO.DayRainfall dr = new ReservoirRainfallVO.DayRainfall();
             dr.setDay(bucket);
             Map<String, BigDecimal> values = bucketMap.getOrDefault(bucket, Collections.emptyMap());
-            // 补充缺失站点的 0 值，同时计算平均值
+            // 补充缺失站点的 0 值，同时计算平均值；雨量统一 2 位小数（截断补零，业主口径）
             Map<String, BigDecimal> fullValues = new LinkedHashMap<>();
             BigDecimal sum = BigDecimal.ZERO;
             for (Map.Entry<String, StStinfo> entry : resolved.entrySet()) {
                 String stcd = entry.getKey();
-                BigDecimal val = values.getOrDefault(stcd, BigDecimal.ZERO);
+                BigDecimal val = values.getOrDefault(stcd, BigDecimal.ZERO).setScale(2, BigDecimal.ROUND_DOWN);
                 fullValues.put(stcd, val);
                 sum = sum.add(val);
             }
