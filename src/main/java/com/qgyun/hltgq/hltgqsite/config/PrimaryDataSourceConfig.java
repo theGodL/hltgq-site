@@ -22,7 +22,8 @@ import org.springframework.context.annotation.Primary;
 import javax.sql.DataSource;
 
 @Configuration
-@MapperScan(basePackages = {"com.qgyun.hltgq.hltgqsite.mapper", "com.qgyun.hltgq.hltgqsite.decision.mapper"},
+@MapperScan(basePackages = {"com.qgyun.hltgq.hltgqsite.mapper", "com.qgyun.hltgq.hltgqsite.decision.mapper",
+        "com.qgyun.hltgq.hltgqsite.external.mapper"},
         sqlSessionFactoryRef = "primarySqlSessionFactory")
 public class PrimaryDataSourceConfig {
 
