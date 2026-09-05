@@ -35,7 +35,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 .main-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px;padding-right:2px}
 
-.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;flex-shrink:0}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;flex-shrink:0}
 .stat-card{position:relative;padding:22px 24px;min-height:110px;overflow:hidden}
 .stat-card .label{color:#999;font-size:13px;margin-bottom:14px;line-height:20px}
 .stat-card .value{font-size:32px;font-weight:700;color:#1f1f1f;line-height:1.2}
@@ -43,6 +43,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .stat-deco.orange{background:radial-gradient(circle at 40% 40%,#FFE4C4 0%,#FFD4A8 55%,transparent 70%)}
 .stat-deco.cyan{background:radial-gradient(circle at 40% 40%,#D8F3F5 0%,#BFECEF 55%,transparent 70%)}
 .stat-deco.purple{background:radial-gradient(circle at 40% 40%,#E6E0F8 0%,#D4CBF3 55%,transparent 70%)}
+.stat-deco.blue{background:radial-gradient(circle at 40% 40%,#D6E4FF 0%,#ADC6FF 55%,transparent 70%)}
 
 .charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:360px}
 .chart-card{padding:16px;display:flex;flex-direction:column;min-height:360px}
@@ -52,7 +53,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 
-@media (max-width:1100px){
+@media (max-width:1200px){
+  .stats-row{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:720px){
   .stats-row{grid-template-columns:1fr}
   .charts-row{grid-template-columns:1fr}
 }
@@ -91,13 +95,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       </div>
       <div class="card stat-card">
         <div class="stat-deco cyan"></div>
-        <div class="label">问题上报数</div>
-        <div class="value" id="stat-issue">—</div>
+        <div class="label">巡查符合度</div>
+        <div class="value" id="stat-patrol-compliance">—</div>
       </div>
       <div class="card stat-card">
         <div class="stat-deco purple"></div>
         <div class="label">工单数</div>
         <div class="value" id="stat-order">—</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-deco blue"></div>
+        <div class="label">问题符合度</div>
+        <div class="value" id="stat-issue-compliance">—</div>
       </div>
     </div>
 
@@ -205,11 +214,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     };
   }
 
+  function fmtCompliance(v) {
+    if (v == null || v === '') return '—';
+    var n = Number(v);
+    if (!isFinite(n)) return '—';
+    // 接口已是 0~100 百分数，直接拼接 %，不要 *100
+    return (Math.round(n * 10) / 10) + '%';
+  }
+
   function renderSummary(s) {
     s = s || {};
     $('stat-patrol').textContent = s.patrolCount != null ? s.patrolCount : '—';
-    $('stat-issue').textContent = s.issueCount != null ? s.issueCount : '—';
+    $('stat-patrol-compliance').textContent = fmtCompliance(s.patrolCompliance);
     $('stat-order').textContent = s.orderCount != null ? s.orderCount : '—';
+    $('stat-issue-compliance').textContent = fmtCompliance(s.issueCompliance);
   }
 
   function renderCharts(data) {

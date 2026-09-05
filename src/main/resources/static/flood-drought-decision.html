@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>防洪抗旱决策</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/model-api.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
@@ -15,37 +16,61 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .breadcrumb .cur{color:#333}
 
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.tabs{display:flex;gap:0;flex-shrink:0;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.tab-btn{flex:0 0 auto;min-width:120px;height:40px;border:none;background:#fff;color:#666;font-size:14px;cursor:pointer;border-bottom:2px solid transparent;padding:0 20px}
+.tab-btn:hover{color:#1677ff}
+.tab-btn.active{color:#1677ff;font-weight:600;border-bottom-color:#1677ff}
+
+.panel{display:none;flex:1;min-height:0;overflow:hidden;flex-direction:column;gap:12px}
+.panel.active{display:flex}
 
 .filter-card{padding:14px 16px;flex-shrink:0}
-.filter-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.filter-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.filter-left .lbl{color:#666;font-size:14px;white-space:nowrap}
+.filter-bar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.filter-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.filter-left .lbl,.pred-filter .lbl{color:#666;font-size:13px;white-space:nowrap}
 .date-range{display:flex;align-items:center;gap:6px}
-.date-range .field{width:140px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;color:#333}
-.date-range .field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.field{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 10px;font-size:13px;outline:none;background:#fff;color:#333}
+.field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.date-range .field{width:140px}
+.field.dt{width:180px}
+.select{min-width:160px;max-width:260px}
 .date-sep{color:#999}
-.filter-actions{display:flex;align-items:center;gap:8px}
+.filter-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-primary[disabled],.btn[disabled]{opacity:.55;cursor:not-allowed}
 .btn-default{color:#333;border-color:#d9d9d9}
 .btn-default:hover{color:#1677ff;border-color:#1677ff}
+.switch-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.switch-item{display:inline-flex;align-items:center;gap:6px;color:#666;font-size:13px;cursor:pointer;user-select:none}
+.switch-item input{width:14px;height:14px}
+.hint{font-size:12px;color:#999}
 
-.main-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px;padding-right:2px}
-
-.chart-card{padding:16px 16px 12px;display:flex;flex-direction:column;min-height:0}
-.chart-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;flex-shrink:0}
+.main-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:block;padding-right:2px}
+.main-scroll > * + *{margin-top:12px}
+.section-label{font-size:13px;font-weight:700;color:#1f1f1f;padding:2px 2px 0}
+.chart-card{padding:16px 16px 12px;display:flex;flex-direction:column;flex-shrink:0}
+.chart-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;flex-shrink:0;flex-wrap:wrap}
 .chart-title{font-size:14px;font-weight:700;color:#1f1f1f;line-height:22px}
-.chart-sub{font-size:13px;color:#666}
-.chart-hydro{width:100%;height:420px}
-.chart-soil{width:100%;height:320px}
+.chart-tip{font-size:12px;color:#999;margin-left:8px;font-weight:400}
+.chart-box{width:100%;height:300px;min-height:300px;flex-shrink:0}
+.chart-box.tall{height:400px;min-height:400px}
+.pred-filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pred-filter .select{min-width:220px;max-width:420px}
+.seg-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;flex-shrink:0}
+.seg-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:4px;font-size:12px;background:#f5f5f5;color:#595959}
+.seg-chip.lv2{background:#fff7e6;color:#d48806}
+.seg-chip.lv3{background:#fff1f0;color:#cf1322}
+.seg-chip.lv4{background:#fff1f0;color:#a8071a;font-weight:600}
+.seg-chip.lv5{background:#f9f0ff;color:#531dab;font-weight:600}
 
 .toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 
 @media (max-width:900px){
-  .chart-hydro{height:480px}
-  .chart-soil{height:280px}
+  .chart-box{height:280px;min-height:280px}
+  .chart-box.tall{height:340px;min-height:340px}
 }
 </style>
 </head>
@@ -56,37 +81,138 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     <span class="cur">防洪抗旱决策</span>
   </div>
 
-  <div class="card filter-card">
-    <div class="filter-bar">
-      <div class="filter-left">
-        <span class="lbl">日期</span>
-        <div class="date-range">
-          <input type="date" class="field" id="start-date">
-          <span class="date-sep">—</span>
-          <input type="date" class="field" id="end-date">
+  <div class="tabs" role="tablist">
+    <button type="button" class="tab-btn active" data-tab="flood">防洪</button>
+    <button type="button" class="tab-btn" data-tab="drought">抗旱</button>
+  </div>
+
+  <!-- ========== 防洪 ========== -->
+  <div class="panel active" id="panel-flood">
+    <div class="card filter-card">
+      <div class="filter-bar">
+        <div class="filter-left">
+          <span class="lbl">历史日期</span>
+          <div class="date-range">
+            <input type="date" class="field" id="hist-start">
+            <span class="date-sep">—</span>
+            <input type="date" class="field" id="hist-end">
+          </div>
+          <span class="lbl">雨量站</span>
+          <select class="field select" id="rain-stcd"></select>
+          <span class="lbl">水位站</span>
+          <select class="field select" id="level-stcd"></select>
+          <span class="lbl">流量站</span>
+          <select class="field select" id="flow-stcd"></select>
+        </div>
+        <div class="filter-actions">
+          <button type="button" class="btn btn-primary" id="hist-query-btn">查询历史</button>
+          <button type="button" class="btn btn-default" id="hist-reset-btn">重置</button>
         </div>
       </div>
-      <div class="filter-actions">
-        <button type="button" class="btn btn-primary" id="query-btn">查询</button>
-        <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+    </div>
+
+    <div class="main-scroll" id="flood-scroll">
+      <div class="section-label">历史实测</div>
+      <div class="card chart-card">
+        <div class="chart-hd">
+          <div class="chart-title">降雨量 <span class="chart-tip" id="rain-tip"></span></div>
+        </div>
+        <div class="chart-box" id="chart-rain"></div>
+      </div>
+      <div class="card chart-card">
+        <div class="chart-hd">
+          <div class="chart-title">水位 / 流量 <span class="chart-tip" id="hydro-tip"></span></div>
+        </div>
+        <div class="chart-box tall" id="chart-hydro"></div>
+      </div>
+
+      <div class="section-label">预测（短期预报）</div>
+      <div class="card filter-card">
+        <div class="filter-bar">
+          <div class="filter-left">
+            <span class="lbl">预报窗口</span>
+            <input type="datetime-local" class="field dt" id="pred-start">
+            <span class="date-sep">—</span>
+            <input type="datetime-local" class="field dt" id="pred-end">
+            <div class="switch-row">
+              <label class="switch-item"><input type="checkbox" id="enable-power">发电</label>
+              <label class="switch-item"><input type="checkbox" id="enable-tunnel">泄洪隧洞</label>
+              <label class="switch-item"><input type="checkbox" id="enable-spillway">溢洪道</label>
+            </div>
+            <span class="hint">降雨不传则自动拉气象；三开关不传/默认全关（异通道=溢洪道）</span>
+          </div>
+          <div class="filter-actions">
+            <button type="button" class="btn btn-primary" id="pred-calc-btn">计算</button>
+          </div>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="chart-hd">
+          <div class="chart-title">水位 / 降雨预测 <span class="chart-tip" id="pred-tip"></span></div>
+          <div class="pred-filter">
+            <span class="lbl">历史方案</span>
+            <select class="field select" id="pred-scheme"></select>
+          </div>
+        </div>
+        <div class="chart-box tall" id="chart-pred"></div>
       </div>
     </div>
   </div>
 
-  <div class="main-scroll">
-    <div class="card chart-card">
-      <div class="chart-hd">
-        <div class="chart-title">水文关系预测分析图</div>
+  <!-- ========== 抗旱 ========== -->
+  <div class="panel" id="panel-drought">
+    <div class="main-scroll" id="drought-scroll">
+      <div class="section-label">实测墒情</div>
+      <div class="card filter-card">
+        <div class="filter-bar">
+          <div class="filter-left">
+            <span class="lbl">站点</span>
+            <select class="field select" id="obs-stcd"></select>
+            <span class="lbl">日期</span>
+            <div class="date-range">
+              <input type="date" class="field" id="obs-start">
+              <span class="date-sep">—</span>
+              <input type="date" class="field" id="obs-end">
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button type="button" class="btn btn-primary" id="obs-query-btn">查询</button>
+          </div>
+        </div>
       </div>
-      <div class="chart-hydro" id="chart-hydro"></div>
-    </div>
+      <div class="card chart-card">
+        <div class="chart-hd">
+          <div class="chart-title">含水率（10/20/30cm） <span class="chart-tip" id="obs-tip"></span></div>
+        </div>
+        <div class="chart-box tall" id="chart-obs"></div>
+      </div>
 
-    <div class="card chart-card">
-      <div class="chart-hd">
-        <div class="chart-title">墒情分析</div>
-        <div class="chart-sub" id="soil-station">太怀监测站</div>
+      <div class="section-label">墒情预测（含国标干旱等级）</div>
+      <div class="card filter-card">
+        <div class="filter-bar">
+          <div class="filter-left">
+            <span class="lbl">预测天数</span>
+            <input type="number" class="field" id="mois-days" min="1" max="16" value="16" style="width:72px">
+            <span class="hint">1～16 天；四站初值自动取</span>
+            <span class="lbl">查看站点</span>
+            <select class="field select" id="mois-site"></select>
+          </div>
+          <div class="filter-actions">
+            <button type="button" class="btn btn-primary" id="mois-calc-btn">计算</button>
+          </div>
+        </div>
       </div>
-      <div class="chart-soil" id="chart-soil"></div>
+      <div class="card chart-card">
+        <div class="chart-hd">
+          <div class="chart-title">预测含水率 / 降雨 <span class="chart-tip" id="mois-tip"></span></div>
+          <div class="pred-filter">
+            <span class="lbl">历史方案</span>
+            <select class="field select" id="mois-scheme"></select>
+          </div>
+        </div>
+        <div class="chart-box tall" id="chart-mois"></div>
+        <div id="drought-segs" class="seg-list"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -107,371 +233,856 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   function fmtDate(d) {
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   }
-  function parseDate(s) {
-    var p = String(s || '').split('-');
-    if (p.length < 3) return null;
-    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  function fmtDateTimeLocal(d) {
+    return fmtDate(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
-  function addDays(d, n) {
-    var x = new Date(d.getTime());
-    x.setDate(x.getDate() + n);
-    return x;
+  function toApiDateTime(localVal) {
+    return String(localVal || '').replace('T', ' ').slice(0, 16);
   }
-
-  var hydroChart = null;
-  var soilChart = null;
-  var defaultStart = '2026-09-01';
-  var defaultEnd = '2026-09-15';
-
-  /** mock：实测段天数（其余为预测） */
-  var OBSERVED_DAYS = 3;
-
-  function buildHydroMock(start, end) {
-    var s = parseDate(start) || parseDate(defaultStart);
-    var e = parseDate(end) || parseDate(defaultEnd);
-    if (e < s) { var t = s; s = e; e = t; }
-    var dates = [];
-    var cur = new Date(s.getTime());
-    while (cur <= e) {
-      dates.push(fmtDate(cur));
-      cur = addDays(cur, 1);
-    }
-    if (!dates.length) dates = [fmtDate(s)];
-
-    var n = dates.length;
-    var split = Math.min(OBSERVED_DAYS, Math.max(1, n - 1));
-
-    var rainObs = [];
-    var rainPred = [];
-    var levelObs = [];
-    var levelPred = [];
-    var flowObs = [];
-    var flowPred = [];
-
-    // 与设计稿接近的水位/流量走势
-    var levelSeed = [72, 68, 55, 48, 52, 58, 62, 70, 66, 60, 55, 50, 48, 52, 58];
-    var flowSeed = [42, 40, 36, 38, 41, 39, 37, 40, 43, 41, 39, 38, 40, 42, 44];
-    var rainSeed = [8, 18, 12, 6, 10, 14, 9, 11, 7, 13, 16, 8, 10, 12, 9];
-
-    for (var i = 0; i < n; i++) {
-      var rain = rainSeed[i % rainSeed.length] + (i % 3);
-      var level = levelSeed[i % levelSeed.length];
-      var flow = flowSeed[i % flowSeed.length];
-
-      if (i < split) {
-        rainObs.push(rain);
-        rainPred.push(null);
-        levelObs.push(level);
-        levelPred.push(null);
-        flowObs.push(flow);
-        flowPred.push(null);
-      } else {
-        rainObs.push(null);
-        rainPred.push(rain);
-        levelObs.push(null);
-        levelPred.push(level);
-        flowObs.push(null);
-        flowPred.push(flow);
-      }
-    }
-
-    // 分界点写入预测序列，保证折线视觉连续
-    if (split > 0 && split <= n) {
-      var join = split - 1;
-      levelPred[join] = levelObs[join];
-      flowPred[join] = flowObs[join];
-    }
-
-    return {
-      dates: dates,
-      split: split,
-      rainObs: rainObs,
-      rainPred: rainPred,
-      levelObs: levelObs,
-      levelPred: levelPred,
-      flowObs: flowObs,
-      flowPred: flowPred
-    };
+  function hoursInclusive(startLocal, endLocal) {
+    var a = new Date(startLocal);
+    var b = new Date(endLocal);
+    if (!isFinite(a.getTime()) || !isFinite(b.getTime())) return 0;
+    return Math.round((b - a) / 3600000) + 1;
   }
-
-  function buildSoilMock() {
-    var depths = [
-      { name: '10cm', color: '#c084fc', base: 26.5 },
-      { name: '20cm', color: '#f9a8d4', base: 27.2 },
-      { name: '30cm', color: '#fcd34d', base: 25.8 },
-      { name: '40cm', color: '#86efac', base: 24.6 },
-      { name: '50cm', color: '#67e8f9', base: 28.1 },
-      { name: '60cm', color: '#93c5fd', base: 26.0 },
-      { name: '80cm', color: '#a5b4fc', base: 23.5 },
-      { name: '100cm', color: '#fda4af', base: 22.8 }
-    ];
-    var times = [];
-    var start = new Date(2026, 6, 14, 4, 1);
-    for (var i = 0; i < 12; i++) {
-      var d = new Date(start.getTime() + i * 30 * 3600 * 1000);
-      times.push(pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()));
-    }
-    var series = depths.map(function (dep, di) {
-      var data = times.map(function (_, ti) {
-        var wave = Math.sin((ti + di) * 0.55) * 1.2 + Math.cos(ti * 0.35 + di) * 0.6;
-        return Math.round((dep.base + wave) * 10) / 10;
-      });
-      return {
-        name: dep.name,
-        type: 'line',
-        smooth: true,
-        showSymbol: true,
-        symbol: 'circle',
-        symbolSize: 7,
-        itemStyle: { color: dep.color, borderColor: dep.color, borderWidth: 1.5 },
-        lineStyle: { width: 2, color: dep.color },
-        areaStyle: { color: dep.color, opacity: 0.06 },
-        data: data
-      };
+  function daysBetween(a, b) {
+    var t0 = new Date(a + 'T00:00:00').getTime();
+    var t1 = new Date(b + 'T00:00:00').getTime();
+    return Math.floor((t1 - t0) / 86400000) + 1;
+  }
+  function maxOf(arr, floor) {
+    var m = floor == null ? 0 : floor;
+    (arr || []).forEach(function (v) {
+      if (v != null && isFinite(Number(v)) && Number(v) > m) m = Number(v);
     });
-    return { times: times, series: series, station: '太怀监测站' };
+    return m;
+  }
+  function niceCeil(v, step) {
+    step = step || 1;
+    if (v <= 0) return step;
+    return Math.ceil(v / step) * step;
+  }
+  function sanitizeMoisture(v) {
+    if (v == null || v === '') return null;
+    var n = Number(v);
+    if (!isFinite(n) || n === -999 || n === -9991) return null;
+    return n;
   }
 
-  function renderHydro(data) {
-    if (!hydroChart) hydroChart = echarts.init($('chart-hydro'));
-    var axisCommon = {
-      axisLine: { lineStyle: { color: '#e8e8e8' } },
-      axisTick: { show: false },
-      axisLabel: { color: '#8c8c8c', fontSize: 11 },
-      splitLine: { show: true, lineStyle: { type: 'dashed', color: '#f0f0f0' } }
-    };
+  var API = window.ModelApi;
+  var charts = { rain: null, hydro: null, pred: null, obs: null, mois: null };
+  var stationsLoaded = false;
+  var droughtInited = false;
+  var moistureDetail = null;
+  var moistureBySite = {};
+  var moistureSiteIds = [];
+  var MOISTURE_NAMES = ['太湖毕岭', '望江', '宿松', '怀宁麻塘湖'];
+  var DROUGHT_LABEL = { '#1#': '无旱', '#2#': '轻旱', '#3#': '中旱', '#4#': '重旱', '#5#': '特旱' };
 
-    hydroChart.setOption({
-      color: ['#5B8FF9', '#91A7FF', '#F6BD16', '#F6BD16', '#73C892', '#5B8FF9'],
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'cross', link: [{ xAxisIndex: 'all' }] }
-      },
-      legend: {
-        bottom: 4,
+  function ensureChart(key, el) {
+    if (!el || !window.echarts) return null;
+    if (!charts[key]) charts[key] = echarts.init(el);
+    return charts[key];
+  }
+  function emptyChart(key, elId, tip) {
+    var c = ensureChart(key, $(elId));
+    if (!c) return;
+    c.clear();
+    c.setOption({
+      title: {
+        text: tip || '暂无数据',
         left: 'center',
-        itemWidth: 14,
-        itemHeight: 10,
-        textStyle: { color: '#666', fontSize: 12 },
-        data: [
-          { name: '实测水位', icon: 'circle' },
-          { name: '预测水位', icon: 'emptyCircle' },
-          { name: '实测流量', icon: 'circle' },
-          { name: '预测流量', icon: 'emptyCircle' },
-          { name: '实际降雨量', icon: 'rect' },
-          { name: '预测降雨量', icon: 'rect' }
-        ]
-      },
-      axisPointer: { link: [{ xAxisIndex: 'all' }] },
-      grid: [
-        { left: 56, right: 56, top: 28, height: '28%' },
-        { left: 56, right: 56, top: '48%', height: '36%' }
-      ],
-      xAxis: [
-        {
-          type: 'category',
-          gridIndex: 0,
-          data: data.dates,
-          boundaryGap: true,
-          axisLabel: { show: false },
-          axisTick: { show: false },
-          axisLine: { lineStyle: { color: '#e8e8e8' } },
-          splitLine: { show: false }
-        },
-        {
-          type: 'category',
-          gridIndex: 1,
-          data: data.dates,
-          boundaryGap: true,
-          axisLabel: { color: '#8c8c8c', fontSize: 11, rotate: 0 },
-          axisTick: { show: false },
-          axisLine: { lineStyle: { color: '#e8e8e8' } }
-        }
-      ],
-      yAxis: [
-        Object.assign({
-          type: 'value',
-          gridIndex: 0,
-          name: 'mm',
-          nameTextStyle: { color: '#8c8c8c', fontSize: 11, padding: [0, 28, 0, 0] },
-          min: 0,
-          max: 20,
-          splitNumber: 2
-        }, axisCommon),
-        Object.assign({
-          type: 'value',
-          gridIndex: 1,
-          name: 'm',
-          nameTextStyle: { color: '#8c8c8c', fontSize: 11, padding: [0, 28, 0, 0] },
-          min: 0,
-          max: 100,
-          splitNumber: 4
-        }, axisCommon),
-        Object.assign({
-          type: 'value',
-          gridIndex: 1,
-          name: 'm³/s',
-          nameTextStyle: { color: '#8c8c8c', fontSize: 11, padding: [0, 0, 0, 8] },
-          min: 0,
-          max: 50,
-          splitNumber: 2,
-          splitLine: { show: false }
-        }, {
-          axisLine: { show: false },
-          axisTick: { show: false },
-          axisLabel: { color: '#8c8c8c', fontSize: 11 }
-        })
-      ],
-      series: [
-        {
-          name: '实际降雨量',
-          type: 'bar',
-          xAxisIndex: 0,
-          yAxisIndex: 0,
-          barMaxWidth: 22,
-          itemStyle: { color: '#73C892', borderRadius: [2, 2, 0, 0] },
-          data: data.rainObs
-        },
-        {
-          name: '预测降雨量',
-          type: 'bar',
-          xAxisIndex: 0,
-          yAxisIndex: 0,
-          barMaxWidth: 22,
-          itemStyle: { color: '#5B8FF9', borderRadius: [2, 2, 0, 0] },
-          data: data.rainPred
-        },
-        {
-          name: '实测水位',
-          type: 'line',
-          xAxisIndex: 1,
-          yAxisIndex: 1,
-          showSymbol: true,
-          symbol: 'circle',
-          symbolSize: 8,
-          itemStyle: { color: '#1D39C4' },
-          lineStyle: { width: 3.5, color: '#1D39C4' },
-          data: data.levelObs,
-          connectNulls: false,
-          z: 5
-        },
-        {
-          name: '预测水位',
-          type: 'line',
-          xAxisIndex: 1,
-          yAxisIndex: 1,
-          showSymbol: true,
-          symbol: 'emptyCircle',
-          symbolSize: 8,
-          itemStyle: { color: '#91A7FF', borderWidth: 1.5 },
-          lineStyle: { width: 2, color: '#91A7FF' },
-          data: data.levelPred,
-          connectNulls: false,
-          z: 4
-        },
-        {
-          name: '实测流量',
-          type: 'line',
-          xAxisIndex: 1,
-          yAxisIndex: 2,
-          showSymbol: true,
-          symbol: 'circle',
-          symbolSize: 8,
-          itemStyle: { color: '#F6BD16' },
-          lineStyle: { width: 2.5, color: '#F6BD16' },
-          data: data.flowObs,
-          connectNulls: false,
-          z: 3
-        },
-        {
-          name: '预测流量',
-          type: 'line',
-          xAxisIndex: 1,
-          yAxisIndex: 2,
-          showSymbol: true,
-          symbol: 'emptyCircle',
-          symbolSize: 8,
-          itemStyle: { color: '#F6BD16', borderWidth: 1.5 },
-          lineStyle: { width: 2, color: '#F6BD16' },
-          data: data.flowPred,
-          connectNulls: false,
-          z: 2
-        }
-      ]
-    }, true);
+        top: 'middle',
+        textStyle: { color: '#bbb', fontSize: 14, fontWeight: 'normal' }
+      }
+    });
+    requestAnimationFrame(function () { c.resize(); });
+  }
+  function resizeCharts() {
+    requestAnimationFrame(function () {
+      Object.keys(charts).forEach(function (k) {
+        if (charts[k]) charts[k].resize();
+      });
+    });
   }
 
-  function renderSoil(data) {
-    if (!soilChart) soilChart = echarts.init($('chart-soil'));
-    $('soil-station').textContent = data.station || '太怀监测站';
-    soilChart.setOption({
+  /* ---------- tabs ---------- */
+  document.querySelectorAll('.tab-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var tab = btn.getAttribute('data-tab');
+      document.querySelectorAll('.tab-btn').forEach(function (b) {
+        b.classList.toggle('active', b === btn);
+      });
+      document.querySelectorAll('.panel').forEach(function (p) {
+        p.classList.toggle('active', p.id === 'panel-' + tab);
+      });
+      setTimeout(resizeCharts, 40);
+      if (tab === 'drought' && !droughtInited) initDrought();
+    });
+  });
+
+  /* ---------- shared station helpers ---------- */
+  function fillStationSelect(el, list, selected) {
+    list = list || [];
+    el.innerHTML = list.map(function (s) {
+      var id = s.stcd || s.code || '';
+      var name = s.stnm || s.name || id;
+      return '<option value="' + id + '">' + name + '</option>';
+    }).join('');
+    if (selected) el.value = selected;
+    if (!el.value && list[0]) el.value = list[0].stcd || list[0].code || '';
+  }
+  function syncStationSelect(el, stcd) {
+    if (!stcd || !el) return;
+    var found = false;
+    for (var i = 0; i < el.options.length; i++) {
+      if (el.options[i].value === stcd) { found = true; break; }
+    }
+    if (!found) {
+      var opt = document.createElement('option');
+      opt.value = stcd;
+      opt.textContent = stcd;
+      el.appendChild(opt);
+    }
+    el.value = stcd;
+  }
+
+  /* ========== 防洪：历史 ========== */
+  function setHistDefaultDates() {
+    var end = new Date();
+    var start = new Date();
+    start.setDate(end.getDate() - 6);
+    $('hist-start').value = fmtDate(start);
+    $('hist-end').value = fmtDate(end);
+  }
+  function setPredDefaultWindow() {
+    var start = new Date();
+    start.setMinutes(0, 0, 0);
+    var end = new Date(start);
+    end.setDate(end.getDate() + 3);
+    $('pred-start').value = fmtDateTimeLocal(start);
+    $('pred-end').value = fmtDateTimeLocal(end);
+    $('enable-power').checked = false;
+    $('enable-tunnel').checked = false;
+    $('enable-spillway').checked = false;
+  }
+
+  function renderRain(data) {
+    var c = ensureChart('rain', $('chart-rain'));
+    if (!c) return;
+    var dates = (data && data.dates) || [];
+    var rain = (data && data.rain && data.rain.values) || [];
+    if (!dates.length) {
+      emptyChart('rain', 'chart-rain', '暂无降雨数据');
+      $('rain-tip').textContent = '';
+      return;
+    }
+    $('rain-tip').textContent = data.rain && data.rain.stnm ? ('站点：' + data.rain.stnm) : '';
+    var rainMax = niceCeil(Math.max(20, maxOf(rain, 0)), 5);
+    c.setOption({
+      color: ['#73C892'],
       tooltip: { trigger: 'axis' },
-      legend: {
-        bottom: 0,
-        left: 'center',
-        itemWidth: 14,
-        itemHeight: 8,
-        textStyle: { color: '#666', fontSize: 12 },
-        data: data.series.map(function (s) { return s.name; })
-      },
-      grid: { left: 48, right: 24, top: 24, bottom: 48 },
+      grid: { left: 48, right: 24, top: 28, bottom: 36 },
       xAxis: {
-        type: 'category',
-        data: data.times,
-        boundaryGap: false,
+        type: 'category', data: dates, boundaryGap: true,
         axisTick: { show: false },
         axisLine: { lineStyle: { color: '#e8e8e8' } },
         axisLabel: { color: '#8c8c8c', fontSize: 11 }
       },
       yAxis: {
-        type: 'value',
-        name: '%',
-        nameTextStyle: { color: '#8c8c8c', fontSize: 11, padding: [0, 24, 0, 0] },
-        min: 15,
-        max: 35,
-        splitNumber: 5,
-        axisTick: { show: false },
-        axisLine: { show: false },
-        axisLabel: { color: '#8c8c8c', fontSize: 11 },
+        type: 'value', name: 'mm', min: 0, max: rainMax,
+        nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+        axisLabel: { color: '#8c8c8c' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
-      series: data.series
+      series: [{
+        name: '降雨量', type: 'bar', barMaxWidth: 28,
+        itemStyle: { color: '#73C892', borderRadius: [2, 2, 0, 0] },
+        data: rain
+      }]
     }, true);
+    requestAnimationFrame(function () { c.resize(); });
   }
 
-  function loadAll() {
-    var start = $('start-date').value || defaultStart;
-    var end = $('end-date').value || defaultEnd;
-    renderHydro(buildHydroMock(start, end));
-    renderSoil(buildSoilMock());
+  function renderHydro(data) {
+    var c = ensureChart('hydro', $('chart-hydro'));
+    if (!c) return;
+    var dates = (data && data.dates) || [];
+    var level = (data && data.level && data.level.values) || [];
+    var flow = (data && data.flow && data.flow.values) || [];
+    if (!dates.length) {
+      emptyChart('hydro', 'chart-hydro', '暂无水位/流量数据');
+      $('hydro-tip').textContent = '';
+      return;
+    }
+    var tips = [];
+    if (data.level && data.level.stnm) tips.push('水位：' + data.level.stnm);
+    if (data.flow && data.flow.stnm) tips.push('流量：' + data.flow.stnm);
+    $('hydro-tip').textContent = tips.join(' · ');
+
+    var levelMin = 0, levelMax = 100;
+    var finiteLevels = level.filter(function (v) { return v != null && isFinite(Number(v)); }).map(Number);
+    if (finiteLevels.length) {
+      levelMin = Math.max(0, Math.floor(Math.min.apply(null, finiteLevels) - 1));
+      levelMax = Math.ceil(Math.max.apply(null, finiteLevels) + 1);
+      if (levelMax <= levelMin) levelMax = levelMin + 2;
+    }
+    var flowMax = niceCeil(Math.max(10, maxOf(flow, 0)), 5);
+
+    c.setOption({
+      color: ['#1D39C4', '#F6BD16'],
+      tooltip: { trigger: 'axis' },
+      legend: {
+        bottom: 4, left: 'center', itemWidth: 14, itemHeight: 10,
+        textStyle: { color: '#666', fontSize: 12 },
+        data: ['水位', '流量']
+      },
+      grid: { left: 56, right: 56, top: 28, bottom: 48 },
+      xAxis: {
+        type: 'category', data: dates, boundaryGap: false,
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLabel: { color: '#8c8c8c', fontSize: 11 }
+      },
+      yAxis: [
+        {
+          type: 'value', name: 'm', min: levelMin, max: levelMax,
+          nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+          axisLabel: { color: '#8c8c8c' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', name: 'm³/s', min: 0, max: flowMax,
+          nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+          axisLabel: { color: '#8c8c8c' },
+          splitLine: { show: false }
+        }
+      ],
+      series: [
+        {
+          name: '水位', type: 'line', yAxisIndex: 0,
+          showSymbol: true, symbol: 'circle', symbolSize: 7,
+          itemStyle: { color: '#1D39C4' }, lineStyle: { width: 3, color: '#1D39C4' },
+          data: level, connectNulls: false
+        },
+        {
+          name: '流量', type: 'line', yAxisIndex: 1,
+          showSymbol: true, symbol: 'circle', symbolSize: 7,
+          itemStyle: { color: '#F6BD16' }, lineStyle: { width: 2.5, color: '#F6BD16' },
+          data: flow, connectNulls: false
+        }
+      ]
+    }, true);
+    requestAnimationFrame(function () { c.resize(); });
   }
 
-  function resetDates() {
-    $('start-date').value = defaultStart;
-    $('end-date').value = defaultEnd;
+  async function loadStations() {
+    var data = await API.floodDrought.stations();
+    fillStationSelect($('rain-stcd'), data.rain || []);
+    fillStationSelect($('level-stcd'), data.waterLevel || []);
+    fillStationSelect($('flow-stcd'), data.flow || []);
+    stationsLoaded = true;
   }
 
-  function init() {
-    resetDates();
-    loadAll();
-    $('query-btn').addEventListener('click', function () {
-      if (!$('start-date').value || !$('end-date').value) {
-        toast('请选择日期');
+  async function loadHistory() {
+    var start = ($('hist-start').value || '').trim();
+    var end = ($('hist-end').value || '').trim();
+    if (!start || !end) return toast('请选择日期');
+    if (start > end) return toast('起始日期不能晚于截止日期');
+    if (daysBetween(start, end) > 90) return toast('日期区间不能超过 90 天');
+    $('hist-query-btn').disabled = true;
+    $('hist-query-btn').textContent = '查询中…';
+    emptyChart('rain', 'chart-rain', '加载中…');
+    emptyChart('hydro', 'chart-hydro', '加载中…');
+    try {
+      var data = await API.floodDrought.history(start, end, {
+        rainStcd: $('rain-stcd').value || null,
+        levelStcd: $('level-stcd').value || null,
+        flowStcd: $('flow-stcd').value || null
+      });
+      if (data.rain && data.rain.stcd) syncStationSelect($('rain-stcd'), data.rain.stcd);
+      if (data.level && data.level.stcd) syncStationSelect($('level-stcd'), data.level.stcd);
+      if (data.flow && data.flow.stcd) syncStationSelect($('flow-stcd'), data.flow.stcd);
+      renderRain(data);
+      renderHydro(data);
+    } catch (e) {
+      emptyChart('rain', 'chart-rain', (e && e.message) || '查询失败');
+      emptyChart('hydro', 'chart-hydro', (e && e.message) || '查询失败');
+      toast((e && e.message) || '历史查询失败');
+    } finally {
+      $('hist-query-btn').disabled = false;
+      $('hist-query-btn').textContent = '查询历史';
+      resizeCharts();
+    }
+  }
+
+  /* ========== 防洪：预测双模式 ========== */
+  function renderPred(detail) {
+    var c = ensureChart('pred', $('chart-pred'));
+    if (!c) return;
+    var dailies = (detail && detail.dailies) || [];
+    if (!dailies.length) {
+      emptyChart('pred', 'chart-pred', '暂无预测明细');
+      $('pred-tip').textContent = '';
+      return;
+    }
+    var labels = dailies.map(function (d) {
+      var t = String(d.forecastDate || '');
+      return t.length > 16 ? t.slice(5, 16) : t;
+    });
+    var rain = dailies.map(function (d) { return d.rainfall; });
+    var level = dailies.map(function (d) { return d.waterLevel; });
+    var inflow = dailies.map(function (d) { return d.inflowRate; });
+    var outflow = dailies.map(function (d) { return d.outflowRate; });
+    var rec = (detail && detail.record) || {};
+    var tip = '';
+    if (rec.startDate || rec.endDate) tip = [rec.startDate, rec.endDate].filter(Boolean).join(' ~ ');
+    else if (dailies[0]) tip = String(dailies[0].forecastDate || '') + ' ~ ' + String(dailies[dailies.length - 1].forecastDate || '');
+    $('pred-tip').textContent = tip ? ('区间：' + tip) : '';
+
+    var rainMax = niceCeil(Math.max(5, maxOf(rain, 0)), 1);
+    var levelVals = level.filter(function (v) { return v != null && isFinite(Number(v)); }).map(Number);
+    var levelMin = 0, levelMax = 100;
+    if (levelVals.length) {
+      levelMin = Math.max(0, Math.floor(Math.min.apply(null, levelVals) - 1));
+      levelMax = Math.ceil(Math.max.apply(null, levelVals) + 1);
+      if (levelMax <= levelMin) levelMax = levelMin + 2;
+    }
+    var flowMax = niceCeil(Math.max(10, maxOf(inflow.concat(outflow), 0)), 5);
+
+    c.setOption({
+      color: ['#5B8FF9', '#1D39C4', '#73C892', '#F6BD16'],
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', link: [{ xAxisIndex: 'all' }] } },
+      legend: {
+        bottom: 4, left: 'center', itemWidth: 14, itemHeight: 10,
+        textStyle: { color: '#666', fontSize: 12 },
+        data: ['预测降雨', '预测水位', '入库流量', '出库流量']
+      },
+      axisPointer: { link: [{ xAxisIndex: 'all' }] },
+      grid: [
+        { left: 56, right: 56, top: 24, height: '28%' },
+        { left: 56, right: 56, top: '46%', height: '38%' }
+      ],
+      xAxis: [
+        {
+          type: 'category', gridIndex: 0, data: labels, boundaryGap: true,
+          axisLabel: { show: false }, axisTick: { show: false },
+          axisLine: { lineStyle: { color: '#e8e8e8' } }
+        },
+        {
+          type: 'category', gridIndex: 1, data: labels, boundaryGap: false,
+          axisTick: { show: false },
+          axisLine: { lineStyle: { color: '#e8e8e8' } },
+          axisLabel: { color: '#8c8c8c', fontSize: 10, hideOverlap: true }
+        }
+      ],
+      yAxis: [
+        {
+          type: 'value', gridIndex: 0, name: 'mm', min: 0, max: rainMax,
+          nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+          axisLabel: { color: '#8c8c8c' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', gridIndex: 1, name: 'm', min: levelMin, max: levelMax,
+          nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+          axisLabel: { color: '#8c8c8c' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', gridIndex: 1, name: 'm³/s', min: 0, max: flowMax,
+          nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+          axisLabel: { color: '#8c8c8c' },
+          splitLine: { show: false }
+        }
+      ],
+      series: [
+        {
+          name: '预测降雨', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, barMaxWidth: 10,
+          itemStyle: { color: '#5B8FF9', borderRadius: [2, 2, 0, 0] }, data: rain
+        },
+        {
+          name: '预测水位', type: 'line', xAxisIndex: 1, yAxisIndex: 1, showSymbol: false,
+          lineStyle: { width: 2.5, color: '#1D39C4' }, itemStyle: { color: '#1D39C4' },
+          data: level, connectNulls: false
+        },
+        {
+          name: '入库流量', type: 'line', xAxisIndex: 1, yAxisIndex: 2, showSymbol: false,
+          lineStyle: { width: 2, color: '#73C892' }, itemStyle: { color: '#73C892' },
+          data: inflow, connectNulls: false
+        },
+        {
+          name: '出库流量', type: 'line', xAxisIndex: 1, yAxisIndex: 2, showSymbol: false,
+          lineStyle: { width: 2, color: '#F6BD16' }, itemStyle: { color: '#F6BD16' },
+          data: outflow, connectNulls: false
+        }
+      ]
+    }, true);
+    requestAnimationFrame(function () { c.resize(); });
+  }
+
+  async function fillPredSchemes(preferId) {
+    var sel = $('pred-scheme');
+    try {
+      var list = await API.short.list();
+      var completed = (API.completedOptions ? API.completedOptions(list) : (list || []));
+      if (!completed.length) {
+        sel.innerHTML = '<option value="">暂无已完成方案</option>';
         return;
       }
-      loadAll();
-    });
-    $('reset-btn').addEventListener('click', function () {
-      resetDates();
-      loadAll();
-    });
-    window.addEventListener('resize', function () {
-      if (hydroChart) hydroChart.resize();
-      if (soilChart) soilChart.resize();
-    });
+      sel.innerHTML = completed.map(function (it) {
+        var label = (it.schemeName || it.id) +
+          (it.startDate || it.endDate
+            ? '（' + [it.startDate, it.endDate].filter(Boolean).join('~') + '）'
+            : '');
+        return '<option value="' + it.id + '">' + label + '</option>';
+      }).join('');
+      sel.value = preferId || completed[0].id;
+      if (!preferId) await loadPredDetail(sel.value);
+    } catch (e) {
+      sel.innerHTML = '<option value="">加载失败</option>';
+      toast((e && e.message) || '预测方案加载失败');
+    }
   }
 
-  init();
+  async function loadPredDetail(id) {
+    if (!id) return;
+    emptyChart('pred', 'chart-pred', '加载中…');
+    try {
+      var detail = await API.short.detail(id);
+      renderPred(detail);
+    } catch (e) {
+      emptyChart('pred', 'chart-pred', (e && e.message) || '加载失败');
+      toast((e && e.message) || '预测详情加载失败');
+    } finally {
+      if (charts.pred) charts.pred.resize();
+    }
+  }
+
+  async function runPredCalc() {
+    var startLocal = $('pred-start').value;
+    var endLocal = $('pred-end').value;
+    if (!startLocal || !endLocal) return toast('请选择预报窗口');
+    if (endLocal < startLocal) return toast('截止时间不能早于开始时间');
+    var hours = hoursInclusive(startLocal, endLocal);
+    if (hours < 1 || hours > 384) return toast('预报窗口需满足 1～384 小时');
+
+    var body = {
+      start: toApiDateTime(startLocal),
+      end: toApiDateTime(endLocal),
+      enablePower: !!$('enable-power').checked,
+      enableTunnel: !!$('enable-tunnel').checked,
+      enableSpillway: !!$('enable-spillway').checked
+    };
+    var btn = $('pred-calc-btn');
+    btn.disabled = true;
+    btn.textContent = '计算中…';
+    emptyChart('pred', 'chart-pred', '计算中…');
+    if (API.showLoading) API.showLoading('短期来水模型计算中，请稍候…');
+    try {
+      var res = await API.short.submit(body);
+      var recordId = res && (res.recordId || res.id);
+      if (!recordId) throw new Error('未返回计算任务 ID');
+      await API.short.wait(recordId);
+      var detail = await API.short.detail(recordId);
+      renderPred(detail);
+      await fillPredSchemes(recordId);
+      toast('计算完成');
+    } catch (e) {
+      emptyChart('pred', 'chart-pred', (e && e.message) || '计算失败');
+      toast(API.friendlyError ? API.friendlyError(e, '计算失败') : ((e && e.message) || '计算失败'));
+    } finally {
+      if (API.hideLoading) API.hideLoading();
+      btn.disabled = false;
+      btn.textContent = '计算';
+      if (charts.pred) charts.pred.resize();
+    }
+  }
+
+  /* ========== 抗旱 ========== */
+  function droughtText(code) { return DROUGHT_LABEL[code] || code || '—'; }
+
+  function aggregateDroughtSegments(rows) {
+    var segs = [];
+    var cur = null;
+    (rows || []).forEach(function (r) {
+      var level = r.droughtLevel || r.droughtCode;
+      var tm = r.tm || r.hour || '';
+      if (!level) return;
+      if (!cur || cur.level !== level) {
+        if (cur) segs.push(cur);
+        cur = { level: level, start: tm, end: tm };
+      } else {
+        cur.end = tm;
+      }
+    });
+    if (cur) segs.push(cur);
+    return segs.filter(function (s) { return s.level && s.level !== '#1#'; });
+  }
+
+  function renderDroughtSegs(rows) {
+    var box = $('drought-segs');
+    var segs = aggregateDroughtSegments(rows);
+    if (!segs.length) {
+      box.innerHTML = '<span class="hint">当前站点无轻旱及以上时段</span>';
+      return;
+    }
+    box.innerHTML = segs.map(function (s) {
+      var n = String(s.level || '').replace(/#/g, '');
+      var cls = 'seg-chip' + (n ? (' lv' + n) : '');
+      var range = s.start === s.end ? s.start : (s.start + ' ~ ' + s.end);
+      return '<span class="' + cls + '">' + droughtText(s.level) + ' · ' + range + '</span>';
+    }).join('');
+  }
+
+  function setObsDefaultDates() {
+    var end = new Date();
+    var start = new Date();
+    start.setDate(end.getDate() - 14);
+    $('obs-start').value = fmtDate(start);
+    $('obs-end').value = fmtDate(end);
+  }
+
+  async function loadObsSites() {
+    var list = await API.soilMoisture.sites();
+    fillStationSelect($('obs-stcd'), list || []);
+  }
+
+  function renderObsTrend(data) {
+    var c = ensureChart('obs', $('chart-obs'));
+    if (!c) return;
+    var points = (data && data.points) || [];
+    if (!points.length) {
+      emptyChart('obs', 'chart-obs', '暂无实测墒情');
+      $('obs-tip').textContent = '';
+      return;
+    }
+    $('obs-tip').textContent = (data.stnm || data.stcd || '') +
+      (data.startTime || data.endTime ? (' · ' + [data.startTime, data.endTime].filter(Boolean).join(' ~ ')) : '');
+    var labels = points.map(function (p) {
+      var t = String(p.hour || '');
+      return t.length > 16 ? t.slice(5, 16) : t;
+    });
+    var series = [
+      { name: '10cm', key: 'mten', color: '#867AF7' },
+      { name: '20cm', key: 'mtwenty', color: '#F0978E' },
+      { name: '30cm', key: 'mthirty', color: '#66C0DC' }
+    ].map(function (d) {
+      return {
+        name: d.name, type: 'line', showSymbol: false,
+        itemStyle: { color: d.color }, lineStyle: { width: 2, color: d.color },
+        data: points.map(function (p) { return sanitizeMoisture(p[d.key]); }),
+        connectNulls: false
+      };
+    });
+    c.setOption({
+      color: ['#867AF7', '#F0978E', '#66C0DC'],
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '—' : v + '%'; } },
+      legend: { bottom: 4, data: ['10cm', '20cm', '30cm'], textStyle: { color: '#666', fontSize: 12 } },
+      grid: { left: 48, right: 24, top: 28, bottom: 48 },
+      xAxis: {
+        type: 'category', data: labels, boundaryGap: false,
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLabel: { color: '#8c8c8c', fontSize: 10, hideOverlap: true }
+      },
+      yAxis: {
+        type: 'value', name: '%',
+        nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+        axisLabel: { color: '#8c8c8c' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: series
+    }, true);
+    requestAnimationFrame(function () { c.resize(); });
+  }
+
+  async function loadObsTrend() {
+    var stcd = $('obs-stcd').value;
+    var start = $('obs-start').value;
+    var end = $('obs-end').value;
+    if (!stcd) return toast('请选择站点');
+    if (!start || !end) return toast('请选择日期');
+    if (start > end) return toast('起始日期不能晚于截止日期');
+    $('obs-query-btn').disabled = true;
+    emptyChart('obs', 'chart-obs', '加载中…');
+    try {
+      var data = await API.soilMoisture.trend(
+        stcd,
+        start + ' 00:00:00',
+        end + ' 23:59:59'
+      );
+      renderObsTrend(data);
+    } catch (e) {
+      emptyChart('obs', 'chart-obs', (e && e.message) || '查询失败');
+      toast((e && e.message) || '实测墒情查询失败');
+    } finally {
+      $('obs-query-btn').disabled = false;
+      if (charts.obs) charts.obs.resize();
+    }
+  }
+
+  function fillMoisSiteSelect() {
+    var sel = $('mois-site');
+    var html = '';
+    if (moistureSiteIds.length) {
+      moistureSiteIds.forEach(function (id, i) {
+        html += '<option value="' + id + '">' + (MOISTURE_NAMES[i] || ('站点' + (i + 1))) + '</option>';
+      });
+    } else {
+      MOISTURE_NAMES.forEach(function (name, i) {
+        html += '<option value="__idx_' + i + '">' + name + '</option>';
+      });
+    }
+    sel.innerHTML = html;
+  }
+
+  function activeMoisRows() {
+    var raw = $('mois-site').value || '';
+    var siteId = raw;
+    if (String(raw).indexOf('__idx_') === 0) {
+      var idx = Number(String(raw).slice(6));
+      siteId = moistureSiteIds[idx] || '';
+    }
+    if (siteId && moistureBySite[siteId]) return moistureBySite[siteId];
+    if (moistureSiteIds[0]) return moistureBySite[moistureSiteIds[0]] || [];
+    var keys = Object.keys(moistureBySite);
+    return keys.length ? moistureBySite[keys[0]] : [];
+  }
+
+  function applyMoistureDetail(detail) {
+    moistureDetail = detail || null;
+    moistureBySite = {};
+    moistureSiteIds = [];
+    var details = (detail && detail.details) || [];
+    details.forEach(function (row) {
+      var sid = row.site;
+      if (!sid) return;
+      if (!moistureBySite[sid]) {
+        moistureBySite[sid] = [];
+        moistureSiteIds.push(sid);
+      }
+      moistureBySite[sid].push(row);
+    });
+    moistureSiteIds.forEach(function (id) {
+      moistureBySite[id].sort(function (a, b) {
+        return String(a.tm || '').localeCompare(String(b.tm || ''));
+      });
+    });
+    fillMoisSiteSelect();
+    var rec = (detail && detail.record) || {};
+    $('mois-tip').textContent = rec.schemeName || (rec.days != null ? ('预测 ' + rec.days + ' 天') : '');
+    renderMoisChart();
+  }
+
+  function renderMoisChart() {
+    var c = ensureChart('mois', $('chart-mois'));
+    if (!c) return;
+    var rows = activeMoisRows();
+    if (!rows.length) {
+      emptyChart('mois', 'chart-mois', '暂无预测明细');
+      $('drought-segs').innerHTML = '';
+      return;
+    }
+    var labels = rows.map(function (r) {
+      var t = String(r.tm || '');
+      return t.length > 16 ? t.slice(5, 16) : t;
+    });
+    var rain = rows.map(function (r) { return r.rainfall; });
+    var m10 = rows.map(function (r) { return sanitizeMoisture(r.mten); });
+    var m20 = rows.map(function (r) { return sanitizeMoisture(r.mtwenty); });
+    var m30 = rows.map(function (r) { return sanitizeMoisture(r.mthirty); });
+    var rainMax = niceCeil(Math.max(5, maxOf(rain, 0)), 1);
+
+    c.setOption({
+      color: ['#5B8FF9', '#867AF7', '#F0978E', '#66C0DC'],
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', link: [{ xAxisIndex: 'all' }] } },
+      legend: {
+        bottom: 4, left: 'center',
+        data: ['降雨', '10cm', '20cm', '30cm'],
+        textStyle: { color: '#666', fontSize: 12 }
+      },
+      axisPointer: { link: [{ xAxisIndex: 'all' }] },
+      grid: [
+        { left: 48, right: 24, top: 24, height: '26%' },
+        { left: 48, right: 24, top: '44%', height: '38%' }
+      ],
+      xAxis: [
+        {
+          type: 'category', gridIndex: 0, data: labels, boundaryGap: true,
+          axisLabel: { show: false }, axisTick: { show: false },
+          axisLine: { lineStyle: { color: '#e8e8e8' } }
+        },
+        {
+          type: 'category', gridIndex: 1, data: labels, boundaryGap: false,
+          axisTick: { show: false },
+          axisLine: { lineStyle: { color: '#e8e8e8' } },
+          axisLabel: { color: '#8c8c8c', fontSize: 10, hideOverlap: true }
+        }
+      ],
+      yAxis: [
+        {
+          type: 'value', gridIndex: 0, name: 'mm', min: 0, max: rainMax,
+          nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+          axisLabel: { color: '#8c8c8c' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', gridIndex: 1, name: '%',
+          nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+          axisLabel: { color: '#8c8c8c' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        }
+      ],
+      series: [
+        {
+          name: '降雨', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, barMaxWidth: 8,
+          itemStyle: { color: '#5B8FF9', borderRadius: [2, 2, 0, 0] }, data: rain
+        },
+        {
+          name: '10cm', type: 'line', xAxisIndex: 1, yAxisIndex: 1, showSymbol: false,
+          lineStyle: { width: 2, color: '#867AF7' }, data: m10, connectNulls: false
+        },
+        {
+          name: '20cm', type: 'line', xAxisIndex: 1, yAxisIndex: 1, showSymbol: false,
+          lineStyle: { width: 2, color: '#F0978E' }, data: m20, connectNulls: false
+        },
+        {
+          name: '30cm', type: 'line', xAxisIndex: 1, yAxisIndex: 1, showSymbol: false,
+          lineStyle: { width: 2, color: '#66C0DC' }, data: m30, connectNulls: false
+        }
+      ]
+    }, true);
+    renderDroughtSegs(rows);
+    requestAnimationFrame(function () { c.resize(); });
+  }
+
+  async function fillMoisSchemes(preferId) {
+    var sel = $('mois-scheme');
+    try {
+      var list = await API.moisture.list();
+      var completed = (API.completedOptions ? API.completedOptions(list) : (list || []));
+      if (!completed.length) {
+        sel.innerHTML = '<option value="">暂无已完成方案</option>';
+        return;
+      }
+      sel.innerHTML = completed.map(function (it) {
+        return '<option value="' + it.id + '">' + (it.schemeName || it.id) + '</option>';
+      }).join('');
+      sel.value = preferId || completed[0].id;
+      if (!preferId) await loadMoisDetail(sel.value);
+    } catch (e) {
+      sel.innerHTML = '<option value="">加载失败</option>';
+    }
+  }
+
+  async function loadMoisDetail(id) {
+    if (!id) return;
+    emptyChart('mois', 'chart-mois', '加载中…');
+    try {
+      var detail = await API.moisture.detail(id);
+      applyMoistureDetail(detail);
+    } catch (e) {
+      emptyChart('mois', 'chart-mois', (e && e.message) || '加载失败');
+      toast((e && e.message) || '墒情方案加载失败');
+    } finally {
+      if (charts.mois) charts.mois.resize();
+    }
+  }
+
+  async function runMoisCalc() {
+    var days = Number($('mois-days').value);
+    if (!isFinite(days) || days < 1 || days > 16) return toast('预测天数需在 1～16');
+    var btn = $('mois-calc-btn');
+    btn.disabled = true;
+    btn.textContent = '计算中…';
+    emptyChart('mois', 'chart-mois', '计算中…');
+    if (API.showLoading) API.showLoading('墒情模型计算中，请稍候…');
+    try {
+      var res = await API.moisture.submit({ days: days });
+      var recordId = res && (res.recordId || res.id);
+      if (!recordId) throw new Error('未返回计算任务 ID');
+      await API.moisture.wait(recordId);
+      var detail = await API.moisture.detail(recordId);
+      applyMoistureDetail(detail);
+      await fillMoisSchemes(recordId);
+      toast('计算完成');
+    } catch (e) {
+      emptyChart('mois', 'chart-mois', (e && e.message) || '计算失败');
+      toast(API.friendlyError ? API.friendlyError(e, '计算失败') : ((e && e.message) || '计算失败'));
+    } finally {
+      if (API.hideLoading) API.hideLoading();
+      btn.disabled = false;
+      btn.textContent = '计算';
+      if (charts.mois) charts.mois.resize();
+    }
+  }
+
+  async function initDrought() {
+    droughtInited = true;
+    setObsDefaultDates();
+    fillMoisSiteSelect();
+    emptyChart('obs', 'chart-obs', '请查询实测墒情');
+    emptyChart('mois', 'chart-mois', '请计算或选择方案');
+    try {
+      await loadObsSites();
+      await loadObsTrend();
+    } catch (e) {
+      toast((e && e.message) || '抗旱实测初始化失败');
+    }
+    await fillMoisSchemes();
+  }
+
+  /* ---------- bind & init ---------- */
+  function initFlood() {
+    setHistDefaultDates();
+    setPredDefaultWindow();
+    emptyChart('rain', 'chart-rain', '请查询历史数据');
+    emptyChart('hydro', 'chart-hydro', '请查询历史数据');
+    emptyChart('pred', 'chart-pred', '请计算或选择方案');
+
+    $('hist-query-btn').addEventListener('click', loadHistory);
+    $('hist-reset-btn').addEventListener('click', function () {
+      setHistDefaultDates();
+      loadHistory();
+    });
+    $('pred-calc-btn').addEventListener('click', runPredCalc);
+    $('pred-scheme').addEventListener('change', function () {
+      loadPredDetail($('pred-scheme').value);
+    });
+    ['rain-stcd', 'level-stcd', 'flow-stcd'].forEach(function (id) {
+      $(id).addEventListener('change', function () {
+        if (stationsLoaded) loadHistory();
+      });
+    });
+
+    $('obs-query-btn').addEventListener('click', loadObsTrend);
+    $('mois-calc-btn').addEventListener('click', runMoisCalc);
+    $('mois-scheme').addEventListener('change', function () {
+      loadMoisDetail($('mois-scheme').value);
+    });
+    $('mois-site').addEventListener('change', function () {
+      if (moistureDetail) renderMoisChart();
+    });
+
+    window.addEventListener('resize', resizeCharts);
+
+    (async function () {
+      if (!API || !API.floodDrought) {
+        toast('接口客户端未加载');
+        return;
+      }
+      try {
+        await loadStations();
+      } catch (e) {
+        toast((e && e.message) || '站点列表加载失败');
+      }
+      await loadHistory();
+      await fillPredSchemes();
+    })();
+  }
+
+  initFlood();
 })();
 </script>
 </body>

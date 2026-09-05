@@ -198,6 +198,15 @@ tbody tr:hover td{background:#fafafa}
               <span class="select-arrow"></span>
             </div>
           </div>
+          <div class="form-item">
+            <label class="form-label">塘坝可供水量档位</label>
+            <div class="radio-group" id="pond-option-group" style="display:flex;flex-direction:column;gap:10px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="pond-option" value="90%"> 90%</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="pond-option" value="75%"> 75%</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="pond-option" value="50%"> 50%</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="pond-option" value="多年平均" checked> 历史多年平均值</label>
+            </div>
+          </div>
         </div>
 
         <div id="mode-manual" style="display:none">
@@ -793,6 +802,8 @@ tbody tr:hover td{background:#fafafa}
         };
         const lossId = $('cfg-loss').value;
         if (lossId) body.lossRecordId = lossId;
+        const pondEl = document.querySelector('input[name="pond-option"]:checked');
+        if (pondEl) body.pondOption = pondEl.value;
         res = await API.allocation.submit(body);
       } else {
         const fd = new FormData();

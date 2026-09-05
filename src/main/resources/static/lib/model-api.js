@@ -117,6 +117,18 @@
     }, 2000);
   }
 
+  function isStatusRunning(status) {
+    return status === 'calculating' || status === '#1#';
+  }
+
+  function isStatusCompleted(status) {
+    return status === 'completed' || status === '#2#';
+  }
+
+  function isStatusFailed(status) {
+    return status === 'failed' || status === '#3#';
+  }
+
   async function waitCompleted(recordId, statusPathTemplate, timeoutMs, onTick) {
     var timeout = timeoutMs == null ? 330000 : timeoutMs;
     var start = Date.now();
@@ -124,8 +136,8 @@
       try {
         var data = await getJson(statusPathTemplate.replace('{id}', recordId));
         if (typeof onTick === 'function') onTick(data);
-        if (data.status === 'completed') return data;
-        if (data.status === 'failed') {
+        if (isStatusCompleted(data.status)) return data;
+        if (isStatusFailed(data.status)) {
           throw Object.assign(new Error(data.errorMsg || '计算失败'), { status: 0 });
         }
       } catch (e) {
@@ -142,9 +154,9 @@
   }
 
   function statusLabel(status) {
-    if (status === 'calculating') return '计算中';
-    if (status === 'completed') return '已完成';
-    if (status === 'failed') return '失败';
+    if (isStatusRunning(status)) return '计算中';
+    if (isStatusCompleted(status)) return '已完成';
+    if (isStatusFailed(status)) return '失败';
     return status || '';
   }
 
@@ -284,7 +296,7 @@
 
   function completedOptions(list) {
     return (list || []).filter(function (x) {
-      return x.status === 'completed';
+      return isStatusCompleted(x.status);
     });
   }
 
@@ -312,13 +324,13 @@
   /** 历史查看前校验：仅 completed 可看详情 */
   function assertViewable(rec) {
     var status = rec && rec.status;
-    if (status === 'calculating') {
+    if (isStatusRunning(status)) {
       throw new Error('方案计算中，请稍候再查看');
     }
-    if (status === 'failed') {
+    if (isStatusFailed(status)) {
       throw new Error((rec && rec.errorMsg) || '该方案计算失败');
     }
-    if (status && status !== 'completed') {
+    if (status && !isStatusCompleted(status)) {
       throw new Error('该方案尚未计算完成，无法查看');
     }
   }
@@ -488,16 +500,25 @@
     long: moduleApi('/water-forecast/long'),
     loss: moduleApi('/water-forecast/loss'),
     demand: moduleApi('/water-forecast/demand'),
+    moisture: moduleApi('/water-forecast/moisture'),
     allocation: moduleApi('/water-allocation'),
+    isStatusRunning: isStatusRunning,
+    isStatusCompleted: isStatusCompleted,
+    isStatusFailed: isStatusFailed,
     decision: Object.assign(moduleApi('/water-decision'), {
       downloadExcel: function (recordId) {
         return download(
           '/water-decision/download?recordId=' + encodeURIComponent(recordId),
           '配水调度明细_' + recordId + '.xlsx'
         );
+      },
+      /** 拓扑按旬支渠（配水决策） */
+      branches: function (id, startDate) {
+        var q = startDate ? '?startDate=' + encodeURIComponent(startDate) : '';
+        return getJson('/water-decision/' + encodeURIComponent(id) + '/branches' + q);
       }
     }),
-    /** 运行管理决策汇总（智能决策接口第三章） */
+    /** 运行管理决策汇总 */
     operation: {
       summary: function (startDate, endDate) {
         var q = [];
@@ -506,6 +527,39 @@
         return getJson(
           '/operation/decision-summary' + (q.length ? '?' + q.join('&') : '')
         );
+      }
+    },
+    /** 网络资源设备监控 */
+    networkDevice: {
+      summary: function () {
+        return getJson('/network-device/summary');
+      }
+    },
+    /**
+     * 防洪抗旱决策（会议 2 重构）
+     * 历史：stations + history（同步）；预测：复用 short list/detail
+     * 旧 hydro 异步三连已退役
+     */
+    floodDrought: {
+      stations: function () {
+        return getJson('/flood-drought/stations');
+      },
+      history: function (startDate, endDate, opts) {
+        var o = opts || {};
+        var q = [
+          'startDate=' + encodeURIComponent(startDate),
+          'endDate=' + encodeURIComponent(endDate)
+        ];
+        if (o.rainStcd) q.push('rainStcd=' + encodeURIComponent(o.rainStcd));
+        if (o.levelStcd) q.push('levelStcd=' + encodeURIComponent(o.levelStcd));
+        if (o.flowStcd) q.push('flowStcd=' + encodeURIComponent(o.flowStcd));
+        return getJson('/flood-drought/history?' + q.join('&'));
+      }
+    },
+    /** 工程管理决策 */
+    engineering: {
+      summary: function () {
+        return getJson('/engineering/decision-summary');
       }
     },
     /** 旱情趋势（复用墒情监测） */
