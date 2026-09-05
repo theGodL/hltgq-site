@@ -49,7 +49,8 @@ public class ExternalController {
     }
 
     /**
-     * 巡检/问题逐日趋势：日期区间聚合（yyyy-MM-dd），默认近 30 天，上限 366 天。
+     * 巡检/突发事件逐日趋势：日期区间聚合（yyyy-MM-dd），默认近 30 天，上限 366 天。
+     * 突发事件 = AI 智能分析告警（告警表 type=#3#）按发生时间聚合。
      */
     @GetMapping("/daily-trend")
     public ExternalVO.DailyTrend dailyTrend(
@@ -59,7 +60,7 @@ public class ExternalController {
     }
 
     /**
-     * 问题状态统计：已处理/未整改/突发事件/已解除响应/未解除响应。
+     * 问题处理统计 + 应急响应统计：已处理/未整改（问题表）；突发事件/已解除响应/未解除响应（AI 告警 type=#3#）。
      */
     @GetMapping("/issue-stats")
     public ExternalVO.IssueStats issueStats() {

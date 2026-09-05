@@ -56,14 +56,14 @@ public interface ExternalMapper {
                                                 @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 逐日问题数量：问题按发现时间 time 取日期聚合（全状态）。
+     * 逐日突发事件数量：AI 智能分析告警（type=#3#）按发生时间 time 取日期聚合（全状态）。
      */
     @Select("SELECT to_char(time, 'YYYY-MM-DD') AS day, COUNT(*) AS cnt " +
-            "FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" " +
-            "WHERE time >= #{startTime} AND time <= #{endTime} " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_alert\" " +
+            "WHERE type = '#3#' AND time >= #{startTime} AND time <= #{endTime} " +
             "GROUP BY to_char(time, 'YYYY-MM-DD')")
-    List<Map<String, Object>> selectDailyIssue(@Param("startTime") LocalDateTime startTime,
-                                               @Param("endTime") LocalDateTime endTime);
+    List<Map<String, Object>> selectDailyEmergency(@Param("startTime") LocalDateTime startTime,
+                                                   @Param("endTime") LocalDateTime endTime);
 
     /**
      * 问题状态分布：name = status 编码（#1# 待处理 / #2# 处理中 / #3# 已转工单 / #4# 已关闭 / #5# 已作废）。
@@ -72,6 +72,16 @@ public interface ExternalMapper {
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" " +
             "GROUP BY status")
     List<Map<String, Object>> selectIssueStatus();
+
+    /**
+     * 突发事件（AI 智能分析告警）统计：total = type=#3# 告警总数，
+     * closed = 其中已关闭（status=#4#，即已解除响应）数；未解除 = total - closed。
+     */
+    @Select("SELECT COUNT(*) AS total, " +
+            "SUM(CASE WHEN status = '#4#' THEN 1 ELSE 0 END) AS closed " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_alert\" " +
+            "WHERE type = '#3#'")
+    Map<String, Object> selectEmergencyStats();
 
     /**
      * 视频设备按管理所聚合：安装位置 wlcvig 按「-」截取首段归组，

@@ -63,29 +63,29 @@ public final class ExternalVO {
         private Integer maintenanceCost;
     }
 
-    /** 巡检/问题逐日趋势（三数组等长，无记录补 0） */
+    /** 巡检/突发事件逐日趋势（三数组等长，无记录补 0） */
     @Data
     public static class DailyTrend {
         /** 横轴逐日标签 yyyy-MM-dd（含首尾） */
         private List<String> dates;
         /** 逐日巡检次数（已提交记录按巡检时间取日期聚合） */
         private List<Long> patrol;
-        /** 逐日问题数量（问题按发现时间取日期聚合，全状态） */
-        private List<Long> issue;
+        /** 逐日突发事件数量（AI 智能分析告警 type=#3# 按发生时间取日期聚合，全状态） */
+        private List<Long> emergency;
     }
 
-    /** 问题状态统计（两组口径同源：问题处理 / 应急响应） */
+    /** 问题处理统计 + 应急响应统计（问题口径来自问题表，应急口径来自告警表 type=#3#） */
     @Data
     public static class IssueStats {
-        /** 已处理 = 已关闭 */
+        /** 已处理 = 问题表「已关闭」#4# */
         private Long handled;
-        /** 未整改 = 处理中 + 已转工单 */
+        /** 未整改 = 问题表「处理中」#2# +「已转工单」#3# */
         private Long unrectified;
-        /** 突发事件 = 问题总数（全状态） */
+        /** 突发事件 = AI 智能分析告警总数（告警表 type=#3#，全状态） */
         private Long emergencyTotal;
-        /** 已解除响应 = 已处理问题数（= handled） */
+        /** 已解除响应 = AI 告警中已关闭数（status=#4#） */
         private Long resolved;
-        /** 未解除响应 = 处理中 + 已转工单（= unrectified） */
+        /** 未解除响应 = AI 告警中未关闭数（status≠#4#） */
         private Long unresolved;
     }
 

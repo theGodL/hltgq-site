@@ -109,7 +109,7 @@ public class ExternalService {
         return vo;
     }
 
-    /** 巡检/问题逐日趋势：区间默认近 30 天，上限 366 天，逐日补 0 */
+    /** 巡检/突发事件逐日趋势：区间默认近 30 天，上限 366 天，逐日补 0 */
     public ExternalVO.DailyTrend dailyTrend(LocalDate startDate, LocalDate endDate) {
         LocalDate end = endDate == null ? LocalDate.now() : endDate;
         LocalDate start = startDate == null ? end.minusDays(DEFAULT_TREND_DAYS - 1) : startDate;
@@ -124,45 +124,50 @@ public class ExternalService {
         LocalDateTime startTime = start.atStartOfDay();
         LocalDateTime endTime = end.atTime(LocalTime.MAX);
         Map<String, Long> patrolMap = toDayCountMap(mapper.selectDailyPatrol(startTime, endTime));
-        Map<String, Long> issueMap = toDayCountMap(mapper.selectDailyIssue(startTime, endTime));
+        Map<String, Long> emergencyMap = toDayCountMap(mapper.selectDailyEmergency(startTime, endTime));
 
         ExternalVO.DailyTrend vo = new ExternalVO.DailyTrend();
         List<String> dates = new ArrayList<>();
         List<Long> patrol = new ArrayList<>();
-        List<Long> issue = new ArrayList<>();
+        List<Long> emergency = new ArrayList<>();
         for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
             String key = d.toString();
             dates.add(key);
             patrol.add(patrolMap.getOrDefault(key, 0L));
-            issue.add(issueMap.getOrDefault(key, 0L));
+            emergency.add(emergencyMap.getOrDefault(key, 0L));
         }
         vo.setDates(dates);
         vo.setPatrol(patrol);
-        vo.setIssue(issue);
+        vo.setEmergency(emergency);
         return vo;
     }
 
-    /** 问题状态统计：已处理=已关闭、未整改=处理中+已转工单、突发事件=总数 */
+    /**
+     * 问题处理统计（问题表）+ 应急响应统计（告警表 type=#3# 智能分析）：
+     * 已处理=已关闭、未整改=处理中+已转工单；突发事件=AI 告警总数、
+     * 已解除响应=AI 告警已关闭数、未解除响应=AI 告警未关闭数。
+     */
     public ExternalVO.IssueStats issueStats() {
         long handled = 0;
         long unrectified = 0;
-        long total = 0;
         for (Map<String, Object> row : mapper.selectIssueStatus()) {
             String status = (String) row.get("name");
             long cnt = longOf(row.get("value"));
-            total += cnt;
             if ("#4#".equals(status)) {
                 handled += cnt;
             } else if ("#2#".equals(status) || "#3#".equals(status)) {
                 unrectified += cnt;
             }
         }
+        Map<String, Object> em = mapper.selectEmergencyStats();
+        long emergencyTotal = longOf(em.get("total"));
+        long resolved = longOf(em.get("closed"));
         ExternalVO.IssueStats vo = new ExternalVO.IssueStats();
         vo.setHandled(handled);
         vo.setUnrectified(unrectified);
-        vo.setEmergencyTotal(total);
-        vo.setResolved(handled);
-        vo.setUnresolved(unrectified);
+        vo.setEmergencyTotal(emergencyTotal);
+        vo.setResolved(resolved);
+        vo.setUnresolved(emergencyTotal - resolved);
         return vo;
     }
 
