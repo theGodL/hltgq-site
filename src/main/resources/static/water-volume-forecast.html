@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>水量预测</title>
+<title>水量预报</title>
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
@@ -52,6 +52,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .field:disabled,.field[readonly]{background:#f5f5f5;color:#666;cursor:not-allowed}
 .date-range{display:flex;align-items:center;gap:6px}
 .date-range .field{flex:1;min-width:0}
+.date-range.datetime-stack{flex-direction:column;align-items:stretch;gap:10px}
+.date-range.datetime-stack .date-sep{align-self:center;line-height:1;font-size:14px;color:#bbb}
+.date-range.datetime-stack .field{
+  height:42px;
+  min-height:42px;
+  font-size:14px;
+  line-height:42px;
+  padding:0 12px;
+}
 .date-sep{color:#bbb;flex-shrink:0}
 .select-wrap{position:relative}
 .select-wrap select.field{appearance:none;-webkit-appearance:none;padding-right:28px;cursor:pointer}
@@ -95,6 +104,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 /* 结果区 */
 .result-hd{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.result-hd.is-pending{display:none!important}
 .result-hd h2{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
 .result-hd .history-btn{margin-left:auto}
 .history-btn{color:#1677ff;border-color:#91caff;background:#fff}
@@ -131,7 +141,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .stat-card .value{font-size:24px;font-weight:700;color:#1f1f1f;line-height:1.2}
 .stat-card .value .unit{font-size:13px;font-weight:400;color:#999;margin-left:4px}
 .stat-card .value-row{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
-.stat-card .period{color:#999;font-size:13px;padding-bottom:4px;white-space:nowrap}
+.stat-card .period{color:#999;font-size:12px;padding-bottom:4px;white-space:nowrap;line-height:1.3}
 
 .upload-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .upload-hd .link{background:none;border:none;color:#1677ff;cursor:pointer;font-size:13px;padding:0}
@@ -241,38 +251,40 @@ tbody tr:hover td{background:#fafafa}
 <div class="page-wrap">
   <div class="breadcrumb">
     <span>水资源调度</span><span class="sep">/</span>
-    <span>水量预测</span><span class="sep">/</span>
-    <span class="cur">短期来水预测</span>
+    <span>水量预报</span><span class="sep">/</span>
+    <span class="cur">短期来水预报</span>
   </div>
 
   <div class="top-tabs" id="top-tabs">
-    <div class="top-tab active" data-panel="short">短期来水预测</div>
-    <div class="top-tab" data-panel="mid">中长期来水预测</div>
-    <div class="top-tab" data-panel="demand">需水预测</div>
-    <div class="top-tab" data-panel="loss">水量损失预测</div>
-    <div class="top-tab" data-panel="moisture">墒情预测</div>
+    <div class="top-tab active" data-panel="short">短期来水预报</div>
+    <div class="top-tab" data-panel="mid">中长期来水预报</div>
+    <div class="top-tab" data-panel="demand">需水预报</div>
+    <div class="top-tab" data-panel="loss">水量损失预报</div>
+    <div class="top-tab" data-panel="moisture">墒情预报</div>
   </div>
 
-  <!-- 短期来水预测（小时尺度 /forecast V3） -->
+  <!-- 短期来水预报（小时尺度 /forecast V3） -->
   <div class="panel active" id="panel-short">
     <div class="main-layout">
       <div class="left-panel">
         <div class="left-scroll">
           <div class="form-item">
-            <label class="form-label"><span class="req">*</span>预测时间</label>
-            <div class="date-range">
-              <input type="datetime-local" class="field" id="start-datetime" step="3600" title="预报开始时间">
+            <label class="form-label"><span class="req">*</span>预报时间</label>
+            <div class="date-range datetime-stack">
+              <input type="datetime-local" class="field" id="start-datetime" step="60" disabled title="开始时间固定为当前时刻，不可编辑">
               <span class="date-sep">—</span>
-              <input type="datetime-local" class="field" id="end-datetime" step="3600" title="预报结束时间">
+              <input type="datetime-local" class="field" id="end-datetime" step="60" title="结束时间可编辑，最多往后 16 天">
             </div>
+            <div class="form-hint" style="margin-top:8px">开始时间固定为当前时刻；结束时间最多往后 16 天</div>
           </div>
 
           <div class="form-item">
             <label class="form-label">起始水位</label>
             <div class="form-row">
-              <input type="text" class="field" id="start-level-display" value="默认取花凉亭坝上最新水位" readonly>
+              <input type="number" class="field" id="start-level-display" placeholder="默认取花凉亭坝上最新水位" step="0.01" min="0" title="可编辑；不填则默认取花凉亭坝上最新水位">
               <span class="unit">m</span>
             </div>
+            <div class="form-hint" style="margin-top:8px">可编辑；不填则默认取花凉亭坝上最新水位</div>
           </div>
 
           <div class="form-item">
@@ -289,7 +301,6 @@ tbody tr:hover td{background:#fafafa}
               <input type="checkbox" id="enable-spillway">
               <label for="enable-spillway">启用溢洪道</label>
             </div>
-            <div class="form-hint" style="margin-top:6px">默认全关。仅 3 个开关（会议「异通道」=溢洪道；「风道」「卸闸」非独立参数）</div>
           </div>
         </div>
         <div class="left-actions">
@@ -299,8 +310,11 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="right-panel">
         <div class="right-scroll" id="result-area">
-          <div class="result-hd">
-            <h2>短期来水预测计算结果</h2>
+          <div class="result-hd is-pending" id="short-result-hd">
+            <h2 id="short-result-title">短期来水预报计算结果</h2>
+            <button type="button" class="btn btn-default result-rename-btn" id="short-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
+            </button>
             <button class="btn history-btn" id="history-btn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               查看历史计算方案
@@ -326,12 +340,11 @@ tbody tr:hover td{background:#fafafa}
             </div>
             <div class="chart-card">
               <div class="chart-title">水位流量关系图</div>
-              <div class="chart-unit">流量 m³/s · 水位 m</div>
               <div class="chart-box" id="chart-io" style="height:320px"></div>
             </div>
             <div class="detail-card">
               <div class="detail-hd">
-                <h4>短期来水预测详细结果</h4>
+                <h4>短期来水预报详细结果</h4>
                 <div class="detail-tools">
                   <input type="text" class="field" id="short-detail-filter" placeholder="筛选当前结果">
                   <button class="btn btn-default" id="short-detail-export">
@@ -369,13 +382,13 @@ tbody tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <!-- 中长期来水预测 -->
+  <!-- 中长期来水预报 -->
   <div class="panel" id="panel-mid">
     <div class="main-layout">
       <div class="left-panel">
         <div class="left-scroll">
           <div class="form-item">
-            <label class="form-label">预测时间</label>
+            <label class="form-label">预报时间</label>
             <div class="date-range">
               <input type="text" class="field" id="mid-start-date" value="2027年1月上旬" readonly tabindex="-1">
               <span class="date-sep">—</span>
@@ -410,8 +423,11 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="right-panel">
         <div class="right-scroll">
-          <div class="result-hd">
-            <h2>中长期来水预测计算结果</h2>
+          <div class="result-hd is-pending" id="mid-result-hd">
+            <h2 id="mid-result-title">中长期来水预报计算结果</h2>
+            <button type="button" class="btn btn-default result-rename-btn" id="mid-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
+            </button>
             <button class="btn history-btn" id="mid-history-btn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               查看历史计算方案
@@ -442,7 +458,7 @@ tbody tr:hover td{background:#fafafa}
             </div>
             <div class="detail-card">
               <div class="detail-hd">
-                <h4>中长期来水预测详细结果</h4>
+                <h4>中长期来水预报详细结果</h4>
                 <div class="detail-tools">
                   <input type="text" class="field" id="mid-detail-filter" placeholder="筛选当前结果">
                   <button class="btn btn-default" id="mid-detail-export">
@@ -456,7 +472,7 @@ tbody tr:hover td{background:#fafafa}
                   <thead>
                     <tr>
                       <th>旬</th>
-                      <th>预测水量(万方)</th>
+                      <th>预报水量(万方)</th>
                       <th>实测水量(万方)</th>
                     </tr>
                   </thead>
@@ -474,7 +490,7 @@ tbody tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <!-- 需水预测 -->
+  <!-- 需水预报 -->
   <div class="panel" id="panel-demand">
     <div class="main-layout">
       <div class="left-panel">
@@ -524,8 +540,11 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="right-panel">
         <div class="right-scroll">
-          <div class="result-hd">
-            <h2>需水预测计算结果</h2>
+          <div class="result-hd is-pending" id="demand-result-hd">
+            <h2 id="demand-result-title">需水预报计算结果</h2>
+            <button type="button" class="btn btn-default result-rename-btn" id="demand-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
+            </button>
             <button class="btn history-btn" id="demand-history-btn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               查看历史计算方案
@@ -543,7 +562,7 @@ tbody tr:hover td{background:#fafafa}
           <!-- 拓扑图：固定长期展示，仅绿色标签为变量 -->
           <div class="chart-card">
             <div class="map-toolbar">
-              <div class="chart-title">需水预测</div>
+              <div class="chart-title">需水预报</div>
               <div class="map-filters">
                 <select class="field" id="demand-map-start" style="width:120px" title="起始旬"></select>
                 <span class="date-sep">—</span>
@@ -563,7 +582,7 @@ tbody tr:hover td{background:#fafafa}
 
           <div class="detail-card">
               <div class="detail-hd" style="margin-bottom:0">
-                <h4>需水预测详细结果</h4>
+                <h4>需水预报详细结果</h4>
               </div>
               <div class="detail-subtabs">
                 <div class="sub-tabs" id="demand-subtabs">
@@ -596,7 +615,7 @@ tbody tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <!-- 水量损失预测（仅中长期） -->
+  <!-- 水量损失预报（仅中长期） -->
   <div class="panel" id="panel-loss">
     <div class="main-layout">
       <div class="left-panel">
@@ -616,8 +635,11 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="right-panel">
         <div class="right-scroll">
-          <div class="result-hd">
-            <h2>水量损失预测计算结果</h2>
+          <div class="result-hd is-pending" id="loss-result-hd">
+            <h2 id="loss-result-title">水量损失预报计算结果</h2>
+            <button type="button" class="btn btn-default result-rename-btn" id="loss-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
+            </button>
             <button class="btn history-btn" id="loss-history-btn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               查看历史计算方案
@@ -643,7 +665,7 @@ tbody tr:hover td{background:#fafafa}
 
             <div class="detail-card">
               <div class="detail-hd">
-                <h4>水量损失预测详细结果</h4>
+                <h4>水量损失预报详细结果</h4>
                 <div class="detail-tools">
                   <input type="text" class="field" id="loss-filter" placeholder="筛选当前结果">
                   <button class="btn btn-default" id="loss-export">
@@ -657,7 +679,7 @@ tbody tr:hover td{background:#fafafa}
                   <thead>
                     <tr>
                       <th>日期</th>
-                      <th>预测水量(万方)</th>
+                      <th>预报水量(万方)</th>
                       <th>损失水量(万方)</th>
                     </tr>
                   </thead>
@@ -675,12 +697,12 @@ tbody tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <!-- 墒情预测 -->
+  <!-- 墒情预报 -->
   <div class="panel" id="panel-moisture">
     <div class="moisture-layout">
       <div class="filter-bar">
         <div class="filter-item">
-          <label>预测时间</label>
+          <label>预报时间</label>
           <div class="date-range">
             <input type="date" class="field" id="moisture-start" title="默认当天">
             <span class="date-sep">—</span>
@@ -691,7 +713,7 @@ tbody tr:hover td{background:#fafafa}
           <label>站点</label>
           <div class="select-wrap" style="min-width:160px">
             <select class="field" id="moisture-station">
-              <option value="">全部站点</option>
+              <option value="">请选择站点</option>
               <option value="__idx_0">太湖毕岭</option>
               <option value="__idx_1">望江</option>
               <option value="__idx_2">宿松</option>
@@ -708,8 +730,8 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="moisture-body">
         <div class="right-scroll">
-          <div class="result-hd">
-            <h2 id="moisture-result-title">墒情预测计算结果</h2>
+          <div class="result-hd is-pending" id="moisture-result-hd">
+            <h2 id="moisture-result-title">墒情预报计算结果</h2>
             <button type="button" class="btn btn-default" id="moisture-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
             </button>
@@ -726,7 +748,7 @@ tbody tr:hover td{background:#fafafa}
               <circle cx="42" cy="44" r="6" fill="#bae0ff"/>
               <rect x="38" y="16" width="44" height="10" rx="3" fill="#f0f0f0"/>
             </svg>
-            <p>暂无计算结果，请选择预测时间后点击「查询」</p>
+            <p>暂无计算结果，请选择站点与预报时间后点击「查询」</p>
           </div>
 
           <div id="moisture-result-content" style="display:none">
@@ -738,7 +760,7 @@ tbody tr:hover td{background:#fafafa}
 
             <div class="detail-card">
               <div class="detail-hd">
-                <h4>墒情预测详细结果</h4>
+                <h4>墒情预报详细结果</h4>
                 <div class="detail-tools">
                   <input type="text" class="field" id="moisture-filter" placeholder="筛选当前结果">
                   <button class="btn btn-default" id="moisture-export">
@@ -806,7 +828,7 @@ tbody tr:hover td{background:#fafafa}
 <div class="overlay" id="view-overlay">
   <div class="modal">
     <div class="modal-hd">
-      <span id="view-title">短期来水预测（对应模型）</span>
+      <span id="view-title">短期来水预报（对应模型）</span>
       <button class="modal-close" data-close="view-overlay">×</button>
     </div>
     <div class="modal-bd view-bd">
@@ -820,7 +842,6 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="chart-card">
         <div class="chart-title">水位流量关系图</div>
-        <div class="chart-unit">流量 m³/s · 水位 m</div>
         <div class="chart-box" id="view-chart-io" style="height:280px"></div>
       </div>
 
@@ -832,7 +853,7 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="detail-card">
         <div class="detail-hd">
-          <h4>短期来水预测明细</h4>
+          <h4>短期来水预报明细</h4>
           <div class="detail-tools">
             <input type="text" class="field" id="detail-filter" placeholder="筛选当前结果">
             <button class="btn btn-default" id="detail-export">
@@ -872,7 +893,7 @@ tbody tr:hover td{background:#fafafa}
 <div class="overlay" id="mid-view-overlay">
   <div class="modal">
     <div class="modal-hd">
-      <span>中长期来水预测（对应模型）</span>
+      <span>中长期来水预报（对应模型）</span>
       <button class="modal-close" data-close="mid-view-overlay">×</button>
     </div>
     <div class="modal-bd view-bd">
@@ -895,14 +916,14 @@ tbody tr:hover td{background:#fafafa}
 <div class="overlay" id="demand-view-overlay">
   <div class="modal">
     <div class="modal-hd">
-      <span>需水预测（对应模型）</span>
+      <span>需水预报（对应模型）</span>
       <button class="modal-close" data-close="demand-view-overlay">×</button>
     </div>
     <div class="modal-bd view-bd">
       <div class="stats-row cols-3" id="demand-view-stats"></div>
       <div class="detail-card">
         <div class="detail-hd">
-          <h4>需水预测详细结果</h4>
+          <h4>需水预报详细结果</h4>
           <div class="detail-tools">
             <input type="text" class="field" id="demand-view-filter" placeholder="筛选当前结果">
           </div>
@@ -922,7 +943,7 @@ tbody tr:hover td{background:#fafafa}
 <div class="overlay" id="loss-view-overlay">
   <div class="modal">
     <div class="modal-hd">
-      <span>水量损失预测（对应模型）</span>
+      <span>水量损失预报（对应模型）</span>
       <button class="modal-close" data-close="loss-view-overlay">×</button>
     </div>
     <div class="modal-bd view-bd">
@@ -933,7 +954,7 @@ tbody tr:hover td{background:#fafafa}
       </div>
       <div class="detail-card">
         <div class="detail-hd">
-          <h4>水量损失预测详细结果</h4>
+          <h4>水量损失预报详细结果</h4>
           <div class="detail-tools">
             <input type="text" class="field" id="loss-view-filter" placeholder="筛选当前结果">
           </div>
@@ -943,7 +964,7 @@ tbody tr:hover td{background:#fafafa}
             <thead>
               <tr>
                 <th>日期</th>
-                <th>预测水量(万方)</th>
+                <th>预报水量(万方)</th>
                 <th>损失水量(万方)</th>
               </tr>
             </thead>
@@ -970,6 +991,16 @@ tbody tr:hover td{background:#fafafa}
   let midDetail = null;
   let demandDetail = null;
   let lossDetail = null;
+  let shortCurrentId = null;
+  let shortCurrentName = '';
+  let midCurrentId = null;
+  let midCurrentName = '';
+  let demandCurrentId = null;
+  let demandCurrentName = '';
+  let lossCurrentId = null;
+  let lossCurrentName = '';
+  let moistureCurrentId = null;
+  let moistureCurrentName = '';
   let shortDates = [];
   let shortSeries = null;
   let midSeries = null;
@@ -1092,7 +1123,7 @@ tbody tr:hover td{background:#fafafa}
       return;
     }
     $(containerId).innerHTML = [
-      { label: '全年预测水量', value: numOrDash(s.annual, 2), unit: '万m³' },
+      { label: '全年预报水量', value: numOrDash(s.annual, 2), unit: '万m³' },
       { label: '最大旬水量', value: numOrDash(s.maxDecade, 2), unit: '万m³', period: s.maxPeriod },
       { label: '最大月来水量', value: numOrDash(s.maxMonth, 2), unit: '万m³', period: s.maxMonthPeriod }
     ].map(it =>
@@ -1117,7 +1148,7 @@ tbody tr:hover td{background:#fafafa}
   }
   function initShortRange() {
     const start = new Date();
-    start.setMinutes(0, 0, 0);
+    start.setSeconds(0, 0);
     const end = new Date(start);
     end.setDate(end.getDate() + 15);
     const startEl = $('start-datetime');
@@ -1125,24 +1156,88 @@ tbody tr:hover td{background:#fafafa}
     if (!startEl || !endEl) return;
     startEl.value = toLocalDatetimeValue(start);
     endEl.value = toLocalDatetimeValue(end);
-    endEl.min = startEl.value;
+    syncShortEndBounds();
   }
-  function syncShortEndMin() {
+  function syncShortEndBounds(fromUser) {
     const startEl = $('start-datetime');
     const endEl = $('end-datetime');
     if (!startEl || !endEl || !startEl.value) return;
     endEl.min = startEl.value;
+    const start = new Date(startEl.value);
+    if (Number.isNaN(+start)) return;
+    const max = new Date(start);
+    max.setDate(max.getDate() + 15);
+    endEl.max = toLocalDatetimeValue(max);
     if (endEl.value && endEl.value < startEl.value) endEl.value = startEl.value;
+    if (endEl.value && endEl.value > endEl.max) {
+      endEl.value = endEl.max;
+      if (fromUser) toast('结束时间最多往后 16 天');
+    }
   }
   function fmtHourLabel(iso) {
-    const s = API.fmtDateTime(iso);
+    const raw = String(iso == null ? '' : iso).trim();
+    if (!raw || raw === '—') return '—';
+    const s = API.fmtDateTime(raw);
+    // YYYY-MM-DD HH:mm → MM/DD HH:mm
     if (s.length >= 16) return s.slice(5, 7) + '/' + s.slice(8, 10) + ' ' + s.slice(11, 16);
-    return fmtMD(iso);
+    // 仅日期时补 00:00，保证短期图表横轴统一到时分
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(5, 7) + '/' + s.slice(8, 10) + ' 00:00';
+    return fmtMD(s.slice(0, 10));
   }
 
   /* ========== 图表 ========== */
   function axisDates(dates) {
-    return dates.map(d => (String(d).length > 10 ? fmtHourLabel(d) : fmtMD(d)));
+    return dates.map(d => fmtHourLabel(d));
+  }
+  const SCHEME_TITLE_DEFAULTS = {
+    short: '短期来水预报计算结果',
+    mid: '中长期来水预报计算结果',
+    demand: '需水预报计算结果',
+    loss: '水量损失预报计算结果',
+    moisture: '墒情预报计算结果'
+  };
+  function getSchemeCurrent(type) {
+    if (type === 'short') return { id: shortCurrentId, name: shortCurrentName };
+    if (type === 'mid') return { id: midCurrentId, name: midCurrentName };
+    if (type === 'demand') return { id: demandCurrentId, name: demandCurrentName };
+    if (type === 'loss') return { id: lossCurrentId, name: lossCurrentName };
+    if (type === 'moisture') return { id: moistureCurrentId, name: moistureCurrentName };
+    return { id: null, name: '' };
+  }
+  function setSchemeCurrent(type, id, name) {
+    if (type === 'short') { shortCurrentId = id; shortCurrentName = name || ''; }
+    else if (type === 'mid') { midCurrentId = id; midCurrentName = name || ''; }
+    else if (type === 'demand') { demandCurrentId = id; demandCurrentName = name || ''; }
+    else if (type === 'loss') { lossCurrentId = id; lossCurrentName = name || ''; }
+    else if (type === 'moisture') { moistureCurrentId = id; moistureCurrentName = name || ''; }
+  }
+  function updateSchemeResultTitle(type, name) {
+    const fallback = SCHEME_TITLE_DEFAULTS[type] || '计算结果';
+    const title = name || fallback;
+    const cur = getSchemeCurrent(type);
+    setSchemeCurrent(type, cur.id, name || '');
+    const titleEl = $(type + '-result-title');
+    if (titleEl) titleEl.textContent = title;
+    const btn = $(type + '-rename-btn');
+    if (btn) btn.style.display = cur.id ? '' : 'none';
+  }
+  function openSchemeRename(type) {
+    const cur = getSchemeCurrent(type);
+    if (!cur.id) return toast('请先完成一次计算');
+    editingId = cur.id;
+    const fallback = SCHEME_TITLE_DEFAULTS[type] || '计算结果';
+    $('edit-name').value = cur.name || fallback;
+    if (!historyList.find(h => h.id === cur.id && h.type === type)) {
+      historyList.push({
+        id: cur.id,
+        type: type,
+        name: cur.name || fallback,
+        time: '',
+        status: 'completed',
+        errorMsg: ''
+      });
+    }
+    $('edit-overlay').classList.add('show');
   }
   function rainOption(dates, data) {
     const dense = (dates || []).length > 48;
@@ -1185,12 +1280,14 @@ tbody tr:hover td{background:#fafafa}
       },
       yAxis: [
         {
-          type: 'value', name: '流量',
+          type: 'value', name: '流量 m³/s',
+          nameTextStyle: { color: '#999', padding: [0, 0, 0, 8] },
           axisLabel: { color: '#999' },
           splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
         },
         {
-          type: 'value', name: '水位',
+          type: 'value', name: '水位 m',
+          nameTextStyle: { color: '#999', padding: [0, 8, 0, 0] },
           axisLabel: { color: '#999' },
           splitLine: { show: false }
         }
@@ -1283,6 +1380,8 @@ tbody tr:hover td{background:#fafafa}
     shortDetail = detail || null;
     const dailies = (detail && detail.dailies) || [];
     const rec = (detail && detail.record) || {};
+    shortCurrentId = rec.id || shortCurrentId || null;
+    updateSchemeResultTitle('short', rec.schemeName || shortCurrentName || SCHEME_TITLE_DEFAULTS.short);
     shortDates = dailies.map(d => d.forecastDate);
     const outRates = dailies.map(d => d.outflowRate);
     let maxOut = null;
@@ -1291,7 +1390,7 @@ tbody tr:hover td{background:#fafafa}
       if (!Number.isNaN(n) && (maxOut == null || n > maxOut)) maxOut = n;
     });
     if (rec.startLevel != null && $('start-level-display')) {
-      $('start-level-display').value = numOrDash(rec.startLevel, 2);
+      $('start-level-display').value = Number(rec.startLevel);
     }
     shortSeries = {
       summary: {
@@ -1312,8 +1411,17 @@ tbody tr:hover td{background:#fafafa}
       outFlowRate: outRates
     };
   }
+  function revealResultHd(id) {
+    const el = $(id);
+    if (el) el.classList.remove('is-pending');
+  }
+  function hideResultHd(id) {
+    const el = $(id);
+    if (el) el.classList.add('is-pending');
+  }
   function showShortResult() {
     if (!shortSeries) return;
+    revealResultHd('short-result-hd');
     $('result-empty').style.display = 'none';
     $('result-content').style.display = 'block';
     renderStats('main-stats', shortSeries.summary);
@@ -1371,7 +1479,7 @@ tbody tr:hover td{background:#fafafa}
     return {
       color: ['#1677ff'],
       tooltip: { trigger: 'axis' },
-      legend: { top: 4, data: ['预测水量'], itemWidth: 10, itemHeight: 10 },
+      legend: { top: 4, data: ['预报水量'], itemWidth: 10, itemHeight: 10 },
       grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
       dataZoom: buildChartDataZoom(),
       xAxis: {
@@ -1386,22 +1494,97 @@ tbody tr:hover td{background:#fafafa}
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
       series: [{
-        name: '预测水量', type: 'bar', data: data || [], barMaxWidth: 28
+        name: '预报水量', type: 'bar', data: data || [], barMaxWidth: 28
       }]
     };
+  }
+  function resolveMidYear(rec, tendays, monthlies) {
+    const fromRec = rec && (rec.forecastYear || rec.predictYear || rec.targetYear || rec.year);
+    if (fromRec != null && fromRec !== '' && !Number.isNaN(Number(fromRec))) return Number(fromRec);
+    for (let i = 0; i < (tendays || []).length; i++) {
+      const t = tendays[i];
+      if (t.year != null && t.year !== '' && !Number.isNaN(Number(t.year))) return Number(t.year);
+      if (t.yearMonth) {
+        const y = Number(String(t.yearMonth).slice(0, 4));
+        if (!Number.isNaN(y)) return y;
+      }
+      const lab = String(t.tendayLabel || '');
+      const m = lab.match(/^(\d{4})\s*年/);
+      if (m) return Number(m[1]);
+    }
+    for (let i = 0; i < (monthlies || []).length; i++) {
+      const ym = (monthlies[i] && monthlies[i].yearMonth) || '';
+      const y = Number(String(ym).slice(0, 4));
+      if (!Number.isNaN(y) && y > 1900) return y;
+    }
+    return null;
+  }
+  /** 统一为「2027年7月中旬」 */
+  function formatTendayPeriod(label, year) {
+    const s = String(label == null ? '' : label).trim();
+    if (!s || s === '—') return '—';
+    let y = year;
+    let rest = s;
+    const withYear = s.match(/^(\d{4})\s*年\s*(.+)$/);
+    if (withYear) {
+      y = Number(withYear[1]);
+      rest = withYear[2];
+    }
+    const m = String(rest).match(/(\d{1,2})\s*月\s*(上|中|下)\s*旬/);
+    if (m) {
+      const mm = Number(m[1]) + '月' + m[2] + '旬';
+      return y ? (y + '年' + mm) : mm;
+    }
+    if (y && /^\d{1,2}\s*月/.test(rest)) return y + '年' + rest.replace(/^0?(\d{1,2})/, '$1');
+    return s;
+  }
+  /** 统一为「2027年8月」 */
+  function formatYearMonthPeriod(ym) {
+    const s = String(ym == null ? '' : ym).trim();
+    if (!s || s === '—') return '—';
+    if (/^\d{4}\s*年\s*\d{1,2}\s*月/.test(s)) {
+      return s.replace(/^(\d{4})\s*年\s*0?(\d{1,2})\s*月.*$/, (_, y, m) => y + '年' + Number(m) + '月');
+    }
+    const parts = s.split(/[-/]/);
+    if (parts.length >= 2 && /^\d{4}$/.test(parts[0])) {
+      return parts[0] + '年' + Number(parts[1]) + '月';
+    }
+    const m = s.match(/(\d{1,2})\s*月/);
+    return m ? (Number(m[1]) + '月') : s;
+  }
+  function tendayItemYear(t, fallbackYear) {
+    if (t && t.year != null && t.year !== '' && !Number.isNaN(Number(t.year))) return Number(t.year);
+    if (t && t.yearMonth) {
+      const y = Number(String(t.yearMonth).slice(0, 4));
+      if (!Number.isNaN(y)) return y;
+    }
+    const lab = String((t && t.tendayLabel) || '');
+    const m = lab.match(/^(\d{4})\s*年/);
+    if (m) return Number(m[1]);
+    return fallbackYear;
   }
   function applyMidDetail(detail) {
     midDetail = detail || null;
     const rec = (detail && detail.record) || {};
+    midCurrentId = rec.id || midCurrentId || null;
+    updateSchemeResultTitle('mid', rec.schemeName || midCurrentName || SCHEME_TITLE_DEFAULTS.mid);
     const tendays = (detail && detail.tendays) || [];
     const monthlies = (detail && detail.monthlies) || [];
+    const midYear = resolveMidYear(rec, tendays, monthlies);
     let maxPeriod = '—';
     if (tendays.length) {
       let maxV = -Infinity;
+      let maxT = null;
       tendays.forEach(t => {
         const v = Number(t.predictVolume);
-        if (!Number.isNaN(v) && v > maxV) { maxV = v; maxPeriod = t.tendayLabel || '—'; }
+        if (!Number.isNaN(v) && v > maxV) {
+          maxV = v;
+          maxT = t;
+        }
       });
+      if (maxT) {
+        maxPeriod = formatTendayPeriod(maxT.tendayLabel, tendayItemYear(maxT, midYear));
+      }
     }
     let maxMonth = null;
     let maxMonthPeriod = '—';
@@ -1409,11 +1592,30 @@ tbody tr:hover td{background:#fafafa}
       const v = Number(m.predictTotal);
       if (!Number.isNaN(v) && (maxMonth == null || v > maxMonth)) {
         maxMonth = v;
-        const ym = m.yearMonth || '';
-        const parts = ym.split('-');
-        maxMonthPeriod = parts.length === 2 ? parts[1] + '月' : (ym || '—');
+        maxMonthPeriod = formatYearMonthPeriod(m.yearMonth || '');
       }
     });
+    // 图三参考：最大月旁也展示到旬时，取该月内最大旬标签
+    if (maxMonthPeriod && maxMonthPeriod !== '—' && tendays.length) {
+      const ymMatch = String(maxMonthPeriod).match(/^(\d{4})年(\d{1,2})月/);
+      if (ymMatch) {
+        const y = Number(ymMatch[1]);
+        const mon = Number(ymMatch[2]);
+        let bestV = -Infinity;
+        let bestLabel = '';
+        tendays.forEach(t => {
+          const lab = formatTendayPeriod(t.tendayLabel, tendayItemYear(t, midYear));
+          const mm = lab.match(/^(\d{4})年(\d{1,2})月(上|中|下)旬$/);
+          if (!mm || Number(mm[1]) !== y || Number(mm[2]) !== mon) return;
+          const v = Number(t.predictVolume);
+          if (!Number.isNaN(v) && v > bestV) {
+            bestV = v;
+            bestLabel = lab;
+          }
+        });
+        if (bestLabel) maxMonthPeriod = bestLabel;
+      }
+    }
     midSeries = {
       summary: {
         annual: rec.annualPredictVolume,
@@ -1422,19 +1624,16 @@ tbody tr:hover td{background:#fafafa}
         maxMonth: maxMonth,
         maxMonthPeriod: maxMonthPeriod
       },
-      decadeLabels: tendays.map(t => t.tendayLabel),
+      decadeLabels: tendays.map(t => formatTendayPeriod(t.tendayLabel, tendayItemYear(t, midYear))),
       decade: tendays.map(t => t.predictVolume),
       decadeActual: tendays.map(t => t.actualVolume),
-      monthLabels: monthlies.map(m => {
-        const ym = m.yearMonth || '';
-        const parts = ym.split('-');
-        return parts.length === 2 ? parts[1] + '月' : ym;
-      }),
+      monthLabels: monthlies.map(m => formatYearMonthPeriod(m.yearMonth || '')),
       month: monthlies.map(m => m.predictTotal)
     };
   }
   function showMidResult() {
     if (!midSeries) return;
+    revealResultHd('mid-result-hd');
     $('mid-result-empty').style.display = 'none';
     $('mid-result-content').style.display = 'block';
     renderMidStats('mid-stats', midSeries.summary);
@@ -1638,10 +1837,10 @@ tbody tr:hover td{background:#fafafa}
   $('calc-btn').addEventListener('click', async () => {
     const startLocal = $('start-datetime').value;
     const endLocal = $('end-datetime').value;
-    if (!startLocal || !endLocal) return toast('请选择预测时间');
+    if (!startLocal || !endLocal) return toast('请选择预报时间');
     if (endLocal < startLocal) return toast('截止时间不能早于开始时间');
     const hours = hoursInclusive(startLocal, endLocal);
-    if (hours < 1 || hours > 384) return toast('预测时段需满足 1～384 小时（最长约 16 天）');
+    if (hours < 1 || hours > 384) return toast('预报时段需满足 1～384 小时（最长约 16 天）');
 
     const body = {
       start: toApiDateTime(startLocal),
@@ -1650,12 +1849,17 @@ tbody tr:hover td{background:#fafafa}
       enableTunnel: !!$('enable-tunnel').checked,
       enableSpillway: !!$('enable-spillway').checked
     };
+    const levelRaw = ($('start-level-display') && $('start-level-display').value || '').trim();
+    if (levelRaw !== '' && !Number.isNaN(Number(levelRaw))) {
+      body.startLevel = Number(levelRaw);
+    }
 
     const btn = $('calc-btn');
     btn.classList.add('is-loading');
     API.showLoading('短期来水模型计算中，请稍候…');
     try {
       const { recordId } = await API.short.submit(body);
+      shortCurrentId = recordId;
       await API.short.wait(recordId);
       const detail = await API.short.detail(recordId);
       applyShortDetail(detail);
@@ -1689,6 +1893,7 @@ tbody tr:hover td{background:#fafafa}
     API.showLoading('中长期来水模型计算中，请稍候…');
     try {
       const { recordId } = await API.long.submit(body);
+      midCurrentId = recordId;
       await API.long.wait(recordId);
       const detail = await API.long.detail(recordId);
       applyMidDetail(detail);
@@ -1703,9 +1908,12 @@ tbody tr:hover td{background:#fafafa}
     }
   });
 
-  /* ========== 需水预测 ========== */
+  /* ========== 需水预报 ========== */
   function applyDemandDetail(detail) {
     demandDetail = detail || null;
+    const rec = (detail && detail.record) || {};
+    demandCurrentId = rec.id || demandCurrentId || null;
+    updateSchemeResultTitle('demand', rec.schemeName || demandCurrentName || SCHEME_TITLE_DEFAULTS.demand);
     const branches = (detail && detail.branchDetails) || [];
     const periods = [];
     const seen = new Set();
@@ -1973,6 +2181,7 @@ tbody tr:hover td{background:#fafafa}
 
   function showDemandResult() {
     demandHasResult = true;
+    revealResultHd('demand-result-hd');
     const empty = $('demand-result-empty');
     const stats = $('demand-stats-wrap');
     if (empty) empty.style.display = 'none';
@@ -2197,6 +2406,7 @@ tbody tr:hover td{background:#fafafa}
         const res = await API.demand.submit({ guaranteeRate, canalEff });
         recordId = res.recordId;
       }
+      demandCurrentId = recordId;
       await API.demand.wait(recordId);
       const detail = await API.demand.detail(recordId);
       applyDemandDetail(detail);
@@ -2249,7 +2459,7 @@ tbody tr:hover td{background:#fafafa}
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '需水明细');
-      XLSX.writeFile(wb, '需水预测详细结果.xlsx');
+      XLSX.writeFile(wb, '需水预报详细结果.xlsx');
     } else toast('导出组件未加载');
   });
 
@@ -2286,7 +2496,7 @@ tbody tr:hover td{background:#fafafa}
     }
   });
 
-  /* ========== 水量损失预测（仅 long） ========== */
+  /* ========== 水量损失预报（仅 long） ========== */
   async function syncLossScheme() {
     const sel = $('loss-scheme');
     try {
@@ -2299,6 +2509,9 @@ tbody tr:hover td{background:#fafafa}
   }
   function applyLossDetail(detail) {
     lossDetail = detail || null;
+    const rec = (detail && detail.record) || {};
+    lossCurrentId = rec.id || lossCurrentId || null;
+    updateSchemeResultTitle('loss', rec.schemeName || lossCurrentName || SCHEME_TITLE_DEFAULTS.loss);
     lossCalcType = 'mid';
     const details = (detail && (detail.details || detail.tendays)) || [];
     lossRowsCache = details.map(d => ({
@@ -2390,6 +2603,7 @@ tbody tr:hover td{background:#fafafa}
     ).join('') || `<tr><td colspan="3" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
   }
   function showLossResult() {
+    revealResultHd('loss-result-hd');
     $('loss-result-empty').style.display = 'none';
     $('loss-result-content').style.display = 'block';
     lossPage = 1;
@@ -2414,6 +2628,7 @@ tbody tr:hover td{background:#fafafa}
     API.showLoading('水量损失模型计算中，请稍候…');
     try {
       const { recordId } = await API.loss.submit({ mode: 'long', sourceRecordId });
+      lossCurrentId = recordId;
       await API.loss.wait(recordId);
       const detail = await API.loss.detail(recordId);
       applyLossDetail(detail);
@@ -2443,13 +2658,13 @@ tbody tr:hover td{background:#fafafa}
   $('loss-export').addEventListener('click', () => {
     const rows = lossRows();
     if (!rows.length) return toast('暂无数据可导出');
-    const header = ['日期', '预测水量(万方)', '损失水量(万方)'];
+    const header = ['日期', '预报水量(万方)', '损失水量(万方)'];
     const data = rows.map(r => [r.date, r.predict, r.loss]);
     if (window.XLSX) {
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '损失明细');
-      XLSX.writeFile(wb, '水量损失预测详细结果.xlsx');
+      XLSX.writeFile(wb, '水量损失预报详细结果.xlsx');
     } else toast('导出组件未加载');
   });
   $('loss-view-filter').addEventListener('input', e => {
@@ -2460,7 +2675,7 @@ tbody tr:hover td{background:#fafafa}
     if (e.target === $('loss-view-overlay')) $('loss-view-overlay').classList.remove('show');
   });
 
-  /* ========== 墒情预测 ========== */
+  /* ========== 墒情预报 ========== */
   const MOISTURE_STATION_NAMES = ['太湖毕岭', '望江', '宿松', '怀宁麻塘湖'];
   const DROUGHT_LABEL = { '#1#': '无旱', '#2#': '轻旱', '#3#': '中旱', '#4#': '重旱', '#5#': '特旱' };
   const MOISTURE_PAGE_SIZE = 10;
@@ -2471,8 +2686,6 @@ tbody tr:hover td{background:#fafafa}
   let moistureRowsCache = [];
   let moistureFilter = '';
   let moisturePage = 1;
-  let moistureCurrentId = null;
-  let moistureCurrentName = '';
 
   function droughtText(code) {
     return DROUGHT_LABEL[code] || code || '—';
@@ -2486,12 +2699,7 @@ tbody tr:hover td{background:#fafafa}
     return i >= 0 ? (MOISTURE_STATION_NAMES[i] || ('站点' + (i + 1))) : (siteId || '—');
   }
   function updateMoistureResultTitle(name) {
-    const title = name || '墒情预测计算结果';
-    moistureCurrentName = name || '';
-    if ($('moisture-result-title')) $('moisture-result-title').textContent = title;
-    if ($('moisture-rename-btn')) {
-      $('moisture-rename-btn').style.display = moistureCurrentId ? '' : 'none';
-    }
+    updateSchemeResultTitle('moisture', name);
   }
   function initMoistureRange() {
     const start = new Date();
@@ -2519,7 +2727,7 @@ tbody tr:hover td{background:#fafafa}
     const sel = $('moisture-station');
     if (!sel) return;
     const prev = sel.value;
-    let html = '<option value="">全部站点</option>';
+    let html = '<option value="">请选择站点</option>';
     if (moistureSiteIds.length) {
       moistureSiteIds.forEach((id, i) => {
         html += `<option value="${id}">${MOISTURE_STATION_NAMES[i] || ('站点' + (i + 1))}</option>`;
@@ -2555,7 +2763,7 @@ tbody tr:hover td{background:#fafafa}
     moistureDetail = detail || null;
     const rec = (detail && detail.record) || {};
     moistureCurrentId = rec.id || moistureCurrentId || null;
-    updateMoistureResultTitle(rec.schemeName || moistureCurrentName || '墒情预测计算结果');
+    updateMoistureResultTitle(rec.schemeName || moistureCurrentName || '墒情预报计算结果');
     const details = (detail && detail.details) || [];
     moistureBySite = {};
     moistureSiteIds = [];
@@ -2573,36 +2781,45 @@ tbody tr:hover td{background:#fafafa}
       });
     });
     const selected = resolveMoistureSiteFilter();
+    const rawSel = ($('moisture-station') && $('moisture-station').value) || '';
     fillMoistureStationSelect();
     if (selected && moistureSiteIds.includes(selected)) {
       moistureActiveSite = selected;
       $('moisture-station').value = selected;
+    } else if (String(rawSel).indexOf('__idx_') === 0) {
+      const idx = Number(String(rawSel).slice(6));
+      const mapped = moistureSiteIds[idx];
+      moistureActiveSite = mapped || moistureSiteIds[0] || '';
+      if ($('moisture-station')) $('moisture-station').value = moistureActiveSite;
+    } else if (moistureSiteIds.length) {
+      moistureActiveSite = moistureSiteIds[0];
+      if ($('moisture-station')) $('moisture-station').value = moistureActiveSite;
     } else {
       moistureActiveSite = '';
-      if ($('moisture-station')) $('moisture-station').value = '';
     }
     rebuildMoistureRows();
   }
   function rebuildMoistureRows() {
-    const siteFilter = resolveMoistureSiteFilter();
-    const sites = siteFilter ? [siteFilter] : moistureSiteIds.slice();
+    const siteFilter = resolveMoistureSiteFilter() || moistureActiveSite;
+    if (!siteFilter) {
+      moistureRowsCache = [];
+      return;
+    }
     const rows = [];
-    sites.forEach(site => {
-      (moistureBySite[site] || []).forEach(r => {
-        rows.push({
-          site: site,
-          siteName: siteDisplayName(site),
-          date: API.fmtDateTime(r.tm),
-          m10: numOrDash(r.mten, 2),
-          m20: numOrDash(r.mtwenty, 2),
-          m30: numOrDash(r.mthirty, 2),
-          drought: droughtText(r.droughtLevel),
-          droughtCode: r.droughtLevel,
-          mten: r.mten,
-          mtwenty: r.mtwenty,
-          mthirty: r.mthirty,
-          tm: r.tm
-        });
+    (moistureBySite[siteFilter] || []).forEach(r => {
+      rows.push({
+        site: siteFilter,
+        siteName: siteDisplayName(siteFilter),
+        date: API.fmtDateTime(r.tm),
+        m10: numOrDash(r.mten, 2),
+        m20: numOrDash(r.mtwenty, 2),
+        m30: numOrDash(r.mthirty, 2),
+        drought: droughtText(r.droughtLevel),
+        droughtCode: r.droughtLevel,
+        mten: r.mten,
+        mtwenty: r.mtwenty,
+        mthirty: r.mthirty,
+        tm: r.tm
       });
     });
     moistureRowsCache = rows;
@@ -2641,12 +2858,11 @@ tbody tr:hover td{background:#fafafa}
     ).join('') || `<tr><td colspan="6" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
   }
   function renderMoistureCharts() {
-    const siteFilter = resolveMoistureSiteFilter();
+    const siteFilter = resolveMoistureSiteFilter() || moistureActiveSite;
     const chartEl = $('chart-moisture');
     if (!chartEl) return;
-    // 单站：三深度曲线；全部：取第一站三深度（与 UI 稿一致，站点下拉切换）
-    const site = siteFilter || moistureSiteIds[0] || '';
-    const rows = moistureBySite[site] || [];
+    const site = siteFilter || '';
+    const rows = site ? (moistureBySite[site] || []) : [];
     const times = rows.map(r => r.tm);
     const dense = times.length > 48;
     const axis = axisDates(times);
@@ -2676,6 +2892,7 @@ tbody tr:hover td{background:#fafafa}
     requestAnimationFrame(() => { if (charts.moistureMain) charts.moistureMain.resize(); });
   }
   function showMoistureResult() {
+    revealResultHd('moisture-result-hd');
     $('moisture-result-empty').style.display = 'none';
     $('moisture-result-content').style.display = 'block';
     moisturePage = 1;
@@ -2693,15 +2910,18 @@ tbody tr:hover td{background:#fafafa}
     moistureRowsCache = [];
     moistureCurrentId = null;
     updateMoistureResultTitle('');
+    hideResultHd('moisture-result-hd');
     $('moisture-result-empty').style.display = '';
     $('moisture-result-content').style.display = 'none';
     fillMoistureStationSelect();
   }
   async function runMoistureQuery() {
+    const stationRaw = ($('moisture-station') && $('moisture-station').value) || '';
+    if (!stationRaw) return toast('请先选择站点');
     const days = moistureDaysFromRange();
-    if (days === 0) return toast('请选择预测时间');
+    if (days === 0) return toast('请选择预报时间');
     if (days < 0) return toast('截止时间不能早于开始时间');
-    if (days < 1 || days > 16) return toast('预测时段最长 16 天（含起止日）');
+    if (days < 1 || days > 16) return toast('预报时段最长 16 天（含起止日）');
     const btn = $('moisture-query-btn');
     btn.classList.add('is-loading');
     API.showLoading('墒情模型计算中，请稍候…');
@@ -2724,28 +2944,18 @@ tbody tr:hover td{background:#fafafa}
   $('moisture-query-btn').addEventListener('click', runMoistureQuery);
   $('moisture-reset-btn').addEventListener('click', () => {
     initMoistureRange();
+    if ($('moisture-station')) $('moisture-station').value = '';
+    moistureActiveSite = '';
     clearMoistureResult();
     toast('已重置');
   });
   if ($('moisture-rename-btn')) {
-    $('moisture-rename-btn').addEventListener('click', () => {
-      if (!moistureCurrentId) return toast('请先完成一次查询');
-      editingId = moistureCurrentId;
-      $('edit-name').value = moistureCurrentName || '墒情预测计算结果';
-      // 确保 historyList 中有当前方案，便于 rename 回写标题
-      if (!historyList.find(h => h.id === moistureCurrentId && h.type === 'moisture')) {
-        historyList.push({
-          id: moistureCurrentId,
-          type: 'moisture',
-          name: moistureCurrentName || '墒情预测计算结果',
-          time: '',
-          status: 'completed',
-          errorMsg: ''
-        });
-      }
-      $('edit-overlay').classList.add('show');
-    });
+    $('moisture-rename-btn').addEventListener('click', () => openSchemeRename('moisture'));
   }
+  ['short', 'mid', 'demand', 'loss'].forEach(type => {
+    const btn = $(type + '-rename-btn');
+    if (btn) btn.addEventListener('click', () => openSchemeRename(type));
+  });
   $('moisture-station').addEventListener('change', () => {
     moistureActiveSite = $('moisture-station').value || '';
     if (!moistureDetail) return;
@@ -2774,7 +2984,7 @@ tbody tr:hover td{background:#fafafa}
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '墒情明细');
-      XLSX.writeFile(wb, '墒情预测详细结果.xlsx');
+      XLSX.writeFile(wb, '墒情预报详细结果.xlsx');
     } else toast('导出组件未加载');
   });
   $('moisture-start').addEventListener('change', () => {
@@ -2863,16 +3073,19 @@ tbody tr:hover td{background:#fafafa}
         const detail = await mod.detail(item.id);
         closeDrawer();
         if (item.type === 'mid') {
+          midCurrentId = item.id;
           applyMidDetail(detail);
           activatePanel('mid');
           showMidResult();
           openMidView(item);
         } else if (item.type === 'demand') {
+          demandCurrentId = item.id;
           applyDemandDetail(detail);
           activatePanel('demand');
           showDemandResult();
           openDemandView(item);
         } else if (item.type === 'loss') {
+          lossCurrentId = item.id;
           applyLossDetail(detail);
           activatePanel('loss');
           showLossResult();
@@ -2884,6 +3097,7 @@ tbody tr:hover td{background:#fafafa}
           showMoistureResult();
           if (!moistureRowsCache.length) toast('该方案暂无明细数据');
         } else {
+          shortCurrentId = item.id;
           applyShortDetail(detail);
           activatePanel('short');
           showShortResult();
@@ -2912,8 +3126,9 @@ tbody tr:hover td{background:#fafafa}
     try {
       await apiByType(item.type).rename(item.id, name);
       item.name = name;
-      if (item.type === 'moisture' && item.id === moistureCurrentId) {
-        updateMoistureResultTitle(name);
+      const cur = getSchemeCurrent(item.type);
+      if (cur.id && item.id === cur.id) {
+        updateSchemeResultTitle(item.type, name);
       }
       renderHistory();
       $('edit-overlay').classList.remove('show');
@@ -2925,7 +3140,7 @@ tbody tr:hover td{background:#fafafa}
 
   // 查看详情（短期）
   function openView(item) {
-    $('view-title').textContent = (item && item.name) || '短期来水预测';
+    $('view-title').textContent = (item && item.name) || '短期来水预报';
     renderStats('view-stats', shortSeries && shortSeries.summary);
     detailPage = 1;
     detailFilter = '';
@@ -2993,7 +3208,7 @@ tbody tr:hover td{background:#fafafa}
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '明细');
-      XLSX.writeFile(wb, '短期来水预测明细.xlsx');
+      XLSX.writeFile(wb, '短期来水预报明细.xlsx');
     } else {
       toast('导出组件未加载');
     }
@@ -3020,13 +3235,13 @@ tbody tr:hover td{background:#fafafa}
     $('mid-detail-export').addEventListener('click', () => {
       const rows = filteredMidRows();
       if (!rows.length) return toast('暂无数据可导出');
-      const header = ['旬', '预测水量(万方)', '实测水量(万方)'];
+      const header = ['旬', '预报水量(万方)', '实测水量(万方)'];
       const data = rows.map(r => [r.label, r.predict, r.actual]);
       if (window.XLSX) {
         const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, '中长期明细');
-        XLSX.writeFile(wb, '中长期来水预测明细.xlsx');
+        XLSX.writeFile(wb, '中长期来水预报明细.xlsx');
       } else toast('导出组件未加载');
     });
   }
@@ -3037,10 +3252,10 @@ tbody tr:hover td{background:#fafafa}
 
   // init — 保持空态，不自动展示图表
   initShortRange();
-  if ($('start-datetime')) $('start-datetime').addEventListener('change', syncShortEndMin);
-  if ($('end-datetime')) $('end-datetime').addEventListener('change', syncShortEndMin);
+  if ($('end-datetime')) $('end-datetime').addEventListener('change', () => syncShortEndBounds(true));
   initMoistureRange();
   fillMoistureStationSelect();
+  if ($('moisture-station')) $('moisture-station').value = '';
   fillDemandTendaySelects(false);
   renderHistory();
   renderDemandTable('demand-tbody');

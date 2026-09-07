@@ -65,8 +65,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 
-.result-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.result-hd{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.result-hd.is-pending{display:none!important}
 .result-hd h2{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
+.result-hd .history-btn{margin-left:auto}
 .history-btn{color:#1677ff;border-color:#91caff;background:#fff}
 .history-btn:hover{background:#e6f4ff;border-color:#1677ff;color:#1677ff}
 
@@ -253,8 +255,11 @@ tbody tr:hover td{background:#fafafa}
 
     <div class="right-panel">
       <div class="right-scroll">
-        <div class="result-hd">
-          <h2>水资源配置预测计算结果</h2>
+        <div class="result-hd is-pending" id="result-hd">
+          <h2 id="result-title">水资源配置预测计算结果</h2>
+          <button type="button" class="btn btn-default" id="rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
+          </button>
           <button class="btn history-btn" id="history-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             查看历史计算方案
@@ -435,10 +440,23 @@ tbody tr:hover td{background:#fafafa}
   let charts = {};
   let editingId = null;
   let historyList = [];
+  let currentRecordId = null;
+  let currentSchemeName = '';
   let resultSummary = null;
   let resultRows = [];
   let viewSummary = null;
   let viewRows = [];
+
+  function updateResultTitle(name) {
+    const title = name || '水资源配置预测计算结果';
+    currentSchemeName = name || '';
+    if ($('result-title')) $('result-title').textContent = title;
+    if ($('rename-btn')) $('rename-btn').style.display = currentRecordId ? '' : 'none';
+  }
+  function revealResultHd() {
+    const el = $('result-hd');
+    if (el) el.classList.remove('is-pending');
+  }
 
   function mapTendays(detail) {
     const tendays = (detail.tendays || []).slice().sort(function (a, b) {
@@ -475,7 +493,8 @@ tbody tr:hover td{background:#fafafa}
   }
 
   function applyDetail(detail, target) {
-    const summary = mapSummary(detail.record);
+    const rec = (detail && detail.record) || {};
+    const summary = mapSummary(rec);
     const rows = mapTendays(detail);
     if (target === 'view') {
       viewSummary = summary;
@@ -483,6 +502,9 @@ tbody tr:hover td{background:#fafafa}
     } else {
       resultSummary = summary;
       resultRows = rows;
+      currentRecordId = rec.id || currentRecordId || null;
+      currentSchemeName = rec.schemeName || currentSchemeName || '';
+      updateResultTitle(currentSchemeName || '水资源配置预测计算结果');
     }
   }
 
@@ -689,6 +711,7 @@ tbody tr:hover td{background:#fafafa}
   stickyLayouts.push(bindStickyHScroll('view-tbl-wrap', 'view-tbl-x', document.querySelector('#view-overlay .view-bd')));
 
   function showResult() {
+    revealResultHd();
     $('result-empty').style.display = 'none';
     $('result-content').style.display = 'block';
     page = 1;
@@ -814,6 +837,7 @@ tbody tr:hover td{background:#fafafa}
         res = await API.allocation.upload(fd);
       }
       const recordId = res.recordId || res.id;
+      currentRecordId = recordId;
       await API.allocation.wait(recordId);
       const detail = await API.allocation.detail(recordId);
       applyDetail(detail, 'main');
@@ -867,6 +891,22 @@ tbody tr:hover td{background:#fafafa}
   $('drawer-mask').addEventListener('click', closeDrawer);
   $('drawer-close').addEventListener('click', closeDrawer);
 
+  if ($('rename-btn')) {
+    $('rename-btn').addEventListener('click', function () {
+      if (!currentRecordId) return toast('请先完成一次计算');
+      editingId = currentRecordId;
+      $('edit-name').value = currentSchemeName || '水资源配置预测计算结果';
+      if (!historyList.find(function (h) { return h.id === currentRecordId; })) {
+        historyList.push({
+          id: currentRecordId,
+          schemeName: currentSchemeName || '水资源配置预测计算结果',
+          status: 'completed'
+        });
+      }
+      $('edit-overlay').classList.add('show');
+    });
+  }
+
   $('history-list').addEventListener('click', async function (e) {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
@@ -883,6 +923,16 @@ tbody tr:hover td{background:#fafafa}
       if (!confirm('确定删除该方案？')) return;
       try {
         await API.allocation.remove(item.id);
+        if (item.id === currentRecordId) {
+          currentRecordId = null;
+          currentSchemeName = '';
+          resultSummary = null;
+          resultRows = [];
+          updateResultTitle('');
+          if ($('result-hd')) $('result-hd').classList.add('is-pending');
+          $('result-empty').style.display = '';
+          $('result-content').style.display = 'none';
+        }
         toast('已删除');
         await loadHistory();
       } catch (err) {
@@ -938,6 +988,9 @@ tbody tr:hover td{background:#fafafa}
     if (!name) return toast('请输入名称');
     try {
       await API.allocation.rename(editingId, name);
+      const item = historyList.find(function (h) { return h.id === editingId; });
+      if (item) item.schemeName = name;
+      if (editingId === currentRecordId) updateResultTitle(name);
       $('edit-overlay').classList.remove('show');
       toast('已保存');
       await loadHistory();

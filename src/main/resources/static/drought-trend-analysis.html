@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>旱情趋势分析</title>
+<title>智能抗旱决策</title>
 <script src="./lib/echarts.min.js"></script>
-<script src="./lib/chart-data-zoom.js"></script>
+<script src="./lib/model-api.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
@@ -15,108 +15,100 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .breadcrumb .sep{margin:0 6px}
 .breadcrumb .cur{color:#333}
 
-.main-layout{display:flex;gap:12px;flex:1;min-height:0;min-width:0;width:100%;align-items:stretch}
-.left-panel{width:260px;max-width:100%;flex-shrink:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.left-search{padding:14px 14px 10px;display:flex;align-items:center;gap:8px;flex-shrink:0}
-.search-box{flex:1;position:relative;min-width:0}
-.search-box input{width:100%;height:32px;border:1px solid #d9d9d9;border-radius:16px;padding:0 12px 0 34px;font-size:13px;outline:none;background:#fff;color:#333}
-.search-box input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
-.search-box .ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#bfbfbf;pointer-events:none;display:flex}
-.search-collapse{width:28px;height:28px;border:none;background:transparent;cursor:pointer;color:#999;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
-.search-collapse:hover{background:#f5f5f5;color:#1677ff}
-.left-list{flex:1;overflow-y:auto;min-height:0;padding:0 0 8px}
-.list-item{padding:12px 18px 12px 15px;cursor:pointer;color:#333;font-size:14px;line-height:22px;user-select:none;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:3px solid transparent}
-.list-item:hover{background:#f5f5f5}
-.list-item.active{background:#e6f4ff;color:#1677ff;font-weight:500;border-left-color:#1677ff}
-
-.right-panel{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.chart-card{flex:1;min-height:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px;display:flex;flex-direction:column}
-.filter-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;flex-shrink:0}
-.filter-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.filter-left .lbl{color:#666;font-size:14px;white-space:nowrap}
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.filter-card{padding:14px 16px;flex-shrink:0}
+.filter-bar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.filter-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.filter-left .lbl{color:#666;font-size:13px;white-space:nowrap}
 .date-range{display:flex;align-items:center;gap:6px}
-.date-range .field{width:140px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;color:#333}
-.date-range .field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.field{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 10px;font-size:13px;outline:none;background:#fff;color:#333}
+.field:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.date-range .field{width:140px}
+.select{min-width:180px;max-width:280px}
 .date-sep{color:#999}
-.filter-actions{display:flex;align-items:center;gap:8px}
+.filter-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-primary[disabled],.btn[disabled]{opacity:.55;cursor:not-allowed}
 .btn-default{color:#333;border-color:#d9d9d9}
 .btn-default:hover{color:#1677ff;border-color:#1677ff}
-.chart-box{flex:1;min-height:280px;width:100%}
+.hint{font-size:12px;color:#999}
+.mock-tip{font-size:12px;color:#fa8c16;margin-left:4px}
+
+.main-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:block;padding-right:2px}
+.main-scroll > * + *{margin-top:12px}
+.section-label{font-size:13px;font-weight:700;color:#1f1f1f;padding:2px 2px 0}
+.chart-card{padding:16px 16px 12px;display:flex;flex-direction:column;flex-shrink:0}
+.chart-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;flex-shrink:0;flex-wrap:wrap}
+.chart-title{font-size:14px;font-weight:700;color:#1f1f1f;line-height:22px}
+.chart-tip{font-size:12px;color:#999;margin-left:8px;font-weight:400}
+.chart-box{width:100%;height:360px;min-height:360px;flex-shrink:0}
+.seg-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;flex-shrink:0}
+.seg-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:4px;font-size:12px;background:#f5f5f5;color:#595959}
+.seg-chip.lv2{background:#fff7e6;color:#d48806}
+.seg-chip.lv3{background:#fff1f0;color:#cf1322}
+.seg-chip.lv4{background:#fff1f0;color:#a8071a;font-weight:600}
+.seg-chip.lv5{background:#f9f0ff;color:#531dab;font-weight:600}
+
 .toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 
-@media (max-width:1100px){
-  .main-layout{flex-direction:column}
-  .left-panel{width:100%;max-height:220px}
+@media (max-width:900px){
+  .chart-box{height:300px;min-height:300px}
 }
 </style>
 </head>
 <body>
 <div class="page-wrap">
   <div class="breadcrumb">
-    <span>旱情监测</span><span class="sep">/</span>
-    <span class="cur">旱情趋势分析</span>
+    <span>智能决策</span><span class="sep">/</span>
+    <span class="cur">智能抗旱决策</span>
   </div>
 
-  <div class="main-layout">
-    <div class="left-panel">
-      <div class="left-search">
-        <div class="search-box">
-          <span class="ico">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-          </span>
-          <input type="text" id="station-search" placeholder="请输入关键字" autocomplete="off">
+  <div class="card filter-card">
+    <div class="filter-bar">
+      <div class="filter-left">
+        <span class="lbl">站点</span>
+        <select class="field select" id="query-stcd"></select>
+        <span class="lbl">日期</span>
+        <div class="date-range">
+          <input type="date" class="field" id="query-start">
+          <span class="date-sep">—</span>
+          <input type="date" class="field" id="query-end">
         </div>
-        <button type="button" class="search-collapse" id="station-collapse" title="收起/展开">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h10M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </button>
       </div>
-      <div class="left-list" id="station-list"></div>
+      <div class="filter-actions">
+        <button type="button" class="btn btn-primary" id="query-btn">查询</button>
+        <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-scroll" id="drought-scroll">
+    <div class="section-label">实测墒情</div>
+    <div class="card chart-card">
+      <div class="chart-hd">
+        <div class="chart-title">含水率（10/20/30cm） <span class="chart-tip" id="obs-tip"></span></div>
+      </div>
+      <div class="chart-box" id="chart-obs"></div>
     </div>
 
-    <div class="right-panel">
-      <div class="chart-card">
-        <div class="filter-bar">
-          <div class="filter-left">
-            <span class="lbl">日期</span>
-            <div class="date-range">
-              <input type="date" class="field" id="start-date" value="">
-              <span class="date-sep">—</span>
-              <input type="date" class="field" id="end-date" value="">
-            </div>
-          </div>
-          <div class="filter-actions">
-            <button type="button" class="btn btn-primary" id="query-btn">查询</button>
-            <button type="button" class="btn btn-default" id="reset-btn">重置</button>
-          </div>
-        </div>
-        <div class="chart-box" id="chart-trend"></div>
+    <div class="section-label">预测墒情</div>
+    <div class="card chart-card">
+      <div class="chart-hd">
+        <div class="chart-title">含水率 / 降雨（含国标干旱等级） <span class="chart-tip" id="pred-tip"></span></div>
       </div>
+      <div class="chart-box" id="chart-pred"></div>
+      <div id="drought-segs" class="seg-list"></div>
     </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
 
-<script src="./lib/model-api.js"></script>
 <script>
 (function () {
   function $(id) { return document.getElementById(id); }
-
-  var DEPTHS = [
-    { key: 'mten', name: '10cm', color: '#867AF7' },
-    { key: 'mtwenty', name: '20cm', color: '#F0978E' },
-    { key: 'mthirty', name: '30cm', color: '#66C0DC' }
-  ];
-
-  var stations = [];
-  var activeStcd = '';
-  var listCollapsed = false;
-  var chart = null;
-  var loading = false;
-
   function toast(msg) {
     var el = $('toast');
     if (!el) return;
@@ -125,60 +117,44 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     clearTimeout(toast._t);
     toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
   }
-
-  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
-
-  function chartValue(v) {
-    if (v === null || v === undefined || v === '') return null;
-    if (+v === -999 || +v === -9991) return null;
-    var n = +v;
-    return isFinite(n) ? n : null;
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtDate(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+  function maxOf(arr, floor) {
+    var m = floor == null ? 0 : floor;
+    (arr || []).forEach(function (v) {
+      if (v != null && isFinite(Number(v)) && Number(v) > m) m = Number(v);
+    });
+    return m;
+  }
+  function niceCeil(v, step) {
+    step = step || 1;
+    if (v <= 0) return step;
+    return Math.ceil(v / step) * step;
+  }
+  function sanitizeMoisture(v) {
+    if (v == null || v === '') return null;
+    var n = Number(v);
+    if (!isFinite(n) || n === -999 || n === -9991) return null;
+    return n;
+  }
+  function shortLabel(t) {
+    var s = String(t || '');
+    return s.length > 16 ? s.slice(5, 16) : s;
   }
 
-  function formatHourLabel(hour) {
-    var s = String(hour || '');
-    // "yyyy-MM-dd HH:00" → "MM/DD\nHH:00"
-    var m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-    if (m) return m[2] + '/' + m[3] + '\n' + m[4] + ':' + m[5];
-    return s;
-  }
+  var API = window.ModelApi;
+  var charts = { obs: null, pred: null };
+  var DROUGHT_LABEL = { '#1#': '无旱', '#2#': '轻旱', '#3#': '中旱', '#4#': '重旱', '#5#': '特旱' };
 
-  function siteId(s) {
-    return String((s && (s.stcd != null ? s.stcd : s.code)) || '');
-  }
-
-  function siteName(s) {
-    return String((s && (s.stnm != null ? s.stnm : s.name)) || siteId(s) || '');
-  }
-
-  function getActive() {
-    for (var i = 0; i < stations.length; i++) {
-      if (siteId(stations[i]) === activeStcd) return stations[i];
-    }
-    return stations[0] || null;
-  }
-
-  function renderList() {
-    var q = ($('station-search').value || '').trim();
-    var html = stations.filter(function (s) {
-      return !q || siteName(s).indexOf(q) >= 0;
-    }).map(function (s) {
-      var id = siteId(s);
-      return '<div class="list-item' + (id === activeStcd ? ' active' : '') + '" data-stcd="' + id + '">' +
-        siteName(s) + '</div>';
-    }).join('');
-    $('station-list').innerHTML = html || '<div style="padding:24px;text-align:center;color:#bbb">无匹配站点</div>';
-  }
-
-  function ensureChart() {
-    var el = $('chart-trend');
+  function ensureChart(key, el) {
     if (!el || !window.echarts) return null;
-    if (!chart) chart = echarts.init(el);
-    return chart;
+    if (!charts[key]) charts[key] = echarts.init(el);
+    return charts[key];
   }
-
-  function emptyChart(tip) {
-    var c = ensureChart();
+  function emptyChart(key, elId, tip) {
+    var c = ensureChart(key, $(elId));
     if (!c) return;
     c.clear();
     c.setOption({
@@ -189,202 +165,266 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         textStyle: { color: '#bbb', fontSize: 14, fontWeight: 'normal' }
       }
     });
+    requestAnimationFrame(function () { c.resize(); });
   }
-
-  function renderChart(points) {
-    var c = ensureChart();
-    if (!c) return;
-    points = Array.isArray(points) ? points : [];
-
-    var labels = points.map(function (p) { return formatHourLabel(p && p.hour); });
-    var seriesData = {};
-    DEPTHS.forEach(function (d) {
-      seriesData[d.key] = points.map(function (p) { return chartValue(p && p[d.key]); });
-    });
-
-    var hasData = labels.length && DEPTHS.some(function (d) {
-      return seriesData[d.key].some(function (v) { return v != null; });
-    });
-    if (!hasData) {
-      emptyChart('暂无含水量数据');
-      return;
-    }
-
-    var allVals = [];
-    DEPTHS.forEach(function (d) {
-      seriesData[d.key].forEach(function (v) {
-        if (v != null && isFinite(v)) allVals.push(v);
+  function resizeCharts() {
+    requestAnimationFrame(function () {
+      Object.keys(charts).forEach(function (k) {
+        if (charts[k]) charts[k].resize();
       });
     });
-    var minV = allVals.length ? Math.floor(Math.min.apply(null, allVals) / 4) * 4 - 4 : 15;
-    var maxV = allVals.length ? Math.ceil(Math.max.apply(null, allVals) / 4) * 4 + 4 : 35;
-    if (minV < 0) minV = 0;
+  }
 
-    var gridBottom = (window.CHART_DATA_ZOOM_GRID_BOTTOM || 58) + 28;
-    var zoom = typeof window.buildChartDataZoom === 'function' ? window.buildChartDataZoom(0, 100) : [];
-    var legendNames = DEPTHS.map(function (d) { return d.name; });
-    var seriesOpt = DEPTHS.map(function (d) {
-      return {
-        name: d.name,
-        type: 'line',
-        smooth: true,
-        symbol: 'emptyCircle',
-        symbolSize: 7,
-        showSymbol: labels.length <= 48,
-        connectNulls: false,
-        itemStyle: { color: d.color },
-        lineStyle: {
-          color: d.color,
-          width: 2,
-          shadowColor: 'rgba(0,0,0,0.08)',
-          shadowBlur: 6,
-          shadowOffsetY: 3
-        },
-        data: seriesData[d.key]
-      };
+  function fillStationSelect(el, list, selected) {
+    list = list || [];
+    el.innerHTML = list.map(function (s) {
+      var id = s.stcd || s.code || '';
+      var name = s.stnm || s.name || id;
+      return '<option value="' + id + '">' + name + '</option>';
+    }).join('');
+    if (selected) el.value = selected;
+    if (!el.value && list[0]) el.value = list[0].stcd || list[0].code || '';
+  }
+
+  function setDefaultDates() {
+    var end = new Date();
+    var start = new Date();
+    start.setDate(end.getDate() - 14);
+    $('query-start').value = fmtDate(start);
+    $('query-end').value = fmtDate(end);
+  }
+
+  function droughtText(code) { return DROUGHT_LABEL[code] || code || '—'; }
+
+  function aggregateDroughtSegments(rows) {
+    var segs = [];
+    var cur = null;
+    (rows || []).forEach(function (r) {
+      var level = r.droughtLevel || r.droughtCode;
+      var tm = r.tm || r.hour || '';
+      if (!level) return;
+      if (!cur || cur.level !== level) {
+        if (cur) segs.push(cur);
+        cur = { level: level, start: tm, end: tm };
+      } else {
+        cur.end = tm;
+      }
     });
+    if (cur) segs.push(cur);
+    return segs.filter(function (s) { return s.level && s.level !== '#1#'; });
+  }
 
-    c.clear();
+  function renderDroughtSegs(rows) {
+    var box = $('drought-segs');
+    var segs = aggregateDroughtSegments(rows);
+    if (!segs.length) {
+      box.innerHTML = '<span class="hint">当前站点无轻旱及以上时段</span>';
+      return;
+    }
+    box.innerHTML = segs.map(function (s) {
+      var n = String(s.level || '').replace(/#/g, '');
+      var cls = 'seg-chip' + (n ? (' lv' + n) : '');
+      var range = s.start === s.end ? s.start : (s.start + ' ~ ' + s.end);
+      return '<span class="' + cls + '">' + droughtText(s.level) + ' · ' + range + '</span>';
+    }).join('');
+  }
+
+  function renderObserved(payload) {
+    var c = ensureChart('obs', $('chart-obs'));
+    if (!c) return;
+    var points = (payload && payload.observed && payload.observed.points) || [];
+    if (!points.length) {
+      emptyChart('obs', 'chart-obs', '暂无实测墒情');
+      $('obs-tip').textContent = '';
+      return;
+    }
+    $('obs-tip').textContent = (payload.stnm || payload.stcd || '') +
+      ' · ' + [payload.startDate, payload.endDate].filter(Boolean).join(' ~ ');
+    var labels = points.map(function (p) { return shortLabel(p.hour); });
     c.setOption({
-      color: DEPTHS.map(function (d) { return d.color; }),
-      tooltip: {
-        trigger: 'axis',
-        valueFormatter: function (v) { return v == null ? '-' : v + '%'; }
-      },
-      legend: {
-        bottom: (window.CHART_DATA_ZOOM_GRID_BOTTOM || 58) - 6,
-        data: legendNames,
-        itemWidth: 18,
-        itemHeight: 10,
-        textStyle: { color: '#666', fontSize: 12 }
-      },
-      grid: { left: 16, right: 24, top: 24, bottom: gridBottom, containLabel: true },
-      dataZoom: zoom,
+      color: ['#867AF7', '#F0978E', '#66C0DC'],
+      tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '—' : v + '%'; } },
+      legend: { bottom: 4, data: ['10cm', '20cm', '30cm'], textStyle: { color: '#666', fontSize: 12 } },
+      grid: { left: 48, right: 24, top: 28, bottom: 48 },
       xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: labels,
-        axisLabel: {
-          color: '#999',
-          fontSize: 11,
-          lineHeight: 14,
-          interval: 'auto'
-        },
+        type: 'category', data: labels, boundaryGap: false,
+        axisTick: { show: false },
         axisLine: { lineStyle: { color: '#e8e8e8' } },
-        axisTick: { show: false }
+        axisLabel: { color: '#8c8c8c', fontSize: 10, hideOverlap: true }
       },
       yAxis: {
-        type: 'value',
-        name: '%',
-        min: minV,
-        max: maxV,
-        interval: 4,
-        nameTextStyle: { color: '#999', fontSize: 12, padding: [0, 28, 0, 0] },
-        axisLabel: { color: '#999', formatter: '{value}' },
+        type: 'value', name: '%',
+        nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+        axisLabel: { color: '#8c8c8c' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
-      series: seriesOpt
+      series: [
+        {
+          name: '10cm', type: 'line', showSymbol: false,
+          itemStyle: { color: '#867AF7' }, lineStyle: { width: 2, color: '#867AF7' },
+          data: points.map(function (p) { return sanitizeMoisture(p.mten); }),
+          connectNulls: false
+        },
+        {
+          name: '20cm', type: 'line', showSymbol: false,
+          itemStyle: { color: '#F0978E' }, lineStyle: { width: 2, color: '#F0978E' },
+          data: points.map(function (p) { return sanitizeMoisture(p.mtwenty); }),
+          connectNulls: false
+        },
+        {
+          name: '30cm', type: 'line', showSymbol: false,
+          itemStyle: { color: '#66C0DC' }, lineStyle: { width: 2, color: '#66C0DC' },
+          data: points.map(function (p) { return sanitizeMoisture(p.mthirty); }),
+          connectNulls: false
+        }
+      ]
     }, true);
+    requestAnimationFrame(function () { c.resize(); });
   }
 
-  function dateToStart(v) { return v ? v + ' 00:00:00' : null; }
-  function dateToEnd(v) { return v ? v + ' 23:59:59' : null; }
+  function renderForecast(payload) {
+    var c = ensureChart('pred', $('chart-pred'));
+    if (!c) return;
+    var rows = (payload && payload.forecast && payload.forecast.points) || [];
+    if (!rows.length) {
+      emptyChart('pred', 'chart-pred', '暂无预测墒情');
+      $('pred-tip').textContent = '';
+      $('drought-segs').innerHTML = '';
+      return;
+    }
+    $('pred-tip').textContent = (payload.stnm || payload.stcd || '') +
+      ' · ' + [payload.startDate, payload.endDate].filter(Boolean).join(' ~ ');
 
-  async function loadTrend() {
-    if (!activeStcd) {
-      emptyChart('请选择站点');
-      return;
-    }
-    if (!window.ModelApi || !ModelApi.soilMoisture) {
-      toast('接口客户端未加载');
-      return;
-    }
-    if (loading) return;
-    loading = true;
+    var labels = rows.map(function (r) { return shortLabel(r.tm); });
+    var rain = rows.map(function (r) { return r.rainfall; });
+    var m10 = rows.map(function (r) { return sanitizeMoisture(r.mten); });
+    var m20 = rows.map(function (r) { return sanitizeMoisture(r.mtwenty); });
+    var m30 = rows.map(function (r) { return sanitizeMoisture(r.mthirty); });
+    var rainMax = niceCeil(Math.max(5, maxOf(rain, 0)), 1);
 
-    var start = dateToStart($('start-date').value);
-    var end = dateToEnd($('end-date').value);
-    if (start && end && end < start) {
-      toast('起始日期不能晚于截止日期');
-      loading = false;
-      return;
-    }
+    c.setOption({
+      color: ['#5B8FF9', '#867AF7', '#F0978E', '#66C0DC'],
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', link: [{ xAxisIndex: 'all' }] } },
+      legend: {
+        bottom: 4, left: 'center',
+        data: ['降雨', '10cm', '20cm', '30cm'],
+        textStyle: { color: '#666', fontSize: 12 }
+      },
+      axisPointer: { link: [{ xAxisIndex: 'all' }] },
+      grid: [
+        { left: 48, right: 24, top: 24, height: '26%' },
+        { left: 48, right: 24, top: '44%', height: '38%' }
+      ],
+      xAxis: [
+        {
+          type: 'category', gridIndex: 0, data: labels, boundaryGap: true,
+          axisLabel: { show: false }, axisTick: { show: false },
+          axisLine: { lineStyle: { color: '#e8e8e8' } }
+        },
+        {
+          type: 'category', gridIndex: 1, data: labels, boundaryGap: false,
+          axisTick: { show: false },
+          axisLine: { lineStyle: { color: '#e8e8e8' } },
+          axisLabel: { color: '#8c8c8c', fontSize: 10, hideOverlap: true }
+        }
+      ],
+      yAxis: [
+        {
+          type: 'value', gridIndex: 0, name: 'mm', min: 0, max: rainMax,
+          nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+          axisLabel: { color: '#8c8c8c' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', gridIndex: 1, name: '%',
+          nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+          axisLabel: { color: '#8c8c8c' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        }
+      ],
+      series: [
+        {
+          name: '降雨', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, barMaxWidth: 10,
+          itemStyle: { color: '#5B8FF9', borderRadius: [2, 2, 0, 0] }, data: rain
+        },
+        {
+          name: '10cm', type: 'line', xAxisIndex: 1, yAxisIndex: 1, showSymbol: false,
+          lineStyle: { width: 2, color: '#867AF7' }, data: m10, connectNulls: false
+        },
+        {
+          name: '20cm', type: 'line', xAxisIndex: 1, yAxisIndex: 1, showSymbol: false,
+          lineStyle: { width: 2, color: '#F0978E' }, data: m20, connectNulls: false
+        },
+        {
+          name: '30cm', type: 'line', xAxisIndex: 1, yAxisIndex: 1, showSymbol: false,
+          lineStyle: { width: 2, color: '#66C0DC' }, data: m30, connectNulls: false
+        }
+      ]
+    }, true);
+    renderDroughtSegs(rows);
+    requestAnimationFrame(function () { c.resize(); });
+  }
+
+  async function loadSites() {
+    var list = await API.droughtDecision.sites();
+    fillStationSelect($('query-stcd'), list || []);
+  }
+
+  async function runQuery() {
+    var stcd = ($('query-stcd').value || '').trim();
+    var start = ($('query-start').value || '').trim();
+    var end = ($('query-end').value || '').trim();
+    if (!stcd) return toast('请选择站点');
+    if (!start || !end) return toast('请选择日期');
+    if (start > end) return toast('起始日期不能晚于截止日期');
+
+    var btn = $('query-btn');
+    btn.disabled = true;
+    btn.textContent = '查询中…';
+    emptyChart('obs', 'chart-obs', '加载中…');
+    emptyChart('pred', 'chart-pred', '加载中…');
+    $('drought-segs').innerHTML = '';
 
     try {
-      var data = await ModelApi.soilMoisture.trend(activeStcd, start || undefined, end || undefined);
-      renderChart(data && data.points);
-      setTimeout(function () { if (chart) chart.resize(); }, 40);
+      var data = await API.droughtDecision.query(stcd, start, end);
+      renderObserved(data);
+      renderForecast(data);
     } catch (e) {
-      emptyChart('加载失败');
+      emptyChart('obs', 'chart-obs', (e && e.message) || '查询失败');
+      emptyChart('pred', 'chart-pred', (e && e.message) || '查询失败');
       toast((e && e.message) || '查询失败');
     } finally {
-      loading = false;
+      btn.disabled = false;
+      btn.textContent = '查询';
+      resizeCharts();
     }
   }
 
-  async function loadStations() {
-    if (!window.ModelApi || !ModelApi.soilMoisture) {
+  async function init() {
+    setDefaultDates();
+    emptyChart('obs', 'chart-obs', '请选择站点与日期后查询');
+    emptyChart('pred', 'chart-pred', '请选择站点与日期后查询');
+
+    $('query-btn').addEventListener('click', runQuery);
+    $('reset-btn').addEventListener('click', function () {
+      setDefaultDates();
+      runQuery();
+    });
+    window.addEventListener('resize', resizeCharts);
+
+    if (!API || !API.droughtDecision) {
       toast('接口客户端未加载');
-      emptyChart('接口未加载');
       return;
     }
     try {
-      var list = await ModelApi.soilMoisture.sites();
-      stations = Array.isArray(list) ? list : [];
-      if (!stations.length) {
-        activeStcd = '';
-        renderList();
-        emptyChart('暂无站点');
-        return;
-      }
-      if (!activeStcd || !stations.some(function (s) { return siteId(s) === activeStcd; })) {
-        activeStcd = siteId(stations[0]);
-      }
-      renderList();
-      await loadTrend();
+      await loadSites();
+      await runQuery();
     } catch (e) {
-      stations = [];
-      renderList();
-      emptyChart('站点加载失败');
-      toast((e && e.message) || '站点加载失败');
+      toast((e && e.message) || '初始化失败');
     }
   }
 
-  function selectStation(stcd) {
-    if (!stcd || stcd === activeStcd) return;
-    activeStcd = stcd;
-    renderList();
-    loadTrend();
-  }
-
-  function doQuery() {
-    loadTrend();
-  }
-
-  function doReset() {
-    $('start-date').value = '';
-    $('end-date').value = '';
-    loadTrend();
-  }
-
-  $('station-list').addEventListener('click', function (e) {
-    var item = e.target.closest('.list-item');
-    if (!item) return;
-    selectStation(item.getAttribute('data-stcd') || '');
-  });
-  $('station-search').addEventListener('input', renderList);
-  $('station-collapse').addEventListener('click', function () {
-    listCollapsed = !listCollapsed;
-    $('station-list').style.display = listCollapsed ? 'none' : '';
-  });
-  $('query-btn').addEventListener('click', doQuery);
-  $('reset-btn').addEventListener('click', doReset);
-
-  window.addEventListener('resize', function () {
-    if (chart) chart.resize();
-  });
-
-  loadStations();
+  init();
 })();
 </script>
 </body>

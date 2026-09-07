@@ -573,6 +573,35 @@
         if (endTime) q.push('endTime=' + encodeURIComponent(endTime));
         return getJson('/soil-moisture/trend?' + q.join('&'));
       }
+    },
+    /**
+     * 智能抗旱决策（后端已实现，契约与前端页面 drought-trend-analysis.html 一致）
+     *
+     * 契约：
+     *   GET /drought-decision/sites
+     *     → [{ "stcd", "stnm" }, ...]
+     *   GET /drought-decision/query?stcd=&startDate=yyyy-MM-dd&endDate=yyyy-MM-dd
+     *     → {
+     *         stcd, stnm, startDate, endDate,
+     *         observed: { points: [{ hour, mten, mtwenty, mthirty }] },
+     *         forecast: { points: [{ tm, rainfall, mten, mtwenty, mthirty, droughtLevel }] }
+     *       }
+     */
+    droughtDecision: {
+      sites: function () {
+        return getJson('/drought-decision/sites');
+      },
+      query: function (stcd, startDate, endDate) {
+        if (!stcd) return Promise.reject(new Error('请选择站点'));
+        if (!startDate || !endDate) return Promise.reject(new Error('请选择日期'));
+        if (startDate > endDate) return Promise.reject(new Error('起始日期不能晚于截止日期'));
+        var q = [
+          'stcd=' + encodeURIComponent(stcd),
+          'startDate=' + encodeURIComponent(startDate),
+          'endDate=' + encodeURIComponent(endDate)
+        ];
+        return getJson('/drought-decision/query?' + q.join('&'));
+      }
     }
   };
 
