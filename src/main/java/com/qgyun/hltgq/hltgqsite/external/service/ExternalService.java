@@ -43,7 +43,8 @@ public class ExternalService {
     @Autowired
     private ExternalMapper mapper;
 
-    /** 渠首进水闸站点 UUID（配置默认值，与页面闸门监测口径一致） */
+    /** 渠首进水闸站点 ID = 档案表 id（配置默认值，与页面闸门监测口径一致；
+     * 响应 stcd = 档案表 iofhpi，运行时按 id 反查避免配置漂移） */
     @Value("${external.intake-gate-site:CAYQ739MiBWMg9gQvyi}")
     private String intakeGateSite;
 
@@ -73,7 +74,8 @@ public class ExternalService {
     /** 渠首进水闸实时数据：闸前/闸后水位（gate 表）+ 流量（wt_nfo 表），时间取两者较新 */
     public ExternalVO.IntakeGate intakeGate() {
         ExternalVO.IntakeGate vo = new ExternalVO.IntakeGate();
-        vo.setStcd(intakeGateSite);
+        vo.setSite(intakeGateSite);
+        vo.setStcd(mapper.selectStcdBySite(intakeGateSite));
         vo.setStnm("渠首进水闸");
         vo.setManagementUnit(intakeGateUnit);
 

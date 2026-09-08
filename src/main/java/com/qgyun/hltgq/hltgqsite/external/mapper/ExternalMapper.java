@@ -36,6 +36,13 @@ public interface ExternalMapper {
     Map<String, Object> selectLatestFlow(@Param("site") String site);
 
     /**
+     * 站点编码（档案表 iofhpi，与监测数据表 stcd 同口径）：按站点 ID（档案表 id）反查。
+     */
+    @Select("SELECT iofhpi FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
+            "WHERE id = #{site} LIMIT 1")
+    String selectStcdBySite(@Param("site") String site);
+
+    /**
      * 巡检汇总：累计巡检次数（已提交）/ 巡检计划总数 / 完成巡检数（计划已完成）。
      * 三条计数合并为一条 SQL（三张表同 schema，逐条 COUNT 子查询）。
      */
