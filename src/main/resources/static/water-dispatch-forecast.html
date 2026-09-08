@@ -64,6 +64,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tenday-slider-wrap input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;margin-top:-5px;border:2px solid #fff;box-shadow:0 0 0 1px #91caff}
 .tenday-slider-wrap input[type=range]::-moz-range-track{height:4px;background:#e8e8e8;border-radius:2px}
 .tenday-slider-wrap input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;border:2px solid #fff}
+.btn.topo-fullscreen{height:32px!important;width:32px!important;min-width:32px!important;padding:0!important;color:#595959}
+.btn.topo-fullscreen svg{display:block;width:16px;height:16px}
 .chart-card{border:1px solid #f0f0f0;border-radius:8px;padding:16px 16px 8px;margin-bottom:16px}
 .detail-card{background:#fff;border:1px solid #f0f0f0;border-radius:8px;padding:16px}
 .detail-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap}
@@ -189,6 +191,7 @@ tbody tr:hover td{background:#fafafa}
           <div class="map-toolbar">
             <div class="chart-title">配水调度</div>
             <div class="map-filters">
+              <span class="map-period-label" id="map-period-label" title="当前拓扑图对应旬区间">5月上旬—10月下旬</span>
               <select class="field" id="map-start" style="width:120px" title="起始旬"></select>
               <span class="date-sep">—</span>
               <select class="field" id="map-end" style="width:120px" title="截止旬"></select>
@@ -197,7 +200,9 @@ tbody tr:hover td{background:#fafafa}
                 <input type="range" id="map-range-end" min="0" max="17" value="17" step="1">
               </div>
               <button type="button" class="btn btn-default topo-fullscreen" id="topo-full-btn" title="全屏">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M15 3h6v6M9 21H3v-6M21 15v6h-6M3 9V3h6M21 3l-7 7M3 21l7-7M21 21l-7-7M3 3l7 7" stroke="#595959" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
               </button>
             </div>
           </div>
@@ -405,18 +410,25 @@ tbody tr:hover td{background:#fafafa}
   }
   let dispatchTendayLabels = DEFAULT_TENDAY_LABELS.slice();
 
-  function collectTendayLabels(rows) {
-    const seen = new Set();
-    const list = [];
-    (rows || []).forEach(r => {
-      const lb = r.tendayLabel;
-      if (lb && lb !== '—' && !seen.has(lb)) { seen.add(lb); list.push(lb); }
-    });
-    return list.length ? list : DEFAULT_TENDAY_LABELS.slice();
+  function updateMapPeriodLabel() {
+    const el = $('map-period-label');
+    if (!el) return;
+    const start = ($('map-start') && $('map-start').value) || '';
+    const end = ($('map-end') && $('map-end').value) || '';
+    if (!start && !end) {
+      el.textContent = '—';
+      return;
+    }
+    if (!start || !end || start === end) {
+      el.textContent = start || end;
+      return;
+    }
+    el.textContent = start + '—' + end;
   }
 
   function fillDispatchTendayControls(keep) {
-    dispatchTendayLabels = collectTendayLabels(branchRows);
+    // 拓扑旬筛选固定 5月上旬～10月下旬（与需水预报一致）
+    dispatchTendayLabels = DEFAULT_TENDAY_LABELS.slice();
     const startEl = $('map-start');
     const endEl = $('map-end');
     const rs = $('map-range-start');
@@ -439,6 +451,7 @@ tbody tr:hover td{background:#fafafa}
     endEl.value = dispatchTendayLabels[ei];
     if (rs) rs.value = si;
     if (re) re.value = ei;
+    updateMapPeriodLabel();
   }
 
   function tendayInMapRange(label) {
@@ -457,6 +470,7 @@ tbody tr:hover td{background:#fafafa}
     const ei = dispatchTendayLabels.indexOf($('map-end').value);
     if ($('map-range-start') && si >= 0) $('map-range-start').value = si;
     if ($('map-range-end') && ei >= 0) $('map-range-end').value = ei;
+    updateMapPeriodLabel();
   }
 
   function syncMapSelectsFromRange() {
@@ -465,6 +479,7 @@ tbody tr:hover td{background:#fafafa}
     if (ei < si) { const t = si; si = ei; ei = t; }
     if (dispatchTendayLabels[si]) $('map-start').value = dispatchTendayLabels[si];
     if (dispatchTendayLabels[ei]) $('map-end').value = dispatchTendayLabels[ei];
+    updateMapPeriodLabel();
   }
 
   function onDispatchMapRangeChange() {
@@ -748,18 +763,12 @@ tbody tr:hover td{background:#fafafa}
     $('view-overlay').classList.remove('show');
   }
 
-  function formatTopoMetric(area, volume) {
-    if ((area == null || area === '') && (volume == null || volume === '')) return '—';
-    const a =
-      area == null || area === '' || Number.isNaN(Number(area)) ? '—' : String(Math.round(Number(area)));
-    const v =
-      volume == null || volume === '' || Number.isNaN(Number(volume))
-        ? '—'
-        : Number(volume).toFixed(1);
-    return a + '/' + v;
+  function formatTopoVolume(volume) {
+    if (volume == null || volume === '' || Number.isNaN(Number(volume))) return '—';
+    return Number(volume).toFixed(1);
   }
 
-  /** 支渠：面积亩 + 建议供水万方（接口 branchDetails.area / suggestedSupply） */
+  /** 支渠：建议供水万方（接口 branchDetails.suggestedSupply） */
   function branchMetricMap() {
     const map = {};
     if (!hasResult) return map;
@@ -767,13 +776,10 @@ tbody tr:hover td{background:#fafafa}
       if (!tendayInMapRange(r.tendayLabel)) return;
       const name = r.branchName;
       if (!name || name === '—') return;
-      if (!map[name]) map[name] = { area: null, volume: 0 };
+      if (!map[name]) map[name] = { volume: 0 };
       const raw = r.suggestedSupply != null ? r.suggestedSupply : r.demandVolume;
       const v = Number(raw);
       if (raw != null && !Number.isNaN(v)) map[name].volume += v;
-      if (map[name].area == null && r.area != null && r.area !== '') {
-        map[name].area = Number(r.area) || 0;
-      }
     });
     return map;
   }
@@ -793,17 +799,15 @@ tbody tr:hover td{background:#fafafa}
     const boxes = [];
 
     MAIN_CANAL_LAYOUT.forEach(c => {
-      let area = 0;
       let volume = 0;
       let hit = false;
       (c.branches || []).forEach(name => {
         const row = metricMap[name];
         if (!row) return;
         hit = true;
-        area += Number(row.area) || 0;
         volume += Number(row.volume) || 0;
       });
-      const val = hit ? formatTopoMetric(area, volume) : '—';
+      const val = hit ? formatTopoVolume(volume) : '—';
       const pad = 5;
       const fs = 11;
       const textLen = Math.max(1, String(val).length);
@@ -906,7 +910,7 @@ tbody tr:hover td{background:#fafafa}
       rect.setAttribute('ry', '3');
       rect.setAttribute('class', box.main ? 'topo-var-pill main' : 'topo-var-pill');
       const title = document.createElementNS(ns, 'title');
-      title.textContent = box.name + (box.main ? '（面积亩/供水万方）：' : '（供水万方）：') + box.val;
+      title.textContent = box.name + '（供水万方）：' + box.val;
       const text = document.createElementNS(ns, 'text');
       text.setAttribute('class', 'topo-var-txt');
       text.textContent = box.val;

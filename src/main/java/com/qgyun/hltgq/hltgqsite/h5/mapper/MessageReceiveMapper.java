@@ -2,7 +2,6 @@ package com.qgyun.hltgq.hltgqsite.h5.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.qgyun.hltgq.hltgqsite.h5.entity.MessageReceive;
-import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -10,22 +9,9 @@ import org.apache.ibatis.annotations.Update;
 import java.util.List;
 
 /**
- * H5 消息中心：消息接收表 Mapper（发送物化 + 已读状态维护）。
+ * H5 消息中心：消息接收表 Mapper（接收记录按需同步建立 + 已读状态维护）。
  */
 public interface MessageReceiveMapper extends BaseMapper<MessageReceive> {
-
-    /**
-     * 批量插入接收记录：重复分发由唯一约束 uk_message_receive ON CONFLICT 幂等忽略。
-     */
-    @Insert("<script>" +
-            "INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
-            "(id, user_id, message_type, message_id, is_read, read_time, corp_code, created_at, created_by) VALUES " +
-            "<foreach collection='rows' item='r' separator=','>" +
-            "(#{r.id}, #{r.userId}, #{r.messageType}, #{r.messageId}, '#1#', null, #{r.corpCode}, CURRENT_TIMESTAMP, #{r.createdBy})" +
-            "</foreach> " +
-            "ON CONFLICT (message_type, message_id, user_id) DO NOTHING" +
-            "</script>")
-    int batchInsert(@Param("rows") List<MessageReceive> rows);
 
     /**
      * 某类型未读数（当前登录人未读接收记录数，不含告警状态过滤，告警未读单独查询）。
@@ -48,10 +34,11 @@ public interface MessageReceiveMapper extends BaseMapper<MessageReceive> {
 
     /**
      * 批量标记已读（幂等：重复标记仅更新同一记录）。
+     * <p>不更新 read_time：前端仅消费 isRead，且线上接收表可能缺 read_time 列，避免兼容性风险。
      */
     @Update("<script>" +
             "UPDATE \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
-            "SET is_read = '#2#', read_time = CURRENT_TIMESTAMP " +
+            "SET is_read = '#2#' " +
             "WHERE user_id = #{userId} AND message_type = #{messageType} AND is_read = '#1#' " +
             "AND message_id IN " +
             "<foreach collection='messageIds' item='id' open='(' separator=',' close=')'>#{id}</foreach>" +
@@ -61,10 +48,10 @@ public interface MessageReceiveMapper extends BaseMapper<MessageReceive> {
                  @Param("messageIds") List<String> messageIds);
 
     /**
-     * 某类型全部标记已读（当前登录人未读记录）。
+     * 某类型全部标记已读（当前登录人未读记录，不更新 read_time，理由同 markRead）。
      */
     @Update("UPDATE \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
-            "SET is_read = '#2#', read_time = CURRENT_TIMESTAMP " +
+            "SET is_read = '#2#' " +
             "WHERE user_id = #{userId} AND message_type = #{messageType} AND is_read = '#1#'")
     int markReadAll(@Param("userId") String userId, @Param("messageType") String messageType);
 }

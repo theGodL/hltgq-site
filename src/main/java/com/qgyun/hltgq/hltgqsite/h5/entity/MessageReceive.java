@@ -9,10 +9,10 @@ import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
 
 /**
- * H5 消息中心：消息接收表实体（发送时建未读记录，阅读后 UPDATE 已读）。
- * <p>is_read：#1# 未读（发送时默认）、#2# 已读（查看后 UPDATE）；
+ * H5 消息中心：消息接收表实体（按需同步时建立未读记录，阅读后 UPDATE 已读）。
+ * <p>is_read：#1# 未读（同步建立时默认）、#2# 已读（查看后 UPDATE）；
  * message_type：#1# 告警、#2# 举报投诉、#3# 意见征集。
- * <p>幂等：唯一约束 uk_message_receive(message_type, message_id, user_id)。
+ * <p>幂等：同步 INSERT 带 NOT EXISTS（一人对一条消息只有一条接收记录，不依赖唯一约束）。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

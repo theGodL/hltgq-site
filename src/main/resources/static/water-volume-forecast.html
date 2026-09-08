@@ -136,6 +136,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tenday-slider-wrap input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;margin-top:-5px;border:2px solid #fff;box-shadow:0 0 0 1px #91caff}
 .tenday-slider-wrap input[type=range]::-moz-range-track{height:4px;background:#e8e8e8;border-radius:2px}
 .tenday-slider-wrap input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;border:2px solid #fff}
+.btn.topo-fullscreen{height:32px!important;width:32px!important;min-width:32px!important;padding:0!important;color:#595959}
+.btn.topo-fullscreen svg{display:block;width:16px;height:16px}
 .stat-card{background:#fafafa;border:1px solid #f0f0f0;border-radius:8px;padding:16px 20px}
 .stat-card .label{color:#999;font-size:13px;margin-bottom:8px}
 .stat-card .value{font-size:24px;font-weight:700;color:#1f1f1f;line-height:1.2}
@@ -269,12 +271,12 @@ tbody tr:hover td{background:#fafafa}
       <div class="left-panel">
         <div class="left-scroll">
           <div class="form-item">
-            <label class="form-label"><span class="req">*</span>预报时间</label>
-            <div class="date-range datetime-stack">
-              <input type="datetime-local" class="field" id="start-datetime" step="60" disabled title="开始时间固定为当前时刻，不可编辑">
-              <span class="date-sep">—</span>
-              <input type="datetime-local" class="field" id="end-datetime" step="60" title="结束时间可编辑，最多往后 16 天">
-            </div>
+            <label class="form-label" for="start-datetime"><span class="req">*</span>预报开始时间</label>
+            <input type="datetime-local" class="field" id="start-datetime" step="3600" disabled title="开始时间固定为当前整点，不可编辑">
+          </div>
+          <div class="form-item">
+            <label class="form-label" for="end-datetime"><span class="req">*</span>预报结束时间</label>
+            <input type="datetime-local" class="field" id="end-datetime" step="3600" title="结束时间可编辑（整点），最多往后 16 天">
             <div class="form-hint" style="margin-top:8px">开始时间固定为当前时刻；结束时间最多往后 16 天</div>
           </div>
 
@@ -284,7 +286,7 @@ tbody tr:hover td{background:#fafafa}
               <input type="text" class="field" id="start-level-display" value="默认取花凉亭坝上最新水位" readonly title="由后端自动取花凉亭坝上最新水位，不可编辑">
               <span class="unit">m</span>
             </div>
-            <div class="form-hint" style="margin-top:8px">不可编辑，后端自动取花凉亭坝上最新水位</div>
+            <div class="form-hint" id="start-level-tip" style="margin-top:8px">加载坝上最新水位…</div>
           </div>
 
           <div class="form-item">
@@ -298,7 +300,7 @@ tbody tr:hover td{background:#fafafa}
               <label for="enable-tunnel">启用泄洪隧洞</label>
             </div>
             <div class="chk-row">
-              <input type="checkbox" id="enable-spillway">
+              <input type="checkbox" id="enable-spillway" checked>
               <label for="enable-spillway">启用溢洪道</label>
             </div>
           </div>
@@ -359,13 +361,12 @@ tbody tr:hover td{background:#fafafa}
                     <tr>
                       <th>时间</th>
                       <th>降雨量(mm)</th>
-                      <th>入库水量(万方)</th>
-                      <th>水位(m)</th>
-                      <th>库容(万方)</th>
-                      <th>出库水量(万方)</th>
-                      <th>蒸发量</th>
                       <th>入库流量(m³/s)</th>
                       <th>出库流量(m³/s)</th>
+                      <th>水位(m)</th>
+                      <th>库容(万方)</th>
+                      <th>入库水量(万方)</th>
+                      <th>出库水量(万方)</th>
                     </tr>
                   </thead>
                   <tbody id="short-tbody"></tbody>
@@ -564,6 +565,7 @@ tbody tr:hover td{background:#fafafa}
             <div class="map-toolbar">
               <div class="chart-title">需水预报</div>
               <div class="map-filters">
+                <span class="map-period-label" id="demand-map-period-label" title="当前拓扑图对应旬区间">5月上旬</span>
                 <select class="field" id="demand-map-start" style="width:120px" title="起始旬"></select>
                 <span class="date-sep">—</span>
                 <select class="field" id="demand-map-end" style="width:120px" title="截止旬"></select>
@@ -572,7 +574,9 @@ tbody tr:hover td{background:#fafafa}
                   <input type="range" id="demand-range-end" min="0" max="17" value="17" step="1">
                 </div>
                 <button type="button" class="btn btn-default topo-fullscreen" id="topo-full-btn" title="全屏">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M15 3h6v6M9 21H3v-6M21 15v6h-6M3 9V3h6M21 3l-7 7M3 21l7-7M21 21l-7-7M3 3l7 7" stroke="#595959" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
                 </button>
               </div>
             </div>
@@ -723,7 +727,7 @@ tbody tr:hover td{background:#fafafa}
           </div>
         </div>
         <div class="filter-actions">
-          <button type="button" class="btn btn-primary" id="moisture-query-btn">查询</button>
+          <button type="button" class="btn btn-primary" id="moisture-query-btn">计算</button>
           <button type="button" class="btn btn-default" id="moisture-reset-btn">重置</button>
         </div>
       </div>
@@ -754,7 +758,7 @@ tbody tr:hover td{background:#fafafa}
           <div id="moisture-result-content" style="display:none">
             <div class="chart-card">
               <div class="chart-title">土壤含水量变化趋势</div>
-              <div class="chart-unit">单位：%</div>
+              <div class="chart-unit">含水量 % · 降雨量 mm</div>
               <div class="chart-box" id="chart-moisture" style="height:320px"></div>
             </div>
 
@@ -868,13 +872,12 @@ tbody tr:hover td{background:#fafafa}
               <tr>
                 <th>时间</th>
                 <th>降雨量(mm)</th>
-                <th>入库水量(万方)</th>
-                <th>水位(m)</th>
-                <th>库容(万方)</th>
-                <th>出库水量(万方)</th>
-                <th>蒸发量</th>
                 <th>入库流量(m³/s)</th>
                 <th>出库流量(m³/s)</th>
+                <th>水位(m)</th>
+                <th>库容(万方)</th>
+                <th>入库水量(万方)</th>
+                <th>出库水量(万方)</th>
               </tr>
             </thead>
             <tbody id="detail-tbody"></tbody>
@@ -1148,7 +1151,7 @@ tbody tr:hover td{background:#fafafa}
   }
   function initShortRange() {
     const start = new Date();
-    start.setSeconds(0, 0);
+    start.setMinutes(0, 0, 0); // 气象整点
     const end = new Date(start);
     end.setDate(end.getDate() + 15);
     const startEl = $('start-datetime');
@@ -1162,6 +1165,14 @@ tbody tr:hover td{background:#fafafa}
     const startEl = $('start-datetime');
     const endEl = $('end-datetime');
     if (!startEl || !endEl || !startEl.value) return;
+    // 结束时间强制整点
+    if (endEl.value) {
+      const ed = new Date(endEl.value);
+      if (!Number.isNaN(+ed) && (ed.getMinutes() !== 0 || ed.getSeconds() !== 0)) {
+        ed.setMinutes(0, 0, 0);
+        endEl.value = toLocalDatetimeValue(ed);
+      }
+    }
     endEl.min = startEl.value;
     const start = new Date(startEl.value);
     if (Number.isNaN(+start)) return;
@@ -1172,6 +1183,30 @@ tbody tr:hover td{background:#fafafa}
     if (endEl.value && endEl.value > endEl.max) {
       endEl.value = endEl.max;
       if (fromUser) toast('结束时间最多往后 16 天');
+    }
+  }
+  /** 进页拉取花凉亭坝上最新水位提示 */
+  async function loadDamLatestLevelTip() {
+    const tip = $('start-level-tip');
+    const input = $('start-level-display');
+    if (!tip) return;
+    tip.textContent = '加载坝上最新水位…';
+    try {
+      const data = await API.getJson('/st-river-r/reservoir-regime?stcd=3206400007&page=1&size=1');
+      const row = data && data.records && data.records[0];
+      if (!row || row.z == null || row.z === '') {
+        tip.textContent = '暂无坝上最新水位，计算时由后端自动取值';
+        return;
+      }
+      const z = Number(row.z);
+      const zText = Number.isFinite(z) ? z.toFixed(2) : String(row.z);
+      const tm = API.fmtDateTime(row.tm);
+      tip.textContent = '当前水位是 ' + zText + ' m，时间是 ' + tm;
+      if (input && (!input.value || input.value.indexOf('默认') >= 0)) {
+        input.value = zText;
+      }
+    } catch (e) {
+      tip.textContent = '坝上最新水位暂不可用，计算时由后端自动取值';
     }
   }
   function fmtHourLabel(iso) {
@@ -1245,8 +1280,7 @@ tbody tr:hover td{background:#fafafa}
       color: ['#1677ff'],
       tooltip: { trigger: 'axis' },
       legend: { top: 4, data: ['降雨量'], itemWidth: 10, itemHeight: 10 },
-      grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
-      dataZoom: buildChartDataZoom(),
+      grid: { left: 16, right: 20, top: 40, bottom: 52, containLabel: true },
       xAxis: {
         type: 'category',
         data: axisDates(dates),
@@ -1255,18 +1289,32 @@ tbody tr:hover td{background:#fafafa}
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
       yAxis: {
-        type: 'value', min: 0,
+        type: 'value', min: 0, inverse: true,
         axisLabel: { color: '#999' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
       series: [{
         name: '降雨量', type: 'bar', data: data, barMaxWidth: dense ? 6 : 14,
-        label: { show: !dense, position: 'top', fontSize: 9, color: '#666', formatter: p => (p.value > 0 ? p.value : '') }
+        itemStyle: { borderRadius: [0, 0, 2, 2] },
+        // 倒挂后 tip 朝下，标签放在柱端
+        label: { show: !dense, position: 'bottom', fontSize: 9, color: '#666', formatter: p => (p.value > 0 ? p.value : '') }
       }]
     };
   }
+  /** 水位轴按数据自适应，尽量把水位线放在图中部（含几乎不变时） */
+  function levelAxisRange(level) {
+    const nums = (level || []).map(Number).filter(n => Number.isFinite(n));
+    if (!nums.length) return { scale: true };
+    const lo = Math.min(...nums);
+    const hi = Math.max(...nums);
+    const mid = (lo + hi) / 2;
+    let half = Math.max((hi - lo) / 2, 0.25, Math.abs(mid) * 0.008);
+    half *= 1.6;
+    return { min: +(mid - half).toFixed(2), max: +(mid + half).toFixed(2) };
+  }
   function levelFlowOption(dates, level, inRate, outRate) {
     const dense = (dates || []).length > 48;
+    const levelRange = levelAxisRange(level);
     return {
       color: ['#1677ff', '#52c41a', '#fa8c16'],
       tooltip: { trigger: 'axis' },
@@ -1287,6 +1335,9 @@ tbody tr:hover td{background:#fafafa}
         },
         {
           type: 'value', name: '水位 m',
+          min: levelRange.min,
+          max: levelRange.max,
+          scale: levelRange.scale,
           nameTextStyle: { color: '#999', padding: [0, 8, 0, 0] },
           axisLabel: { color: '#999' },
           splitLine: { show: false }
@@ -1663,13 +1714,12 @@ tbody tr:hover td{background:#fafafa}
     return shortDates.map((dt, i) => ({
       date: API.fmtDateTime(dt),
       rain: numOrDash(shortSeries.rainfall[i], 2),
-      inflow: numOrDash(shortSeries.inflow[i], 2),
+      inFlow: numOrDash(shortSeries.inFlowRate[i], 2),
+      outFlow: numOrDash(shortSeries.outFlowRate[i], 2),
       level: numOrDash(shortSeries.level[i], 2),
       capacity: numOrDash(shortSeries.capacity[i], 2),
-      outflow: numOrDash(shortSeries.outflow[i], 2),
-      evaporation: numOrDash(shortSeries.evaporation[i], 2),
-      inFlow: numOrDash(shortSeries.inFlowRate[i], 2),
-      outFlow: numOrDash(shortSeries.outFlowRate[i], 2)
+      inflow: numOrDash(shortSeries.inflow[i], 2),
+      outflow: numOrDash(shortSeries.outflow[i], 2)
     }));
   }
   function filteredRows() {
@@ -1689,15 +1739,14 @@ tbody tr:hover td{background:#fafafa}
       `<tr>
         <td>${r.date}</td>
         <td>${r.rain}</td>
-        <td>${r.inflow}</td>
-        <td>${r.level}</td>
-        <td>${r.capacity}</td>
-        <td>${r.outflow}</td>
-        <td>${r.evaporation}</td>
         <td>${r.inFlow}</td>
         <td>${r.outFlow}</td>
+        <td>${r.level}</td>
+        <td>${r.capacity}</td>
+        <td>${r.inflow}</td>
+        <td>${r.outflow}</td>
       </tr>`
-    ).join('') || `<tr><td colspan="9" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+    ).join('') || `<tr><td colspan="8" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
     ['detail-tbody', 'short-tbody'].forEach(id => {
       const el = $(id);
       if (el) el.innerHTML = html;
@@ -1938,7 +1987,8 @@ tbody tr:hover td{background:#fafafa}
       if (idx >= 0) map[key].v[idx] = Number(b.demandVolume) || 0;
     });
     demandRowsCache = Object.values(map);
-    fillDemandTendaySelects(true);
+    // 拓扑旬筛选固定 5月上旬～10月下旬（18 旬），与数据口径一致
+    fillDemandTendaySelects(false);
     rebuildDemandTopoMap();
   }
 
@@ -1954,12 +2004,33 @@ tbody tr:hover td{background:#fafafa}
     return { startDay: 21, endDay: daysInMonth, month };
   }
 
+  /** 拓扑图旬下拉/滑块固定为 5 上～10 下 */
+  function demandMapPeriodList() {
+    return DEMAND_PERIODS_DEFAULT;
+  }
+
   function demandPeriodList() {
     return (demandPeriods && demandPeriods.length) ? demandPeriods : DEMAND_PERIODS_DEFAULT;
   }
 
+  function updateDemandMapPeriodLabel() {
+    const el = $('demand-map-period-label');
+    if (!el) return;
+    const start = ($('demand-map-start') && $('demand-map-start').value) || '';
+    const end = ($('demand-map-end') && $('demand-map-end').value) || '';
+    if (!start && !end) {
+      el.textContent = '—';
+      return;
+    }
+    if (!start || !end || start === end) {
+      el.textContent = start || end;
+      return;
+    }
+    el.textContent = start + '—' + end;
+  }
+
   function fillDemandTendaySelects(keepValue) {
-    const list = demandPeriodList();
+    const list = demandMapPeriodList();
     const startEl = $('demand-map-start');
     const endEl = $('demand-map-end');
     const rs = $('demand-range-start');
@@ -1982,6 +2053,7 @@ tbody tr:hover td{background:#fafafa}
     endEl.value = list[ei] || '';
     if (rs) rs.value = si;
     if (re) re.value = ei;
+    updateDemandMapPeriodLabel();
   }
 
   /** 按所选上/中/下旬区间过滤拓扑标签 */
@@ -1989,7 +2061,7 @@ tbody tr:hover td{background:#fafafa}
     const start = ($('demand-map-start') && $('demand-map-start').value) || '';
     const end = ($('demand-map-end') && $('demand-map-end').value) || '';
     if (!start || !end) return true;
-    const list = demandPeriodList();
+    const list = demandMapPeriodList();
     const i = list.indexOf(label);
     const a = list.indexOf(start);
     const b = list.indexOf(end);
@@ -2005,19 +2077,16 @@ tbody tr:hover td{background:#fafafa}
       if (!name) return;
       if (!tendayInSelectedRange(b.tendayLabel)) return;
       if (!demandTopoMap[name]) {
-        demandTopoMap[name] = { demand: 0, area: null };
+        demandTopoMap[name] = { demand: 0 };
       }
       demandTopoMap[name].demand += Number(b.demandVolume) || 0;
-      if (demandTopoMap[name].area == null && b.area != null && b.area !== '') {
-        demandTopoMap[name].area = Number(b.area) || 0;
-      }
     });
   }
 
   function onDemandMapDateChange() {
     const start = $('demand-map-start') && $('demand-map-start').value;
     const end = $('demand-map-end') && $('demand-map-end').value;
-    const list = demandPeriodList();
+    const list = demandMapPeriodList();
     if (start && end && list.indexOf(end) < list.indexOf(start)) {
       toast('截止旬不能早于起始旬');
       return;
@@ -2026,31 +2095,41 @@ tbody tr:hover td{background:#fafafa}
     const ei = list.indexOf(end);
     if ($('demand-range-start') && si >= 0) $('demand-range-start').value = si;
     if ($('demand-range-end') && ei >= 0) $('demand-range-end').value = ei;
+    updateDemandMapPeriodLabel();
     if (!demandDetail) return;
     rebuildDemandTopoMap();
     renderTopoTags();
   }
 
   function onDemandRangeSlider() {
-    const list = demandPeriodList();
+    const list = demandMapPeriodList();
     let si = Number($('demand-range-start').value) || 0;
     let ei = Number($('demand-range-end').value) || 0;
     if (ei < si) { const t = si; si = ei; ei = t; }
     if (list[si]) $('demand-map-start').value = list[si];
     if (list[ei]) $('demand-map-end').value = list[ei];
+    updateDemandMapPeriodLabel();
     if (!demandDetail) return;
     rebuildDemandTopoMap();
     renderTopoTags();
+  }
+
+  /** 需水方案规划年：与中长期口径对齐，缺省 2027 */
+  function resolveDemandYear(rec) {
+    const fromRec = rec && (rec.forecastYear || rec.predictYear || rec.targetYear || rec.year);
+    if (fromRec != null && fromRec !== '' && !Number.isNaN(Number(fromRec))) return Number(fromRec);
+    return 2027;
   }
 
   function renderDemandStats(containerId) {
     const rec = (demandDetail && demandDetail.record) || {};
     // 会议定稿：灌溉面积固定展示 105.83 万亩
     const areaWan = 105.83;
+    const peak = formatTendayPeriod(rec.peakTenday || '—', resolveDemandYear(rec));
     $(containerId).innerHTML = [
       { label: '全灌区总需水', value: numOrDash(rec.totalDemand, 2), unit: '万m³' },
       { label: '灌溉面积', value: numOrDash(areaWan, 2), unit: '万亩' },
-      { label: '需水高峰旬', value: rec.peakTenday || '—', unit: '' }
+      { label: '需水高峰旬', value: peak, unit: '' }
     ].map(it =>
       `<div class="stat-card"><div class="label">${it.label}</div><div class="value">${it.value}${it.unit ? `<span class="unit">${it.unit}</span>` : ''}</div></div>`
     ).join('');
@@ -2188,23 +2267,17 @@ tbody tr:hover td{background:#fafafa}
     renderTopoTags();
   }
 
-  /* ========== 拓扑绿标 / 干渠汇总（字段见接口 branchDetails.area + demandVolume） ========== */
-  function formatTopoMetric(area, demand) {
-    if ((area == null || area === '') && (demand == null || demand === '')) return '—';
-    const a =
-      area == null || area === '' || Number.isNaN(Number(area)) ? '—' : String(Math.round(Number(area)));
-    const d =
-      demand == null || demand === '' || Number.isNaN(Number(demand))
-        ? '—'
-        : Number(demand).toFixed(1);
-    return a + '/' + d;
+  /* ========== 拓扑绿标 / 干渠汇总（仅水量：branchDetails.demandVolume） ========== */
+  function formatTopoVolume(volume) {
+    if (volume == null || volume === '' || Number.isNaN(Number(volume))) return '—';
+    return Number(volume).toFixed(1);
   }
 
   function topoTagValue(branchName) {
     if (!demandHasResult || !demandDetail) return '—';
     const row = demandTopoMap[branchName];
     if (!row || row.demand == null || Number.isNaN(Number(row.demand))) return '—';
-    return Number(row.demand).toFixed(1);
+    return formatTopoVolume(row.demand);
   }
 
   const MAIN_CANAL_LAYOUT = (window.CanalTopo && CanalTopo.MAIN_CANAL_LAYOUT) || [];
@@ -2212,17 +2285,15 @@ tbody tr:hover td{background:#fafafa}
   function mainCanalTagValue(canal) {
     if (!demandHasResult || !demandDetail) return '—';
     let demand = 0;
-    let area = 0;
     let hit = false;
     (canal.branches || []).forEach(name => {
       const row = demandTopoMap[name];
       if (!row) return;
       hit = true;
       demand += Number(row.demand) || 0;
-      area += Number(row.area) || 0;
     });
     if (!hit) return '—';
-    return formatTopoMetric(area, demand);
+    return formatTopoVolume(demand);
   }
 
   /** 静态拓扑支渠绿标：紧凑圆角块 + 避让，避免与文字/绿块重叠 */
@@ -2336,7 +2407,7 @@ tbody tr:hover td{background:#fafafa}
       rect.setAttribute('ry', '3');
       rect.setAttribute('class', box.main ? 'topo-var-pill main' : 'topo-var-pill');
       const title = document.createElementNS(ns, 'title');
-      title.textContent = box.name + (box.main ? '（面积亩/需水万方）：' : '（需水万方）：') + box.val;
+      title.textContent = box.name + '（需水万方）：' + box.val;
       const text = document.createElementNS(ns, 'text');
       text.setAttribute('class', 'topo-var-txt');
       text.textContent = box.val;
@@ -2853,6 +2924,13 @@ tbody tr:hover td{background:#fafafa}
       </tr>`
     ).join('') || `<tr><td colspan="6" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
   }
+  /** 降雨柱数据：取接口 rainfall，缺省为 0 */
+  function moistureRainBars(rows) {
+    return (rows || []).map(r => {
+      const n = Number(r.rainfall);
+      return Number.isFinite(n) ? n : 0;
+    });
+  }
   function renderMoistureCharts() {
     const siteFilter = resolveMoistureSiteFilter() || moistureActiveSite;
     const chartEl = $('chart-moisture');
@@ -2862,27 +2940,50 @@ tbody tr:hover td{background:#fafafa}
     const times = rows.map(r => r.tm);
     const dense = times.length > 48;
     const axis = axisDates(times);
+    const rain = moistureRainBars(rows);
     ensureChart('moistureMain', chartEl).setOption({
-      color: ['#722ed1', '#fa8c16', '#13c2c2'],
+      color: ['#69b1ff', '#722ed1', '#fa8c16', '#13c2c2'],
       tooltip: {
         trigger: 'axis',
         formatter: function (params) {
           const i = params && params[0] && params[0].dataIndex;
           const row = rows[i];
-          const lines = (params || []).map(p => p.marker + p.seriesName + '：' + p.value + '%');
+          const lines = (params || []).map(p => {
+            const unit = p.seriesName === '降雨量' ? ' mm' : '%';
+            return p.marker + p.seriesName + '：' + p.value + unit;
+          });
           return (axis[i] || '') + '<br/>' + lines.join('<br/>') +
             (row ? ('<br/>干旱：' + droughtText(row.droughtLevel)) : '');
         }
       },
-      legend: { top: 4, data: ['10cm', '20cm', '30cm'] },
-      grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      legend: { top: 4, data: ['降雨量', '10cm', '20cm', '30cm'] },
+      grid: { left: 16, right: 48, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
       dataZoom: buildChartDataZoom(),
       xAxis: { type: 'category', data: axis, axisLabel: { rotate: 40, fontSize: 10, color: '#999', interval: dense ? 'auto' : 0 } },
-      yAxis: { type: 'value', axisLabel: { color: '#999', formatter: '{value}%' }, splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } } },
+      yAxis: [
+        {
+          type: 'value', name: '含水量 %',
+          nameTextStyle: { color: '#999', padding: [0, 0, 0, 8] },
+          axisLabel: { color: '#999', formatter: '{value}%' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', name: '降雨 mm',
+          nameTextStyle: { color: '#999', padding: [0, 8, 0, 0] },
+          axisLabel: { color: '#999' },
+          splitLine: { show: false },
+          min: 0
+        }
+      ],
       series: [
-        { name: '10cm', type: 'line', data: rows.map(r => r.mten), symbol: dense ? 'none' : 'circle', symbolSize: 4 },
-        { name: '20cm', type: 'line', data: rows.map(r => r.mtwenty), symbol: dense ? 'none' : 'circle', symbolSize: 4 },
-        { name: '30cm', type: 'line', data: rows.map(r => r.mthirty), symbol: dense ? 'none' : 'circle', symbolSize: 4 }
+        {
+          name: '降雨量', type: 'bar', yAxisIndex: 1, data: rain,
+          barMaxWidth: dense ? 4 : 10, itemStyle: { color: 'rgba(105,177,255,0.75)' },
+          z: 1
+        },
+        { name: '10cm', type: 'line', yAxisIndex: 0, data: rows.map(r => r.mten), symbol: dense ? 'none' : 'circle', symbolSize: 4, z: 3 },
+        { name: '20cm', type: 'line', yAxisIndex: 0, data: rows.map(r => r.mtwenty), symbol: dense ? 'none' : 'circle', symbolSize: 4, z: 3 },
+        { name: '30cm', type: 'line', yAxisIndex: 0, data: rows.map(r => r.mthirty), symbol: dense ? 'none' : 'circle', symbolSize: 4, z: 3 }
       ]
     }, true);
     requestAnimationFrame(() => { if (charts.moistureMain) charts.moistureMain.resize(); });
@@ -3198,8 +3299,8 @@ tbody tr:hover td{background:#fafafa}
   function exportShortDetail() {
     const rows = filteredRows();
     if (!rows.length) return toast('暂无数据可导出');
-    const header = ['时间', '降雨量(mm)', '入库水量(万方)', '水位(m)', '库容(万方)', '出库水量(万方)', '蒸发量', '入库流量(m3/s)', '出库流量(m3/s)'];
-    const data = rows.map(r => [r.date, r.rain, r.inflow, r.level, r.capacity, r.outflow, r.evaporation, r.inFlow, r.outFlow]);
+    const header = ['时间', '降雨量(mm)', '入库流量(m3/s)', '出库流量(m3/s)', '水位(m)', '库容(万方)', '入库水量(万方)', '出库水量(万方)'];
+    const data = rows.map(r => [r.date, r.rain, r.inFlow, r.outFlow, r.level, r.capacity, r.inflow, r.outflow]);
     if (window.XLSX) {
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
       const wb = XLSX.utils.book_new();
@@ -3249,6 +3350,7 @@ tbody tr:hover td{background:#fafafa}
   // init — 保持空态，不自动展示图表
   initShortRange();
   if ($('end-datetime')) $('end-datetime').addEventListener('change', () => syncShortEndBounds(true));
+  loadDamLatestLevelTip();
   initMoistureRange();
   fillMoistureStationSelect();
   if ($('moisture-station')) $('moisture-station').value = '';

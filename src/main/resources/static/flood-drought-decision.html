@@ -94,10 +94,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
             <input type="date" class="field" id="flood-end">
           </div>
           <span class="lbl">站点</span>
-          <select class="field select" id="flood-stcd"></select>
+          <input type="text" class="field" id="flood-stnm" value="花凉亭坝上" readonly title="固定花凉亭坝上，不可切换" style="min-width:160px;max-width:220px;background:#f5f5f5;cursor:not-allowed">
+          <input type="hidden" id="flood-stcd" value="">
         </div>
         <div class="filter-actions">
-          <button type="button" class="btn btn-primary" id="flood-query-btn">查询</button>
+          <button type="button" class="btn btn-primary" id="flood-query-btn">计算</button>
           <button type="button" class="btn btn-default" id="flood-reset-btn">重置</button>
         </div>
       </div>
@@ -106,7 +107,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     <div class="main-scroll" id="flood-scroll">
       <div class="card chart-card">
         <div class="chart-hd">
-          <div class="chart-title">水文关系预测分析图 <span class="chart-tip" id="flood-tip"></span></div>
+          <div class="chart-title">洪水预报过程线 <span class="chart-tip" id="flood-tip"></span></div>
         </div>
         <div class="chart-box flood-combo" id="chart-flood"></div>
       </div>
@@ -308,16 +309,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     var obsRain = [], predRain = [], obsLevel = [], predLevel = [], obsFlow = [], predFlow = [];
     dates.forEach(function (d) {
       var isObs = !split || d <= split;
-      var isPred = split ? d > split : false;
+      // 折线：分界日两端共用实测点，视觉衔接；柱状：分界次日才画预测，避免叠柱
+      var isPredLine = split ? d >= split : false;
+      var isPredBar = split ? d > split : false;
       var r = payload.rainMap[d];
       var lv = payload.levelMap[d];
       var fl = payload.flowMap[d];
       obsRain.push(isObs ? r : null);
-      predRain.push(isPred ? r : null);
+      predRain.push(isPredBar ? r : null);
       obsLevel.push(isObs ? lv : null);
-      predLevel.push(isPred ? lv : null);
+      predLevel.push(isPredLine ? lv : null);
       obsFlow.push(isObs ? fl : null);
-      predFlow.push(isPred ? fl : null);
+      predFlow.push(isPredLine ? fl : null);
     });
 
     var rainMax = niceCeil(Math.max(20, maxOf(obsRain.concat(predRain), 0)), 5);
@@ -334,7 +337,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
     var tipParts = [];
     if (payload.stnm) tipParts.push('站点：' + payload.stnm);
-    if (split) tipParts.push('分界：' + split + '（含）实测 / 之后预测');
+    if (split) tipParts.push('分界：' + split + '（含）起为预测，与实测衔接');
     $('flood-tip').textContent = tipParts.join(' · ');
 
     c.setOption({
@@ -349,8 +352,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       },
       axisPointer: { link: [{ xAxisIndex: 'all' }] },
       grid: [
-        { left: 56, right: 56, top: 28, height: '30%' },
-        { left: 56, right: 56, top: '44%', height: '40%' }
+        { left: 64, right: 64, top: 36, height: '28%' },
+        { left: 64, right: 64, top: '44%', height: '40%' }
       ],
       xAxis: [
         {
@@ -367,19 +370,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       ],
       yAxis: [
         {
-          type: 'value', gridIndex: 0, name: 'mm', min: 0, max: rainMax,
+          // 倒挂雨量轴：0 在上，柱向下长
+          type: 'value', gridIndex: 0, name: '降雨量 mm',
+          nameLocation: 'end', nameGap: 8,
+          min: 0, max: rainMax, inverse: true,
           nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
           axisLabel: { color: '#8c8c8c' },
           splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
         },
         {
-          type: 'value', gridIndex: 1, name: 'm', min: levelMin, max: levelMax,
+          // 左轴：流量
+          type: 'value', gridIndex: 1, name: '流量 m³/s',
+          nameLocation: 'end', nameGap: 8,
+          min: 0, max: flowMax,
           nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
           axisLabel: { color: '#8c8c8c' },
           splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
         },
         {
-          type: 'value', gridIndex: 1, name: 'm³/s', min: 0, max: flowMax,
+          // 右轴：水位
+          type: 'value', gridIndex: 1, name: '水位 m',
+          nameLocation: 'end', nameGap: 8,
+          min: levelMin, max: levelMax,
           nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
           axisLabel: { color: '#8c8c8c' },
           splitLine: { show: false }
@@ -388,41 +400,41 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       series: [
         {
           name: '实际降雨量', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, barMaxWidth: 18,
-          itemStyle: { color: COLOR.rainObs, borderRadius: [2, 2, 0, 0] },
+          itemStyle: { color: COLOR.rainObs, borderRadius: [0, 0, 2, 2] },
           data: obsRain
         },
         {
           name: '预测降雨量', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, barMaxWidth: 18,
-          itemStyle: { color: COLOR.rainPred, borderRadius: [2, 2, 0, 0] },
+          itemStyle: { color: COLOR.rainPred, borderRadius: [0, 0, 2, 2] },
           data: predRain
         },
         {
-          name: '实测水位', type: 'line', xAxisIndex: 1, yAxisIndex: 1,
-          showSymbol: true, symbol: 'emptyCircle', symbolSize: 8,
-          itemStyle: { color: COLOR.levelObs },
-          lineStyle: { width: 2.5, color: COLOR.levelObs },
-          data: obsLevel, connectNulls: false
-        },
-        {
-          name: '预测水位', type: 'line', xAxisIndex: 1, yAxisIndex: 1,
-          showSymbol: true, symbol: 'emptyCircle', symbolSize: 8,
-          itemStyle: { color: COLOR.levelPred },
-          lineStyle: { width: 2.5, color: COLOR.levelPred },
-          data: predLevel, connectNulls: false
-        },
-        {
-          name: '实测流量', type: 'line', xAxisIndex: 1, yAxisIndex: 2,
+          name: '实测流量', type: 'line', xAxisIndex: 1, yAxisIndex: 1,
           showSymbol: true, symbol: 'emptyCircle', symbolSize: 8,
           itemStyle: { color: COLOR.flowObs },
           lineStyle: { width: 2.5, color: COLOR.flowObs },
           data: obsFlow, connectNulls: false
         },
         {
-          name: '预测流量', type: 'line', xAxisIndex: 1, yAxisIndex: 2,
+          name: '预测流量', type: 'line', xAxisIndex: 1, yAxisIndex: 1,
           showSymbol: true, symbol: 'emptyCircle', symbolSize: 8,
           itemStyle: { color: COLOR.flowPred },
           lineStyle: { width: 2.5, color: COLOR.flowPred },
           data: predFlow, connectNulls: false
+        },
+        {
+          name: '实测水位', type: 'line', xAxisIndex: 1, yAxisIndex: 2,
+          showSymbol: true, symbol: 'emptyCircle', symbolSize: 8,
+          itemStyle: { color: COLOR.levelObs },
+          lineStyle: { width: 2.5, color: COLOR.levelObs },
+          data: obsLevel, connectNulls: false
+        },
+        {
+          name: '预测水位', type: 'line', xAxisIndex: 1, yAxisIndex: 2,
+          showSymbol: true, symbol: 'emptyCircle', symbolSize: 8,
+          itemStyle: { color: COLOR.levelPred },
+          lineStyle: { width: 2.5, color: COLOR.levelPred },
+          data: predLevel, connectNulls: false
         }
       ]
     }, true);
@@ -432,12 +444,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   async function loadFloodStations() {
     var data = await API.floodDrought.stations();
     var levels = data.waterLevel || [];
-    fillStationSelect($('flood-stcd'), levels);
-    // 优先坝上
+    // 固定花凉亭坝上：只解析 stcd，不允许切换
     var prefer = levels.find(function (s) {
+      return /坝上/.test(String(s.stnm || '')) && /花凉亭/.test(String(s.stnm || ''));
+    }) || levels.find(function (s) {
       return /坝上|花凉亭/.test(String(s.stnm || ''));
-    });
-    if (prefer) $('flood-stcd').value = prefer.stcd;
+    }) || levels[0];
+    if (prefer) {
+      $('flood-stcd').value = prefer.stcd || '';
+      if ($('flood-stnm')) $('flood-stnm').value = prefer.stnm || '花凉亭坝上';
+    } else {
+      $('flood-stcd').value = '';
+      if ($('flood-stnm')) $('flood-stnm').value = '花凉亭坝上';
+    }
     stationsLoaded = true;
   }
 
@@ -458,7 +477,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
     var btn = $('flood-query-btn');
     btn.disabled = true;
-    btn.textContent = '查询中…';
+    btn.textContent = '计算中…';
     emptyChart('flood', 'chart-flood', '加载中…');
 
     var rainMap = {};
@@ -472,7 +491,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         var hist = await API.floodDrought.history(histStart, histEnd, {
           levelStcd: $('flood-stcd').value || null
         });
-        if (hist.level && hist.level.stcd) syncStationSelect($('flood-stcd'), hist.level.stcd);
+        // 固定坝上：回显名称，不改选站
+        if (hist.level && hist.level.stnm && $('flood-stnm')) {
+          $('flood-stnm').value = hist.level.stnm;
+        }
+        if (hist.level && hist.level.stcd) {
+          $('flood-stcd').value = hist.level.stcd;
+        }
         stnm = (hist.level && hist.level.stnm) || stnm;
         Object.assign(rainMap, mapByDate(hist.dates, hist.rain && hist.rain.values));
         Object.assign(levelMap, mapByDate(hist.dates, hist.level && hist.level.values));
@@ -520,8 +545,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       }
 
       if (!stnm) {
-        var opt = $('flood-stcd').selectedOptions[0];
-        stnm = opt ? opt.textContent : '';
+        stnm = ($('flood-stnm') && $('flood-stnm').value) || '花凉亭坝上';
       }
 
       renderFloodCombo({
@@ -533,11 +557,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         stnm: stnm
       });
     } catch (e) {
-      emptyChart('flood', 'chart-flood', (e && e.message) || '查询失败');
-      toast(API.friendlyError ? API.friendlyError(e, '查询失败') : ((e && e.message) || '查询失败'));
+      emptyChart('flood', 'chart-flood', (e && e.message) || '计算失败');
+      toast(API.friendlyError ? API.friendlyError(e, '计算失败') : ((e && e.message) || '计算失败'));
     } finally {
       btn.disabled = false;
-      btn.textContent = '查询';
+      btn.textContent = '计算';
       if (charts.flood) charts.flood.resize();
     }
   }
@@ -545,15 +569,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   /* ---------- bind & init ---------- */
   function initFlood() {
     setFloodDefaultDates();
-    emptyChart('flood', 'chart-flood', '请选择日期后查询');
+    emptyChart('flood', 'chart-flood', '请选择日期后计算');
 
     $('flood-query-btn').addEventListener('click', loadFloodCombo);
     $('flood-reset-btn').addEventListener('click', function () {
       setFloodDefaultDates();
       loadFloodCombo();
-    });
-    $('flood-stcd').addEventListener('change', function () {
-      if (stationsLoaded) loadFloodCombo();
     });
 
     window.addEventListener('resize', resizeCharts);

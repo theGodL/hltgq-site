@@ -43,6 +43,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .chart-title{font-size:14px;font-weight:700;color:#1f1f1f;line-height:22px}
 .chart-tip{font-size:12px;color:#999;margin-left:8px;font-weight:400}
 .chart-box{width:100%;height:360px;min-height:360px;flex-shrink:0}
+#chart-pred{height:480px;min-height:480px}
 .seg-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;flex-shrink:0}
 .seg-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:4px;font-size:12px;background:#f5f5f5;color:#595959}
 .seg-chip.lv2{background:#fff7e6;color:#d48806}
@@ -55,6 +56,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 @media (max-width:900px){
   .chart-box{height:300px;min-height:300px}
+  #chart-pred{height:420px;min-height:420px}
 }
 </style>
 </head>
@@ -78,7 +80,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         </div>
       </div>
       <div class="filter-actions">
-        <button type="button" class="btn btn-primary" id="query-btn">查询</button>
+        <button type="button" class="btn btn-primary" id="query-btn">计算</button>
         <button type="button" class="btn btn-default" id="reset-btn">重置</button>
       </div>
     </div>
@@ -137,6 +139,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     var n = Number(v);
     if (!isFinite(n) || n === -999 || n === -9991) return null;
     return n;
+  }
+  /** 含水率轴按数据自适应，突出升降过程（不从 0 起） */
+  function moistureAxisRange(seriesList) {
+    var nums = [];
+    (seriesList || []).forEach(function (arr) {
+      (arr || []).forEach(function (v) {
+        var n = Number(v);
+        if (isFinite(n)) nums.push(n);
+      });
+    });
+    if (!nums.length) return { scale: true };
+    var lo = Math.min.apply(null, nums);
+    var hi = Math.max.apply(null, nums);
+    var mid = (lo + hi) / 2;
+    var half = Math.max((hi - lo) / 2, 0.4, Math.abs(mid) * 0.015);
+    half *= 1.8;
+    return { min: +(mid - half).toFixed(2), max: +(mid + half).toFixed(2) };
   }
   function shortLabel(t) {
     var s = String(t || '');
@@ -240,6 +259,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     $('obs-tip').textContent = (payload.stnm || payload.stcd || '') +
       ' · ' + [payload.startDate, payload.endDate].filter(Boolean).join(' ~ ');
     var labels = points.map(function (p) { return shortLabel(p.hour); });
+    var m10 = points.map(function (p) { return sanitizeMoisture(p.mten); });
+    var m20 = points.map(function (p) { return sanitizeMoisture(p.mtwenty); });
+    var m30 = points.map(function (p) { return sanitizeMoisture(p.mthirty); });
+    var mRange = moistureAxisRange([m10, m20, m30]);
     c.setOption({
       color: ['#867AF7', '#F0978E', '#66C0DC'],
       tooltip: { trigger: 'axis', valueFormatter: function (v) { return v == null ? '—' : v + '%'; } },
@@ -253,6 +276,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       },
       yAxis: {
         type: 'value', name: '%',
+        min: mRange.min, max: mRange.max, scale: mRange.scale,
         nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
         axisLabel: { color: '#8c8c8c' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
@@ -261,20 +285,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         {
           name: '10cm', type: 'line', showSymbol: false,
           itemStyle: { color: '#867AF7' }, lineStyle: { width: 2, color: '#867AF7' },
-          data: points.map(function (p) { return sanitizeMoisture(p.mten); }),
-          connectNulls: false
+          data: m10, connectNulls: false
         },
         {
           name: '20cm', type: 'line', showSymbol: false,
           itemStyle: { color: '#F0978E' }, lineStyle: { width: 2, color: '#F0978E' },
-          data: points.map(function (p) { return sanitizeMoisture(p.mtwenty); }),
-          connectNulls: false
+          data: m20, connectNulls: false
         },
         {
           name: '30cm', type: 'line', showSymbol: false,
           itemStyle: { color: '#66C0DC' }, lineStyle: { width: 2, color: '#66C0DC' },
-          data: points.map(function (p) { return sanitizeMoisture(p.mthirty); }),
-          connectNulls: false
+          data: m30, connectNulls: false
         }
       ]
     }, true);
@@ -300,6 +321,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     var m20 = rows.map(function (r) { return sanitizeMoisture(r.mtwenty); });
     var m30 = rows.map(function (r) { return sanitizeMoisture(r.mthirty); });
     var rainMax = niceCeil(Math.max(5, maxOf(rain, 0)), 1);
+    var mRange = moistureAxisRange([m10, m20, m30]);
 
     c.setOption({
       color: ['#5B8FF9', '#867AF7', '#F0978E', '#66C0DC'],
@@ -311,8 +333,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       },
       axisPointer: { link: [{ xAxisIndex: 'all' }] },
       grid: [
-        { left: 48, right: 24, top: 24, height: '26%' },
-        { left: 48, right: 24, top: '44%', height: '38%' }
+        { left: 52, right: 28, top: 36, height: '18%' },
+        { left: 52, right: 28, top: '42%', height: '44%' }
       ],
       xAxis: [
         {
@@ -329,13 +351,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       ],
       yAxis: [
         {
-          type: 'value', gridIndex: 0, name: 'mm', min: 0, max: rainMax,
+          type: 'value', gridIndex: 0, name: '降雨量 mm',
+          nameLocation: 'end', nameGap: 8,
+          min: 0, max: rainMax, inverse: true,
           nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
           axisLabel: { color: '#8c8c8c' },
           splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
         },
         {
-          type: 'value', gridIndex: 1, name: '%',
+          type: 'value', gridIndex: 1, name: '含水量 %',
+          nameLocation: 'end', nameGap: 8,
+          min: mRange.min, max: mRange.max, scale: mRange.scale,
           nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
           axisLabel: { color: '#8c8c8c' },
           splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
@@ -344,7 +370,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       series: [
         {
           name: '降雨', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, barMaxWidth: 10,
-          itemStyle: { color: '#5B8FF9', borderRadius: [2, 2, 0, 0] }, data: rain
+          itemStyle: { color: '#5B8FF9', borderRadius: [0, 0, 2, 2] }, data: rain
         },
         {
           name: '10cm', type: 'line', xAxisIndex: 1, yAxisIndex: 1, showSymbol: false,
@@ -379,7 +405,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
     var btn = $('query-btn');
     btn.disabled = true;
-    btn.textContent = '查询中…';
+    btn.textContent = '计算中…';
     emptyChart('obs', 'chart-obs', '加载中…');
     emptyChart('pred', 'chart-pred', '加载中…');
     $('drought-segs').innerHTML = '';
@@ -389,20 +415,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       renderObserved(data);
       renderForecast(data);
     } catch (e) {
-      emptyChart('obs', 'chart-obs', (e && e.message) || '查询失败');
-      emptyChart('pred', 'chart-pred', (e && e.message) || '查询失败');
-      toast((e && e.message) || '查询失败');
+      emptyChart('obs', 'chart-obs', (e && e.message) || '计算失败');
+      emptyChart('pred', 'chart-pred', (e && e.message) || '计算失败');
+      toast((e && e.message) || '计算失败');
     } finally {
       btn.disabled = false;
-      btn.textContent = '查询';
+      btn.textContent = '计算';
       resizeCharts();
     }
   }
 
   async function init() {
     setDefaultDates();
-    emptyChart('obs', 'chart-obs', '请选择站点与日期后查询');
-    emptyChart('pred', 'chart-pred', '请选择站点与日期后查询');
+    emptyChart('obs', 'chart-obs', '请选择站点与日期后计算');
+    emptyChart('pred', 'chart-pred', '请选择站点与日期后计算');
 
     $('query-btn').addEventListener('click', runQuery);
     $('reset-btn').addEventListener('click', function () {
