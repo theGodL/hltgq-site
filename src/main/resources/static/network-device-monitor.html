@@ -166,8 +166,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   </div>
 </div>
 
+<script src="./lib/model-api.js"></script>
 <script>
 (function () {
+  const API = window.ModelApi;
   const STATUS_LABEL = { online: '在线', offline: '离线', alarm: '告警', fault: '故障' };
 
   const ICONS = {
@@ -187,69 +189,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     fault: '#f5222d'
   };
 
-  /** mock：后续接口就绪后替换 loadMockData */
-  function loadMockData() {
-    // 预览前 5 条固定覆盖 在线/在线/离线/告警/故障，其余按计数补齐
-    const mk = (prefix, total, counts) => {
-      const previewStatus = ['online', 'online', 'offline', 'alarm', 'fault'];
-      const restPool = [];
-      const used = { online: 2, offline: 1, alarm: 1, fault: 1 };
-      ['online', 'offline', 'alarm', 'fault'].forEach((s) => {
-        const remain = Math.max(0, (counts[s] || 0) - used[s]);
-        for (let i = 0; i < remain; i++) restPool.push(s);
-      });
-      while (previewStatus.length + restPool.length < total) restPool.push('online');
-      const statuses = previewStatus.concat(restPool).slice(0, total);
-      const devices = statuses.map((status, i) => ({
-        id: `${prefix}-${i + 1}`,
-        name: `花凉亭${prefix}${i + 1}`,
-        status
-      }));
-      return { total, counts, devices };
-    };
-
-    return {
-      regionName: '花凉亭灌区',
-      total: 186,
-      summary: {
-        online: { count: 142, percent: 76 },
-        offline: { count: 32, percent: 17 },
-        alarm: { count: 8, percent: 4 },
-        fault: { count: 4, percent: 2 }
-      },
-      categories: [
-        {
-          key: 'waterLevel', name: '水位', color: '#2355D8', icon: 'waterLevel',
-          ...mk('水位站', 28, { online: 22, offline: 4, alarm: 1, fault: 1 })
-        },
-        {
-          key: 'rainfall', name: '雨量', color: '#4EA450', icon: 'rainfall',
-          ...mk('雨量站', 25, { online: 20, offline: 3, alarm: 1, fault: 1 })
-        },
-        {
-          key: 'flow', name: '流量', color: '#4497C9', icon: 'flow',
-          ...mk('流量站', 24, { online: 19, offline: 3, alarm: 1, fault: 1 })
-        },
-        {
-          key: 'gate', name: '闸门', color: '#6B3FDD', icon: 'gate',
-          ...mk('闸门站', 27, { online: 21, offline: 4, alarm: 1, fault: 1 })
-        },
-        {
-          key: 'video', name: '视频', color: '#2354CD', icon: 'video',
-          ...mk('视频站', 30, { online: 23, offline: 5, alarm: 1, fault: 1 })
-        },
-        {
-          key: 'soil', name: '墒情', color: '#99683E', icon: 'soil',
-          ...mk('墒情站', 26, { online: 20, offline: 4, alarm: 1, fault: 1 })
-        },
-        {
-          key: 'quality', name: '水质', color: '#4EA7AD', icon: 'quality',
-          ...mk('水质站', 26, { online: 17, offline: 7, alarm: 1, fault: 1 })
-        }
-      ]
-    };
-  }
-
   let DATA = null;
   let previewCount = 8;
 
@@ -264,14 +203,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   }
 
   function renderSummary(data) {
-    document.getElementById('summary-name').textContent = data.regionName;
-    document.getElementById('total-count').textContent = data.total;
-    const s = data.summary;
+    document.getElementById('summary-name').textContent = data.regionName || '—';
+    document.getElementById('total-count').textContent = data.total != null ? data.total : '—';
+    const s = data.summary || {};
+    const empty = { count: 0, percent: 0 };
     document.getElementById('summary-stats').innerHTML = [
-      ['online', '在线', s.online],
-      ['offline', '离线', s.offline],
-      ['alarm', '告警', s.alarm],
-      ['fault', '故障', s.fault]
+      ['online', '在线', s.online || empty],
+      ['offline', '离线', s.offline || empty],
+      ['alarm', '告警', s.alarm || empty],
+      ['fault', '故障', s.fault || empty]
     ].map(([k, label, v]) => `
       <div class="stat-item stat-${k}">
         <div class="stat-label"><span class="stat-dot dot-${k}"></span>${label}</div>
@@ -295,21 +235,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   function renderCategories(data) {
     previewCount = calcPreviewCount();
     const root = document.getElementById('category-cols');
-    root.innerHTML = data.categories.map((cat) => {
-      const count = Math.min(previewCount, cat.devices.length);
-      const preview = cat.devices.slice(0, count);
-      const hasMore = cat.devices.length > count;
+    root.innerHTML = (data.categories || []).map((cat) => {
+      const devices = cat.devices || [];
+      const count = Math.min(previewCount, devices.length);
+      const preview = devices.slice(0, count);
+      const hasMore = devices.length > count;
+      const counts = cat.counts || {};
       return `
         <div class="cat-card" data-key="${cat.key}">
           <div class="cat-head">
-            <div class="cat-icon" style="background:${cat.color}">${ICONS[cat.icon]}</div>
-            <div class="cat-title">${cat.name} <span class="cnt">(${cat.total})</span></div>
+            <div class="cat-icon" style="background:${cat.color}">${ICONS[cat.icon] || ''}</div>
+            <div class="cat-title">${cat.name} <span class="cnt">(${cat.total != null ? cat.total : devices.length})</span></div>
           </div>
           <div class="cat-stats">
-            <div class="cat-stat online"><span class="stat-dot dot-online"></span><span class="lbl">在线</span> <span class="num">${cat.counts.online}</span></div>
-            <div class="cat-stat offline"><span class="stat-dot dot-offline"></span><span class="lbl">离线</span> <span class="num">${cat.counts.offline}</span></div>
-            <div class="cat-stat alarm"><span class="stat-dot dot-alarm"></span><span class="lbl">告警</span> <span class="num">${cat.counts.alarm}</span></div>
-            <div class="cat-stat fault"><span class="stat-dot dot-fault"></span><span class="lbl">故障</span> <span class="num">${cat.counts.fault}</span></div>
+            <div class="cat-stat online"><span class="stat-dot dot-online"></span><span class="lbl">在线</span> <span class="num">${counts.online || 0}</span></div>
+            <div class="cat-stat offline"><span class="stat-dot dot-offline"></span><span class="lbl">离线</span> <span class="num">${counts.offline || 0}</span></div>
+            <div class="cat-stat alarm"><span class="stat-dot dot-alarm"></span><span class="lbl">告警</span> <span class="num">${counts.alarm || 0}</span></div>
+            <div class="cat-stat fault"><span class="stat-dot dot-fault"></span><span class="lbl">故障</span> <span class="num">${counts.fault || 0}</span></div>
           </div>
           <div class="device-list">
             ${preview.map((d) => renderDeviceItem(cat, d)).join('')}
@@ -424,18 +366,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     drawTopo();
   }
 
-  function init() {
-    DATA = loadMockData();
-    renderSummary(DATA);
-    renderCategories(DATA);
-    requestAnimationFrame(() => {
-      drawTopo();
-      requestAnimationFrame(() => {
-        fillDeviceLists(DATA);
-        drawTopo();
-      });
-    });
-
+  async function init() {
     document.getElementById('modal-close').addEventListener('click', closeModal);
     document.getElementById('modal-mask').addEventListener('click', (e) => {
       if (e.target.id === 'modal-mask') closeModal();
@@ -444,6 +375,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       clearTimeout(window.__topoTimer);
       window.__topoTimer = setTimeout(refreshLayout, 120);
     });
+
+    if (!API || !API.networkDevice) {
+      console.error('ModelApi.networkDevice 未加载');
+      return;
+    }
+    try {
+      DATA = await API.networkDevice.summary();
+      renderSummary(DATA);
+      renderCategories(DATA);
+      requestAnimationFrame(() => {
+        drawTopo();
+        requestAnimationFrame(() => {
+          fillDeviceLists(DATA);
+          drawTopo();
+        });
+      });
+    } catch (e) {
+      console.error(e);
+      const tip = (e && e.message) || '设备汇总加载失败';
+      const cols = document.getElementById('category-cols');
+      if (cols) cols.innerHTML = '<div style="padding:48px;text-align:center;color:#999">' + tip + '</div>';
+    }
   }
 
   init();

@@ -128,3 +128,36 @@ ALTER TABLE t_auto_hltgq_water_moisture_detail ADD COLUMN IF NOT EXISTS end_time
 ALTER TABLE t_auto_hltgq_water_moisture_detail ADD COLUMN IF NOT EXISTS station_count DOUBLE PRECISION;
 ALTER TABLE t_auto_hltgq_water_moisture_record ADD COLUMN IF NOT EXISTS g_value DOUBLE PRECISION;
 ALTER TABLE t_auto_hltgq_water_moisture_record ADD COLUMN IF NOT EXISTS drought_level VARCHAR(32);
+
+-- ========== H5 消息中心（2026-09 新增） ==========
+-- 消息接收表：发送时按规则为接收人建未读记录，阅读后 UPDATE 为已读
+CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_receive (
+    id           VARCHAR(64) PRIMARY KEY,
+    user_id      VARCHAR(64) NOT NULL,     -- 收信人主键（t_apaas_uc_user.id）
+    message_type VARCHAR(32) NOT NULL,     -- 消息类型：#1# 告警 / #2# 举报投诉 / #3# 意见征集
+    message_id   VARCHAR(64) NOT NULL,     -- 对应业务表主键
+    read_time    TIMESTAMP,                -- 已读时间（未读为 null）
+    is_read      VARCHAR(8)  NOT NULL DEFAULT '#1#',  -- #1# 未读（发送时默认）/ #2# 已读（查看后 UPDATE）
+    corp_code    VARCHAR(64),
+    created_at   TIMESTAMP,
+    created_by   VARCHAR(64),
+    updated_at   TIMESTAMP,
+    updated_by   VARCHAR(64),
+    CONSTRAINT uk_message_receive UNIQUE (message_type, message_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_message_receive_user
+    ON t_auto_hltgq_water_message_receive(user_id, message_type, is_read);
+
+-- 消息接收规则表：message_type × 接收维度（部门/岗位/角色/人员编码，多个逗号分隔）
+CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_rule (
+    id           VARCHAR(64) PRIMARY KEY,
+    message_type VARCHAR(32) NOT NULL,     -- 消息类型：#1# 告警 / #2# 举报投诉 / #3# 意见征集
+    target_type  VARCHAR(16) NOT NULL,     -- 接收维度：#org# 部门 / #position# 岗位 / #role# 角色 / #user# 人员
+    target_id    VARCHAR(1024) NOT NULL,   -- 目标编码，多个以英文逗号分隔
+    corp_code    VARCHAR(64),
+    created_at   TIMESTAMP,
+    created_by   VARCHAR(64),
+    updated_at   TIMESTAMP,
+    updated_by   VARCHAR(64),
+    CONSTRAINT uk_message_rule UNIQUE (message_type, target_type, target_id)
+);

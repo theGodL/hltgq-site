@@ -281,10 +281,10 @@ tbody tr:hover td{background:#fafafa}
           <div class="form-item">
             <label class="form-label">起始水位</label>
             <div class="form-row">
-              <input type="number" class="field" id="start-level-display" placeholder="默认取花凉亭坝上最新水位" step="0.01" min="0" title="可编辑；不填则默认取花凉亭坝上最新水位">
+              <input type="text" class="field" id="start-level-display" value="默认取花凉亭坝上最新水位" readonly title="由后端自动取花凉亭坝上最新水位，不可编辑">
               <span class="unit">m</span>
             </div>
-            <div class="form-hint" style="margin-top:8px">可编辑；不填则默认取花凉亭坝上最新水位</div>
+            <div class="form-hint" style="margin-top:8px">不可编辑，后端自动取花凉亭坝上最新水位</div>
           </div>
 
           <div class="form-item">
@@ -1390,7 +1390,7 @@ tbody tr:hover td{background:#fafafa}
       if (!Number.isNaN(n) && (maxOut == null || n > maxOut)) maxOut = n;
     });
     if (rec.startLevel != null && $('start-level-display')) {
-      $('start-level-display').value = Number(rec.startLevel);
+      $('start-level-display').value = numOrDash(rec.startLevel, 2);
     }
     shortSeries = {
       summary: {
@@ -1849,10 +1849,6 @@ tbody tr:hover td{background:#fafafa}
       enableTunnel: !!$('enable-tunnel').checked,
       enableSpillway: !!$('enable-spillway').checked
     };
-    const levelRaw = ($('start-level-display') && $('start-level-display').value || '').trim();
-    if (levelRaw !== '' && !Number.isNaN(Number(levelRaw))) {
-      body.startLevel = Number(levelRaw);
-    }
 
     const btn = $('calc-btn');
     btn.classList.add('is-loading');
