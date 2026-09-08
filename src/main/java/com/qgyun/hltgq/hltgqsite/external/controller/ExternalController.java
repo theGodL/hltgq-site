@@ -33,11 +33,13 @@ public class ExternalController {
     }
 
     /**
-     * 渠首进水闸实时数据：闸前/闸后水位、流量、管理单位（花凉亭灌区）。
+     * 闸站实时数据：按站点编码（stcd=档案 iofhpi）或站点 ID（档案 id）查询任意闸站的
+     * 闸前/闸后水位、流量、站名与管理单位；不传 stcd 时返回渠首进水闸（兼容原无参调用）。
+     * stcd 对应站点不存在返回 400。
      */
     @GetMapping("/intake-gate")
-    public ExternalVO.IntakeGate intakeGate() {
-        return externalService.intakeGate();
+    public ExternalVO.IntakeGate intakeGate(@RequestParam(required = false) String stcd) {
+        return externalService.intakeGate(stcd);
     }
 
     /**

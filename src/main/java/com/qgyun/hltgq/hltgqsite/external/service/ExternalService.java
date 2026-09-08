@@ -43,12 +43,11 @@ public class ExternalService {
     @Autowired
     private ExternalMapper mapper;
 
-    /** 渠首进水闸站点 ID = 档案表 id（配置默认值，与页面闸门监测口径一致；
-     * 响应 stcd = 档案表 iofhpi，运行时按 id 反查避免配置漂移） */
+    /** 渠首进水闸站点 ID = 档案表 id（不传 stcd 时的默认站，与页面闸门监测口径一致） */
     @Value("${external.intake-gate-site:CAYQ739MiBWMg9gQvyi}")
     private String intakeGateSite;
 
-    /** 管理单位（固定） */
+    /** 管理单位（固定：花凉亭灌区，配置可调） */
     @Value("${external.intake-gate-unit:花凉亭灌区}")
     private String intakeGateUnit;
 
@@ -71,15 +70,27 @@ public class ExternalService {
         return item;
     }
 
-    /** 渠首进水闸实时数据：闸前/闸后水位（gate 表）+ 流量（wt_nfo 表），时间取两者较新 */
-    public ExternalVO.IntakeGate intakeGate() {
+    /**
+     * 闸站实时数据：stcd 缺省/空时返回渠首进水闸（默认站 intakeGateSite，兼容原无参调用）；
+     * 传 stcd 时按站点键查档案（stcd=iofhpi 或兼容 site UUID=id）取 site/站名，
+     * 水位取 gate 表、流量取 wt_nfo 表（均按 site 关联），时间取两者较新；管理单位固定。
+     * stcd 对应站点不存在抛 IllegalArgumentException → 全局 400。
+     */
+    public ExternalVO.IntakeGate intakeGate(String stcd) {
+        String key = (stcd == null || stcd.trim().isEmpty()) ? intakeGateSite : stcd.trim();
+        Map<String, Object> station = mapper.selectStationByKey(key);
+        if (station == null) {
+            throw new IllegalArgumentException("站点不存在: " + key);
+        }
+        String siteId = stringOf(station.get("id"));
+
         ExternalVO.IntakeGate vo = new ExternalVO.IntakeGate();
-        vo.setSite(intakeGateSite);
-        vo.setStcd(mapper.selectStcdBySite(intakeGateSite));
-        vo.setStnm("渠首进水闸");
+        vo.setSite(siteId);
+        vo.setStcd(stringOf(station.get("iofhpi")));
+        vo.setStnm(stringOf(station.get("zzkaec")));
         vo.setManagementUnit(intakeGateUnit);
 
-        Map<String, Object> gate = mapper.selectLatestGateLevel(intakeGateSite);
+        Map<String, Object> gate = mapper.selectLatestGateLevel(siteId);
         LocalDateTime gateTm = null;
         if (gate != null) {
             gateTm = timeOf(gate.get("tm"));
@@ -87,7 +98,7 @@ public class ExternalService {
             vo.setDownZ(cleanLevel(gate.get("down_z")));
         }
 
-        Map<String, Object> flow = mapper.selectLatestFlow(intakeGateSite);
+        Map<String, Object> flow = mapper.selectLatestFlow(siteId);
         LocalDateTime flowTm = null;
         if (flow != null) {
             flowTm = timeOf(flow.get("tm"));
@@ -221,6 +232,11 @@ public class ExternalService {
         }
         double d = ((Number) value).doubleValue();
         return BigDecimal.valueOf(d).setScale(3, RoundingMode.DOWN);
+    }
+
+    /** Map 值转字符串：null 原样返回（避免 "null" 文本） */
+    private String stringOf(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private Long longOf(Object value) {

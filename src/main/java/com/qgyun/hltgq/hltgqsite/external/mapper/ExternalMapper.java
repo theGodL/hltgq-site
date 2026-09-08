@@ -17,7 +17,7 @@ import java.util.Map;
 public interface ExternalMapper {
 
     /**
-     * 渠首进水闸最新一条闸门数据（闸前/闸后水位）。
+     * 闸站最新一条闸门数据（闸前/闸后水位），site = 档案表 id。
      * 无效值清洗（-999 设备不存在、-9991 设备异常）由 Service 层处理。
      */
     @Select("SELECT tm, up_z, down_z " +
@@ -27,7 +27,7 @@ public interface ExternalMapper {
     Map<String, Object> selectLatestGateLevel(@Param("site") String site);
 
     /**
-     * 渠首进水闸最新一条有效流量（排除 -999/-9991 无效值）。
+     * 闸站最新一条有效流量（排除 -999/-9991 无效值），site = 档案表 id。
      */
     @Select("SELECT tm, q " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" " +
@@ -36,11 +36,14 @@ public interface ExternalMapper {
     Map<String, Object> selectLatestFlow(@Param("site") String site);
 
     /**
-     * 站点编码（档案表 iofhpi，与监测数据表 stcd 同口径）：按站点 ID（档案表 id）反查。
+     * 站点档案行（id/iofhpi/zzkaec）：站点键兼容站点编码（iofhpi）与站点 ID（id，
+     * 即监测表 site 值；MQTT 站无 stcd 时可用）；同时命中时优先编码命中行。
      */
-    @Select("SELECT iofhpi FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
-            "WHERE id = #{site} LIMIT 1")
-    String selectStcdBySite(@Param("site") String site);
+    @Select("SELECT id, iofhpi, zzkaec " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
+            "WHERE iofhpi = #{key} OR id = #{key} " +
+            "ORDER BY CASE WHEN iofhpi = #{key} THEN 0 ELSE 1 END LIMIT 1")
+    Map<String, Object> selectStationByKey(@Param("key") String key);
 
     /**
      * 巡检汇总：累计巡检次数（已提交）/ 巡检计划总数 / 完成巡检数（计划已完成）。

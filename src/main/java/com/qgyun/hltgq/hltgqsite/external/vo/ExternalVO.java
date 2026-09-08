@@ -29,14 +29,14 @@ public final class ExternalVO {
         private Integer count;
     }
 
-    /** 渠首进水闸实时数据：闸前/闸后水位 + 流量 + 管理单位 */
+    /** 闸站实时数据（渠首进水闸默认站）：闸前/闸后水位 + 流量 + 站点档案（站名/管理单位） */
     @Data
     public static class IntakeGate {
         /** 站点 ID（站点档案表 id；闸门/流量表 site 字段即此值） */
         private String site;
         /** 站点编码（站点档案表 iofhpi，与监测数据表 stcd 同口径） */
         private String stcd;
-        /** 站点名称（固定：渠首进水闸） */
+        /** 站点名称（站点档案表 zzkaec） */
         private String stnm;
         /** 闸前（上游）水位 m，2 位小数（截断补零），无数据 null */
         private BigDecimal upZ;
