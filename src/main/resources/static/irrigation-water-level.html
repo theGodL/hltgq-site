@@ -504,7 +504,8 @@ const RES_META = {
   reservoir: {
     name: '水库水情表',
     // 对齐 /st-river-r/reservoir-regime；水位列紧跟时间（第 3 列）；水势/入库/出库流量无真实数值不展示
-    headers: ['站点名称', '时间', '水位m', '警戒水位m', '保证水位m'],
+    // 水库口径术语：warningLevel/guaranteedLevel 展示为汛限水位/正常蓄水位（字段名不变，仅表头文字）
+    headers: ['站点名称', '时间', '水位m', '汛限水位m', '正常蓄水位m'],
     rowToArr: r => [r.stnm, fmtTm(r.tm), r.z, r.warningLevel, r.guaranteedLevel],
   },
   period: {

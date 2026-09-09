@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 
 /**
  * 水库水位-水库水情 VO（单条记录）
- * 字段：站点编号、站名、时间、警戒水位、保证水位、水位、水势、入库流量、出库流量
+ * 字段：站点编号、站名、时间、汛限水位、正常蓄水位、水位、水势、入库流量、出库流量
  */
 @Data
 public class ReservoirRegimeVO {
@@ -21,10 +21,10 @@ public class ReservoirRegimeVO {
     /** 监测时间 */
     private LocalDateTime tm;
 
-    /** 警戒水位 (m) */
+    /** 汛限水位 (m)（字段名沿用 warningLevel 保持接口兼容，水库口径术语为汛限水位） */
     private BigDecimal warningLevel;
 
-    /** 保证水位 (m) */
+    /** 正常蓄水位 (m)（字段名沿用 guaranteedLevel 保持接口兼容，水库口径术语为正常蓄水位） */
     private BigDecimal guaranteedLevel;
 
     /** 水位值 (m) */

@@ -413,10 +413,13 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         //    Map<水文日标签, Map<stcd, 累加增量>>
         Map<String, Map<String, BigDecimal>> bucketMap = aggregateHydroDay(resolved, records);
 
-        // 5. 生成完整的水文日序列
+        // 5. 生成完整的水文日序列（桶 = 水文日 (D-1日 08:00, D日 08:00]，标签 D 08:00:00）
+        //    区间筛选 [startDate, endDate] 的窗口为 (startDate 08:00, endDate 08:00]：
+        //    首个完整水文日标签是 startDate+1（输出 startDate 标签会带出 startDate-1 日的尾巴，故排除）；
+        //    单日/默认（startDate == endDate）保留当日单标签（最近完整水文日，实时雨情视角依赖）
         List<String> allBuckets = new ArrayList<>();
         DateTimeFormatter bucketFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        LocalDate d = startDate;
+        LocalDate d = startDate.isBefore(endDate) ? startDate.plusDays(1) : startDate;
         while (!d.isAfter(endDate)) {
             allBuckets.add(d.format(bucketFmt) + " 08:00:00");
             d = d.plusDays(1);
@@ -539,10 +542,13 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         // 4. 水文日聚合（与水库日雨情同口径）
         Map<String, Map<String, BigDecimal>> bucketMap = aggregateHydroDay(resolved, records);
 
-        // 5. 生成完整的水文日序列
+        // 5. 生成完整的水文日序列（桶 = 水文日 (D-1日 08:00, D日 08:00]，标签 D 08:00:00）
+        //    区间筛选 [startDate, endDate] 的窗口为 (startDate 08:00, endDate 08:00]：
+        //    首个完整水文日标签是 startDate+1（输出 startDate 标签会带出 startDate-1 日的尾巴，故排除）；
+        //    单日/默认（startDate == endDate）保留当日单标签（最近完整水文日）
         List<String> allBuckets = new ArrayList<>();
         DateTimeFormatter bucketFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        LocalDate d = startDate;
+        LocalDate d = startDate.isBefore(endDate) ? startDate.plusDays(1) : startDate;
         while (!d.isAfter(endDate)) {
             allBuckets.add(d.format(bucketFmt) + " 08:00:00");
             d = d.plusDays(1);
@@ -802,9 +808,11 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         }
 
         // 5. 生成完整时段序列（桶标签为时段终点，对齐时段雨量报表口径）
-        //    覆盖区间 (startDate-1 08:00, endDate 08:00]，桶标签从 (startDate-1) 09:00 到 endDate 08:00
+        //    区间筛选 [startDate, endDate] 的时段窗口为 (startDate 08:00, endDate 08:00]：
+        //    桶起点从 startDate 08:00 对齐（首桶标签 startDate 08:00 + interval，不再含 startDate-1 尾巴时段）；
+        //    单日/默认（startDate == endDate）保留最近完整水文日窗口 (startDate-1 08:00, endDate 08:00]
         List<String> allBuckets = new ArrayList<>();
-        LocalDateTime bucketStart = startDate.minusDays(1).atTime(8, 0);
+        LocalDateTime bucketStart = (startDate.isBefore(endDate) ? startDate : startDate.minusDays(1)).atTime(8, 0);
         LocalDateTime bucketEnd = endDate.atTime(8, 0);
         DateTimeFormatter bucketFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
         LocalDateTime t = bucketStart;
@@ -1034,14 +1042,25 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             List<Map.Entry<String, BigDecimal>> hourList = new ArrayList<>(hourlyInc.entrySet());
             hourList.sort(Map.Entry.comparingByKey());
 
+            // 裁剪滑动统计范围：窗口终点须落在筛选区间 [startDate 08:00, endDate 08:00] 内
+            // （区间截止后的尾巴数据不参与；窗口允许跨起日向前取数，覆盖"区间内任一点的向前最大过程"，
+            // 查询窗前扩 9 天即为此取数留出数据）
+            DateTimeFormatter hourFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+            String hourStartKey = startDate.atTime(8, 0).format(hourFmt);
+            String hourEndKey = endDate.atTime(8, 0).format(hourFmt);
+            hourList.removeIf(e -> e.getKey().compareTo(hourStartKey) < 0 || e.getKey().compareTo(hourEndKey) > 0);
+
             // 滑动窗口求极值（小时桶已水文日对齐，max24h 与水文日日雨量口径一致）
             BigDecimal max3h = slidingMax(hourList, 3);
             BigDecimal max6h = slidingMax(hourList, 6);
             BigDecimal max24h = slidingMax(hourList, 24);
 
-            // 日雨量序列（水文日标签排序）
+            // 日雨量序列（水文日标签排序，同样裁剪到 [startDate, endDate] 08:00 标签）
             List<Map.Entry<String, BigDecimal>> dayList = new ArrayList<>(dailyInc.entrySet());
             dayList.sort(Map.Entry.comparingByKey());
+            String dayStartKey = startDate + " 08:00:00";
+            String dayEndKey = endDate + " 08:00:00";
+            dayList.removeIf(e -> e.getKey().compareTo(dayStartKey) < 0 || e.getKey().compareTo(dayEndKey) > 0);
 
             BigDecimal max2d = slidingMax(dayList, 2);
             BigDecimal max3d = slidingMax(dayList, 3);

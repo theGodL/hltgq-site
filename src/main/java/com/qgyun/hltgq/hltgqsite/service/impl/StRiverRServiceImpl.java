@@ -102,9 +102,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
     }
 
     /**
-     * 查询水位阈值（警戒水位/保证水位）
+     * 查询水位阈值（字段语义两用：河道站=警戒水位/保证水位，水库站=汛限水位/正常蓄水位，同存阈值表 threshold/guarantee）
      * @param siteId 站点 UUID（station_info.id）
-     * @return [警戒水位, 保证水位]，无记录时均为 null
+     * @return [threshold, guarantee]，无记录时均为 null
      */
     private BigDecimal[] queryThreshold(String siteId) {
         if (siteId == null) return new BigDecimal[]{null, null};
@@ -160,7 +160,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         return map;
     }
 
-    /** 逐站查询水位阈值：数据表STCD → [警戒水位, 保证水位] */
+    /** 逐站查询水位阈值：数据表STCD → [threshold, guarantee]（河道=警戒/保证，水库=汛限/正常蓄） */
     private Map<String, BigDecimal[]> queryThresholdMap(Map<String, StStinfo> stations) {
         Map<String, BigDecimal[]> map = new HashMap<>();
         for (Map.Entry<String, StStinfo> e : stations.entrySet()) {

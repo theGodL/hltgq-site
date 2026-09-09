@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.qgyun.hltgq.hltgqsite.mapper.DataStatsMapper;
+import com.qgyun.hltgq.hltgqsite.stats.client.DeviceStatsClient;
 import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,9 +16,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 数据统计大屏（网关转发 hltgq-mq 内部统计接口 /api/report/* + 本地预警发布统计）。
- * <p>mq 统计接口仅内网可达、不对外暴露，本层把 mq 响应 {code,msg,data} 中的 data 段原样透传，
- * 前端字段契约与 hltgq-mq 数据统计.md 一致；mq 不可达/返回业务错误时统一 HTTP 502。
+ * 数据统计大屏（网关转发 hltgq-mq 内部统计接口 /api/report/* + hltgq-device 视频巡检统计 + 本地预警发布统计）。
+ * <p>mq/device 统计接口均仅内网可达、不对外暴露，本层把上游响应中的 data 段原样透传，
+ * 前端字段契约与 hltgq-mq 数据统计.md 一致；mq/device 不可达或返回业务错误时统一 HTTP 502。
  * <p>说明：到报/缺测口径由 mq 统一计算（mq 侧 60s 缓存），site 不另起口径、不做本地 COUNT；
  * 仅「信息发布情况（预警信息）」为 site 本地数据（本项目无发布动作，每次生成告警即发布）。
  */
@@ -27,6 +28,9 @@ public class DataStatisticsController {
 
     @Autowired
     private MqStatsClient mqStatsClient;
+
+    @Autowired
+    private DeviceStatsClient deviceStatsClient;
 
     @Autowired
     private DataStatsMapper dataStatsMapper;
@@ -60,6 +64,17 @@ public class DataStatisticsController {
     @GetMapping("/collect-stats")
     public JsonNode collectStats() {
         return mqStatsClient.collectStats();
+    }
+
+    /**
+     * 视频数据采集统计（数据采集状态统计的「视频数据」行，与 mq 五行合并渲染）：
+     * 转发 hltgq-device /api/dahua/video/patrol-stats（device 响应 {success,code,desc,data}，
+     * 与 mq 的 {code,msg,data} 结构不同，按 success 判定）；device 与 site 共用平台会话，
+     * 出站自动透传当前登录会话 X-Session-Id 通过 device 登录校验。
+     */
+    @GetMapping("/video-collect")
+    public JsonNode videoCollect() {
+        return deviceStatsClient.videoPatrolStats();
     }
 
     /** 采集服务状态：mq 进程指标（启动时间/时长/CPU/内存）+ 数据接收/解析/存储三逻辑服务 */

@@ -4,6 +4,7 @@ import com.qgyun.hltgq.hltgqsite.archive.client.ArchiveCallException;
 import com.qgyun.hltgq.hltgqsite.auth.SessionUnavailableException;
 import com.qgyun.hltgq.hltgqsite.auth.UnauthorizedException;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelCallException;
+import com.qgyun.hltgq.hltgqsite.stats.client.DeviceStatsCallException;
 import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsCallException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -18,6 +19,7 @@ import java.util.Map;
  * <p>IllegalArgumentException → 400（请求参数错误）；
  * IllegalStateException → 502（上游服务调用失败，如三维 SSO）；
  * ModelCallException → 502（上游模型服务返回错误码或不可达）；
+ * DeviceStatsCallException → 502（上游 hltgq-device 视频统计服务返回错误或不可达）；
  * UnauthorizedException → 401（未登录/会话过期）；
  * SessionUnavailableException → 503（会话服务不可用）。
  */
@@ -62,6 +64,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MqStatsCallException.class)
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public Map<String, Object> handleMqStatsCall(MqStatsCallException e) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("code", 502);
+        result.put("message", e.getMessage());
+        return result;
+    }
+
+    @ExceptionHandler(DeviceStatsCallException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public Map<String, Object> handleDeviceStatsCall(DeviceStatsCallException e) {
         Map<String, Object> result = new HashMap<>();
         result.put("code", 502);
         result.put("message", e.getMessage());
