@@ -4,6 +4,7 @@ import com.qgyun.hltgq.hltgqsite.archive.client.ArchiveCallException;
 import com.qgyun.hltgq.hltgqsite.auth.SessionUnavailableException;
 import com.qgyun.hltgq.hltgqsite.auth.UnauthorizedException;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelCallException;
+import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsCallException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -54,6 +55,15 @@ public class GlobalExceptionHandler {
     public Map<String, Object> handleArchiveCall(ArchiveCallException e) {
         Map<String, Object> result = new HashMap<>();
         result.put("rc", e.getRc());
+        result.put("message", e.getMessage());
+        return result;
+    }
+
+    @ExceptionHandler(MqStatsCallException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public Map<String, Object> handleMqStatsCall(MqStatsCallException e) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("code", 502);
         result.put("message", e.getMessage());
         return result;
     }

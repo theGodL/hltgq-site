@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>站点详情</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:#fff;color:#333;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;font-size:14px}
+body{display:flex;flex-direction:column;overflow:hidden}
+
+:root{--title:#2D679C}
+
+/* ===== tabs ===== */
+.tabs{display:flex;align-items:center;gap:0;padding:0 20px;border-bottom:1px solid #f0f0f0;flex-shrink:0;background:#fff}
+.tab{position:relative;padding:14px 16px;cursor:pointer;color:#595959;font-size:14px;line-height:22px;user-select:none;white-space:nowrap;transition:color .2s}
+.tab:hover{color:var(--title)}
+.tab.active{color:var(--title);font-weight:500}
+.tab.active::after{content:'';position:absolute;left:16px;right:16px;bottom:0;height:2px;background:var(--title);border-radius:1px}
+
+/* ===== panes ===== */
+.pane{display:none;flex:1;min-height:0;overflow:auto;background:#f5f7fa;padding:16px 20px 24px}
+.pane.active{display:flex;flex-direction:column}
+.pane.basic.active{display:block}
+
+/* ===== cards / basic ===== */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.card{background:#fff;border-radius:8px;padding:16px 20px 14px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.card.full{margin-bottom:12px}
+.card.list-card{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 20px 8px}
+.sec-title{font-size:14px;font-weight:500;color:var(--title);line-height:22px;margin-bottom:12px}
+.kv{display:flex;align-items:flex-start;line-height:22px;margin-bottom:10px;gap:8px}
+.kv:last-child{margin-bottom:2px}
+.kv .k{flex:0 0 98px;color:#8c8c8c;font-size:14px;white-space:nowrap}
+.kv .v{flex:1;min-width:0;color:#262626;font-size:14px;word-break:break-all}
+.kv .v.ok{color:#52c41a}
+.kv .v.danger{color:#f5222d}
+.intro-text{color:#262626;font-size:14px;line-height:22px}
+
+/* ===== shared table ===== */
+.data-table{width:100%;border-collapse:collapse;font-size:14px}
+.data-table thead th{background:#fafafa;color:#8c8c8c;font-weight:500;padding:12px 14px;text-align:left;border-bottom:1px solid #f0f0f0;white-space:nowrap}
+.data-table tbody td{padding:14px;border-bottom:1px solid #f0f0f0;color:#262626;vertical-align:middle}
+.data-table tbody tr:last-child td{border-bottom:none}
+.data-table tbody tr:hover td{background:#fafafa}
+.data-table .muted{color:#8c8c8c}
+.data-table .name-strong{color:#1f1f1f;font-weight:500}
+.data-table .text-ok,.status-ok{color:#52c41a}
+.data-table .text-warn{color:#fa8c16}
+.data-table .text-link{color:var(--title);cursor:pointer;background:none;border:none;padding:0;font-size:14px;font-family:inherit}
+.data-table .text-link:hover{opacity:.85}
+.data-table .op-sep{color:#d9d9d9;margin:0 6px}
+
+/* ===== list: filter ===== */
+.filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:12px 16px;margin-bottom:12px;flex-shrink:0;padding-bottom:12px;border-bottom:1px solid #f0f0f0}
+.filter-item{display:flex;align-items:center;gap:8px}
+.filter-item label{color:#595959;font-size:14px;white-space:nowrap}
+.filter-item input,.filter-item select,.ss-input{width:180px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;color:#333}
+.filter-item input::placeholder,.ss-input::placeholder{color:#bfbfbf}
+.filter-item select{padding-right:28px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;cursor:pointer}
+.filter-item input:focus,.filter-item select:focus,.ss-input:focus{border-color:var(--title);box-shadow:0 0 0 2px rgba(45,103,156,.12)}
+.filter-item input[type=date]{width:150px}
+
+/* searchable select */
+.ss{position:relative;width:180px}
+.ss-input{width:100%;padding-right:28px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.ss-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #d9d9d9;border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08);z-index:20}
+.ss.open .ss-panel{display:block}
+.ss-opt{padding:8px 12px;cursor:pointer;font-size:14px;color:#262626}
+.ss-opt:hover,.ss-opt.active{background:#f0f5fa;color:var(--title)}
+.ss-empty{padding:10px 12px;color:#bfbfbf;font-size:13px}
+.filter-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
+.btn-primary{background:var(--title);color:#fff;border-color:var(--title)}
+.btn-primary:hover{opacity:.9}
+.btn-default{color:#595959;border-color:#d9d9d9}
+.btn-default:hover{color:var(--title);border-color:var(--title)}
+
+.table-panel{flex:1;min-height:0;overflow:auto}
+
+.text-yes{color:#f5222d}
+.text-no{color:#8c8c8c}
+
+.dev-status{display:inline-flex;align-items:center;gap:6px}
+.dev-status .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dev-status.ok .dot{background:#52c41a}
+.dev-status.ok{color:#52c41a}
+.dev-status.off .dot{background:#bfbfbf}
+.dev-status.off{color:#8c8c8c}
+
+.rt-data{color:#595959}
+.rt-data .num{color:var(--title);font-weight:600;margin-left:4px}
+
+.debug-id{position:fixed;right:8px;bottom:8px;font-size:11px;color:#bfbfbf;pointer-events:none;z-index:1}
+
+/* ===== modal ===== */
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:none;align-items:center;justify-content:center;padding:24px}
+.modal-mask.show{display:flex}
+.modal{width:min(720px,100%);max-height:min(86vh,860px);background:#fff;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #f0f0f0;flex-shrink:0}
+.modal-hd h3{font-size:16px;font-weight:600;color:#1f1f1f}
+.modal-close{width:28px;height:28px;border:none;background:transparent;border-radius:4px;cursor:pointer;color:#999;font-size:18px;line-height:1}
+.modal-close:hover{background:#f5f5f5;color:#333}
+.modal-bd{padding:16px 20px;overflow:auto;flex:1;min-height:0}
+.modal-ft{padding:12px 20px;border-top:1px solid #f0f0f0;display:flex;justify-content:flex-end;gap:8px;flex-shrink:0}
+
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;margin-bottom:14px}
+.form-item{display:flex;flex-direction:column;gap:6px;min-width:0}
+.form-item.full{grid-column:1 / -1}
+.form-item label{font-size:13px;color:#595959;line-height:20px}
+.form-item label .req{color:#f5222d;margin-right:2px}
+.form-item .field,.form-item textarea{width:100%;min-height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:6px 11px;font-size:14px;color:#262626;background:#fafafa;font-family:inherit;outline:none;resize:none}
+.form-item textarea{min-height:72px;line-height:1.5}
+.form-item .field.ok{color:#52c41a}
+.form-item .field.warn{color:#fa8c16}
+
+.photo-list{display:flex;flex-wrap:wrap;gap:10px}
+.photo-thumb{width:88px;height:88px;border-radius:6px;border:1px solid #f0f0f0;background:#f5f7fa;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#8c8c8c;font-size:12px;position:relative}
+.photo-thumb img{width:100%;height:100%;object-fit:cover}
+.photo-add{width:88px;height:88px;border:1px dashed #d9d9d9;border-radius:6px;background:#fafafa;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#8c8c8c;font-size:12px;cursor:default}
+
+.sub-sec{margin-top:8px}
+.sub-sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.sub-sec-title{font-size:14px;font-weight:500;color:var(--title)}
+.icon-btn{width:28px;height:28px;border:1px solid #d9d9d9;border-radius:4px;background:#fff;color:#595959;cursor:default;display:inline-flex;align-items:center;justify-content:center}
+.op-icons{display:inline-flex;align-items:center;gap:8px}
+.op-icons button{border:none;background:transparent;cursor:default;color:var(--title);padding:0;line-height:1}
+.op-icons button.danger{color:#f5222d}
+
+@media (max-width:720px){
+  .grid-2{grid-template-columns:1fr}
+  .tabs{overflow-x:auto}
+  .filter-actions{margin-left:0}
+  .form-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-tab="basic">基础信息</div>
+    <div class="tab" data-tab="patrol">巡检记录</div>
+    <div class="tab" data-tab="issue">问题记录</div>
+    <div class="tab" data-tab="order">维修工单记录</div>
+    <div class="tab" data-tab="device">设备信息</div>
+  </div>
+
+  <!-- 基础信息 -->
+  <div class="pane basic active" id="pane-basic">
+    <div class="grid-2">
+      <div class="card">
+        <div class="sec-title">基本信息</div>
+        <div class="kv"><span class="k">站点编号</span><span class="v" id="f-code">—</span></div>
+        <div class="kv"><span class="k">站点名称</span><span class="v" id="f-name">—</span></div>
+        <div class="kv"><span class="k">站点类型</span><span class="v" id="f-type">—</span></div>
+        <div class="kv"><span class="k">所属管理单位</span><span class="v" id="f-org">—</span></div>
+        <div class="kv"><span class="k">所属渠系</span><span class="v" id="f-canal">—</span></div>
+        <div class="kv"><span class="k">闸口数量</span><span class="v" id="f-gates">—</span></div>
+        <div class="kv"><span class="k">主要功能</span><span class="v" id="f-func">—</span></div>
+      </div>
+      <div class="card">
+        <div class="sec-title">位置信息</div>
+        <div class="kv"><span class="k">站点位置</span><span class="v" id="f-loc">—</span></div>
+        <div class="kv"><span class="k">详细地址</span><span class="v" id="f-addr">—</span></div>
+        <div class="kv"><span class="k">经纬度</span><span class="v" id="f-lnglat">—</span></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="sec-title">运行状态</div>
+        <div class="kv"><span class="k">运行状态</span><span class="v ok" id="f-runStatus">—</span></div>
+        <div class="kv"><span class="k">负责人</span><span class="v" id="f-owner">—</span></div>
+        <div class="kv"><span class="k">联系电话</span><span class="v" id="f-phone">—</span></div>
+      </div>
+      <div class="card">
+        <div class="sec-title">时间信息</div>
+        <div class="kv"><span class="k">建成时间</span><span class="v" id="f-built">—</span></div>
+        <div class="kv"><span class="k">投入运行时间</span><span class="v" id="f-online">—</span></div>
+        <div class="kv"><span class="k">运行年限</span><span class="v" id="f-years">—</span></div>
+      </div>
+    </div>
+
+    <div class="card full">
+      <div class="sec-title">站点简介</div>
+      <div class="intro-text" id="f-intro">—</div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="sec-title">供电情况</div>
+        <div class="kv"><span class="k">当前电压</span><span class="v" id="f-volt">—</span></div>
+        <div class="kv"><span class="k">额定电压</span><span class="v" id="f-ratedVolt">—</span></div>
+        <div class="kv"><span class="k">电压偏差</span><span class="v" id="f-voltDev">—</span></div>
+        <div class="kv"><span class="k">当前电流</span><span class="v" id="f-amp">—</span></div>
+        <div class="kv"><span class="k">供电状态</span><span class="v" id="f-powerStatus">—</span></div>
+      </div>
+      <div class="card">
+        <div class="sec-title">网络情况</div>
+        <div class="kv"><span class="k">通信方式</span><span class="v" id="f-comm">—</span></div>
+        <div class="kv"><span class="k">信号强度</span><span class="v" id="f-signal">—</span></div>
+        <div class="kv"><span class="k">最近通信时间</span><span class="v" id="f-commTime">—</span></div>
+        <div class="kv"><span class="k">通信延迟</span><span class="v" id="f-latency">—</span></div>
+        <div class="kv"><span class="k">丢包率</span><span class="v" id="f-loss">—</span></div>
+        <div class="kv"><span class="k">网络状态</span><span class="v" id="f-netStatus">—</span></div>
+      </div>
+    </div>
+
+    <div class="card full">
+      <div class="sec-title">视频情况</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>视屏通道</th>
+            <th style="width:120px">当前状态</th>
+          </tr>
+        </thead>
+        <tbody id="video-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 巡检记录 -->
+  <div class="pane" id="pane-patrol">
+    <div class="card list-card">
+    <div class="filter-bar">
+      <div class="filter-item">
+        <label>巡检时间</label>
+        <input type="date" id="patrol-time" title="巡检时间">
+      </div>
+      <div class="filter-item">
+        <label>巡检人员</label>
+        <div class="ss" id="ss-patrol-person" data-placeholder="请选择或搜索">
+          <input type="text" class="ss-input" id="patrol-person" placeholder="请选择或搜索" autocomplete="off">
+          <div class="ss-panel"></div>
+        </div>
+      </div>
+      <div class="filter-item">
+        <label>巡检结果</label>
+        <select id="patrol-result">
+          <option value="">全部</option>
+          <option value="正常">正常</option>
+          <option value="异常">异常</option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <label>是否发现问题</label>
+        <select id="patrol-has-issue">
+          <option value="">全部</option>
+          <option value="1">是</option>
+          <option value="0">否</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="button" class="btn btn-primary" id="patrol-query">查询</button>
+        <button type="button" class="btn btn-default" id="patrol-reset">重置</button>
+      </div>
+    </div>
+    <div class="table-panel">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>记录编号</th>
+            <th>巡检时间</th>
+            <th>巡检人员</th>
+            <th>巡检内容</th>
+            <th>巡检结果</th>
+            <th>是否发现问题</th>
+            <th>关联问题</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="patrol-tbody"></tbody>
+      </table>
+    </div>
+    </div>
+  </div>
+
+  <!-- 问题记录 -->
+  <div class="pane" id="pane-issue">
+    <div class="card list-card">
+    <div class="filter-bar">
+      <div class="filter-item">
+        <label>发现时间</label>
+        <input type="date" id="issue-time" title="发现时间">
+      </div>
+      <div class="filter-item">
+        <label>发现人</label>
+        <div class="ss" id="ss-issue-finder" data-placeholder="请选择或搜索">
+          <input type="text" class="ss-input" id="issue-finder" placeholder="请选择或搜索" autocomplete="off">
+          <div class="ss-panel"></div>
+        </div>
+      </div>
+      <div class="filter-item">
+        <label>处理方式</label>
+        <select id="issue-handle">
+          <option value="">全部</option>
+          <option value="转工单">转工单</option>
+          <option value="待确定">待确定</option>
+          <option value="直接处理">直接处理</option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <label>状态</label>
+        <select id="issue-status">
+          <option value="">全部</option>
+          <option value="已转工单">已转工单</option>
+          <option value="待处理">待处理</option>
+          <option value="已关闭">已关闭</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="button" class="btn btn-primary" id="issue-query">查询</button>
+        <button type="button" class="btn btn-default" id="issue-reset">重置</button>
+      </div>
+    </div>
+    <div class="table-panel">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>问题编号</th>
+            <th>问题标题</th>
+            <th>所属站点</th>
+            <th>设备</th>
+            <th>问题描述</th>
+            <th>发现人</th>
+            <th>发现时间</th>
+            <th>处理方式</th>
+            <th>状态</th>
+            <th>关联工单</th>
+          </tr>
+        </thead>
+        <tbody id="issue-tbody"></tbody>
+      </table>
+    </div>
+    </div>
+  </div>
+
+  <!-- 维修工单记录 -->
+  <div class="pane" id="pane-order">
+    <div class="card list-card">
+    <div class="table-panel">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>维修编号</th>
+            <th>维修时间</th>
+            <th>维修设备</th>
+            <th>故障描述</th>
+            <th>维修内容</th>
+          </tr>
+        </thead>
+        <tbody id="order-tbody"></tbody>
+      </table>
+    </div>
+    </div>
+  </div>
+
+  <!-- 设备信息 -->
+  <div class="pane" id="pane-device">
+    <div class="card list-card">
+    <div class="filter-bar">
+      <div class="filter-item">
+        <label>设备编号</label>
+        <input type="text" id="device-code" placeholder="请输入">
+      </div>
+      <div class="filter-item">
+        <label>设备名称</label>
+        <select id="device-name">
+          <option value="">全部</option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <label>设备类型</label>
+        <select id="device-type">
+          <option value="">全部</option>
+          <option value="闸门">闸门</option>
+          <option value="启闭设备">启闭设备</option>
+          <option value="监测设备">监测设备</option>
+          <option value="电气设备">电气设备</option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <label>设备状态</label>
+        <select id="device-status">
+          <option value="">全部</option>
+          <option value="正常">正常</option>
+          <option value="关闭">关闭</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="button" class="btn btn-primary" id="device-query">查询</button>
+        <button type="button" class="btn btn-default" id="device-reset">重置</button>
+      </div>
+    </div>
+    <div class="table-panel">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>设备编号</th>
+            <th>设备名称</th>
+            <th>设备类型</th>
+            <th>所属闸口</th>
+            <th>设备状态</th>
+            <th>实时数据</th>
+          </tr>
+        </thead>
+        <tbody id="device-tbody"></tbody>
+      </table>
+    </div>
+    </div>
+  </div>
+
+  <div class="debug-id" id="debug-id"></div>
+
+  <div class="modal-mask" id="patrol-modal" role="dialog" aria-modal="true" aria-labelledby="patrol-modal-title">
+    <div class="modal">
+      <div class="modal-hd">
+        <h3 id="patrol-modal-title">查看</h3>
+        <button type="button" class="modal-close" id="patrol-modal-close" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-bd">
+        <div class="form-grid">
+          <div class="form-item">
+            <label><span class="req">*</span>巡检时间</label>
+            <div class="field" id="pm-time">—</div>
+          </div>
+          <div class="form-item">
+            <label><span class="req">*</span>所属计划</label>
+            <div class="field" id="pm-plan">—</div>
+          </div>
+          <div class="form-item">
+            <label><span class="req">*</span>巡检站点</label>
+            <div class="field" id="pm-site">—</div>
+          </div>
+          <div class="form-item">
+            <label><span class="req">*</span>巡检对象</label>
+            <div class="field" id="pm-object">—</div>
+          </div>
+          <div class="form-item">
+            <label>巡检人员</label>
+            <div class="field" id="pm-person">—</div>
+          </div>
+          <div class="form-item">
+            <label><span class="req">*</span>巡检结果</label>
+            <div class="field" id="pm-result">—</div>
+          </div>
+          <div class="form-item full">
+            <label>巡检说明</label>
+            <textarea id="pm-remark" readonly rows="3"></textarea>
+          </div>
+          <div class="form-item full">
+            <label><span class="req">*</span>现场照片</label>
+            <div class="photo-list" id="pm-photos"></div>
+          </div>
+          <div class="form-item">
+            <label>状态</label>
+            <div class="field" id="pm-status">—</div>
+          </div>
+        </div>
+
+        <div class="sub-sec">
+          <div class="sub-sec-hd">
+            <div class="sub-sec-title">问题记录</div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>问题编号</th>
+                <th>问题标题</th>
+                <th>设备</th>
+              </tr>
+            </thead>
+            <tbody id="pm-issue-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-ft">
+        <button type="button" class="btn btn-default" id="patrol-modal-ok">关闭</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  function getStationId() {
+    var q = new URLSearchParams(location.search);
+    return q.get('id') || q.get('stationId') || '';
+  }
+
+  var MOCK_BASIC = {
+    code: 'ST-0005',
+    name: '南干一号闸站',
+    type: '闸站',
+    org: '南干管理所',
+    canal: '南干渠',
+    gates: '3 个',
+    func: '灌溉输水、流量调节',
+    loc: '南干渠 K12+300',
+    addr: '安徽省安庆市太湖县南干渠',
+    lnglat: '116.284521, 30.465218',
+    runStatus: '正常运行',
+    runStatusOk: true,
+    owner: '刘磊',
+    phone: '138****5268',
+    built: '2018-06-15',
+    online: '2018-08-01',
+    years: '8 年',
+    intro: '负责南干渠下游灌溉用水的调节和控制。',
+    volt: '218.6V',
+    ratedVolt: '220V',
+    voltDev: '-0.6%',
+    amp: '2.18A',
+    powerStatus: '正常',
+    powerOk: true,
+    comm: '4G',
+    signal: '-92dBm',
+    commTime: '14:21:36',
+    latency: '415ms',
+    loss: '18.6%',
+    netStatus: '异常',
+    netOk: false,
+    videos: [
+      { channel: 'xx站点1号摄像机', status: '正常' },
+      { channel: 'xx站点2号摄像机', status: '正常' },
+      { channel: 'xx站点3号摄像机', status: '正常' }
+    ]
+  };
+
+  var MOCK_PATROL = [
+    {
+      code: 'XJ-JL-20260811-001',
+      time: '2026-08-11 09:30',
+      person: '李明',
+      content: '闸门、启闭机、控制柜',
+      result: '异常',
+      hasIssue: true,
+      relatedIssue: '配电柜温度偏高',
+      plan: '2026年汛期日常巡检',
+      site: '南干一号闸站',
+      object: '1号闸门 / 闸站控制柜',
+      remark: '控制柜散热风扇异常，柜内温度偏高，已现场记录并关联问题。',
+      status: '已提交',
+      photos: ['photo-1', 'photo-2'],
+      issues: [
+        { code: 'AJ20260811093001', title: '配电柜温度偏高', device: '闸站控制柜' },
+        { code: 'AJ20260811093002', title: '散热风扇异响', device: '闸站控制柜' }
+      ]
+    },
+    {
+      code: 'XJ-JL-20260805-002',
+      time: '2026-08-05 10:15',
+      person: '王强',
+      content: '闸门外观及周边环境',
+      result: '正常',
+      hasIssue: false,
+      relatedIssue: '',
+      plan: '未发布',
+      site: '南干一号闸站',
+      object: '闸门外观及周边环境',
+      remark: '外观完好，周边无异常堆积物。',
+      status: '已提交',
+      photos: ['photo-1'],
+      issues: []
+    },
+    {
+      code: 'XJ-JL-20260728-003',
+      time: '2026-07-28 14:20',
+      person: '赵凯',
+      content: '闸门开度及通信设备',
+      result: '正常',
+      hasIssue: false,
+      relatedIssue: '',
+      plan: '周例行巡检',
+      site: '南干一号闸站',
+      object: '2号开度仪 / 通信柜',
+      remark: '开度数据正常，通信链路通畅。',
+      status: '草稿',
+      photos: [],
+      issues: []
+    }
+  ];
+
+  var MOCK_ISSUE = [
+    { code: 'WT-20260811-001', title: '配电柜温度偏高', site: '南干流量站', device: '1号流量计配电柜', desc: '散热风扇不转导致温度偏高', finder: '李明', foundAt: '2026-08-11 10:08', handle: '转工单', status: '已转工单', orderNo: 'GD-20260811-001' },
+    { code: 'WT-20260811-002', title: '通信柜门锁松动', site: '长河槽（王家桥）流量站', device: '通信柜', desc: '柜门锁扣松动无法完全锁紧', finder: '陈伟', foundAt: '2026-08-11 15:35', handle: '待确定', status: '待处理', orderNo: '' },
+    { code: 'WT-20260711-003', title: '站房照明灯损坏', site: '北干流量站', device: '站房照明', desc: '站房入口照明灯不亮', finder: '赵凯', foundAt: '2026-07-11 16:20', handle: '直接处理', status: '已关闭', orderNo: '' },
+    { code: 'WT-20260810-004', title: '流量数据上传中断', site: '章大流量站', device: '数据采集终端', desc: '采集终端连续两天未上传流量数据', finder: '王强', foundAt: '2026-08-10 11:10', handle: '转工单', status: '已转工单', orderNo: 'GD-20260810-002' }
+  ];
+
+  var MOCK_ORDER = [
+    { code: 'WX-20260726-001', time: '2026-07-26 15:20', device: '1号启闭机', fault: '启闭时出现异响', content: '检查齿轮箱并补充润滑油' },
+    { code: 'WX-20260618-002', time: '2026-06-18 11:30', device: '闸站控制柜', fault: '柜内温度偏高', content: '更换散热风扇' },
+    { code: 'WX-20260509-003', time: '2026-05-09 16:10', device: '2号开度仪', fault: '开度数据偏差较大', content: '重新校准传感器' }
+  ];
+
+  var MOCK_DEVICE = [
+    { code: 'SB-000501', name: '1号闸门', type: '闸门', gate: '1号闸口', status: '正常', metric: '当前开度', value: '1.20 m' },
+    { code: 'SB-000502', name: '1号启闭机', type: '启闭设备', gate: '1号闸口', status: '正常', metric: '运行电流', value: '12.5 A' },
+    { code: 'SB-000503', name: '2号闸门', type: '闸门', gate: '2号闸口', status: '正常', metric: '当前开度', value: '0.80 m' },
+    { code: 'SB-000504', name: '2号开度仪', type: '监测设备', gate: '2号闸口', status: '正常', metric: '当前开度', value: '0.80 m' },
+    { code: 'SB-000505', name: '3号闸门', type: '闸门', gate: '3号闸口', status: '关闭', metric: '当前开度', value: '0.00 m' },
+    { code: 'SB-000506', name: '闸站控制柜', type: '电气设备', gate: '公共设备', status: '正常', metric: '柜内温度', value: '31.5 ℃' }
+  ];
+
+  var stationId = getStationId();
+  document.getElementById('debug-id').textContent = stationId
+    ? 'stationId=' + stationId + '（Mock）'
+    : '未传 id（展示 Mock）';
+
+  function setText(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = text == null || text === '' ? '—' : text;
+  }
+  function setStatus(id, text, ok) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text == null || text === '' ? '—' : text;
+    el.classList.remove('ok', 'danger');
+    if (text && ok === true) el.classList.add('ok');
+    if (text && ok === false) el.classList.add('danger');
+  }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderBasic(d) {
+    setText('f-code', d.code);
+    setText('f-name', d.name);
+    setText('f-type', d.type);
+    setText('f-org', d.org);
+    setText('f-canal', d.canal);
+    setText('f-gates', d.gates);
+    setText('f-func', d.func);
+    setText('f-loc', d.loc);
+    setText('f-addr', d.addr);
+    setText('f-lnglat', d.lnglat);
+    setStatus('f-runStatus', d.runStatus, d.runStatusOk);
+    setText('f-owner', d.owner);
+    setText('f-phone', d.phone);
+    setText('f-built', d.built);
+    setText('f-online', d.online);
+    setText('f-years', d.years);
+    setText('f-intro', d.intro);
+    setText('f-volt', d.volt);
+    setText('f-ratedVolt', d.ratedVolt);
+    setText('f-voltDev', d.voltDev);
+    setText('f-amp', d.amp);
+    setStatus('f-powerStatus', d.powerStatus, d.powerOk);
+    setText('f-comm', d.comm);
+    setText('f-signal', d.signal);
+    setText('f-commTime', d.commTime);
+    setText('f-latency', d.latency);
+    setText('f-loss', d.loss);
+    setStatus('f-netStatus', d.netStatus, d.netOk);
+    document.getElementById('video-tbody').innerHTML = (d.videos || []).map(function (v) {
+      return '<tr><td>' + esc(v.channel) + '</td><td class="status-ok">' + esc(v.status) + '</td></tr>';
+    }).join('') || '<tr><td colspan="2" style="color:#bfbfbf;text-align:center">暂无视频通道</td></tr>';
+  }
+
+  function opBtn(text, cls, attrs) {
+    var extra = '';
+    if (attrs) {
+      Object.keys(attrs).forEach(function (k) {
+        extra += ' ' + k + '="' + esc(attrs[k]) + '"';
+      });
+    }
+    return '<button type="button" class="text-link' + (cls ? ' ' + cls : '') + '"' + extra + '>' + esc(text) + '</button>';
+  }
+  function opJoin(btns) {
+    return btns.join('<span class="op-sep">|</span>');
+  }
+
+  function renderPatrol(list) {
+    document.getElementById('patrol-tbody').innerHTML = list.map(function (r) {
+      var resultCls = r.result === '异常' ? 'text-warn' : 'text-ok';
+      var issueCls = r.hasIssue ? 'text-yes' : 'text-no';
+      var related = r.relatedIssue
+        ? '<span class="text-warn">' + esc(r.relatedIssue) + '</span>'
+        : '-';
+      var ops = [opBtn('查看', '', { 'data-patrol-view': r.code })];
+      return '<tr>' +
+        '<td>' + esc(r.code) + '</td>' +
+        '<td>' + esc(r.time) + '</td>' +
+        '<td>' + esc(r.person) + '</td>' +
+        '<td>' + esc(r.content) + '</td>' +
+        '<td><span class="' + resultCls + '">' + esc(r.result) + '</span></td>' +
+        '<td><span class="' + issueCls + '">' + (r.hasIssue ? '是' : '否') + '</span></td>' +
+        '<td>' + related + '</td>' +
+        '<td>' + opJoin(ops) + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="8" style="text-align:center;color:#bfbfbf">暂无数据</td></tr>';
+  }
+
+  function photoPlaceholder(label) {
+    var colors = ['#91caff', '#95de64', '#ffc069', '#b37feb'];
+    var c = colors[Math.abs(String(label).length) % colors.length];
+    return '<div class="photo-thumb" title="' + esc(label) + '" style="background:linear-gradient(135deg,' + c + ' 0%,#fff 140%)">' +
+      '<span style="position:absolute;bottom:4px;left:0;right:0;text-align:center;font-size:11px;color:#595959">现场照片</span></div>';
+  }
+
+  function openPatrolModal(code) {
+    var row = null;
+    for (var i = 0; i < MOCK_PATROL.length; i++) {
+      if (MOCK_PATROL[i].code === code) { row = MOCK_PATROL[i]; break; }
+    }
+    if (!row) return;
+
+    setText('pm-time', row.time);
+    setText('pm-plan', row.plan);
+    setText('pm-site', row.site);
+    setText('pm-object', row.object);
+    setText('pm-person', row.person);
+    var resultEl = document.getElementById('pm-result');
+    resultEl.textContent = row.result || '—';
+    resultEl.classList.remove('ok', 'warn');
+    if (row.result === '正常') resultEl.classList.add('ok');
+    if (row.result === '异常') resultEl.classList.add('warn');
+    document.getElementById('pm-remark').value = row.remark || '';
+    setText('pm-status', row.status);
+
+    var photos = row.photos || [];
+    var photoHtml = photos.map(function (p, idx) {
+      return photoPlaceholder(p || ('照片' + (idx + 1)));
+    }).join('');
+    photoHtml += '<div class="photo-add"><span style="font-size:20px;line-height:1">+</span>上传图片</div>';
+    document.getElementById('pm-photos').innerHTML = photoHtml;
+
+    var issues = row.issues || [];
+    document.getElementById('pm-issue-tbody').innerHTML = issues.length
+      ? issues.map(function (it) {
+          return '<tr>' +
+            '<td>' + esc(it.code) + '</td>' +
+            '<td>' + esc(it.title) + '</td>' +
+            '<td>' + esc(it.device) + '</td>' +
+            '</tr>';
+        }).join('')
+      : '<tr><td colspan="3" style="text-align:center;color:#bfbfbf">暂无关联问题</td></tr>';
+
+    document.getElementById('patrol-modal').classList.add('show');
+  }
+
+  function closePatrolModal() {
+    document.getElementById('patrol-modal').classList.remove('show');
+  }
+
+  function renderIssue(list) {
+    document.getElementById('issue-tbody').innerHTML = list.map(function (r) {
+      return '<tr>' +
+        '<td>' + esc(r.code) + '</td>' +
+        '<td>' + esc(r.title) + '</td>' +
+        '<td>' + esc(r.site) + '</td>' +
+        '<td>' + esc(r.device) + '</td>' +
+        '<td>' + esc(r.desc) + '</td>' +
+        '<td>' + esc(r.finder) + '</td>' +
+        '<td>' + esc(r.foundAt) + '</td>' +
+        '<td>' + esc(r.handle) + '</td>' +
+        '<td>' + esc(r.status) + '</td>' +
+        '<td>' + (r.orderNo ? esc(r.orderNo) : '-') + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="10" style="text-align:center;color:#bfbfbf">暂无数据</td></tr>';
+  }
+
+  function renderOrder(list) {
+    document.getElementById('order-tbody').innerHTML = list.map(function (r) {
+      return '<tr>' +
+        '<td>' + esc(r.code) + '</td>' +
+        '<td>' + esc(r.time) + '</td>' +
+        '<td>' + esc(r.device) + '</td>' +
+        '<td>' + esc(r.fault) + '</td>' +
+        '<td>' + esc(r.content) + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:#bfbfbf">暂无数据</td></tr>';
+  }
+
+  function renderDevice(list) {
+    document.getElementById('device-tbody').innerHTML = list.map(function (r) {
+      var st = r.status === '正常' ? 'ok' : 'off';
+      return '<tr>' +
+        '<td class="muted">' + esc(r.code) + '</td>' +
+        '<td class="name-strong">' + esc(r.name) + '</td>' +
+        '<td>' + esc(r.type) + '</td>' +
+        '<td>' + esc(r.gate) + '</td>' +
+        '<td><span class="dev-status ' + st + '"><i class="dot"></i>' + esc(r.status) + '</span></td>' +
+        '<td class="rt-data">' + esc(r.metric) + '<span class="num">' + esc(r.value) + '</span></td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="6" style="text-align:center;color:#bfbfbf">暂无数据</td></tr>';
+  }
+
+  function matchDate(rowTime, dateVal) {
+    if (!dateVal) return true;
+    return String(rowTime || '').indexOf(dateVal) === 0;
+  }
+
+  function uniqueNames(list, key) {
+    var out = [];
+    list.forEach(function (row) {
+      var n = row[key];
+      if (n && out.indexOf(n) < 0) out.push(n);
+    });
+    return out;
+  }
+
+  /** 可模糊搜索下拉：输入过滤，可点选；查询按包含匹配 */
+  function initSearchSelect(rootId, options) {
+    var root = document.getElementById(rootId);
+    if (!root) return null;
+    var input = root.querySelector('.ss-input');
+    var panel = root.querySelector('.ss-panel');
+    var opts = options.slice();
+    var active = -1;
+
+    function render(keyword) {
+      var kw = (keyword || '').trim().toLowerCase();
+      var filtered = opts.filter(function (n) {
+        return !kw || String(n).toLowerCase().indexOf(kw) >= 0;
+      });
+      if (!filtered.length) {
+        panel.innerHTML = '<div class="ss-empty">无匹配项</div>';
+        active = -1;
+        return;
+      }
+      panel.innerHTML = filtered.map(function (n, i) {
+        return '<div class="ss-opt' + (i === active ? ' active' : '') + '" data-val="' + esc(n) + '">' + esc(n) + '</div>';
+      }).join('');
+    }
+
+    function open() {
+      root.classList.add('open');
+      active = -1;
+      render(input.value);
+    }
+    function close() {
+      root.classList.remove('open');
+      active = -1;
+    }
+    function clear() {
+      input.value = '';
+      close();
+    }
+
+    input.addEventListener('focus', open);
+    input.addEventListener('click', open);
+    input.addEventListener('input', function () {
+      active = -1;
+      open();
+      render(input.value);
+    });
+    input.addEventListener('keydown', function (e) {
+      var items = panel.querySelectorAll('.ss-opt');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!root.classList.contains('open')) open();
+        active = Math.min(active + 1, items.length - 1);
+        render(input.value);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        active = Math.max(active - 1, 0);
+        render(input.value);
+      } else if (e.key === 'Enter') {
+        if (root.classList.contains('open') && active >= 0 && items[active]) {
+          e.preventDefault();
+          input.value = items[active].getAttribute('data-val') || '';
+          close();
+        }
+      } else if (e.key === 'Escape') {
+        close();
+      }
+    });
+    panel.addEventListener('mousedown', function (e) {
+      var opt = e.target.closest('.ss-opt');
+      if (!opt) return;
+      e.preventDefault();
+      input.value = opt.getAttribute('data-val') || '';
+      close();
+    });
+    document.addEventListener('click', function (e) {
+      if (!root.contains(e.target)) close();
+    });
+
+    return {
+      clear: clear,
+      getValue: function () { return input.value.trim(); }
+    };
+  }
+
+  /** 模拟：按站点拉取设备名称下拉（接口就绪后替换） */
+  function fetchDeviceNameOptions(stationId) {
+    return Promise.resolve(
+      MOCK_DEVICE.map(function (d) { return d.name; })
+        .filter(function (n, i, arr) { return n && arr.indexOf(n) === i; })
+    );
+  }
+
+  function fillSelect(selectId, names, allLabel) {
+    var sel = document.getElementById(selectId);
+    if (!sel) return;
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">' + (allLabel || '全部') + '</option>' +
+      names.map(function (n) {
+        return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
+      }).join('');
+    if (cur && names.indexOf(cur) >= 0) sel.value = cur;
+  }
+
+  var ssPatrolPerson = initSearchSelect('ss-patrol-person', uniqueNames(MOCK_PATROL, 'person'));
+  var ssIssueFinder = initSearchSelect('ss-issue-finder', uniqueNames(MOCK_ISSUE, 'finder'));
+
+  function queryPatrol() {
+    var time = document.getElementById('patrol-time').value;
+    var person = ssPatrolPerson ? ssPatrolPerson.getValue() : '';
+    var result = document.getElementById('patrol-result').value;
+    var hasIssue = document.getElementById('patrol-has-issue').value;
+    var list = MOCK_PATROL.filter(function (r) {
+      if (!matchDate(r.time, time)) return false;
+      if (person && r.person.indexOf(person) < 0) return false;
+      if (result && r.result !== result) return false;
+      if (hasIssue === '1' && !r.hasIssue) return false;
+      if (hasIssue === '0' && r.hasIssue) return false;
+      return true;
+    });
+    renderPatrol(list);
+  }
+
+  function queryIssue() {
+    var time = document.getElementById('issue-time').value;
+    var finder = ssIssueFinder ? ssIssueFinder.getValue() : '';
+    var handle = document.getElementById('issue-handle').value;
+    var status = document.getElementById('issue-status').value;
+    var list = MOCK_ISSUE.filter(function (r) {
+      if (!matchDate(r.foundAt, time)) return false;
+      if (finder && r.finder.indexOf(finder) < 0) return false;
+      if (handle && r.handle !== handle) return false;
+      if (status && r.status !== status) return false;
+      return true;
+    });
+    renderIssue(list);
+  }
+
+  function queryDevice() {
+    var code = document.getElementById('device-code').value.trim();
+    var name = document.getElementById('device-name').value;
+    var type = document.getElementById('device-type').value;
+    var status = document.getElementById('device-status').value;
+    var list = MOCK_DEVICE.filter(function (r) {
+      if (code && r.code.indexOf(code) < 0) return false;
+      if (name && r.name !== name) return false;
+      if (type && r.type !== type) return false;
+      if (status && r.status !== status) return false;
+      return true;
+    });
+    renderDevice(list);
+  }
+
+  renderBasic(MOCK_BASIC);
+  renderPatrol(MOCK_PATROL);
+  renderIssue(MOCK_ISSUE);
+  renderOrder(MOCK_ORDER);
+  renderDevice(MOCK_DEVICE);
+
+  fetchDeviceNameOptions(stationId).then(function (names) {
+    fillSelect('device-name', names);
+  });
+
+  document.getElementById('tabs').addEventListener('click', function (e) {
+    var tab = e.target.closest('.tab');
+    if (!tab) return;
+    var key = tab.getAttribute('data-tab');
+    document.querySelectorAll('.tab').forEach(function (t) {
+      t.classList.toggle('active', t === tab);
+    });
+    document.querySelectorAll('.pane').forEach(function (p) {
+      p.classList.remove('active');
+    });
+    var pane = document.getElementById('pane-' + key);
+    if (pane) pane.classList.add('active');
+  });
+
+  document.getElementById('patrol-query').addEventListener('click', queryPatrol);
+  document.getElementById('patrol-reset').addEventListener('click', function () {
+    document.getElementById('patrol-time').value = '';
+    if (ssPatrolPerson) ssPatrolPerson.clear();
+    document.getElementById('patrol-result').value = '';
+    document.getElementById('patrol-has-issue').value = '';
+    renderPatrol(MOCK_PATROL);
+  });
+
+  document.getElementById('patrol-tbody').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-patrol-view]');
+    if (!btn) return;
+    openPatrolModal(btn.getAttribute('data-patrol-view'));
+  });
+  document.getElementById('patrol-modal-close').addEventListener('click', closePatrolModal);
+  document.getElementById('patrol-modal-ok').addEventListener('click', closePatrolModal);
+  document.getElementById('patrol-modal').addEventListener('click', function (e) {
+    if (e.target === this) closePatrolModal();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closePatrolModal();
+  });
+
+  document.getElementById('issue-query').addEventListener('click', queryIssue);
+  document.getElementById('issue-reset').addEventListener('click', function () {
+    document.getElementById('issue-time').value = '';
+    if (ssIssueFinder) ssIssueFinder.clear();
+    document.getElementById('issue-handle').value = '';
+    document.getElementById('issue-status').value = '';
+    renderIssue(MOCK_ISSUE);
+  });
+
+  document.getElementById('device-query').addEventListener('click', queryDevice);
+  document.getElementById('device-reset').addEventListener('click', function () {
+    document.getElementById('device-code').value = '';
+    document.getElementById('device-name').value = '';
+    document.getElementById('device-type').value = '';
+    document.getElementById('device-status').value = '';
+    renderDevice(MOCK_DEVICE);
+  });
+})();
+</script>
+</body>
+</html>
