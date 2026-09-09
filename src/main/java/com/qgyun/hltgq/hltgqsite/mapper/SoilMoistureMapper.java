@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 墒情监测数据 Mapper（t_auto_hltgq_water_nmisp_info）
+ * 墒情监测数据 Mapper（t_auto_hltgq_water_soil_data，2026-09 拆分独立表：原墒情/水质共表 nmisp_info 拆分为本表墒情 + nmisp_info 水质）
  */
 @Mapper
 public interface SoilMoistureMapper {
@@ -48,7 +48,7 @@ public interface SoilMoistureMapper {
             "  CASE WHEN n.msixty = -999 THEN NULL ELSE TRUNC(n.msixty, 2) END AS msixty, " +
             "  CASE WHEN n.meighty = -999 THEN NULL ELSE TRUNC(n.meighty, 2) END AS meighty, " +
             "  CASE WHEN n.mhundred = -999 THEN NULL ELSE TRUNC(n.mhundred, 2) END AS mhundred " +
-            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
+            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_soil_data n " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
             "  LEFT JOIN ( " +
             "    SELECT DISTINCT ON (v.site) v.site, v.vol " +
@@ -111,7 +111,7 @@ public interface SoilMoistureMapper {
             "TRUNC(AVG(n.msixty) FILTER (WHERE n.msixty NOT IN (-999, -9991)), 2) AS msixty, " +
             "TRUNC(AVG(n.meighty) FILTER (WHERE n.meighty NOT IN (-999, -9991)), 2) AS meighty, " +
             "TRUNC(AVG(n.mhundred) FILTER (WHERE n.mhundred NOT IN (-999, -9991)), 2) AS mhundred " +
-            "FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_soil_data n " +
             "WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +
             "AND n.tm &gt;= #{startTime} " +
             "AND n.tm &lt;= #{endTime} " +
@@ -142,7 +142,7 @@ public interface SoilMoistureMapper {
             "CASE WHEN n.msixty = -999 THEN NULL ELSE TRUNC(n.msixty, 2) END AS msixty, " +
             "CASE WHEN n.meighty = -999 THEN NULL ELSE TRUNC(n.meighty, 2) END AS meighty, " +
             "CASE WHEN n.mhundred = -999 THEN NULL ELSE TRUNC(n.mhundred, 2) END AS mhundred " +
-            "FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_soil_data n " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
             "WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +
             "<if test='startTime != null'>AND n.tm &gt;= #{startTime} </if>" +
@@ -176,7 +176,7 @@ public interface SoilMoistureMapper {
      */
     @Select("<script>" +
             "SELECT COUNT(*) " +
-            "FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_soil_data n " +
             "WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +
             "<if test='startTime != null'>AND n.tm &gt;= #{startTime} </if>" +
             "<if test='endTime != null'>AND n.tm &lt;= #{endTime} </if>" +
@@ -196,7 +196,7 @@ public interface SoilMoistureMapper {
             "SELECT DISTINCT ON (t.skey) t.skey AS stcd, t.tm, t.mten, t.mtwenty, t.mthirty " +
             "FROM ( " +
             "  SELECT COALESCE(n.stcd, n.site) AS skey, n.tm, n.mten, n.mtwenty, n.mthirty " +
-            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
+            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_soil_data n " +
             "  WHERE (n.stcd IN " +
             "  <foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
             "   OR n.site IN " +
@@ -241,7 +241,7 @@ public interface SoilMoistureMapper {
     @Select("SELECT DISTINCT ON (t.skey) t.skey AS code, t.name " +
             "FROM ( " +
             "  SELECT COALESCE(n.stcd, n.site) AS skey, COALESCE(s.zzkaec, n.stcd, n.site) AS name " +
-            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
+            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_soil_data n " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
             "  WHERE s.epjutj LIKE '%#7#%' " +
             ") t " +
