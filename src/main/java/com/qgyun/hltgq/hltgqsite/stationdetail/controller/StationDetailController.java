@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
+
 import java.time.LocalDate;
 
 /**
@@ -65,13 +67,14 @@ public class StationDetailController {
     }
 
     /**
-     * 巡检记录详情（「查看」弹窗）：计划名/站点名/巡检对象设备名/人员/结果/说明/状态/关联问题。
+     * 巡检记录详情（「查看」弹窗）：计划名/站点名/巡检对象设备名/人员/结果/说明/状态/关联问题；
+     * photos 为现场照片对象数组（图片关联表 + 文件服务签名地址实时组装）。
      *
      * @param recordId 巡检记录主键 id
      */
     @GetMapping("/patrol/{recordId}")
-    public PatrolDetailVO patrolDetail(@PathVariable String recordId) {
-        return stationDetailService.patrolDetail(recordId);
+    public PatrolDetailVO patrolDetail(@PathVariable String recordId, HttpServletRequest request) {
+        return stationDetailService.patrolDetail(recordId, request);
     }
 
     /**
@@ -114,7 +117,7 @@ public class StationDetailController {
      * @param stationId 站点键，必填
      * @param code      设备编号模糊，可选
      * @param name      设备名称精确（下拉选择），可选
-     * @param type      设备类型：闸门 或 监测类型数字 1/2/3/4/5/7/8，可选
+     * @param type      设备类型：中文名称 水位/雨量/流量/闸门/视频/墒情/水质 或监测类型数字 1/2/3/4/5/7/8（等价），可选
      * @param status    设备状态：正常（在线）/关闭（离线），可选
      */
     @GetMapping("/device/page")

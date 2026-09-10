@@ -39,13 +39,15 @@ public interface StationDetailMapper {
     /**
      * 站点档案行（按档案 id）：基础信息所需档案字段。
      * <p>列别名与 StationBasicVO 属性同名；bviiio_x/y 经纬度、zebpsu 运行状态、
-     * waljdn 是否接通市电、bhsqxd 传输方法（ahieto 存的是管理单位 id 非名称，mivbcz 值同站名，均不取）。
+     * waljdn 是否接通市电、bhsqxd 传输方法；org 由 ahieto 自关联本表取管理单位名称
+     * （ahieto 存管理单位 id，单位间有上下级；本实现取直接上级名称，mivbcz 值同站名不取）。
      */
-    @Select("SELECT iofhpi AS code, zzkaec AS name, epjutj AS typeCodes, " +
-            "bviiio_x AS lon, bviiio_y AS lat, zebpsu AS runStatusCode, " +
-            "waljdn AS mainsPowerCode, bhsqxd AS comm " +
-            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
-            "WHERE id = #{id}")
+    @Select("SELECT s.iofhpi AS code, s.zzkaec AS name, s.epjutj AS typeCodes, " +
+            "s.bviiio_x AS lon, s.bviiio_y AS lat, s.zebpsu AS runStatusCode, " +
+            "s.waljdn AS mainsPowerCode, s.bhsqxd AS comm, u.zzkaec AS org " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" u ON s.ahieto = u.id " +
+            "WHERE s.id = #{id}")
     StationBasicVO selectStationBasic(@Param("id") String id);
 
     // ==================== 供电 / 网络 ====================
@@ -108,9 +110,10 @@ public interface StationDetailMapper {
      * 巡检记录分页：按巡检时间倒序，id 降序兜底分页稳定。
      * <p>记录编号用主键 id（业务表无 code 字段）；hasIssue 为派生布尔列；
      * relatedIssue 为关联问题标题顿号拼接（无则 null）；object 由 Service 解析 device 回填。
+     * <p>巡检对象存平台动态列 \"_d_10497_device\"（表内无 device 列，实查信息模式确认）。
      */
     @Select("<script>" +
-            "SELECT r.id AS code, r.\"time\", u.name AS person, r.device AS deviceIds, r.content, " +
+            "SELECT r.id AS code, r.\"time\", u.name AS person, r.\"_d_10497_device\" AS deviceIds, r.content, " +
             "r.result AS resultCode, r.status AS statusCode, " +
             "CASE WHEN r.result IN ('#3#', '#4#', '#5#', '#6#') OR EXISTS (SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" i WHERE i.abqezf = r.id) THEN TRUE ELSE FALSE END AS hasIssue, " +
             "(SELECT string_agg(i.title, '、') FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" i WHERE i.abqezf = r.id) AS relatedIssue " +
@@ -140,10 +143,10 @@ public interface StationDetailMapper {
 
     /**
      * 巡检记录详情（按记录 id）：JOIN 计划标题、用户姓名、站点名称；
-     * deviceIds 多选原文由 Service 解析回填 object。
+     * deviceIds 多选原文由 Service 解析回填 object（真实列 \"_d_10497_device\"）。
      */
     @Select("SELECT r.id AS code, r.\"time\", r.content AS remark, r.result AS resultCode, r.status AS statusCode, " +
-            "r.device AS deviceIds, u.name AS person, p.title AS plan, s.zzkaec AS site " +
+            "r.\"_d_10497_device\" AS deviceIds, u.name AS person, p.title AS plan, s.zzkaec AS site " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" r " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" u ON r.\"user\" = u.id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_schedule\" p ON r.patrol_schedule = p.id " +
@@ -158,6 +161,14 @@ public interface StationDetailMapper {
             "WHERE i.abqezf = #{recordId} " +
             "ORDER BY i.\"time\"")
     List<PatrolDetailVO.IssueItem> selectPatrolIssues(@Param("recordId") String recordId);
+
+    /**
+     * 巡检照片文件 id 列表（平台图片关联表 biz_id = 巡检记录 id，按 nature_order 升序）；
+     * 巡检表无照片列，照片经文件服务 file/m/{rel_id} 取签名地址（Service 组装）。
+     */
+    @Select("SELECT rel_id FROM \"qixiao-apaas\".t_auto_hltgq_knc3g_ychwbx_site_image_rel " +
+            "WHERE biz_id = #{recordId} ORDER BY nature_order")
+    List<String> selectPatrolImageFileIds(@Param("recordId") String recordId);
 
     /** 设备名批量查询（巡检对象 device 多选解析出的 id 列表），键全小写 */
     @Select("<script>" +
@@ -346,6 +357,20 @@ public interface StationDetailMapper {
             "WHERE (stcd = #{stcd} OR site = #{site}) AND nh3n IS NOT NULL AND nh3n >= 0 " +
             "ORDER BY tm DESC LIMIT 1")
     Map<String, Object> selectLatestQuality(@Param("stcd") String stcd, @Param("site") String site);
+
+    /**
+     * 视频通道最新巡检结果（留痕表由 hltgq-device 视频巡检任务写入，与 site 同库直查）：
+     * channel_code = 设备表视频设备 code（即通道 devicecode），每通道取最近一轮（round_time 最新）
+     * 结果行；result 三态：ok 检测正常 / fail 检出故障 / error 检测异常。键全小写。
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT ON (channel_code) channel_code, result " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_video_patrol " +
+            "WHERE channel_code IN " +
+            "<foreach collection='codes' item='c' open='(' separator=',' close=')'>#{c}</foreach>" +
+            " ORDER BY channel_code, round_time DESC" +
+            "</script>")
+    List<Map<String, Object>> selectLatestVideoPatrolResults(@Param("codes") List<String> codes);
 
     // ==================== 筛选下拉选项 ====================
 

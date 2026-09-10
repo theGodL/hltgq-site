@@ -28,7 +28,7 @@ public class StationBasicVO {
     /** 站点类型编码原文（epjutj，如 #1#|#2#，权威值） */
     private String typeCodes;
 
-    /** 所属管理单位（档案表 ahieto 存的是管理单位 id 非名称，恒 null，不解析） */
+    /** 所属管理单位（档案表 ahieto 自关联本表取管理单位名称 zzkaec；无上级或上级记录不存在为 null） */
     private String org;
 
     /** 所属渠系（档案表无此字段，恒 null） */

@@ -7,7 +7,9 @@ import java.util.List;
 
 /**
  * 站点详情-巡检记录详情（「查看」弹窗）。
- * <p>现场照片：巡检记录表无照片字段，photos 恒返回空列表；
+ * <p>现场照片：巡检表无照片字段，经平台图片关联表 knc3g_ychwbx_site_image_rel（biz_id = 记录 id）
+ * 取文件 id，再由文件服务 file/m/{id} 实时换签名地址（原图+缩略图）组装 photos；
+ * 文件服务不可用时降级为空列表（不阻断主数据）。
  * 巡检对象 device 多选格式由 Service 解析（支持逗号/竖线/# 分隔）并回填设备名。
  */
 @Data
@@ -43,8 +45,8 @@ public class PatrolDetailVO {
     /** 巡检说明（content） */
     private String remark;
 
-    /** 现场照片（表无照片字段，恒空列表） */
-    private List<String> photos;
+    /** 现场照片（图片关联表 + 文件服务签名地址组装；文件服务不可用时为空列表） */
+    private List<PhotoItem> photos;
 
     /** 状态（status 翻译：#1# 草稿、#2# 已提交） */
     private String status;
@@ -69,5 +71,24 @@ public class PatrolDetailVO {
 
         /** 设备名称（JOIN 设备表 name） */
         private String device;
+    }
+
+    /**
+     * 现场照片行（文件服务签名地址 24h 有效，前端实时使用）
+     */
+    @Data
+    public static class PhotoItem {
+
+        /** 文件 id */
+        private String fileId;
+
+        /** 文件名 */
+        private String name;
+
+        /** 原图签名地址（preview） */
+        private String url;
+
+        /** 缩略图签名地址（thumb） */
+        private String thumb;
     }
 }

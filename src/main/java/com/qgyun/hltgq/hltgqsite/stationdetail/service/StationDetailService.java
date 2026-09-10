@@ -1,6 +1,8 @@
 package com.qgyun.hltgq.hltgqsite.stationdetail.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.auth.SessionContextService;
+import com.qgyun.hltgq.hltgqsite.stationdetail.client.FileClient;
 import com.qgyun.hltgq.hltgqsite.stationdetail.mapper.StationDetailMapper;
 import com.qgyun.hltgq.hltgqsite.stationdetail.vo.DeviceVO;
 import com.qgyun.hltgq.hltgqsite.stationdetail.vo.IssueRecordVO;
@@ -27,6 +29,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import javax.servlet.http.HttpServletRequest;
 
 /**
  * 站点详情服务：站点档案聚合 + 巡检/问题/工单/设备分页 + 筛选下拉选项。
@@ -87,6 +91,12 @@ public class StationDetailService {
 
     @Autowired
     private StationDetailMapper mapper;
+
+    @Autowired
+    private FileClient fileClient;
+
+    @Autowired
+    private SessionContextService sessionContextService;
 
     // ==================== 基础信息 ====================
 
@@ -189,8 +199,9 @@ public class StationDetailService {
      * 巡检记录详情（「查看」弹窗）。
      *
      * @param recordId 巡检记录主键 id
+     * @param request  当前请求（提取会话 id 透传文件服务换取照片签名地址）
      */
-    public PatrolDetailVO patrolDetail(String recordId) {
+    public PatrolDetailVO patrolDetail(String recordId, HttpServletRequest request) {
         if (recordId == null || recordId.trim().isEmpty()) {
             throw new IllegalArgumentException("巡检记录 id 不能为空");
         }
@@ -201,13 +212,44 @@ public class StationDetailService {
 
         vo.setResult(RESULT_LABELS.getOrDefault(vo.getResultCode(), vo.getResultCode()));
         vo.setStatus(PATROL_STATUS.getOrDefault(vo.getStatusCode(), vo.getStatusCode()));
-        vo.setPhotos(Collections.emptyList());
         vo.setObject(resolveDeviceNames(vo.getDeviceIds(), " / "));
+        vo.setPhotos(loadPatrolPhotos(recordId.trim(), request));
         vo.setIssues(mapper.selectPatrolIssues(recordId.trim()));
         if (vo.getIssues() == null) {
             vo.setIssues(Collections.emptyList());
         }
         return vo;
+    }
+
+    /**
+     * 巡检现场照片组装：图片关联表 biz_id = 记录 id 取文件 id 列表，逐文件经文件服务换签名地址
+     * （preview 原图 + thumb 缩略图）。单文件失败仅 warn 跳过（不阻断主数据），全部失败返回空列表。
+     */
+    private List<PatrolDetailVO.PhotoItem> loadPatrolPhotos(String recordId, HttpServletRequest request) {
+        List<String> fileIds = mapper.selectPatrolImageFileIds(recordId);
+        if (fileIds == null || fileIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        String sessionId = sessionContextService.extractSessionId(request);
+        List<PatrolDetailVO.PhotoItem> photos = new ArrayList<>();
+        for (String fileId : fileIds) {
+            if (fileId == null || fileId.isEmpty()) {
+                continue;
+            }
+            try {
+                FileClient.FileInfo info = fileClient.getFile(fileId, sessionId);
+                PatrolDetailVO.PhotoItem item = new PatrolDetailVO.PhotoItem();
+                item.setFileId(info.fileId);
+                item.setName(info.name);
+                item.setUrl(info.url);
+                item.setThumb(info.thumb);
+                photos.add(item);
+            } catch (Exception e) {
+                log.warn("巡检照片获取失败 recordId={}, fileId={}: {}", recordId, fileId, e.getMessage());
+            }
+        }
+        log.info("巡检照片组装完成 recordId={}, 文件数={}/{}", recordId, photos.size(), fileIds.size());
+        return photos;
     }
 
     // ==================== 问题记录 ====================
@@ -274,7 +316,7 @@ public class StationDetailService {
      *
      * @param code   设备编号模糊，可选
      * @param name   设备名称精确（下拉选择），可选
-     * @param type   设备类型：闸门 或 监测类型数字 1/2/3/4/5/7/8，可选
+     * @param type   设备类型：中文名称 水位/雨量/流量/闸门/视频/墒情/水质 或数字 1/2/3/4/5/7/8（等价），可选
      * @param status 设备状态：在线/离线（兼容旧词正常/关闭），可选
      */
     public Page<DeviceVO> devicePage(String stationKey, String code, String name,
@@ -408,14 +450,16 @@ public class StationDetailService {
     }
 
     /**
-     * 设备类型筛选 → 编码片段（LIKE '%编码%'）：文本「闸门」→ #4#，
-     * 数字 1/2/3/4/5/7/8 → #N#；页面其他分类（启闭/监测/电气设备）表内无对应编码，不筛。
+     * 设备类型筛选 → 编码片段（LIKE '%编码%'）：中文名称（水位/雨量/流量/闸门/视频/墒情/水质，
+     * 与响应 type 翻译同一权威字典 TYPE_LABELS）或数字 1/2/3/4/5/7/8 → #N#；其他/空 → null（不筛）。
      */
     private String parseDeviceType(String type) {
         if (type == null) return null;
         String t = type.trim();
         if (t.isEmpty()) return null;
-        if ("闸门".equals(t)) return "#4#";
+        for (Map.Entry<String, String> e : TYPE_LABELS.entrySet()) {
+            if (e.getValue().equals(t)) return e.getKey();
+        }
         if (t.length() == 1 && "1234578".indexOf(t.charAt(0)) >= 0) {
             return "#" + t + "#";
         }
@@ -537,7 +581,9 @@ public class StationDetailService {
      * 设备实时数据组装（站点级取数）：各监测表按站点键关联（闸门按 site+闸孔号、
      * 水位/雨量按 STCD=iofhpi、流量按 site、墒情/水质按 stcd/site 双键），无数据恒 null；
      * 仅当前页存在对应类型设备时才查询对应监测表；-999/-9991 哨兵值已在 SQL 过滤（>=0）。
-     * <p>视频设备（#5#）巡检结果数据在 device 服务，本地无数据源，textValue 恒 null。
+     * <p>视频设备（#5#）巡检结果取 device 留痕表（同库直查）该通道最近一轮，
+     * 翻译「正常/检出故障/检测异常」填 textValue（metric 固定「巡检结果」）；
+     * 设备 code 为空（无法匹配通道）或无留痕时不带值。
      */
     private void fillDeviceRealtime(String siteId, String stcd, List<DeviceVO> records) {
         // 类型需求探测（仅查有对应设备的监测表）
@@ -547,6 +593,7 @@ public class StationDetailService {
         boolean needFlow = false;
         boolean needSoil = false;
         boolean needQuality = false;
+        boolean needVideo = false;
         for (DeviceVO d : records) {
             String codes = d.getTypeCodes() == null ? "" : d.getTypeCodes();
             needGate |= codes.contains("#4#");
@@ -555,6 +602,7 @@ public class StationDetailService {
             needFlow |= codes.contains("#3#");
             needSoil |= codes.contains("#7#");
             needQuality |= codes.contains("#8#");
+            needVideo |= codes.contains("#5#");
         }
 
         // 闸门：每闸孔最新开度（闸孔号 → 开度）
@@ -571,6 +619,26 @@ public class StationDetailService {
         BigDecimal flow = needFlow ? valueOf(mapper.selectLatestFlow(siteId)) : null;
         BigDecimal soil = needSoil ? valueOf(mapper.selectLatestSoil(stcd, siteId)) : null;
         BigDecimal quality = needQuality ? valueOf(mapper.selectLatestQuality(stcd, siteId)) : null;
+        // 视频通道最新巡检结果（channel_code = 设备 code；code 为空/无留痕的设备不带值）
+        Map<String, String> videoTextMap = new HashMap<>();
+        if (needVideo) {
+            List<String> videoCodes = new ArrayList<>();
+            for (DeviceVO d : records) {
+                String codes = d.getTypeCodes() == null ? "" : d.getTypeCodes();
+                if (codes.contains("#5#") && d.getCode() != null && !d.getCode().trim().isEmpty()) {
+                    videoCodes.add(d.getCode().trim());
+                }
+            }
+            if (!videoCodes.isEmpty()) {
+                for (Map<String, Object> row : mapper.selectLatestVideoPatrolResults(videoCodes)) {
+                    String code = str(row.get("channel_code"));
+                    String text = translateVideoResult(str(row.get("result")));
+                    if (code != null && text != null) {
+                        videoTextMap.put(code, text);
+                    }
+                }
+            }
+        }
 
         for (DeviceVO d : records) {
             String codes = d.getTypeCodes() == null ? "" : d.getTypeCodes();
@@ -587,6 +655,12 @@ public class StationDetailService {
                 setRealtime(d, "10cm含水率", soil, "%");
             } else if (codes.contains("#8#") && quality != null) {
                 setRealtime(d, "氨氮", quality, "mg/L");
+            } else if (codes.contains("#5#")) {
+                String text = d.getCode() == null ? null : videoTextMap.get(d.getCode().trim());
+                if (text != null) {
+                    d.setMetric("巡检结果");
+                    d.setTextValue(text);
+                }
             }
         }
     }
@@ -595,6 +669,15 @@ public class StationDetailService {
         d.setMetric(metric);
         d.setValue(value);
         d.setUnit(unit);
+    }
+
+    /** 视频巡检结果翻译：ok → 正常、fail → 检出故障、error → 检测异常；未知值原样返回（不隐藏） */
+    private String translateVideoResult(String result) {
+        if (result == null) return null;
+        if ("ok".equals(result)) return "正常";
+        if ("fail".equals(result)) return "检出故障";
+        if ("error".equals(result)) return "检测异常";
+        return result;
     }
 
     /** 单行查询结果取 value 列数值（行不存在为 null，防 NPE） */
