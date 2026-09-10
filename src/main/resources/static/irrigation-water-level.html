@@ -167,7 +167,7 @@ tbody tr:hover td{background:#fafafa}
 <body>
 <div class="page-wrap">
   <div class="breadcrumb">
-    <span>水资源调度</span><span class="sep">/</span>
+    <span>业务中心</span><span class="sep">/</span>
     <span>数据统计</span><span class="sep">/</span>
     <span class="cur">水位监测</span>
   </div>
@@ -496,16 +496,14 @@ let chart = null;
 const RES_META = {
   river: {
     name: '河道水情表',
-    // 对齐 /st-river-r/regime；水位列紧跟时间（第 3 列），便于第一时间看到水位；
-    // 水势等无真实数值字段不展示
-    headers: ['站点名称', '时间', '水位m', '警戒水位m', '保证水位m'],
-    rowToArr: r => [r.stnm, fmtTm(r.tm), r.z, r.warningLevel, r.guaranteedLevel],
+    // 对齐 /st-river-r/regime；水位列紧跟时间（第 3 列）；警戒/保证水位不展示
+    headers: ['站点名称', '时间', '水位m'],
+    rowToArr: r => [r.stnm, fmtTm(r.tm), r.z],
   },
   reservoir: {
     name: '水库水情表',
-    // 对齐 /st-river-r/reservoir-regime；水位列紧跟时间（第 3 列）；水势/入库/出库流量无真实数值不展示
-    // 水库口径术语：warningLevel/guaranteedLevel 展示为汛限水位/正常蓄水位（字段名不变，仅表头文字）
-    headers: ['站点名称', '时间', '水位m', '汛限水位m', '正常蓄水位m'],
+    // 展示口径：汛限水位 / 正常蓄水位（数值取接口 warningLevel / guaranteedLevel）
+    headers: ['站点名称', '时间', '水位m', '汛限水位', '正常蓄水位'],
     rowToArr: r => [r.stnm, fmtTm(r.tm), r.z, r.warningLevel, r.guaranteedLevel],
   },
   period: {
@@ -516,9 +514,9 @@ const RES_META = {
   },
   brief: {
     name: '水情简报',
-    // 对齐 /st-river-r/water-brief；水势/流量/蓄水量无真实数值不展示
-    headers: ['站点名称', '警戒水位m', '昨日8点水位m', '昨日20点水位m', '今天8点水位m', '与昨日8点比(m)', '最高水位 m', '设防水位m'],
-    rowToArr: r => [r.stnm, fmtN2(r.wrz), fmtN2(r.y8), fmtN2(r.y20), fmtN2(r.t8), fmtCmp(r.cmp), `${fmtN2(r.maxz)} ${fmtTm(r.maxTm)}`, fmtN2(r.dsflz)],
+    // 对齐 /st-river-r/water-brief；警戒水位 / 设防水位不展示
+    headers: ['站点名称', '昨日8点水位m', '昨日20点水位m', '今天8点水位m', '与昨日8点比(m)', '最高水位 m'],
+    rowToArr: r => [r.stnm, fmtN2(r.y8), fmtN2(r.y20), fmtN2(r.t8), fmtCmp(r.cmp), `${fmtN2(r.maxz)} ${fmtTm(r.maxTm)}`],
   },
   years: {
     name: '多年同期水情',
@@ -1233,13 +1231,11 @@ function renderResTable() {
     $('res-tbody').innerHTML = rows.map(r => `
       <tr>
         <td>${fmtN(r.stnm)}</td>
-        <td>${fmtN2(r.wrz)}</td>
         <td>${fmtN2(r.y8)}</td>
         <td>${fmtN2(r.y20)}</td>
         <td>${fmtN2(r.t8)}</td>
         <td>${fmtCmp(r.cmp)}</td>
         <td><div class="cell-stack"><span>${fmtN2(r.maxz)}</span><span class="sub">${fmtTm(r.maxTm)}</span></div></td>
-        <td>${fmtN2(r.dsflz)}</td>
       </tr>
     `).join('');
     return;

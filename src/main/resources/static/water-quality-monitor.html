@@ -19,12 +19,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
 .filter-item{display:flex;align-items:center;gap:8px}
 .filter-item > label{color:#666;font-size:14px;white-space:nowrap}
-.filter-bar input[type=text]{
-  width:180px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;
-  font-size:14px;outline:none;background:#fff;color:#333;
-}
-.filter-bar input[type=text]:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
-.filter-bar input[type=text]::placeholder{color:#bfbfbf}
 
 .date-range{
   display:inline-flex;align-items:center;gap:6px;height:32px;border:1px solid #d9d9d9;border-radius:6px;
@@ -33,13 +27,53 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .date-range:focus-within{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 .date-range input{border:none;outline:none;height:28px;width:118px;font-size:13px;background:transparent;font-family:inherit;color:#333}
 .date-sep{color:#bfbfbf;font-size:13px}
-.cal-ico{color:#bfbfbf;display:inline-flex}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-primary:disabled{opacity:.65;cursor:not-allowed}
 .btn-default{background:#fff;color:#333;border-color:#d9d9d9}
 .btn-default:hover{color:#1677ff;border-color:#1677ff}
+
+/* 站点多选 */
+.ms{position:relative;width:280px}
+.ms-trigger{
+  min-height:32px;width:100%;border:1px solid #d9d9d9;border-radius:6px;padding:4px 28px 4px 8px;
+  background:#fff;cursor:pointer;display:flex;align-items:center;flex-wrap:wrap;gap:4px;
+}
+.ms-trigger:hover,.ms.open .ms-trigger{border-color:#1677ff}
+.ms.open .ms-trigger{box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.ms-placeholder{color:#bfbfbf;font-size:13px;line-height:22px;padding:0 4px}
+.ms-tag{
+  display:inline-flex;align-items:center;gap:4px;max-width:100%;
+  padding:0 6px;height:22px;border-radius:4px;background:#f0f5ff;color:#1677ff;font-size:12px;
+}
+.ms-tag span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
+.ms-tag button{border:none;background:transparent;color:#1677ff;cursor:pointer;font-size:12px;line-height:1;padding:0;opacity:.7}
+.ms-tag button:hover{opacity:1}
+.ms-arrow{
+  position:absolute;right:10px;top:50%;width:0;height:0;
+  border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #999;
+  transform:translateY(-50%);pointer-events:none;
+}
+.ms.open .ms-arrow{transform:translateY(-50%) rotate(180deg)}
+.ms-dd{
+  display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:40;
+  max-height:280px;overflow:hidden;background:#fff;border:1px solid #d9d9d9;border-radius:6px;
+  box-shadow:0 6px 16px rgba(0,0,0,.08);flex-direction:column;
+}
+.ms.open .ms-dd{display:flex}
+.ms-search{padding:8px;border-bottom:1px solid #f0f0f0;flex-shrink:0}
+.ms-search input{
+  width:100%;height:30px;border:1px solid #d9d9d9;border-radius:4px;padding:0 8px;
+  font-size:13px;outline:none;
+}
+.ms-search input:focus{border-color:#1677ff}
+.ms-list{overflow-y:auto;flex:1;padding:4px 0}
+.ms-opt{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none;font-size:13px}
+.ms-opt:hover{background:#e6f4ff}
+.ms-opt input{accent-color:#1677ff;cursor:pointer}
+.ms-empty{padding:16px;text-align:center;color:#bbb;font-size:13px}
 
 .main-scroll{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
 .table-card{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
@@ -56,6 +90,7 @@ table.data-table tbody td{
 }
 table.data-table tbody tr:hover td{background:#fafafa}
 table.data-table tbody tr:last-child td{border-bottom:none}
+table.data-table td.left,table.data-table th.left{text-align:left !important}
 
 .tm-cell{display:inline-flex;flex-direction:column;align-items:center;line-height:1.35;gap:2px}
 .tm-date{color:#333}
@@ -70,10 +105,16 @@ table.data-table tbody tr:last-child td{border-bottom:none}
 }
 .detail-btn:hover{border-color:#1677ff;background:#f0f5ff}
 .detail-btn svg{flex-shrink:0}
-
 .empty{text-align:center;color:#bbb;padding:48px 10px !important}
 
-/* 弹窗 */
+.pg-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0 4px;flex-wrap:wrap}
+.pg-info{color:#666;font-size:13px}
+.pg-btns{display:flex;align-items:center;gap:4px}
+.pg-btn{min-width:28px;height:28px;padding:0 6px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;color:#333;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
+.pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
+
 .overlay{
   display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center;
   padding:20px;background:rgba(0,0,0,.35);
@@ -95,39 +136,37 @@ table.data-table tbody tr:last-child td{border-bottom:none}
 }
 .modal-close:hover{color:#262626;background:#f5f5f5}
 .modal-bd{padding:0 16px 16px;overflow-y:auto;flex:1;min-height:0}
-
-.modal-tabs{display:flex;gap:4px;background:#fff;padding:0 4px;border-bottom:1px solid #f0f0f0;margin:0 -16px 14px;padding-left:16px;padding-right:16px}
+.modal-tabs{display:flex;gap:4px;background:#fff;border-bottom:1px solid #f0f0f0;margin:0 -16px 14px;padding:0 16px}
 .modal-tab{
   padding:12px 16px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;
   margin-bottom:-1px;user-select:none;background:transparent;border-top:none;border-left:none;border-right:none;
 }
 .modal-tab:hover{color:#1677ff}
 .modal-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
-
 .modal-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px;padding:12px 14px;background:#fff;border-radius:8px}
 .modal-filter .date-range{background:#EBF1F8;border-color:#EBF1F8}
 .modal-filter .date-range:focus-within{border-color:#1677ff;background:#fff}
-
 .modal-pane{display:none}
 .modal-pane.active{display:block}
-
 .chart-card{background:#fff;border-radius:8px;padding:12px 12px 8px;margin-bottom:12px}
 .chart-card:last-child{margin-bottom:0}
 .chart-title{
-  display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:#1f1f1f;
-  padding:2px 4px 6px;
+  display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:#1f1f1f;padding:2px 4px 6px;
 }
 .chart-title::before{content:'';width:3px;height:13px;border-radius:2px;background:#1677ff;flex-shrink:0}
 .chart-box{width:100%;height:240px}
-
-.hist-table-wrap{background:#fff;border-radius:8px;overflow:auto;max-height:520px}
+.hist-table-wrap{background:#fff;border-radius:8px;overflow:auto;max-height:480px}
+.hist-table-wrap table.data-table{table-layout:auto}
 .hist-table-wrap table.data-table thead th{position:sticky;top:0}
+
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
 
 @media (max-width:720px){
   html,body{overflow:auto}
   .page-wrap{height:auto;min-height:100%;overflow:visible}
-  .table-card{overflow:visible}
-  .table-wrap{overflow:visible}
+  .table-card,.table-wrap{overflow:visible}
+  .ms{width:100%;min-width:220px}
 }
 </style>
 </head>
@@ -142,20 +181,24 @@ table.data-table tbody tr:last-child td{border-bottom:none}
   <div class="card filter-card">
     <div class="filter-bar">
       <div class="filter-item">
-        <label>设备</label>
-        <input type="text" id="device-kw" placeholder="请输入">
+        <label>站点</label>
+        <div class="ms" id="site-ms">
+          <div class="ms-trigger" id="site-trigger" role="button" tabindex="0">
+            <span class="ms-placeholder" id="site-placeholder">全部站点</span>
+          </div>
+          <i class="ms-arrow" aria-hidden="true"></i>
+          <div class="ms-dd" id="site-dd">
+            <div class="ms-search"><input type="text" id="site-kw" placeholder="搜索站点"></div>
+            <div class="ms-list" id="site-list"></div>
+          </div>
+        </div>
       </div>
       <div class="filter-item">
         <label>日期</label>
         <div class="date-range">
-          <input type="date" id="start-date" value="2026-05-18">
+          <input type="date" id="start-date">
           <span class="date-sep">—</span>
-          <input type="date" id="end-date" value="2026-05-21">
-          <span class="cal-ico" aria-hidden="true">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>
-            </svg>
-          </span>
+          <input type="date" id="end-date">
         </div>
       </div>
       <button type="button" class="btn btn-primary" id="btn-query">查询</button>
@@ -168,13 +211,14 @@ table.data-table tbody tr:last-child td{border-bottom:none}
       <table class="data-table">
         <thead>
           <tr>
+            <th class="left" style="width:14%">站点名称</th>
             <th style="width:12%">监测时间</th>
-            <th>氨氮 (MG/L)</th>
-            <th>COD (MG/L)</th>
-            <th>BOD (MG/L)</th>
-            <th>TP (MG/L)</th>
-            <th>TN (MG/L)</th>
-            <th>溶解氧 (MG/L)</th>
+            <th>氨氮 (mg/L)</th>
+            <th>COD (mg/L)</th>
+            <th>BOD (mg/L)</th>
+            <th>TP (mg/L)</th>
+            <th>TN (mg/L)</th>
+            <th>溶解氧 (mg/L)</th>
             <th style="width:10%">操作</th>
           </tr>
         </thead>
@@ -184,7 +228,6 @@ table.data-table tbody tr:last-child td{border-bottom:none}
   </div>
 </div>
 
-<!-- 水质详情弹窗 -->
 <div class="overlay" id="detail-overlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="detail-title">
     <div class="modal-hd">
@@ -202,20 +245,14 @@ table.data-table tbody tr:last-child td{border-bottom:none}
           <div class="filter-item">
             <label>日期</label>
             <div class="date-range">
-              <input type="date" id="m-start" value="2026-05-18">
+              <input type="date" id="m-start">
               <span class="date-sep">—</span>
-              <input type="date" id="m-end" value="2026-05-21">
-              <span class="cal-ico" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>
-                </svg>
-              </span>
+              <input type="date" id="m-end">
             </div>
           </div>
           <button type="button" class="btn btn-primary" id="m-query">查询</button>
           <button type="button" class="btn btn-default" id="m-reset">重置</button>
         </div>
-
         <div class="chart-card">
           <div class="chart-title">有机污染指标趋势</div>
           <div class="chart-box" id="chart-organic"></div>
@@ -225,7 +262,7 @@ table.data-table tbody tr:last-child td{border-bottom:none}
           <div class="chart-box" id="chart-nutrient"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-title">溶解氧 (DO) 24h 趋势</div>
+          <div class="chart-title">溶解氧 (DO) 趋势</div>
           <div class="chart-box" id="chart-do"></div>
         </div>
       </div>
@@ -236,224 +273,323 @@ table.data-table tbody tr:last-child td{border-bottom:none}
             <thead>
               <tr>
                 <th>监测时间</th>
-                <th>氨氮 (MG/L)</th>
-                <th>COD (MG/L)</th>
-                <th>BOD (MG/L)</th>
-                <th>TP (MG/L)</th>
-                <th>TN (MG/L)</th>
-                <th>溶解氧 (MG/L)</th>
+                <th>氨氮 (mg/L)</th>
+                <th>COD (mg/L)</th>
+                <th>BOD (mg/L)</th>
+                <th>TP (mg/L)</th>
+                <th>TN (mg/L)</th>
+                <th>溶解氧 (mg/L)</th>
               </tr>
             </thead>
             <tbody id="hist-tbody"></tbody>
           </table>
+        </div>
+        <div class="pg-bar">
+          <div class="pg-info" id="hist-pg-info"></div>
+          <div class="pg-btns" id="hist-pg-btns"></div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
-const $ = id => document.getElementById(id);
-const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+(function () {
+  const API = '/hltgq-site';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** 限值（Mock）：超限标红；溶解氧偏低标蓝提示 */
-const LIMIT = { nh3: 1.5, cod: 40, bod: 10, tp: 0.3, tn: 2.5, doMin: 5 };
+  /** remark 关键字 → 指标 */
+  const REMARK_MAP = [
+    { keys: ['溶解氧', 'DO', 'dox'], metric: 'dox', lowerBetter: true },
+    { keys: ['氨氮', 'NH'], metric: 'nh3n', lowerBetter: false },
+    { keys: ['COD'], metric: 'codcr', lowerBetter: false },
+    { keys: ['BOD'], metric: 'bod5', lowerBetter: false },
+    { keys: ['总磷', 'TP'], metric: 'tp', lowerBetter: false },
+    { keys: ['总氮', 'TN'], metric: 'tn', lowerBetter: false },
+  ];
 
-const MOCK_DEVICES = ['花凉亭水质站1', '花凉亭水质站2', '渠首水质站', '麻塘湖水质站'];
-
-const MOCK_ROWS = [
-  { id: 1, device: '花凉亭水质站1', date: '2026-09-09', time: '14:55:38', nh3: 0.42, cod: 28.6, bod: 6.2, tp: 0.18, tn: 1.62, do: 7.84 },
-  { id: 2, device: '花凉亭水质站1', date: '2026-09-09', time: '13:55:38', nh3: 0.55, cod: 31.2, bod: 7.1, tp: 0.21, tn: 1.88, do: 7.20 },
-  { id: 3, device: '渠首水质站', date: '2026-09-09', time: '12:55:38', nh3: 1.90, cod: 43.5, bod: 11.4, tp: 0.366, tn: 2.91, do: 4.80 },
-  { id: 4, device: '花凉亭水质站2', date: '2026-09-09', time: '11:55:38', nh3: 0.38, cod: 26.8, bod: 5.9, tp: 0.15, tn: 1.45, do: 8.10 },
-  { id: 5, device: '麻塘湖水质站', date: '2026-09-09', time: '10:55:38', nh3: 0.61, cod: 33.0, bod: 8.2, tp: 0.24, tn: 2.05, do: 6.55 },
-  { id: 6, device: '花凉亭水质站1', date: '2026-09-09', time: '09:55:38', nh3: 0.48, cod: 29.4, bod: 6.8, tp: 0.19, tn: 1.70, do: 7.40 },
-  { id: 7, device: '渠首水质站', date: '2026-09-09', time: '08:55:38', nh3: 1.72, cod: 41.8, bod: 10.6, tp: 0.342, tn: 2.78, do: 5.50 },
-  { id: 8, device: '花凉亭水质站2', date: '2026-09-08', time: '18:30:12', nh3: 0.33, cod: 24.1, bod: 5.4, tp: 0.12, tn: 1.28, do: 8.45 },
-  { id: 9, device: '麻塘湖水质站', date: '2026-09-08', time: '16:20:05', nh3: 0.70, cod: 35.6, bod: 9.1, tp: 0.28, tn: 2.20, do: 6.10 },
-  { id: 10, device: '花凉亭水质站1', date: '2026-09-08', time: '14:10:44', nh3: 0.51, cod: 30.0, bod: 7.0, tp: 0.20, tn: 1.75, do: 7.05 },
-];
-
-let viewRows = MOCK_ROWS.slice();
-let currentRow = null;
-let chartOrganic = null;
-let chartNutrient = null;
-let chartDo = null;
-
-function fmtDateShort(dateStr) {
-  // 2026-09-09 -> 6-09-09
-  const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return dateStr;
-  return `${Number(m[1]) % 10}-${m[2]}-${m[3]}`;
-}
-
-function cellVal(v, kind) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '-';
-  let cls = '';
-  if (kind === 'do') {
-    if (n < LIMIT.doMin) cls = 'val-warn';
-    else cls = 'val-do';
-  } else if (n > LIMIT[kind]) {
-    cls = 'val-warn';
-  }
-  const text = Number.isInteger(n) ? String(n) : String(n);
-  return cls ? `<span class="${cls}">${text}</span>` : text;
-}
-
-function renderTable(rows) {
-  const tbody = $('tbody');
-  if (!rows.length) {
-    tbody.innerHTML = '<tr><td class="empty" colspan="8">暂无数据</td></tr>';
-    return;
-  }
-  tbody.innerHTML = rows.map(r => `
-    <tr>
-      <td>
-        <span class="tm-cell">
-          <span class="tm-date">${esc(fmtDateShort(r.date))}</span>
-          <span class="tm-time">${esc(r.time)}</span>
-        </span>
-      </td>
-      <td>${cellVal(r.nh3, 'nh3')}</td>
-      <td>${cellVal(r.cod, 'cod')}</td>
-      <td>${cellVal(r.bod, 'bod')}</td>
-      <td>${cellVal(r.tp, 'tp')}</td>
-      <td>${cellVal(r.tn, 'tn')}</td>
-      <td>${cellVal(r.do, 'do')}</td>
-      <td>
-        <button type="button" class="detail-btn" data-id="${r.id}">
-          详情
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6">
-            <path d="M4.5 2.5L8 6l-3.5 3.5"/>
-          </svg>
-        </button>
-      </td>
-    </tr>
-  `).join('');
-}
-
-function filterRows() {
-  const kw = ($('device-kw').value || '').trim().toLowerCase();
-  const s = $('start-date').value;
-  const e = $('end-date').value;
-  return MOCK_ROWS.filter(r => {
-    if (kw && !String(r.device).toLowerCase().includes(kw)) return false;
-    // Mock：日期筛选放宽，仍展示示例数据；有真实接口后按监测日过滤
-    if (s && e && r.date < '2026-05-01') return false;
-    return true;
-  });
-}
-
-function hours24() {
-  const arr = [];
-  for (let h = 0; h <= 24; h += 2) arr.push(`${String(h % 24).padStart(2, '0')}:00`);
-  arr[arr.length - 1] = '00:00';
-  return arr;
-}
-
-function mockSeries(seed, base, amp, count) {
-  const out = [];
-  let x = seed;
-  for (let i = 0; i < count; i++) {
-    x = (x * 9301 + 49297) % 233280;
-    const r = x / 233280;
-    out.push(+(base + (r - 0.5) * 2 * amp).toFixed(2));
-  }
-  return out;
-}
-
-function organicOption(x) {
-  const cod = mockSeries(11, 32, 6, x.length);
-  const bod = mockSeries(22, 7.5, 2.2, x.length);
-  return {
-    color: ['#f5a623', '#3b82f6'],
-    tooltip: { trigger: 'axis' },
-    legend: { top: 4, left: 'center', itemWidth: 10, itemHeight: 10, textStyle: { color: '#666', fontSize: 12 } },
-    grid: { left: 48, right: 24, top: 40, bottom: 28 },
-    xAxis: {
-      type: 'category', data: x, boundaryGap: false,
-      axisTick: { show: false }, axisLine: { lineStyle: { color: '#e8e8e8' } },
-      axisLabel: { color: '#8c8c8c', fontSize: 11 },
-    },
-    yAxis: {
-      type: 'value', name: 'mg/L', nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
-      min: 0, max: 40, axisLine: { show: false }, axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f0f0f0' } }, axisLabel: { color: '#8c8c8c', fontSize: 11 },
-    },
-    series: [
-      {
-        name: 'COD', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: cod,
-        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(245,166,35,.22)' }, { offset: 1, color: 'rgba(245,166,35,.02)' },
-        ]) },
-        lineStyle: { width: 2 },
-      },
-      {
-        name: 'BOD', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: bod,
-        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(59,130,246,.2)' }, { offset: 1, color: 'rgba(59,130,246,.02)' },
-        ]) },
-        lineStyle: { width: 2 },
-      },
-    ],
+  const state = {
+    sites: [],
+    selected: new Set(),
+    rows: [],
+    current: null,
+    hist: { page: 1, size: 10, total: 0, pages: 1, records: [] },
   };
-}
 
-function nutrientOption(x) {
-  const nh3 = mockSeries(31, 55, 25, x.length);
-  const tn = mockSeries(41, 70, 20, x.length);
-  const tp = mockSeries(51, 48, 28, x.length);
-  return {
-    color: ['#52c41a', '#722ed1', '#f5222d'],
-    tooltip: { trigger: 'axis' },
-    legend: { top: 4, left: 'center', itemWidth: 10, itemHeight: 10, textStyle: { color: '#666', fontSize: 12 } },
-    grid: { left: 48, right: 56, top: 40, bottom: 28 },
-    xAxis: {
-      type: 'category', data: x, boundaryGap: false,
-      axisTick: { show: false }, axisLine: { lineStyle: { color: '#e8e8e8' } },
-      axisLabel: { color: '#8c8c8c', fontSize: 11 },
-    },
-    yAxis: {
-      type: 'value', name: '%', nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
-      min: 0, max: 120, axisLine: { show: false }, axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f0f0f0' } }, axisLabel: { color: '#8c8c8c', fontSize: 11 },
-    },
-    series: [
-      { name: '氨氮', type: 'line', symbol: 'circle', symbolSize: 5, data: nh3, lineStyle: { width: 2 } },
-      { name: '总氮', type: 'line', symbol: 'circle', symbolSize: 5, data: tn, lineStyle: { width: 2 } },
-      { name: '总磷', type: 'line', symbol: 'circle', symbolSize: 5, data: tp, lineStyle: { width: 2 } },
-      {
-        name: '预警', type: 'line', markLine: {
-          silent: true, symbol: 'none',
-          label: { formatter: '预警', position: 'end', color: '#f5222d', fontSize: 11 },
-          lineStyle: { type: 'dashed', color: '#f5222d', width: 1.5 },
-          data: [{ yAxis: 80 }],
+  let chartOrganic = null;
+  let chartNutrient = null;
+  let chartDo = null;
+
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function todayStr() {
+    const d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  function daysAgo(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  function toast(msg) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  async function fetchApi(path) {
+    const res = await fetch(API + path, { credentials: 'include' });
+    if (!res.ok) {
+      let msg = 'HTTP ' + res.status;
+      try {
+        const j = await res.json();
+        msg = j.message || j.msg || msg;
+      } catch (_) {}
+      throw new Error(msg);
+    }
+    return res.json();
+  }
+
+  function isEmptyVal(v) {
+    return v === null || v === undefined || v === '' || Number(v) === -9991;
+  }
+
+  function fmtNum(v) {
+    if (isEmptyVal(v)) return '--';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '--';
+    return String(n);
+  }
+
+  function parseTm(tm) {
+    if (!tm) return { date: '--', time: '' };
+    const s = String(tm).replace('T', ' ').replace(/\.\d+$/, '');
+    const parts = s.split(' ');
+    const date = parts[0] || '--';
+    const time = (parts[1] || '').slice(0, 8);
+    // 展示：去前导年首位简化？文档未要求，保留完整 yyyy-MM-dd
+    return { date, time };
+  }
+
+  /** 取指标限值：优先 num，其次 guarantee，再 threshold；站级 device 空优先 */
+  function pickLimit(thresholds, metric) {
+    const list = Array.isArray(thresholds) ? thresholds.filter(t => String(t.type || '').includes('#8#')) : [];
+    const conf = REMARK_MAP.find(r => r.metric === metric);
+    if (!conf) return null;
+    const matched = list.filter(t => {
+      const r = String(t.remark || '');
+      return conf.keys.some(k => r.toUpperCase().includes(String(k).toUpperCase()));
+    });
+    if (!matched.length) return null;
+    matched.sort((a, b) => {
+      const ae = !a.device || a.device === '' ? 0 : 1;
+      const be = !b.device || b.device === '' ? 0 : 1;
+      return ae - be;
+    });
+    const row = matched[0];
+    const cand = [row.num, row.guarantee, row.threshold].map(Number).find(n => Number.isFinite(n));
+    return cand == null ? null : cand;
+  }
+
+  function isWarn(v, metric, thresholds) {
+    if (isEmptyVal(v)) return false;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return false;
+    const limit = pickLimit(thresholds, metric);
+    if (limit == null) return false;
+    const conf = REMARK_MAP.find(r => r.metric === metric);
+    if (conf && conf.lowerBetter) return n < limit;
+    return n > limit;
+  }
+
+  function cellHtml(v, metric, thresholds) {
+    if (isEmptyVal(v)) return '--';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '--';
+    const warn = isWarn(n, metric, thresholds);
+    let cls = '';
+    if (warn) cls = 'val-warn';
+    else if (metric === 'dox') cls = 'val-do';
+    const text = fmtNum(n);
+    return cls ? `<span class="${cls}">${text}</span>` : text;
+  }
+
+  function setMsOpen(open) {
+    $('site-ms').classList.toggle('open', open);
+  }
+
+  function renderSiteTrigger() {
+    const trigger = $('site-trigger');
+    const ph = $('site-placeholder');
+    trigger.querySelectorAll('.ms-tag').forEach(el => el.remove());
+    const selected = state.sites.filter(s => state.selected.has(s.code));
+    if (!selected.length) {
+      if (ph) { ph.style.display = ''; ph.textContent = '全部站点'; }
+      return;
+    }
+    if (ph) ph.style.display = 'none';
+    selected.slice(0, 3).forEach(s => {
+      const tag = document.createElement('span');
+      tag.className = 'ms-tag';
+      tag.innerHTML = `<span title="${esc(s.name)}">${esc(s.name)}</span><button type="button" data-code="${esc(s.code)}" aria-label="移除">×</button>`;
+      trigger.appendChild(tag);
+    });
+    if (selected.length > 3) {
+      const more = document.createElement('span');
+      more.className = 'ms-tag';
+      more.innerHTML = `<span>+${selected.length - 3}</span>`;
+      trigger.appendChild(more);
+    }
+  }
+
+  function renderSiteList() {
+    const kw = ($('site-kw').value || '').trim().toLowerCase();
+    const list = state.sites.filter(s => {
+      if (!kw) return true;
+      return String(s.name).toLowerCase().includes(kw) || String(s.code).toLowerCase().includes(kw);
+    });
+    const box = $('site-list');
+    if (!list.length) {
+      box.innerHTML = '<div class="ms-empty">暂无站点</div>';
+      return;
+    }
+    box.innerHTML = list.map(s => `
+      <label class="ms-opt">
+        <input type="checkbox" value="${esc(s.code)}" ${state.selected.has(s.code) ? 'checked' : ''}>
+        <span>${esc(s.name)}</span>
+      </label>
+    `).join('');
+  }
+
+  function renderTable(rows) {
+    const tbody = $('tbody');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td class="empty" colspan="9">暂无数据</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map((r, idx) => {
+      const tm = parseTm(r.tm);
+      return `<tr>
+        <td class="left">${esc(r.stnm || r.stcd || '-')}</td>
+        <td>
+          <span class="tm-cell">
+            <span class="tm-date">${esc(tm.date)}</span>
+            <span class="tm-time">${esc(tm.time)}</span>
+          </span>
+        </td>
+        <td>${cellHtml(r.nh3n, 'nh3n', r.thresholds)}</td>
+        <td>${cellHtml(r.codcr, 'codcr', r.thresholds)}</td>
+        <td>${cellHtml(r.bod5, 'bod5', r.thresholds)}</td>
+        <td>${cellHtml(r.tp, 'tp', r.thresholds)}</td>
+        <td>${cellHtml(r.tn, 'tn', r.thresholds)}</td>
+        <td>${cellHtml(r.dox, 'dox', r.thresholds)}</td>
+        <td>
+          <button type="button" class="detail-btn" data-idx="${idx}">
+            详情
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M4.5 2.5L8 6l-3.5 3.5"/>
+            </svg>
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  function ratioSeries(points, metric, limit) {
+    if (limit == null || !(limit > 0)) return points.map(() => null);
+    return points.map(p => {
+      if (isEmptyVal(p[metric])) return null;
+      const n = Number(p[metric]);
+      if (!Number.isFinite(n)) return null;
+      return +(n / limit * 100).toFixed(1);
+    });
+  }
+
+  function organicOption(points) {
+    const x = points.map(p => String(p.hour || '').slice(5, 16));
+    return {
+      color: ['#f5a623', '#3b82f6'],
+      tooltip: { trigger: 'axis' },
+      legend: { top: 4, left: 'center', itemWidth: 10, itemHeight: 10, textStyle: { color: '#666', fontSize: 12 } },
+      grid: { left: 48, right: 24, top: 40, bottom: 28 },
+      xAxis: {
+        type: 'category', data: x, boundaryGap: false,
+        axisTick: { show: false }, axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLabel: { color: '#8c8c8c', fontSize: 11 },
+      },
+      yAxis: {
+        type: 'value', name: 'mg/L', nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+        axisLine: { show: false }, axisTick: { show: false },
+        splitLine: { lineStyle: { color: '#f0f0f0' } }, axisLabel: { color: '#8c8c8c', fontSize: 11 },
+      },
+      series: [
+        {
+          name: 'COD', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, connectNulls: false,
+          data: points.map(p => isEmptyVal(p.codcr) ? null : Number(p.codcr)),
+          areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(245,166,35,.22)' }, { offset: 1, color: 'rgba(245,166,35,.02)' },
+          ]) },
+          lineStyle: { width: 2 },
         },
-        data: [],
-      },
-    ],
-  };
-}
+        {
+          name: 'BOD', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, connectNulls: false,
+          data: points.map(p => isEmptyVal(p.bod5) ? null : Number(p.bod5)),
+          areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(59,130,246,.2)' }, { offset: 1, color: 'rgba(59,130,246,.02)' },
+          ]) },
+          lineStyle: { width: 2 },
+        },
+      ],
+    };
+  }
 
-function doOption(x) {
-  const dos = mockSeries(61, 6.2, 2.4, x.length).map(v => Math.max(2.5, Math.min(9.5, v)));
-  return {
-    color: ['#3b82f6'],
-    tooltip: { trigger: 'axis' },
-    grid: { left: 48, right: 64, top: 28, bottom: 28 },
-    xAxis: {
-      type: 'category', data: x, boundaryGap: false,
-      axisTick: { show: false }, axisLine: { lineStyle: { color: '#e8e8e8' } },
-      axisLabel: { color: '#8c8c8c', fontSize: 11 },
-    },
-    yAxis: {
-      type: 'value', name: 'mg/L', nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
-      min: 0, max: 10, axisLine: { show: false }, axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f0f0f0' } }, axisLabel: { color: '#8c8c8c', fontSize: 11 },
-    },
-    series: [{
-      name: '溶解氧', type: 'line', smooth: true, symbol: 'none', data: dos,
+  function nutrientOption(points, thresholds) {
+    const x = points.map(p => String(p.hour || '').slice(5, 16));
+    const limNh3 = pickLimit(thresholds, 'nh3n');
+    const limTn = pickLimit(thresholds, 'tn');
+    const limTp = pickLimit(thresholds, 'tp');
+    return {
+      color: ['#52c41a', '#722ed1', '#f5222d'],
+      tooltip: { trigger: 'axis', valueFormatter: v => (v == null ? '--' : v + '%') },
+      legend: { top: 4, left: 'center', itemWidth: 10, itemHeight: 10, textStyle: { color: '#666', fontSize: 12 } },
+      grid: { left: 48, right: 56, top: 40, bottom: 28 },
+      xAxis: {
+        type: 'category', data: x, boundaryGap: false,
+        axisTick: { show: false }, axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLabel: { color: '#8c8c8c', fontSize: 11 },
+      },
+      yAxis: {
+        type: 'value', name: '%', nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+        min: 0, max: 120, axisLine: { show: false }, axisTick: { show: false },
+        splitLine: { lineStyle: { color: '#f0f0f0' } }, axisLabel: { color: '#8c8c8c', fontSize: 11 },
+      },
+      series: [
+        { name: '氨氮', type: 'line', symbol: 'circle', symbolSize: 5, connectNulls: false, data: ratioSeries(points, 'nh3n', limNh3), lineStyle: { width: 2 } },
+        { name: '总氮', type: 'line', symbol: 'circle', symbolSize: 5, connectNulls: false, data: ratioSeries(points, 'tn', limTn), lineStyle: { width: 2 } },
+        { name: '总磷', type: 'line', symbol: 'circle', symbolSize: 5, connectNulls: false, data: ratioSeries(points, 'tp', limTp), lineStyle: { width: 2 } },
+        {
+          name: '预警', type: 'line', data: [],
+          markLine: {
+            silent: true, symbol: 'none',
+            label: { formatter: '预警', position: 'end', color: '#f5222d', fontSize: 11 },
+            lineStyle: { type: 'dashed', color: '#f5222d', width: 1.5 },
+            data: [{ yAxis: 100 }],
+          },
+        },
+      ],
+    };
+  }
+
+  function doOption(points, thresholds) {
+    const x = points.map(p => String(p.hour || '').slice(5, 16));
+    const lim = pickLimit(thresholds, 'dox');
+    const series = {
+      name: '溶解氧', type: 'line', smooth: true, symbol: 'none', connectNulls: false,
+      data: points.map(p => isEmptyVal(p.dox) ? null : Number(p.dox)),
       lineStyle: { width: 2, color: '#3b82f6' },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -461,114 +597,268 @@ function doOption(x) {
           { offset: 1, color: 'rgba(59,130,246,.02)' },
         ]),
       },
-      markLine: {
+    };
+    if (lim != null) {
+      series.markLine = {
         silent: true, symbol: 'none',
-        label: { formatter: '下限 5.0', position: 'end', color: '#f5222d', fontSize: 11 },
+        label: { formatter: '下限 ' + lim, position: 'end', color: '#f5222d', fontSize: 11 },
         lineStyle: { type: 'dashed', color: '#f5222d', width: 1.5 },
-        data: [{ yAxis: 5 }],
+        data: [{ yAxis: lim }],
+      };
+    }
+    return {
+      color: ['#3b82f6'],
+      tooltip: { trigger: 'axis' },
+      grid: { left: 48, right: 64, top: 28, bottom: 28 },
+      xAxis: {
+        type: 'category', data: x, boundaryGap: false,
+        axisTick: { show: false }, axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLabel: { color: '#8c8c8c', fontSize: 11 },
       },
-    }],
-  };
-}
+      yAxis: {
+        type: 'value', name: 'mg/L', nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+        axisLine: { show: false }, axisTick: { show: false },
+        splitLine: { lineStyle: { color: '#f0f0f0' } }, axisLabel: { color: '#8c8c8c', fontSize: 11 },
+      },
+      series: [series],
+    };
+  }
 
-function ensureCharts() {
-  if (!chartOrganic) chartOrganic = echarts.init($('chart-organic'));
-  if (!chartNutrient) chartNutrient = echarts.init($('chart-nutrient'));
-  if (!chartDo) chartDo = echarts.init($('chart-do'));
-}
+  function ensureCharts() {
+    if (!chartOrganic) chartOrganic = echarts.init($('chart-organic'));
+    if (!chartNutrient) chartNutrient = echarts.init($('chart-nutrient'));
+    if (!chartDo) chartDo = echarts.init($('chart-do'));
+  }
 
-function renderTrendCharts() {
-  ensureCharts();
-  const x = hours24();
-  chartOrganic.setOption(organicOption(x), true);
-  chartNutrient.setOption(nutrientOption(x), true);
-  chartDo.setOption(doOption(x), true);
-  setTimeout(() => {
-    chartOrganic.resize();
-    chartNutrient.resize();
-    chartDo.resize();
-  }, 40);
-}
+  async function loadTrend() {
+    if (!state.current) return;
+    const stcd = state.current.stcd || state.current.site;
+    if (!stcd) { toast('站点标识缺失'); return; }
+    const s = $('m-start').value;
+    const e = $('m-end').value;
+    const p = new URLSearchParams();
+    p.set('stcd', stcd);
+    if (s) p.set('startTime', s + ' 00:00:00');
+    if (e) p.set('endTime', e + ' 23:59:59');
+    ensureCharts();
+    try {
+      const data = await fetchApi('/water-quality/trend?' + p);
+      const points = (data && data.points) || [];
+      const thresholds = (data && data.thresholds) || [];
+      chartOrganic.setOption(organicOption(points), true);
+      chartNutrient.setOption(nutrientOption(points, thresholds), true);
+      chartDo.setOption(doOption(points, thresholds), true);
+      setTimeout(() => {
+        chartOrganic.resize();
+        chartNutrient.resize();
+        chartDo.resize();
+      }, 40);
+    } catch (err) {
+      console.error(err);
+      toast((err && err.message) || '趋势加载失败');
+    }
+  }
 
-function renderHistTable() {
-  const rows = MOCK_ROWS.filter(r => !currentRow || r.device === currentRow.device);
-  $('hist-tbody').innerHTML = rows.map(r => `
-    <tr>
-      <td>${esc(r.date)} ${esc(r.time)}</td>
-      <td>${cellVal(r.nh3, 'nh3')}</td>
-      <td>${cellVal(r.cod, 'cod')}</td>
-      <td>${cellVal(r.bod, 'bod')}</td>
-      <td>${cellVal(r.tp, 'tp')}</td>
-      <td>${cellVal(r.tn, 'tn')}</td>
-      <td>${cellVal(r.do, 'do')}</td>
-    </tr>
-  `).join('') || '<tr><td class="empty" colspan="7">暂无数据</td></tr>';
-}
+  function renderHistPager() {
+    const { page, pages, total, size } = state.hist;
+    $('hist-pg-info').textContent = `共 ${total} 条，每页 ${size} 条，当前第 ${page}/${Math.max(pages, 1)} 页`;
+    const box = $('hist-pg-btns');
+    const maxShow = Math.min(pages || 1, 5);
+    let html = `<button type="button" class="pg-btn" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>‹</button>`;
+    for (let i = 1; i <= maxShow; i++) {
+      html += `<button type="button" class="pg-btn${i === page ? ' active' : ''}" data-page="${i}">${i}</button>`;
+    }
+    if (pages > 5) html += '<span style="color:#999;padding:0 4px">…</span>';
+    html += `<button type="button" class="pg-btn" data-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>›</button>`;
+    box.innerHTML = html;
+    box.querySelectorAll('.pg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = Number(btn.getAttribute('data-page'));
+        if (!p || p < 1 || p > state.hist.pages || p === state.hist.page) return;
+        loadHistory(p);
+      });
+    });
+  }
 
-function openDetail(row) {
-  currentRow = row;
-  $('detail-title').textContent = `水质详情 · ${row.device}`;
-  $('detail-overlay').classList.add('show');
-  switchTab('trend');
-  renderTrendCharts();
-  renderHistTable();
-}
+  async function loadHistory(page) {
+    if (!state.current) return;
+    const stcd = state.current.stcd || state.current.site;
+    if (!stcd) return;
+    const s = $('m-start').value;
+    const e = $('m-end').value;
+    const p = new URLSearchParams();
+    p.set('stcd', stcd);
+    p.set('page', String(page || 1));
+    p.set('size', String(state.hist.size));
+    if (s) p.set('startTime', s + ' 00:00:00');
+    if (e) p.set('endTime', e + ' 23:59:59');
+    try {
+      const data = await fetchApi('/water-quality/history?' + p);
+      state.hist.page = Number(data.current) || page || 1;
+      state.hist.size = Number(data.size) || 10;
+      state.hist.total = Number(data.total) || 0;
+      state.hist.pages = Number(data.pages) || 1;
+      state.hist.records = Array.isArray(data.records) ? data.records : [];
+      const th = state.current.thresholds || [];
+      $('hist-tbody').innerHTML = state.hist.records.map(r => {
+        const tm = parseTm(r.tm);
+        return `<tr>
+          <td>${esc(tm.date)} ${esc(tm.time)}</td>
+          <td>${cellHtml(r.nh3n, 'nh3n', th)}</td>
+          <td>${cellHtml(r.codcr, 'codcr', th)}</td>
+          <td>${cellHtml(r.bod5, 'bod5', th)}</td>
+          <td>${cellHtml(r.tp, 'tp', th)}</td>
+          <td>${cellHtml(r.tn, 'tn', th)}</td>
+          <td>${cellHtml(r.dox, 'dox', th)}</td>
+        </tr>`;
+      }).join('') || '<tr><td class="empty" colspan="7">暂无数据</td></tr>';
+      renderHistPager();
+    } catch (err) {
+      console.error(err);
+      toast((err && err.message) || '历史数据加载失败');
+      $('hist-tbody').innerHTML = '<tr><td class="empty" colspan="7">加载失败</td></tr>';
+    }
+  }
 
-function closeDetail() {
-  $('detail-overlay').classList.remove('show');
-  currentRow = null;
-}
+  async function openDetail(row) {
+    state.current = row;
+    $('detail-title').textContent = `水质详情 · ${row.stnm || row.stcd || ''}`;
+    const end = todayStr();
+    const start = daysAgo(1);
+    $('m-start').value = start;
+    $('m-end').value = end;
+    $('detail-overlay').classList.add('show');
+    switchTab('trend');
+    await loadTrend();
+    await loadHistory(1);
+  }
 
-function switchTab(name) {
-  document.querySelectorAll('.modal-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
-  $(name === 'trend' ? 'pane-trend' : 'pane-hist').classList.add('active');
-  if (name === 'trend') setTimeout(renderTrendCharts, 30);
-}
+  function closeDetail() {
+    $('detail-overlay').classList.remove('show');
+    state.current = null;
+  }
 
-function queryList() {
-  viewRows = filterRows();
-  renderTable(viewRows);
-}
+  function switchTab(name) {
+    document.querySelectorAll('.modal-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    document.querySelectorAll('.modal-pane').forEach(p => p.classList.remove('active'));
+    $(name === 'trend' ? 'pane-trend' : 'pane-hist').classList.add('active');
+    if (name === 'trend') setTimeout(() => { chartOrganic && chartOrganic.resize(); chartNutrient && chartNutrient.resize(); chartDo && chartDo.resize(); }, 30);
+  }
 
-function resetList() {
-  $('device-kw').value = '';
-  $('start-date').value = '2026-05-18';
-  $('end-date').value = '2026-05-21';
-  queryList();
-}
+  async function loadSites() {
+    try {
+      const list = await fetchApi('/water-quality/sites');
+      state.sites = Array.isArray(list) ? list : [];
+      renderSiteList();
+      renderSiteTrigger();
+    } catch (err) {
+      console.error(err);
+      state.sites = [];
+      renderSiteList();
+      toast((err && err.message) || '站点列表加载失败');
+    }
+  }
 
-$('btn-query').addEventListener('click', queryList);
-$('btn-reset').addEventListener('click', resetList);
+  async function loadMonitoring() {
+    const btn = $('btn-query');
+    btn.disabled = true;
+    $('tbody').innerHTML = '<tr><td class="empty" colspan="9">加载中...</td></tr>';
+    try {
+      const p = new URLSearchParams();
+      const codes = [...state.selected];
+      if (codes.length) p.set('stcds', codes.join(','));
+      const s = $('start-date').value;
+      const e = $('end-date').value;
+      if (s) p.set('startDate', s);
+      if (e) p.set('endDate', e);
+      const qs = p.toString();
+      const data = await fetchApi('/water-quality/monitoring' + (qs ? '?' + qs : ''));
+      state.rows = Array.isArray(data) ? data : [];
+      renderTable(state.rows);
+    } catch (err) {
+      console.error(err);
+      state.rows = [];
+      $('tbody').innerHTML = '<tr><td class="empty" colspan="9">加载失败，请重试</td></tr>';
+      toast((err && err.message) || '数据加载失败');
+    } finally {
+      btn.disabled = false;
+    }
+  }
 
-$('tbody').addEventListener('click', e => {
-  const btn = e.target.closest('.detail-btn');
-  if (!btn) return;
-  const row = MOCK_ROWS.find(r => String(r.id) === String(btn.dataset.id));
-  if (row) openDetail(row);
-});
+  function resetFilters() {
+    state.selected.clear();
+    $('site-kw').value = '';
+    $('start-date').value = '';
+    $('end-date').value = '';
+    renderSiteList();
+    renderSiteTrigger();
+    setMsOpen(false);
+    loadMonitoring();
+  }
 
-document.querySelectorAll('.modal-tab').forEach(tab => {
-  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
-});
-$('modal-close').addEventListener('click', closeDetail);
-$('detail-overlay').addEventListener('click', e => {
-  if (e.target === $('detail-overlay')) closeDetail();
-});
-$('m-query').addEventListener('click', renderTrendCharts);
-$('m-reset').addEventListener('click', () => {
-  $('m-start').value = '2026-05-18';
-  $('m-end').value = '2026-05-21';
-  renderTrendCharts();
-});
+  // 站点多选交互
+  $('site-trigger').addEventListener('click', e => {
+    if (e.target.closest('button[data-code]')) return;
+    setMsOpen(!$('site-ms').classList.contains('open'));
+  });
+  $('site-trigger').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-code]');
+    if (!btn) return;
+    e.stopPropagation();
+    state.selected.delete(btn.dataset.code);
+    renderSiteList();
+    renderSiteTrigger();
+  });
+  $('site-list').addEventListener('change', e => {
+    const input = e.target.closest('input[type=checkbox]');
+    if (!input) return;
+    if (input.checked) state.selected.add(input.value);
+    else state.selected.delete(input.value);
+    renderSiteTrigger();
+  });
+  $('site-kw').addEventListener('input', renderSiteList);
+  document.addEventListener('click', e => {
+    if (!$('site-ms').contains(e.target)) setMsOpen(false);
+  });
 
-window.addEventListener('resize', () => {
-  chartOrganic && chartOrganic.resize();
-  chartNutrient && chartNutrient.resize();
-  chartDo && chartDo.resize();
-});
+  $('btn-query').addEventListener('click', loadMonitoring);
+  $('btn-reset').addEventListener('click', resetFilters);
+  $('tbody').addEventListener('click', e => {
+    const btn = e.target.closest('.detail-btn');
+    if (!btn) return;
+    const row = state.rows[Number(btn.dataset.idx)];
+    if (row) openDetail(row);
+  });
 
-queryList();
+  document.querySelectorAll('.modal-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
+  $('modal-close').addEventListener('click', closeDetail);
+  $('detail-overlay').addEventListener('click', e => {
+    if (e.target === $('detail-overlay')) closeDetail();
+  });
+  $('m-query').addEventListener('click', async () => {
+    await loadTrend();
+    if ($('pane-hist').classList.contains('active')) await loadHistory(1);
+  });
+  $('m-reset').addEventListener('click', async () => {
+    $('m-start').value = daysAgo(1);
+    $('m-end').value = todayStr();
+    await loadTrend();
+    if ($('pane-hist').classList.contains('active')) await loadHistory(1);
+  });
+
+  window.addEventListener('resize', () => {
+    chartOrganic && chartOrganic.resize();
+    chartNutrient && chartNutrient.resize();
+    chartDo && chartDo.resize();
+  });
+
+  // 默认近 3 天
+  $('start-date').value = daysAgo(2);
+  $('end-date').value = todayStr();
+  loadSites().then(loadMonitoring);
+})();
 </script>
 </body>
 </html>

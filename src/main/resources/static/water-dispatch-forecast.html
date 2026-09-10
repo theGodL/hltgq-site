@@ -591,7 +591,7 @@ tbody tr:hover td{background:#fafafa}
 
   async function loadHistory() {
     histList = (await API.decision.list()) || [];
-    renderHistory();
+      renderHistory();
   }
 
   function mapScaleRows(list) {
@@ -1048,8 +1048,8 @@ tbody tr:hover td{background:#fafafa}
         const cur = histList.find(h => h.id === id);
         API.assertViewable(cur || { status: 'completed' });
         API.showLoading('加载历史方案中…');
-        try {
-          const detail = await API.decision.detail(id);
+      try {
+        const detail = await API.decision.detail(id);
           openViewDetail(detail);
         } finally {
           API.hideLoading();
@@ -1076,7 +1076,7 @@ tbody tr:hover td{background:#fafafa}
         toast('已删除');
         await loadHistory();
       }
-    } catch (err) {
+      } catch (err) {
       toast(API.friendlyError(err, '操作失败'));
     }
   });
@@ -1168,7 +1168,7 @@ tbody tr:hover td{background:#fafafa}
   fillDispatchTendayControls(false);
   CanalTopo.mount('#topo-mount').then(function (api) {
     topoApi = api;
-    renderTopoTags();
+  renderTopoTags();
     fitTopo();
   }).catch(function (err) {
     toast((err && err.message) || '拓扑图加载失败');

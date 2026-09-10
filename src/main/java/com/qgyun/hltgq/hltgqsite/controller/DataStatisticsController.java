@@ -7,6 +7,7 @@ import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
@@ -39,48 +40,57 @@ public class DataStatisticsController {
      * 统计卡片聚合（KPI）：stationTotal 站点总数 / todayArrivalRate 今日到报率 /
      * monthAvgArrivalRate 本月平均到报率 / todayMissRate 今日缺测率 /
      * statStartDate 统计起始日 / noReportSites 未到报站点列表 / missedSites 今日缺测站点列表
+     * <p>startDate/endDate 可选（yyyy-MM-dd，含两端），透传 mq；不传为今日口径。
      */
     @GetMapping("/arrival-stats")
-    public JsonNode arrivalStats() {
-        return mqStatsClient.arrivalStats();
+    public JsonNode arrivalStats(@RequestParam(required = false) String startDate,
+                                 @RequestParam(required = false) String endDate) {
+        return mqStatsClient.arrivalStats(startDate, endDate);
     }
 
     /**
      * 站点到报明细：每站一行，含站名/编号/报文类型/应到/实到/缺报/到报率
-     * （"状态"档位属展示口径，mq 只给 arrivalRate 数字，由前端按档位规则渲染）
+     * （"状态"档位属展示口径，mq 只给 arrivalRate 数字，由前端按档位规则渲染）；
+     * startDate/endDate 可选，透传 mq。
      */
     @GetMapping("/arrival-detail")
-    public JsonNode arrivalDetail() {
-        return mqStatsClient.arrivalDetail();
+    public JsonNode arrivalDetail(@RequestParam(required = false) String startDate,
+                                  @RequestParam(required = false) String endDate) {
+        return mqStatsClient.arrivalDetail(startDate, endDate);
     }
 
-    /** 缺测明细：连续缺测窗合并为段，含起止时间/时长/数据类型/当前状态 */
+    /** 缺测明细：连续缺测窗合并为段，含起止时间/时长/数据类型/当前状态；startDate/endDate 可选，透传 mq */
     @GetMapping("/miss-detail")
-    public JsonNode missDetail() {
-        return mqStatsClient.missDetail();
+    public JsonNode missDetail(@RequestParam(required = false) String startDate,
+                               @RequestParam(required = false) String endDate) {
+        return mqStatsClient.missDetail(startDate, endDate);
     }
 
-    /** 数据采集状态统计：水位/流量/雨量/闸门开度/墒情各维度应采/实采/成功/失败/成功率/失败率 */
+    /** 数据采集状态统计：水位/流量/雨量/闸门开度/墒情各维度应采/实采/成功/失败/成功率/失败率；startDate/endDate 可选，透传 mq */
     @GetMapping("/collect-stats")
-    public JsonNode collectStats() {
-        return mqStatsClient.collectStats();
+    public JsonNode collectStats(@RequestParam(required = false) String startDate,
+                                 @RequestParam(required = false) String endDate) {
+        return mqStatsClient.collectStats(startDate, endDate);
     }
 
     /**
      * 视频数据采集统计（数据采集状态统计的「视频数据」行，与 mq 五行合并渲染）：
      * 转发 hltgq-device /api/dahua/video/patrol-stats（device 响应 {success,code,desc,data}，
      * 与 mq 的 {code,msg,data} 结构不同，按 success 判定）；device 与 site 共用平台会话，
-     * 出站自动透传当前登录会话 X-Session-Id 通过 device 登录校验。
+     * 出站自动透传当前登录会话 X-Session-Id 通过 device 登录校验；
+     * startDate/endDate 可选，透传 device 支持区间查询。
      */
     @GetMapping("/video-collect")
-    public JsonNode videoCollect() {
-        return deviceStatsClient.videoPatrolStats();
+    public JsonNode videoCollect(@RequestParam(required = false) String startDate,
+                                 @RequestParam(required = false) String endDate) {
+        return deviceStatsClient.videoPatrolStats(startDate, endDate);
     }
 
-    /** 采集服务状态：mq 进程指标（启动时间/时长/CPU/内存）+ 数据接收/解析/存储三逻辑服务 */
+    /** 采集服务状态：mq 进程指标（启动时间/时长/CPU/内存）+ 数据接收/解析/存储三逻辑服务；startDate/endDate 可选，透传 mq */
     @GetMapping("/service-status")
-    public JsonNode serviceStatus() {
-        return mqStatsClient.serviceStatus();
+    public JsonNode serviceStatus(@RequestParam(required = false) String startDate,
+                                  @RequestParam(required = false) String endDate) {
+        return mqStatsClient.serviceStatus(startDate, endDate);
     }
 
     /**

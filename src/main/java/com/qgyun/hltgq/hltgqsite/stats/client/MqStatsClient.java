@@ -8,7 +8,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * hltgq-mq 数据统计服务客户端（mq.base-url，默认 http://10.68.18.4:8081，与召测服务同进程同地址）。
@@ -48,34 +50,41 @@ public class MqStatsClient {
     }
 
     /** 统计卡片聚合：stationTotal/todayArrivalRate/monthAvgArrivalRate/todayMissRate/statStartDate/noReportSites/missedSites */
-    public JsonNode arrivalStats() {
-        return get(PATH_ARRIVAL_STATS);
+    public JsonNode arrivalStats(String startDate, String endDate) {
+        return get(PATH_ARRIVAL_STATS, startDate, endDate);
     }
 
     /** 站点到报明细：每站一行（siteId/siteName/stcd/msgType/expected/arrived/missed/arrivalRate） */
-    public JsonNode arrivalDetail() {
-        return get(PATH_ARRIVAL_DETAIL);
+    public JsonNode arrivalDetail(String startDate, String endDate) {
+        return get(PATH_ARRIVAL_DETAIL, startDate, endDate);
     }
 
     /** 缺测明细：连续缺测窗合并为段（startTm/endTm/missMinutes/dataTypes/status） */
-    public JsonNode missDetail() {
-        return get(PATH_MISS_DETAIL);
+    public JsonNode missDetail(String startDate, String endDate) {
+        return get(PATH_MISS_DETAIL, startDate, endDate);
     }
 
     /** 数据采集状态统计：水位/流量/雨量/闸门开度/墒情五维度聚合 */
-    public JsonNode collectStats() {
-        return get(PATH_COLLECT_STATS);
+    public JsonNode collectStats(String startDate, String endDate) {
+        return get(PATH_COLLECT_STATS, startDate, endDate);
     }
 
     /** mq 自身服务状态：进程指标 + 数据接收/解析/存储三逻辑服务（信息发布/告警推送由 site 侧提供） */
-    public JsonNode serviceStatus() {
-        return get(PATH_SERVICE_STATUS);
+    public JsonNode serviceStatus(String startDate, String endDate) {
+        return get(PATH_SERVICE_STATUS, startDate, endDate);
     }
 
-    /** GET 并解析 {code,msg,data}：code=0 返回 data 节点，否则抛异常（调用失败/非 200 一并包装） */
-    private JsonNode get(String path) {
+    /**
+     * GET 并解析 {code,msg,data}：code=0 返回 data 节点，否则抛异常（调用失败/非 200 一并包装）。
+     * <p>startDate/endDate（yyyy-MM-dd，含两端）可选，非空时透传 mq；null/空不传，
+     * mq 按今日口径返回。参数校验（格式/区间上限）由 mq 侧负责，本层不重复校验。
+     */
+    private JsonNode get(String path, String startDate, String endDate) {
         try {
-            ResponseEntity<String> response = restTemplate.getForEntity(baseUrl + path, String.class);
+            UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl + path);
+            if (StringUtils.hasText(startDate)) builder.queryParam("startDate", startDate.trim());
+            if (StringUtils.hasText(endDate)) builder.queryParam("endDate", endDate.trim());
+            ResponseEntity<String> response = restTemplate.getForEntity(builder.toUriString(), String.class);
             JsonNode root = objectMapper.readTree(response.getBody());
             int code = root.path("code").asInt(-1);
             if (code != 0) {

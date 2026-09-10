@@ -14,7 +14,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .breadcrumb .cur{color:#333}
 
 .main-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px;padding-right:2px}
-/* 禁止被 flex 压缩，否则表格只剩表头像“折叠” */
 .main-scroll > *{flex-shrink:0}
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 
@@ -36,13 +35,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .filter-item label{color:#666;font-size:14px;white-space:nowrap}
 .filter-item input[type=date]{width:160px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;color:#333}
 .filter-item input[type=date]:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.filter-hint{color:#8c8c8c;font-size:12px;margin-left:4px}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
-.btn-ghost{height:28px;padding:0 12px;font-size:13px;color:#1677ff;border-color:#91caff;background:#fff;border-radius:4px}
-.btn-ghost:hover{color:#4096ff;border-color:#4096ff;background:#f0f5ff}
-
+.btn-primary:disabled{opacity:.65;cursor:not-allowed}
 .section-card{padding:0;overflow:visible}
 .section-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px}
 .section-title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:#1f1f1f;line-height:22px}
@@ -51,11 +49,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 .table-wrap{width:100%;overflow-x:auto}
 table.data-table{width:100%;border-collapse:collapse;font-size:13px}
-table.data-table thead th{background:#fafafa;color:#595959;font-weight:500;padding:11px 10px;border-bottom:1px solid #f0f0f0;text-align:center;white-space:nowrap}
+table.data-table thead th{background:#F7FAFD;color:#595959;font-weight:500;padding:11px 10px;border-bottom:1px solid #f0f0f0;text-align:center;white-space:nowrap}
 table.data-table tbody td{padding:12px 10px;border-bottom:1px solid #f0f0f0;text-align:center;color:#333;white-space:nowrap}
 table.data-table tbody tr:last-child td{border-bottom:none}
 table.data-table tbody tr:hover td{background:#fafafa}
 table.data-table td.left,table.data-table th.left{text-align:left}
+table.data-table td.empty{color:#bbb;padding:36px 10px}
 
 .rate-cell{display:inline-flex;align-items:center;gap:8px;min-width:120px;justify-content:center}
 .rate-bar{width:72px;height:8px;border-radius:4px;background:#f0f0f0;overflow:hidden;flex-shrink:0}
@@ -93,18 +92,6 @@ table.data-table td.left,table.data-table th.left{text-align:left}
 .toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 
-.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:none;align-items:center;justify-content:center;padding:24px}
-.modal-mask.show{display:flex}
-.modal{width:min(480px,100%);background:#fff;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.15);overflow:hidden}
-.modal-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #f0f0f0}
-.modal-hd h3{font-size:16px;font-weight:600}
-.modal-close{width:28px;height:28px;border:none;background:transparent;border-radius:4px;cursor:pointer;color:#999;font-size:18px;line-height:1}
-.modal-close:hover{background:#f5f5f5;color:#333}
-.modal-bd{padding:16px 18px 20px}
-.detail-grid{display:grid;grid-template-columns:88px 1fr;gap:10px 12px;font-size:13px}
-.detail-grid .k{color:#8c8c8c}
-.detail-grid .v{color:#333}
-
 @media (max-width:1280px){.kpi-row{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:1100px){.bottom-row{grid-template-columns:1fr}}
 @media (max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
@@ -118,7 +105,7 @@ table.data-table td.left,table.data-table th.left{text-align:left}
 <body>
 <div class="page-wrap">
   <div class="breadcrumb">
-    <span>水利工程安全运行监测</span><span class="sep">/</span>
+    <span>业务中心</span><span class="sep">/</span>
     <span class="cur">数据统计</span>
   </div>
 
@@ -136,6 +123,7 @@ table.data-table td.left,table.data-table th.left{text-align:left}
           <input type="date" id="end-date">
         </div>
         <button type="button" class="btn btn-primary" id="query-btn">查询</button>
+        <span class="filter-hint" id="stat-hint">统计口径：今日 / 本月（已结束完整窗）；信息发布为今日</span>
       </div>
     </div>
 
@@ -187,7 +175,6 @@ table.data-table td.left,table.data-table th.left{text-align:left}
                 <th>缺测时长</th>
                 <th>数据类型</th>
                 <th>当前状态</th>
-                <th>操作</th>
               </tr>
             </thead>
             <tbody id="missing-tbody"></tbody>
@@ -274,97 +261,25 @@ table.data-table td.left,table.data-table th.left{text-align:left}
   </div>
 </div>
 
-<div class="modal-mask" id="detail-mask">
-  <div class="modal" role="dialog" aria-modal="true">
-    <div class="modal-hd">
-      <h3>缺测详情</h3>
-      <button type="button" class="modal-close" id="detail-close" aria-label="关闭">×</button>
-    </div>
-    <div class="modal-bd">
-      <div class="detail-grid" id="detail-grid"></div>
-    </div>
-  </div>
-</div>
 <div class="toast" id="toast"></div>
 
 <script>
 (function () {
+  var API = '/hltgq-site';
   var PAGE_SIZE = 20;
 
-  var STATION_SEED = [
-    { name: '渠首水位站', code: 'QS-001', type: '分钟报', expected: 1440 },
-    { name: '东干渠1#流量站', code: 'DG-001', type: '整点报', expected: 24 },
-    { name: '东干渠2#水位站', code: 'DG-002', type: '分钟报', expected: 1440 },
-    { name: '西干渠1#水位站', code: 'XG-001', type: '分钟报', expected: 1440 },
-    { name: '西干渠2#流量站', code: 'XG-002', type: '整点报', expected: 24 },
-    { name: '南支渠1#水位站', code: 'NZ-001', type: '分钟报', expected: 1440 },
-    { name: '南支渠2#流量站', code: 'NZ-002', type: '整点报', expected: 24 },
-    { name: '南支渠3#水位站', code: 'NZ-003', type: '分钟报', expected: 1440 },
-    { name: '北干渠1#流量站', code: 'BG-001', type: '整点报', expected: 24 },
-    { name: '北干渠2#水位站', code: 'BG-002', type: '分钟报', expected: 1440 },
-    { name: '总干渠1#水位站', code: 'ZG-001', type: '分钟报', expected: 1440 },
-    { name: '总干渠2#流量站', code: 'ZG-002', type: '整点报', expected: 24 },
-    { name: '太宿干渠1#水位站', code: 'TS-001', type: '分钟报', expected: 1440 },
-    { name: '太怀干渠1#流量站', code: 'TH-001', type: '整点报', expected: 24 },
-    { name: '花凉亭库区水位站', code: 'HL-001', type: '分钟报', expected: 1440 },
-    { name: '进水闸流量站', code: 'JS-001', type: '整点报', expected: 24 },
-    { name: '泄洪闸水位站', code: 'XH-001', type: '分钟报', expected: 1440 },
-    { name: '分水闸1#流量站', code: 'FS-001', type: '整点报', expected: 24 },
-    { name: '节制闸水位站', code: 'JZ-001', type: '分钟报', expected: 1440 },
-    { name: '退水闸流量站', code: 'TSG-001', type: '整点报', expected: 24 }
-  ];
-
-  var ARRIVAL_FIXED = [
-    { name: '渠首水位站', code: 'QS-001', type: '分钟报', expected: 1440, actual: 1440, missing: 0, rate: 100, status: '正常' },
-    { name: '东干渠1#流量站', code: 'DG-001', type: '整点报', expected: 24, actual: 24, missing: 0, rate: 100, status: '正常' },
-    { name: '西干渠1#水位站', code: 'XG-001', type: '分钟报', expected: 1440, actual: 1398, missing: 42, rate: 97.1, status: '偏低' },
-    { name: '南支渠2#流量站', code: 'NZ-002', type: '整点报', expected: 24, actual: 22, missing: 2, rate: 91.7, status: '偏低' },
-    { name: '北干渠1#流量站', code: 'BG-001', type: '整点报', expected: 24, actual: 18, missing: 6, rate: 75.0, status: '异常' },
-    { name: '南支渠3#水位站', code: 'NZ-003', type: '分钟报', expected: 1440, actual: 0, missing: 1440, rate: 0, status: '未到报' }
-  ];
-
-  var MISSING_FIXED = [
-    { name: '南支渠3#水位站', code: 'NZ-003', period: '00:00 ~ 09:57', duration: '9小时57分', dataType: '水位', status: '缺测中' },
-    { name: '西干渠2#流量站', code: 'XG-002', period: '00:00 ~ 06:00', duration: '6小时', dataType: '流量', status: '缺测中' },
-    { name: '东干渠2#水位站', code: 'DG-002', period: '03:15 ~ 03:45', duration: '30分钟', dataType: '水位', status: '已恢复' },
-    { name: '渠首水位站', code: 'QS-001', period: '05:20 ~ 05:25', duration: '5分钟', dataType: '水位', status: '已恢复' },
-    { name: '北干渠1#流量站', code: 'BG-001', period: '07:00 ~ 07:30', duration: '30分钟', dataType: '流量', status: '已恢复' }
-  ];
-
-  var SERVICES = [
-    { name: '数据接收服务', status: '运行中', start: '08-15 03:00', uptime: '18天6时', cpu: 23, mem: 45, requests: 128456, success: 99.1 },
-    { name: '数据解析服务', status: '运行中', start: '08-15 03:00', uptime: '18天6时', cpu: 31, mem: 52, requests: 126890, success: 98.7 },
-    { name: '数据存储服务', status: '运行中', start: '08-20 01:30', uptime: '13天8时', cpu: 28, mem: 61, requests: 125340, success: 99.5 },
-    { name: '信息发布服务', status: '运行中', start: '08-15 03:05', uptime: '18天6时', cpu: 12, mem: 34, requests: 8642, success: 99.8 },
-    { name: '告警推送服务', status: '重启中', start: '09-02 09:15', uptime: '42分钟', cpu: 8, mem: 22, requests: 156, success: 95.2 }
-  ];
-
-  var COLLECT = [
-    { type: '水位数据', expect: 4320, actual: 4285, ok: 4270, fail: 15, okRate: 99.7, failRate: 0.3 },
-    { type: '流量数据', expect: 2880, actual: 2850, ok: 2835, fail: 15, okRate: 99.5, failRate: 0.5 },
-    { type: '雨量数据', expect: 1440, actual: 1440, ok: 1440, fail: 0, okRate: 100, failRate: 0 },
-    { type: '闸门开度', expect: 960, actual: 945, ok: 938, fail: 7, okRate: 99.3, failRate: 0.7 },
-    { type: '视频数据', expect: 720, actual: 710, ok: 698, fail: 12, okRate: 98.5, failRate: 1.5 }
-  ];
-
-  var PUBLISH = [
-    { type: '水情通报', count: 12, ok: 12, fail: 0, okRate: 100, latest: '09-02 08:00', status: '正常' },
-    { type: '调度指令', count: 8, ok: 8, fail: 0, okRate: 100, latest: '09-02 07:30', status: '正常' },
-    { type: '预警信息', count: 2, ok: 1, fail: 1, okRate: 50, latest: '09-01 16:20', status: '异常' },
-    { type: '日报/周报', count: 5, ok: 5, fail: 0, okRate: 100, latest: '09-01 18:00', status: '正常' }
-  ];
-
-  var KPI = {
-    totalStations: 156,
-    todayRate: 98.7,
-    monthRate: 99.1,
-    unreported: 2,
-    missingToday: 5
-  };
+  var MAX_RANGE_DAYS = 730;
+  var MAX_MISS_DAYS = 31;
 
   var state = {
+    kpi: null,
     arrival: { page: 1, list: [] },
-    missing: { page: 1, list: [] }
+    missing: { page: 1, list: [] },
+    services: [],
+    process: null,
+    collect: [],
+    publish: [],
+    range: { mode: 'today', start: null, end: null, missClamped: false }
   };
 
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
@@ -372,91 +287,128 @@ table.data-table td.left,table.data-table th.left{text-align:left}
     var d = new Date();
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   }
-  function daysAgo(n) {
-    var d = new Date();
-    d.setDate(d.getDate() - n);
+  function parseYmd(s) {
+    if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    var p = s.split('-').map(Number);
+    var d = new Date(p[0], p[1] - 1, p[2]);
+    if (d.getFullYear() !== p[0] || d.getMonth() !== p[1] - 1 || d.getDate() !== p[2]) return null;
+    return d;
+  }
+  function ymdFromDate(d) {
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  function daySpan(start, end) {
+    var a = parseYmd(start);
+    var b = parseYmd(end);
+    if (!a || !b) return null;
+    return Math.round((b - a) / 86400000) + 1;
+  }
+  function addDaysYmd(ymd, delta) {
+    var d = parseYmd(ymd);
+    if (!d) return ymd;
+    d.setDate(d.getDate() + delta);
+    return ymdFromDate(d);
+  }
+  function qs(params) {
+    var p = new URLSearchParams();
+    Object.keys(params).forEach(function (k) {
+      var v = params[k];
+      if (v == null || v === '') return;
+      p.set(k, String(v));
+    });
+    var s = p.toString();
+    return s ? ('?' + s) : '';
+  }
+
+  /** 解析日期控件 → startDate/endDate；无参=今日口径 */
+  function resolveRange() {
+    var start = document.getElementById('start-date').value.trim();
+    var end = document.getElementById('end-date').value.trim();
+    var today = todayStr();
+
+    if (!start && !end) {
+      return { ok: true, mode: 'today', start: null, end: null, qs: '', missQs: '', missClamped: false };
+    }
+    if (start && !parseYmd(start)) return { ok: false, msg: '开始日期格式无效' };
+    if (end && !parseYmd(end)) return { ok: false, msg: '结束日期格式无效' };
+
+    // 与 mq 约定：只传 start=该日至今日；只传 end=该单日；都传=闭区间
+    var effStart = start || end;
+    var effEnd = end || (start ? today : end);
+    if (start && end && start > end) {
+      return { ok: false, msg: '开始日期不能晚于结束日期' };
+    }
+    var span = daySpan(effStart, effEnd);
+    if (span == null) return { ok: false, msg: '日期无效' };
+    if (span > MAX_RANGE_DAYS) {
+      return { ok: false, msg: '查询区间不能超过 ' + MAX_RANGE_DAYS + ' 天' };
+    }
+
+    var mode = (effStart === today && effEnd === today) ? 'today' : 'range';
+    var q;
+    if (start && end) q = qs({ startDate: start, endDate: end });
+    else if (start && !end) q = qs({ startDate: start });
+    else q = qs({ endDate: end });
+
+    var missStart = effStart;
+    var missEnd = effEnd;
+    var missClamped = false;
+    if (span > MAX_MISS_DAYS) {
+      missStart = addDaysYmd(effEnd, -(MAX_MISS_DAYS - 1));
+      missClamped = true;
+    }
+    var missQ = qs({ startDate: missStart, endDate: missEnd });
+
+    return {
+      ok: true,
+      mode: mode,
+      start: effStart,
+      end: effEnd,
+      qs: q,
+      missQs: missQ,
+      missClamped: missClamped
+    };
   }
   function toast(msg) {
     var el = document.getElementById('toast');
     el.textContent = msg;
     el.classList.add('show');
     clearTimeout(toast._t);
-    toast._t = setTimeout(function () { el.classList.remove('show'); }, 1800);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
   }
   function fmtInt(n) {
-    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    var v = Number(n);
+    if (!Number.isFinite(v)) return '-';
+    return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
   function fmtRate(r) {
-    return (Number.isInteger(r) ? r : Number(r).toFixed(1)) + '%';
+    var v = Number(r);
+    if (!Number.isFinite(v)) return '-';
+    return (Number.isInteger(v) ? v : v.toFixed(1)) + '%';
+  }
+  function fmtNum(r, digits) {
+    var v = Number(r);
+    if (!Number.isFinite(v)) return '-';
+    return Number.isInteger(v) ? String(v) : v.toFixed(digits == null ? 1 : digits);
+  }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  function buildArrivalMock() {
-    var list = ARRIVAL_FIXED.slice();
-    var patterns = [
-      { rate: 100, status: '正常' },
-      { rate: 100, status: '正常' },
-      { rate: 97.1, status: '偏低' },
-      { rate: 91.7, status: '偏低' },
-      { rate: 90.3, status: '偏低' },
-      { rate: 75.0, status: '异常' },
-      { rate: 0, status: '未到报' }
-    ];
-    var i = list.length;
-    while (list.length < 156) {
-      var seed = STATION_SEED[i % STATION_SEED.length];
-      var p = patterns[i % patterns.length];
-      var expected = seed.expected;
-      var actual = Math.round(expected * p.rate / 100);
-      list.push({
-        name: seed.name,
-        code: seed.code.replace(/-(\d+)$/, '-' + pad2((i % 90) + 1)),
-        type: seed.type,
-        expected: expected,
-        actual: actual,
-        missing: expected - actual,
-        rate: p.rate,
-        status: p.status
-      });
-      i++;
-    }
-    return list;
+  /** 到报状态：100 正常 / ≥80 偏低 / >0 异常 / 0 未到报 */
+  function arrivalStatus(rate) {
+    var r = Number(rate);
+    if (!Number.isFinite(r) || r <= 0) return '未到报';
+    if (r >= 100) return '正常';
+    if (r >= 80) return '偏低';
+    return '异常';
   }
-
-  function buildMissingMock() {
-    var list = MISSING_FIXED.slice();
-    var statuses = ['缺测中', '已恢复', '已恢复', '已恢复'];
-    var types = ['水位', '流量'];
-    var periods = [
-      ['00:00 ~ 09:57', '9小时57分'],
-      ['00:00 ~ 06:00', '6小时'],
-      ['03:15 ~ 03:45', '30分钟'],
-      ['05:20 ~ 05:25', '5分钟'],
-      ['07:00 ~ 07:30', '30分钟'],
-      ['10:00 ~ 11:20', '1小时20分'],
-      ['14:00 ~ 14:15', '15分钟']
-    ];
-    var i = list.length;
-    while (list.length < 156) {
-      var seed = STATION_SEED[i % STATION_SEED.length];
-      var pe = periods[i % periods.length];
-      list.push({
-        name: seed.name,
-        code: seed.code.replace(/-(\d+)$/, '-' + pad2((i % 90) + 1)),
-        period: pe[0],
-        duration: pe[1],
-        dataType: types[i % 2],
-        status: statuses[i % statuses.length]
-      });
-      i++;
-    }
-    return list;
-  }
-
   function rateClass(rate) {
-    if (rate >= 100) return 'ok';
-    if (rate >= 90) return 'warn';
-    if (rate > 0) return 'danger';
+    var r = Number(rate);
+    if (r >= 100) return 'ok';
+    if (r >= 80) return 'warn';
+    if (r > 0) return 'danger';
     return 'muted';
   }
   function arrivalTagClass(status) {
@@ -466,10 +418,173 @@ table.data-table td.left,table.data-table th.left{text-align:left}
     return 'tag-muted';
   }
   function okRateTagClass(rate) {
-    return rate >= 99 ? 'tag-ok' : 'tag-warn';
+    return Number(rate) >= 99 ? 'tag-ok' : 'tag-warn';
+  }
+
+  function fmtPeriod(startTm, endTm) {
+    var a = String(startTm || '').replace('T', ' ').slice(0, 19);
+    var b = String(endTm || '').replace('T', ' ').slice(0, 19);
+    if (!a && !b) return '-';
+    if (a && b && a.slice(0, 10) === b.slice(0, 10) && a.length >= 16 && b.length >= 16) {
+      return a.slice(11, 16) + ' ~ ' + b.slice(11, 16);
+    }
+    return (a || '-') + ' ~ ' + (b || '-');
+  }
+  function fmtDuration(mins) {
+    var m = Math.max(0, Math.round(Number(mins) || 0));
+    var h = Math.floor(m / 60);
+    var r = m % 60;
+    if (h <= 0) return r + '分钟';
+    if (r === 0) return h + '小时';
+    return h + '小时' + r + '分';
+  }
+  function fmtUptime(mins) {
+    var m = Math.max(0, Math.round(Number(mins) || 0));
+    var d = Math.floor(m / (60 * 24));
+    var h = Math.floor((m % (60 * 24)) / 60);
+    var r = m % 60;
+    if (d > 0) return d + '天' + h + '时';
+    if (h > 0) return h + '时' + (r ? r + '分' : '');
+    return r + '分钟';
+  }
+  function fmtStart(tm) {
+    var s = String(tm || '').replace('T', ' ').slice(0, 16);
+    if (!s) return '-';
+    // MM-DD HH:mm
+    if (s.length >= 16) return s.slice(5, 16);
+    return s;
+  }
+  function fmtMem(process) {
+    if (!process) return '-';
+    var used = Number(process.memoryUsedMB);
+    var max = Number(process.memoryMaxMB);
+    if (Number.isFinite(used) && Number.isFinite(max) && max > 0) {
+      return Math.round(used / max * 100) + '%';
+    }
+    if (Number.isFinite(used)) return used + 'MB';
+    return '-';
+  }
+
+  async function fetchApi(path) {
+    var res = await fetch(API + path, { credentials: 'include' });
+    var body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (!res.ok) {
+      var msg = (body && (body.message || body.msg)) || ('HTTP ' + res.status);
+      throw new Error(msg);
+    }
+    if (body && typeof body === 'object' && !Array.isArray(body) && ('data' in body) && ('code' in body || 'msg' in body || 'message' in body)) {
+      if (body.code != null && Number(body.code) !== 0) {
+        throw new Error(body.msg || body.message || '请求失败');
+      }
+      return body.data;
+    }
+    return body;
+  }
+
+  function mapArrival(list) {
+    return (Array.isArray(list) ? list : []).map(function (r) {
+      var rate = Number(r.arrivalRate);
+      return {
+        name: r.siteName || '-',
+        code: r.stcd || '-',
+        type: r.msgType || '-',
+        expected: r.expected,
+        actual: r.arrived,
+        missing: r.missed,
+        rate: rate,
+        status: arrivalStatus(rate)
+      };
+    });
+  }
+
+  function mapMissing(list) {
+    return (Array.isArray(list) ? list : []).map(function (r) {
+      var types = Array.isArray(r.dataTypes) ? r.dataTypes.join('、') : (r.dataType || '-');
+      return {
+        name: r.siteName || '-',
+        code: r.stcd || '-',
+        period: fmtPeriod(r.startTm, r.endTm),
+        duration: fmtDuration(r.missMinutes),
+        dataType: types || '-',
+        status: r.status || '-'
+      };
+    });
+  }
+
+  function mapServices(data) {
+    var process = (data && data.process) || null;
+    var services = (data && Array.isArray(data.services)) ? data.services : [];
+    return {
+      process: process,
+      services: services.map(function (s) {
+        return {
+          name: s.name || '-',
+          status: s.status || '-',
+          start: fmtStart(process && process.startTime),
+          uptime: fmtUptime(process && process.uptimeMinutes),
+          cpu: process && process.cpu != null ? Number(process.cpu) : null,
+          memText: fmtMem(process),
+          requests: s.todayRequests,
+          success: s.successRate
+        };
+      })
+    };
+  }
+
+  function mapCollect(list) {
+    return (Array.isArray(list) ? list : []).map(function (r) {
+      return {
+        type: r.dataType || '-',
+        expect: r.expected,
+        actual: r.collected,
+        ok: r.success,
+        fail: r.failed,
+        okRate: r.successRate,
+        failRate: r.failRate
+      };
+    });
+  }
+
+  /** 视频行：仅接口失败/缺失时省略；collected=0 照常显示（区间历史口径） */
+  function mapVideoCollect(data) {
+    if (!data || typeof data !== 'object') return null;
+    var row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    return {
+      type: row.dataType || '视频数据',
+      expect: row.expected,
+      actual: row.collected,
+      ok: row.success,
+      fail: row.failed,
+      okRate: row.successRate,
+      failRate: row.failRate
+    };
+  }
+
+  function mergeCollect(mqList, videoRow) {
+    var rows = mapCollect(mqList);
+    if (videoRow) rows.push(videoRow);
+    return rows;
+  }
+
+  function mapPublish(data) {
+    var rows = Array.isArray(data) ? data : (data ? [data] : []);
+    return rows.map(function (r) {
+      return {
+        type: r.type || '预警信息',
+        count: r.count,
+        ok: r.ok,
+        fail: r.fail,
+        okRate: r.okRate,
+        latest: r.latest == null || r.latest === '' ? '--' : String(r.latest).replace('T', ' ').slice(0, 19),
+        status: r.status || '正常'
+      };
+    });
   }
 
   function renderKpi() {
+    var k = state.kpi || {};
     var icons = {
       blue: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4.5 17.5h15M6 17.5V9.5M10 17.5V7M14 17.5v-5M18 17.5V11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="18.5" cy="6.5" r="2.2" stroke="currentColor" stroke-width="1.5"/><path d="M12 4.5c-1.8 2.2-3 4-3 5.8a3 3 0 0 0 6 0c0-1.8-1.2-3.6-3-5.8z" stroke="currentColor" stroke-width="1.4"/></svg>',
       green: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M8 12.2l2.6 2.6L16.2 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -477,18 +592,37 @@ table.data-table td.left,table.data-table th.left{text-align:left}
       orange: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
       red: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>'
     };
+    var noReport = Array.isArray(k.noReportSites) ? k.noReportSites.length : 0;
+    var missed = Array.isArray(k.missedSites) ? k.missedSites.length : 0;
+    var isRange = state.range && state.range.mode === 'range';
     var items = [
-      { icon: 'blue', value: KPI.totalStations, label: '监测站点总数' },
-      { icon: 'green', value: KPI.todayRate + '%', label: '今日数据到报率' },
-      { icon: 'cyan', value: KPI.monthRate + '%', label: '本月平均到报率' },
-      { icon: 'orange', value: KPI.unreported, label: '未到报站点' },
-      { icon: 'red', value: KPI.missingToday, label: '今日缺测站点' }
+      { icon: 'blue', value: k.stationTotal != null ? k.stationTotal : '-', label: '监测站点总数' },
+      { icon: 'green', value: k.todayArrivalRate != null ? fmtNum(k.todayArrivalRate) + '%' : '-', label: isRange ? '区间到报率' : '今日数据到报率' },
+      { icon: 'cyan', value: k.monthAvgArrivalRate != null ? fmtNum(k.monthAvgArrivalRate) + '%' : '-', label: isRange ? '区间平均到报率' : '本月平均到报率' },
+      { icon: 'orange', value: noReport, label: '未到报站点' },
+      { icon: 'red', value: missed, label: isRange ? '区间缺测站点' : '今日缺测站点' }
     ];
     document.getElementById('kpi-row').innerHTML = items.map(function (it) {
       return '<div class="card kpi-card"><div class="kpi-icon ' + it.icon + '">' + icons[it.icon] +
         '</div><div class="kpi-meta"><div class="kpi-value">' + it.value +
         '</div><div class="kpi-label">' + it.label + '</div></div></div>';
     }).join('');
+
+    var hint = document.getElementById('stat-hint');
+    var parts = [];
+    if (isRange) {
+      parts.push('统计区间：' + state.range.start + ' ~ ' + state.range.end);
+      if (k.statStartDate) parts.push('起点 ' + k.statStartDate);
+    } else if (k.statStartDate) {
+      parts.push('统计口径：今日 / 本月（起始 ' + k.statStartDate + '）');
+    } else {
+      parts.push('统计口径：今日 / 本月（已结束完整窗）');
+    }
+    parts.push('信息发布为今日');
+    if (state.range && state.range.missClamped) {
+      parts.push('缺测明细仅最近 ' + MAX_MISS_DAYS + ' 天');
+    }
+    hint.textContent = parts.join('；');
   }
 
   function pageSlice(list, page) {
@@ -496,7 +630,7 @@ table.data-table td.left,table.data-table th.left{text-align:left}
     return list.slice(start, start + PAGE_SIZE);
   }
   function totalPages(list) {
-    return Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    return Math.max(1, Math.ceil((list.length || 0) / PAGE_SIZE));
   }
 
   function renderPager(infoId, btnsId, list, page, onChange) {
@@ -505,9 +639,11 @@ table.data-table td.left,table.data-table th.left{text-align:left}
     document.getElementById(infoId).textContent =
       '共 ' + total + ' 条记录，每页 ' + PAGE_SIZE + ' 条，当前第 ' + page + '/' + pages + ' 页';
 
-    var windowPages = pages <= 5 ? [] : [1, 2, 3, '…', pages];
+    var windowPages = [];
     if (pages <= 5) {
       for (var i = 1; i <= pages; i++) windowPages.push(i);
+    } else {
+      windowPages = [1, 2, 3, '…', pages];
     }
 
     var html = '<button type="button" class="pg-btn" data-page="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + '>‹</button>';
@@ -531,24 +667,35 @@ table.data-table td.left,table.data-table th.left{text-align:left}
     });
   }
 
+  function emptyRow(colspan, text) {
+    return '<tr><td class="empty" colspan="' + colspan + '">' + esc(text) + '</td></tr>';
+  }
+
   function renderArrival() {
     var list = state.arrival.list;
     var page = state.arrival.page;
+    var tbody = document.getElementById('arrival-tbody');
+    if (!list.length) {
+      tbody.innerHTML = emptyRow(9, '暂无数据');
+      renderPager('arrival-pg-info', 'arrival-pg-btns', list, 1, function () {});
+      return;
+    }
     var rows = pageSlice(list, page);
     var start = (page - 1) * PAGE_SIZE;
-    document.getElementById('arrival-tbody').innerHTML = rows.map(function (r, idx) {
+    tbody.innerHTML = rows.map(function (r, idx) {
       var cls = rateClass(r.rate);
+      var w = Math.max(0, Math.min(100, Number(r.rate) || 0));
       return '<tr>' +
         '<td>' + (start + idx + 1) + '</td>' +
-        '<td class="left">' + r.name + '</td>' +
-        '<td>' + r.code + '</td>' +
-        '<td>' + r.type + '</td>' +
-        '<td>' + r.expected + '</td>' +
-        '<td>' + r.actual + '</td>' +
-        '<td>' + r.missing + '</td>' +
-        '<td><div class="rate-cell"><span class="rate-bar ' + cls + '"><i style="width:' + r.rate + '%"></i></span>' +
+        '<td class="left">' + esc(r.name) + '</td>' +
+        '<td>' + esc(r.code) + '</td>' +
+        '<td>' + esc(r.type) + '</td>' +
+        '<td>' + esc(r.expected) + '</td>' +
+        '<td>' + esc(r.actual) + '</td>' +
+        '<td>' + esc(r.missing) + '</td>' +
+        '<td><div class="rate-cell"><span class="rate-bar ' + cls + '"><i style="width:' + w + '%"></i></span>' +
         '<span class="rate-txt">' + fmtRate(r.rate) + '</span></div></td>' +
-        '<td><span class="tag ' + arrivalTagClass(r.status) + '">' + r.status + '</span></td>' +
+        '<td><span class="tag ' + arrivalTagClass(r.status) + '">' + esc(r.status) + '</span></td>' +
         '</tr>';
     }).join('');
     renderPager('arrival-pg-info', 'arrival-pg-btns', list, page, function (p) {
@@ -560,26 +707,26 @@ table.data-table td.left,table.data-table th.left{text-align:left}
   function renderMissing() {
     var list = state.missing.list;
     var page = state.missing.page;
+    var tbody = document.getElementById('missing-tbody');
+    if (!list.length) {
+      tbody.innerHTML = emptyRow(7, '暂无数据');
+      renderPager('missing-pg-info', 'missing-pg-btns', list, 1, function () {});
+      return;
+    }
     var rows = pageSlice(list, page);
     var start = (page - 1) * PAGE_SIZE;
-    document.getElementById('missing-tbody').innerHTML = rows.map(function (r, idx) {
+    tbody.innerHTML = rows.map(function (r, idx) {
       var tagCls = r.status === '缺测中' ? 'tag-missing' : 'tag-recovered';
       return '<tr>' +
         '<td>' + (start + idx + 1) + '</td>' +
-        '<td class="left">' + r.name + '</td>' +
-        '<td>' + r.code + '</td>' +
-        '<td>' + r.period + '</td>' +
-        '<td>' + r.duration + '</td>' +
-        '<td>' + r.dataType + '</td>' +
-        '<td><span class="tag ' + tagCls + '">' + r.status + '</span></td>' +
-        '<td><button type="button" class="btn btn-ghost detail-btn" data-idx="' + (start + idx) + '">详情</button></td>' +
+        '<td class="left">' + esc(r.name) + '</td>' +
+        '<td>' + esc(r.code) + '</td>' +
+        '<td>' + esc(r.period) + '</td>' +
+        '<td>' + esc(r.duration) + '</td>' +
+        '<td>' + esc(r.dataType) + '</td>' +
+        '<td><span class="tag ' + tagCls + '">' + esc(r.status) + '</span></td>' +
         '</tr>';
     }).join('');
-    document.querySelectorAll('.detail-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        openDetail(list[Number(btn.getAttribute('data-idx'))]);
-      });
-    });
     renderPager('missing-pg-info', 'missing-pg-btns', list, page, function (p) {
       state.missing.page = p;
       renderMissing();
@@ -587,25 +734,37 @@ table.data-table td.left,table.data-table th.left{text-align:left}
   }
 
   function renderServices() {
-    document.getElementById('service-tbody').innerHTML = SERVICES.map(function (s) {
+    var list = state.services;
+    var tbody = document.getElementById('service-tbody');
+    if (!list.length) {
+      tbody.innerHTML = emptyRow(8, '暂无数据');
+      return;
+    }
+    tbody.innerHTML = list.map(function (s) {
       var cls = s.status === '运行中' ? 'ok' : 'warn';
       return '<tr>' +
-        '<td class="left">' + s.name + '</td>' +
-        '<td><span class="status-text ' + cls + '">' + s.status + '</span></td>' +
-        '<td>' + s.start + '</td>' +
-        '<td>' + s.uptime + '</td>' +
-        '<td>' + s.cpu + '%</td>' +
-        '<td>' + s.mem + '%</td>' +
+        '<td class="left">' + esc(s.name) + '</td>' +
+        '<td><span class="status-text ' + cls + '">' + esc(s.status) + '</span></td>' +
+        '<td>' + esc(s.start) + '</td>' +
+        '<td>' + esc(s.uptime) + '</td>' +
+        '<td>' + (s.cpu == null ? '-' : fmtNum(s.cpu) + '%') + '</td>' +
+        '<td>' + esc(s.memText) + '</td>' +
         '<td>' + fmtInt(s.requests) + '</td>' +
-        '<td>' + s.success.toFixed(1) + '%</td>' +
+        '<td>' + fmtRate(s.success) + '</td>' +
         '</tr>';
     }).join('');
   }
 
   function renderCollect() {
-    document.getElementById('collect-tbody').innerHTML = COLLECT.map(function (r) {
+    var list = state.collect;
+    var tbody = document.getElementById('collect-tbody');
+    if (!list.length) {
+      tbody.innerHTML = emptyRow(7, '暂无数据');
+      return;
+    }
+    tbody.innerHTML = list.map(function (r) {
       return '<tr>' +
-        '<td class="left">' + r.type + '</td>' +
+        '<td class="left">' + esc(r.type) + '</td>' +
         '<td>' + fmtInt(r.expect) + '</td>' +
         '<td>' + fmtInt(r.actual) + '</td>' +
         '<td>' + fmtInt(r.ok) + '</td>' +
@@ -617,49 +776,24 @@ table.data-table td.left,table.data-table th.left{text-align:left}
   }
 
   function renderPublish() {
-    document.getElementById('publish-tbody').innerHTML = PUBLISH.map(function (r) {
-      var cls = r.status === '正常' ? 'ok' : 'warn';
-      return '<tr>' +
-        '<td class="left">' + r.type + '</td>' +
-        '<td>' + r.count + '</td>' +
-        '<td>' + r.ok + '</td>' +
-        '<td>' + r.fail + '</td>' +
-        '<td>' + fmtRate(r.okRate) + '</td>' +
-        '<td>' + r.latest + '</td>' +
-        '<td><span class="status-text ' + cls + '">' + r.status + '</span></td>' +
-        '</tr>';
-    }).join('');
-  }
-
-  function openDetail(row) {
-    if (!row) return;
-    var fields = [
-      ['站点名称', row.name],
-      ['编号', row.code],
-      ['缺测时间段', row.period],
-      ['缺测时长', row.duration],
-      ['数据类型', row.dataType],
-      ['当前状态', row.status]
-    ];
-    document.getElementById('detail-grid').innerHTML = fields.map(function (f) {
-      return '<div class="k">' + f[0] + '</div><div class="v">' + f[1] + '</div>';
-    }).join('');
-    document.getElementById('detail-mask').classList.add('show');
-  }
-
-  function query() {
-    var start = document.getElementById('start-date').value;
-    var end = document.getElementById('end-date').value;
-    if (start && end && start > end) {
-      toast('结束日期不能早于开始日期');
+    var list = state.publish;
+    var tbody = document.getElementById('publish-tbody');
+    if (!list.length) {
+      tbody.innerHTML = emptyRow(7, '暂无数据');
       return;
     }
-    state.arrival.page = 1;
-    state.missing.page = 1;
-    state.arrival.list = buildArrivalMock();
-    state.missing.list = buildMissingMock();
-    renderAll();
-    toast('已按日期刷新（Mock）');
+    tbody.innerHTML = list.map(function (r) {
+      var cls = r.status === '正常' ? 'ok' : 'warn';
+      return '<tr>' +
+        '<td class="left">' + esc(r.type) + '</td>' +
+        '<td>' + esc(r.count) + '</td>' +
+        '<td>' + esc(r.ok) + '</td>' +
+        '<td>' + esc(r.fail) + '</td>' +
+        '<td>' + fmtRate(r.okRate) + '</td>' +
+        '<td>' + esc(r.latest) + '</td>' +
+        '<td><span class="status-text ' + cls + '">' + esc(r.status) + '</span></td>' +
+        '</tr>';
+    }).join('');
   }
 
   function renderAll() {
@@ -669,6 +803,85 @@ table.data-table td.left,table.data-table th.left{text-align:left}
     renderServices();
     renderCollect();
     renderPublish();
+  }
+
+  function setLoadingTables(text) {
+    document.getElementById('arrival-tbody').innerHTML = emptyRow(9, text);
+    document.getElementById('missing-tbody').innerHTML = emptyRow(7, text);
+    document.getElementById('service-tbody').innerHTML = emptyRow(8, text);
+    document.getElementById('collect-tbody').innerHTML = emptyRow(7, text);
+    document.getElementById('publish-tbody').innerHTML = emptyRow(7, text);
+  }
+
+  async function loadAll(showToast) {
+    var range = resolveRange();
+    if (!range.ok) {
+      toast(range.msg);
+      return;
+    }
+    state.range = {
+      mode: range.mode,
+      start: range.start,
+      end: range.end,
+      missClamped: range.missClamped
+    };
+
+    var btn = document.getElementById('query-btn');
+    btn.disabled = true;
+    setLoadingTables('加载中...');
+    try {
+      var q = range.qs;
+      var mq = range.missQs || q;
+      // publish-stats 不受区间参数影响，始终今日口径
+      var results = await Promise.allSettled([
+        fetchApi('/data-statistics/arrival-stats' + q),
+        fetchApi('/data-statistics/arrival-detail' + q),
+        fetchApi('/data-statistics/miss-detail' + mq),
+        fetchApi('/data-statistics/service-status' + q),
+        fetchApi('/data-statistics/collect-stats' + q),
+        fetchApi('/data-statistics/publish-stats'),
+        fetchApi('/data-statistics/video-collect' + q)
+      ]);
+
+      var errors = [];
+      function take(i, fallback, soft) {
+        var r = results[i];
+        if (r.status === 'fulfilled') return r.value;
+        if (!soft) errors.push(r.reason && r.reason.message ? r.reason.message : '接口失败');
+        return fallback;
+      }
+
+      state.kpi = take(0, null) || {};
+      state.arrival.list = mapArrival(take(1, []));
+      state.arrival.page = 1;
+      state.missing.list = mapMissing(take(2, []));
+      state.missing.page = 1;
+
+      var svc = mapServices(take(3, { process: null, services: [] }));
+      state.process = svc.process;
+      state.services = svc.services;
+      // 视频行失败/缺失时静默省略，不计入硬错误；collected=0 仍展示
+      state.collect = mergeCollect(take(4, []), mapVideoCollect(take(6, null, true)));
+      state.publish = mapPublish(take(5, []));
+
+      renderAll();
+
+      if (errors.length === results.length) {
+        toast('数据加载失败：' + errors[0]);
+      } else if (errors.length) {
+        toast('部分数据加载失败（' + errors.length + '）');
+      } else if (range.missClamped) {
+        toast('缺测明细已截取最近 ' + MAX_MISS_DAYS + ' 天');
+      } else if (showToast) {
+        toast('已刷新');
+      }
+    } catch (e) {
+      console.error(e);
+      toast((e && e.message) || '数据加载失败');
+      setLoadingTables('加载失败，请重试');
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   function exportCsv(filename, headers, rows) {
@@ -686,10 +899,14 @@ table.data-table td.left,table.data-table th.left{text-align:left}
     URL.revokeObjectURL(a.href);
   }
 
-  document.getElementById('start-date').value = daysAgo(6);
+  // 默认今日口径（与无参接口一致）；可改区间后点查询
+  document.getElementById('start-date').value = todayStr();
   document.getElementById('end-date').value = todayStr();
-  document.getElementById('query-btn').addEventListener('click', query);
+  document.getElementById('query-btn').addEventListener('click', function () {
+    loadAll(true);
+  });
   document.getElementById('export-arrival').addEventListener('click', function () {
+    if (!state.arrival.list.length) { toast('暂无数据可导出'); return; }
     exportCsv('站点到报明细.csv',
       ['序号', '站点名称', '编号', '报文类型', '应到次数', '实到次数', '缺报次数', '到报率', '状态'],
       state.arrival.list.map(function (r, i) {
@@ -699,6 +916,7 @@ table.data-table td.left,table.data-table th.left{text-align:left}
     toast('已导出到报明细');
   });
   document.getElementById('export-missing').addEventListener('click', function () {
+    if (!state.missing.list.length) { toast('暂无数据可导出'); return; }
     exportCsv('缺测明细.csv',
       ['序号', '站点名称', '编号', '缺测时间段', '缺测时长', '数据类型', '当前状态'],
       state.missing.list.map(function (r, i) {
@@ -707,16 +925,8 @@ table.data-table td.left,table.data-table th.left{text-align:left}
     );
     toast('已导出缺测明细');
   });
-  document.getElementById('detail-close').addEventListener('click', function () {
-    document.getElementById('detail-mask').classList.remove('show');
-  });
-  document.getElementById('detail-mask').addEventListener('click', function (e) {
-    if (e.target === this) this.classList.remove('show');
-  });
 
-  state.arrival.list = buildArrivalMock();
-  state.missing.list = buildMissingMock();
-  renderAll();
+  loadAll(false);
 })();
 </script>
 </body>

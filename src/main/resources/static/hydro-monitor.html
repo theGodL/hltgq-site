@@ -262,11 +262,6 @@ function generatePptnBuckets(startDate, endDate) {
   const buckets = [];
   const d = new Date(startDate + 'T00:00:00');
   const end = new Date(endDate + 'T00:00:00');
-  // 8 点切分区间语义（与后端 gq/reservoir-rainfall 一致）：区间筛选 [start, end] 输出
-  // (start 08:00, end 08:00] 内的完整水文日标签，即标签从 start+1 起（start 当日标签代表
-  // (start-1 08:00, start 08:00] 属起日前一天尾巴，不输出）；单日/默认（start==end）保留
-  // 当日单标签（最近完整水文日）
-  if (String(startDate) < String(endDate)) d.setDate(d.getDate() + 1);
   while (d <= end) {
     buckets.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} 08:00:00`);
     d.setDate(d.getDate() + 1);
@@ -357,12 +352,7 @@ function floorToInterval(tmStr, intervalMinutes) {
 function generatePeriodBuckets(startDate, endDate, intervalMinutes) {
   const buckets = [];
   const startD = new Date(startDate + 'T00:00:00');
-  // 8 点切分区间语义（与后端 reservoir-period-rainfall 一致）：区间筛选 [start, end] 的时段
-  // 起点 = start 08:00（首桶 [start 08:00, start+interval)），不再含起日前一天尾巴时段；
-  // 单日/默认（start==end）窗口 = (startDate-1 08:00, startDate 08:00] 最近完整水文日
-  if (String(startDate) >= String(endDate)) {
-    startD.setDate(startD.getDate() - 1);
-  }
+  startD.setDate(startD.getDate() - 1);
   const start = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate(), 8, 0, 0);
   const end = new Date(endDate + 'T08:00:00');
   const d = new Date(start);
@@ -452,11 +442,6 @@ function generateDailyBuckets(startDate, endDate) {
   const buckets = [];
   const d = new Date(startDate + 'T00:00:00');
   const end = new Date(endDate + 'T00:00:00');
-  // 8 点切分区间语义（与 generatePptnBuckets 一致）：区间筛选 [start, end] 输出
-  // (start 08:00, end 08:00] 内的完整水文日标签，即标签从 start+1 起（start 当日标签代表
-  // (start-1 08:00, start 08:00] 属起日前一天尾巴，不输出）；单日/默认（start==end）保留
-  // 当日单标签（最近完整水文日）
-  if (String(startDate) < String(endDate)) d.setDate(d.getDate() + 1);
   while (d <= end) {
     buckets.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} 08:00:00`);
     d.setDate(d.getDate() + 1);

@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -52,21 +53,28 @@ public class DeviceStatsClient {
         this.restTemplate = new RestTemplate(factory);
     }
 
-    /** 当日视频采集统计：dataType/expected/collected/success/failed/successRate/failRate（与 mq collect-stats 行同构） */
-    public JsonNode videoPatrolStats() {
-        return get(PATH_VIDEO_PATROL_STATS);
+    /**
+     * 视频采集统计：dataType/expected/collected/success/failed/successRate/failRate（与 mq collect-stats 行同构）。
+     * <p>startDate/endDate（yyyy-MM-dd，含两端）可选，非空时透传 device 支持区间查询；
+     * null/空不传，device 按当日口径返回。
+     */
+    public JsonNode videoPatrolStats(String startDate, String endDate) {
+        return get(PATH_VIDEO_PATROL_STATS, startDate, endDate);
     }
 
     /** GET 并解析 {success,code,desc,data}：success=true 返回 data 节点，否则抛异常（调用失败/非 200 一并包装） */
-    private JsonNode get(String path) {
+    private JsonNode get(String path, String startDate, String endDate) {
         try {
             HttpHeaders headers = new HttpHeaders();
             String sessionId = currentSessionId();
             if (StringUtils.hasText(sessionId)) {
                 headers.set(SessionContextService.HEADER_SESSION_ID, sessionId);
             }
+            UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl + path);
+            if (StringUtils.hasText(startDate)) builder.queryParam("startDate", startDate.trim());
+            if (StringUtils.hasText(endDate)) builder.queryParam("endDate", endDate.trim());
             HttpEntity<Void> entity = new HttpEntity<>(headers);
-            ResponseEntity<String> response = restTemplate.exchange(baseUrl + path, HttpMethod.GET, entity, String.class);
+            ResponseEntity<String> response = restTemplate.exchange(builder.toUriString(), HttpMethod.GET, entity, String.class);
             JsonNode root = objectMapper.readTree(response.getBody());
             if (!root.path("success").asBoolean(false)) {
                 String code = root.path("code").asText("?");

@@ -374,17 +374,21 @@ body{display:flex;flex-direction:column;overflow:hidden}
         <select id="device-type">
           <option value="">全部</option>
           <option value="闸门">闸门</option>
-          <option value="启闭设备">启闭设备</option>
-          <option value="监测设备">监测设备</option>
-          <option value="电气设备">电气设备</option>
+          <option value="1">水位</option>
+          <option value="2">雨量</option>
+          <option value="3">流量</option>
+          <option value="4">闸门(编码)</option>
+          <option value="5">视频</option>
+          <option value="7">墒情</option>
+          <option value="8">水质</option>
         </select>
       </div>
       <div class="filter-item">
         <label>设备状态</label>
         <select id="device-status">
           <option value="">全部</option>
-          <option value="正常">正常</option>
-          <option value="关闭">关闭</option>
+          <option value="正常">正常（在线）</option>
+          <option value="关闭">关闭（离线）</option>
         </select>
       </div>
       <div class="filter-actions">
@@ -482,155 +486,82 @@ body{display:flex;flex-direction:column;overflow:hidden}
 
 <script>
 (function () {
+  var API = '/hltgq-site';
+  var PAGE_SIZE = 200;
+
   function getStationId() {
     var q = new URLSearchParams(location.search);
     return q.get('id') || q.get('stationId') || '';
   }
 
-  var MOCK_BASIC = {
-    code: 'ST-0005',
-    name: '南干一号闸站',
-    type: '闸站',
-    org: '南干管理所',
-    canal: '南干渠',
-    gates: '3 个',
-    func: '灌溉输水、流量调节',
-    loc: '南干渠 K12+300',
-    addr: '安徽省安庆市太湖县南干渠',
-    lnglat: '116.284521, 30.465218',
-    runStatus: '正常运行',
-    runStatusOk: true,
-    owner: '刘磊',
-    phone: '138****5268',
-    built: '2018-06-15',
-    online: '2018-08-01',
-    years: '8 年',
-    intro: '负责南干渠下游灌溉用水的调节和控制。',
-    volt: '218.6V',
-    ratedVolt: '220V',
-    voltDev: '-0.6%',
-    amp: '2.18A',
-    powerStatus: '正常',
-    powerOk: true,
-    comm: '4G',
-    signal: '-92dBm',
-    commTime: '14:21:36',
-    latency: '415ms',
-    loss: '18.6%',
-    netStatus: '异常',
-    netOk: false,
-    videos: [
-      { channel: 'xx站点1号摄像机', status: '正常' },
-      { channel: 'xx站点2号摄像机', status: '正常' },
-      { channel: 'xx站点3号摄像机', status: '正常' }
-    ]
-  };
-
-  var MOCK_PATROL = [
-    {
-      code: 'XJ-JL-20260811-001',
-      time: '2026-08-11 09:30',
-      person: '李明',
-      content: '闸门、启闭机、控制柜',
-      result: '异常',
-      hasIssue: true,
-      relatedIssue: '配电柜温度偏高',
-      plan: '2026年汛期日常巡检',
-      site: '南干一号闸站',
-      object: '1号闸门 / 闸站控制柜',
-      remark: '控制柜散热风扇异常，柜内温度偏高，已现场记录并关联问题。',
-      status: '已提交',
-      photos: ['photo-1', 'photo-2'],
-      issues: [
-        { code: 'AJ20260811093001', title: '配电柜温度偏高', device: '闸站控制柜' },
-        { code: 'AJ20260811093002', title: '散热风扇异响', device: '闸站控制柜' }
-      ]
-    },
-    {
-      code: 'XJ-JL-20260805-002',
-      time: '2026-08-05 10:15',
-      person: '王强',
-      content: '闸门外观及周边环境',
-      result: '正常',
-      hasIssue: false,
-      relatedIssue: '',
-      plan: '未发布',
-      site: '南干一号闸站',
-      object: '闸门外观及周边环境',
-      remark: '外观完好，周边无异常堆积物。',
-      status: '已提交',
-      photos: ['photo-1'],
-      issues: []
-    },
-    {
-      code: 'XJ-JL-20260728-003',
-      time: '2026-07-28 14:20',
-      person: '赵凯',
-      content: '闸门开度及通信设备',
-      result: '正常',
-      hasIssue: false,
-      relatedIssue: '',
-      plan: '周例行巡检',
-      site: '南干一号闸站',
-      object: '2号开度仪 / 通信柜',
-      remark: '开度数据正常，通信链路通畅。',
-      status: '草稿',
-      photos: [],
-      issues: []
-    }
-  ];
-
-  var MOCK_ISSUE = [
-    { code: 'WT-20260811-001', title: '配电柜温度偏高', site: '南干流量站', device: '1号流量计配电柜', desc: '散热风扇不转导致温度偏高', finder: '李明', foundAt: '2026-08-11 10:08', handle: '转工单', status: '已转工单', orderNo: 'GD-20260811-001' },
-    { code: 'WT-20260811-002', title: '通信柜门锁松动', site: '长河槽（王家桥）流量站', device: '通信柜', desc: '柜门锁扣松动无法完全锁紧', finder: '陈伟', foundAt: '2026-08-11 15:35', handle: '待确定', status: '待处理', orderNo: '' },
-    { code: 'WT-20260711-003', title: '站房照明灯损坏', site: '北干流量站', device: '站房照明', desc: '站房入口照明灯不亮', finder: '赵凯', foundAt: '2026-07-11 16:20', handle: '直接处理', status: '已关闭', orderNo: '' },
-    { code: 'WT-20260810-004', title: '流量数据上传中断', site: '章大流量站', device: '数据采集终端', desc: '采集终端连续两天未上传流量数据', finder: '王强', foundAt: '2026-08-10 11:10', handle: '转工单', status: '已转工单', orderNo: 'GD-20260810-002' }
-  ];
-
-  var MOCK_ORDER = [
-    { code: 'WX-20260726-001', time: '2026-07-26 15:20', device: '1号启闭机', fault: '启闭时出现异响', content: '检查齿轮箱并补充润滑油' },
-    { code: 'WX-20260618-002', time: '2026-06-18 11:30', device: '闸站控制柜', fault: '柜内温度偏高', content: '更换散热风扇' },
-    { code: 'WX-20260509-003', time: '2026-05-09 16:10', device: '2号开度仪', fault: '开度数据偏差较大', content: '重新校准传感器' }
-  ];
-
-  var MOCK_DEVICE = [
-    { code: 'SB-000501', name: '1号闸门', type: '闸门', gate: '1号闸口', status: '正常', metric: '当前开度', value: '1.20 m' },
-    { code: 'SB-000502', name: '1号启闭机', type: '启闭设备', gate: '1号闸口', status: '正常', metric: '运行电流', value: '12.5 A' },
-    { code: 'SB-000503', name: '2号闸门', type: '闸门', gate: '2号闸口', status: '正常', metric: '当前开度', value: '0.80 m' },
-    { code: 'SB-000504', name: '2号开度仪', type: '监测设备', gate: '2号闸口', status: '正常', metric: '当前开度', value: '0.80 m' },
-    { code: 'SB-000505', name: '3号闸门', type: '闸门', gate: '3号闸口', status: '关闭', metric: '当前开度', value: '0.00 m' },
-    { code: 'SB-000506', name: '闸站控制柜', type: '电气设备', gate: '公共设备', status: '正常', metric: '柜内温度', value: '31.5 ℃' }
-  ];
-
   var stationId = getStationId();
   document.getElementById('debug-id').textContent = stationId
-    ? 'stationId=' + stationId + '（Mock）'
-    : '未传 id（展示 Mock）';
+    ? ('stationId=' + stationId)
+    : '未传 id / stationId，无法加载';
 
-  function setText(id, text) {
-    var el = document.getElementById(id);
-    if (el) el.textContent = text == null || text === '' ? '—' : text;
-  }
-  function setStatus(id, text, ok) {
-    var el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = text == null || text === '' ? '—' : text;
-    el.classList.remove('ok', 'danger');
-    if (text && ok === true) el.classList.add('ok');
-    if (text && ok === false) el.classList.add('danger');
-  }
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+  function dash(v) {
+    return v == null || v === '' ? '—' : v;
+  }
+  function setText(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = dash(text);
+  }
+  function setStatus(id, text, ok) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = dash(text);
+    el.classList.remove('ok', 'danger');
+    if (text && ok === true) el.classList.add('ok');
+    if (text && ok === false) el.classList.add('danger');
+  }
+  function fmtTm(tm) {
+    if (tm == null || tm === '') return '—';
+    return String(tm).replace('T', ' ').replace(/\.\d+$/, '').slice(0, 19);
+  }
+  function emptyRow(cols, text) {
+    return '<tr><td colspan="' + cols + '" style="text-align:center;color:#bfbfbf">' + esc(text || '暂无数据') + '</td></tr>';
+  }
+
+  async function fetchApi(path) {
+    var res = await fetch(API + path, { credentials: 'include' });
+    var body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (!res.ok) {
+      var msg = (body && (body.message || body.msg)) || ('HTTP ' + res.status);
+      throw new Error(msg);
+    }
+    if (body && typeof body === 'object' && !Array.isArray(body) && ('data' in body) && ('code' in body || 'msg' in body || 'message' in body)) {
+      if (body.code != null && Number(body.code) !== 0) {
+        throw new Error(body.msg || body.message || '请求失败');
+      }
+      return body.data;
+    }
+    return body;
+  }
+
+  function qs(params) {
+    var p = new URLSearchParams();
+    Object.keys(params).forEach(function (k) {
+      var v = params[k];
+      if (v == null || v === '') return;
+      p.set(k, String(v));
+    });
+    var s = p.toString();
+    return s ? ('?' + s) : '';
+  }
 
   function renderBasic(d) {
+    d = d || {};
     setText('f-code', d.code);
     setText('f-name', d.name);
     setText('f-type', d.type);
     setText('f-org', d.org);
     setText('f-canal', d.canal);
-    setText('f-gates', d.gates);
+    setText('f-gates', d.gates == null ? null : (d.gates + ' 个'));
     setText('f-func', d.func);
     setText('f-loc', d.loc);
     setText('f-addr', d.addr);
@@ -642,172 +573,108 @@ body{display:flex;flex-direction:column;overflow:hidden}
     setText('f-online', d.online);
     setText('f-years', d.years);
     setText('f-intro', d.intro);
-    setText('f-volt', d.volt);
-    setText('f-ratedVolt', d.ratedVolt);
+    setText('f-volt', d.volt == null ? null : (d.volt + 'V'));
+    setText('f-ratedVolt', d.ratedVolt == null ? null : (d.ratedVolt + 'V'));
     setText('f-voltDev', d.voltDev);
-    setText('f-amp', d.amp);
+    setText('f-amp', d.amp == null ? null : (d.amp + 'A'));
     setStatus('f-powerStatus', d.powerStatus, d.powerOk);
     setText('f-comm', d.comm);
     setText('f-signal', d.signal);
-    setText('f-commTime', d.commTime);
+    setText('f-commTime', fmtTm(d.commTime));
     setText('f-latency', d.latency);
     setText('f-loss', d.loss);
     setStatus('f-netStatus', d.netStatus, d.netOk);
-    document.getElementById('video-tbody').innerHTML = (d.videos || []).map(function (v) {
-      return '<tr><td>' + esc(v.channel) + '</td><td class="status-ok">' + esc(v.status) + '</td></tr>';
-    }).join('') || '<tr><td colspan="2" style="color:#bfbfbf;text-align:center">暂无视频通道</td></tr>';
-  }
-
-  function opBtn(text, cls, attrs) {
-    var extra = '';
-    if (attrs) {
-      Object.keys(attrs).forEach(function (k) {
-        extra += ' ' + k + '="' + esc(attrs[k]) + '"';
-      });
-    }
-    return '<button type="button" class="text-link' + (cls ? ' ' + cls : '') + '"' + extra + '>' + esc(text) + '</button>';
-  }
-  function opJoin(btns) {
-    return btns.join('<span class="op-sep">|</span>');
+    var videos = d.videos || [];
+    document.getElementById('video-tbody').innerHTML = videos.map(function (v) {
+      var ok = v.statusCode === '#1#' || v.status === '在线' || v.status === '正常';
+      return '<tr><td>' + esc(v.channel) + '</td><td class="' + (ok ? 'status-ok' : '') + '">' + esc(dash(v.status)) + '</td></tr>';
+    }).join('') || emptyRow(2, '暂无视频通道');
   }
 
   function renderPatrol(list) {
-    document.getElementById('patrol-tbody').innerHTML = list.map(function (r) {
-      var resultCls = r.result === '异常' ? 'text-warn' : 'text-ok';
+    document.getElementById('patrol-tbody').innerHTML = (list || []).map(function (r) {
+      var resultCls = (r.result === '异常' || (r.resultCode && r.resultCode !== '#2#')) ? 'text-warn' : 'text-ok';
+      if (r.result === '正常') resultCls = 'text-ok';
       var issueCls = r.hasIssue ? 'text-yes' : 'text-no';
       var related = r.relatedIssue
         ? '<span class="text-warn">' + esc(r.relatedIssue) + '</span>'
         : '-';
-      var ops = [opBtn('查看', '', { 'data-patrol-view': r.code })];
+      var content = r.content != null && r.content !== '' ? r.content : (r.object || '—');
       return '<tr>' +
-        '<td>' + esc(r.code) + '</td>' +
-        '<td>' + esc(r.time) + '</td>' +
-        '<td>' + esc(r.person) + '</td>' +
-        '<td>' + esc(r.content) + '</td>' +
-        '<td><span class="' + resultCls + '">' + esc(r.result) + '</span></td>' +
+        '<td>' + esc(dash(r.code)) + '</td>' +
+        '<td>' + esc(fmtTm(r.time)) + '</td>' +
+        '<td>' + esc(dash(r.person)) + '</td>' +
+        '<td>' + esc(content) + '</td>' +
+        '<td><span class="' + resultCls + '">' + esc(dash(r.result)) + '</span></td>' +
         '<td><span class="' + issueCls + '">' + (r.hasIssue ? '是' : '否') + '</span></td>' +
         '<td>' + related + '</td>' +
-        '<td>' + opJoin(ops) + '</td>' +
+        '<td><button type="button" class="text-link" data-patrol-view="' + esc(r.code) + '">查看</button></td>' +
         '</tr>';
-    }).join('') || '<tr><td colspan="8" style="text-align:center;color:#bfbfbf">暂无数据</td></tr>';
-  }
-
-  function photoPlaceholder(label) {
-    var colors = ['#91caff', '#95de64', '#ffc069', '#b37feb'];
-    var c = colors[Math.abs(String(label).length) % colors.length];
-    return '<div class="photo-thumb" title="' + esc(label) + '" style="background:linear-gradient(135deg,' + c + ' 0%,#fff 140%)">' +
-      '<span style="position:absolute;bottom:4px;left:0;right:0;text-align:center;font-size:11px;color:#595959">现场照片</span></div>';
-  }
-
-  function openPatrolModal(code) {
-    var row = null;
-    for (var i = 0; i < MOCK_PATROL.length; i++) {
-      if (MOCK_PATROL[i].code === code) { row = MOCK_PATROL[i]; break; }
-    }
-    if (!row) return;
-
-    setText('pm-time', row.time);
-    setText('pm-plan', row.plan);
-    setText('pm-site', row.site);
-    setText('pm-object', row.object);
-    setText('pm-person', row.person);
-    var resultEl = document.getElementById('pm-result');
-    resultEl.textContent = row.result || '—';
-    resultEl.classList.remove('ok', 'warn');
-    if (row.result === '正常') resultEl.classList.add('ok');
-    if (row.result === '异常') resultEl.classList.add('warn');
-    document.getElementById('pm-remark').value = row.remark || '';
-    setText('pm-status', row.status);
-
-    var photos = row.photos || [];
-    var photoHtml = photos.map(function (p, idx) {
-      return photoPlaceholder(p || ('照片' + (idx + 1)));
-    }).join('');
-    photoHtml += '<div class="photo-add"><span style="font-size:20px;line-height:1">+</span>上传图片</div>';
-    document.getElementById('pm-photos').innerHTML = photoHtml;
-
-    var issues = row.issues || [];
-    document.getElementById('pm-issue-tbody').innerHTML = issues.length
-      ? issues.map(function (it) {
-          return '<tr>' +
-            '<td>' + esc(it.code) + '</td>' +
-            '<td>' + esc(it.title) + '</td>' +
-            '<td>' + esc(it.device) + '</td>' +
-            '</tr>';
-        }).join('')
-      : '<tr><td colspan="3" style="text-align:center;color:#bfbfbf">暂无关联问题</td></tr>';
-
-    document.getElementById('patrol-modal').classList.add('show');
-  }
-
-  function closePatrolModal() {
-    document.getElementById('patrol-modal').classList.remove('show');
+    }).join('') || emptyRow(8);
   }
 
   function renderIssue(list) {
-    document.getElementById('issue-tbody').innerHTML = list.map(function (r) {
+    document.getElementById('issue-tbody').innerHTML = (list || []).map(function (r) {
       return '<tr>' +
-        '<td>' + esc(r.code) + '</td>' +
-        '<td>' + esc(r.title) + '</td>' +
-        '<td>' + esc(r.site) + '</td>' +
-        '<td>' + esc(r.device) + '</td>' +
-        '<td>' + esc(r.desc) + '</td>' +
-        '<td>' + esc(r.finder) + '</td>' +
-        '<td>' + esc(r.foundAt) + '</td>' +
-        '<td>' + esc(r.handle) + '</td>' +
-        '<td>' + esc(r.status) + '</td>' +
+        '<td>' + esc(dash(r.code)) + '</td>' +
+        '<td>' + esc(dash(r.title)) + '</td>' +
+        '<td>' + esc(dash(r.site)) + '</td>' +
+        '<td>' + esc(dash(r.device)) + '</td>' +
+        '<td>' + esc(dash(r.desc)) + '</td>' +
+        '<td>' + esc(dash(r.finder)) + '</td>' +
+        '<td>' + esc(fmtTm(r.foundAt)) + '</td>' +
+        '<td>' + esc(dash(r.handle)) + '</td>' +
+        '<td>' + esc(dash(r.status)) + '</td>' +
         '<td>' + (r.orderNo ? esc(r.orderNo) : '-') + '</td>' +
         '</tr>';
-    }).join('') || '<tr><td colspan="10" style="text-align:center;color:#bfbfbf">暂无数据</td></tr>';
+    }).join('') || emptyRow(10);
   }
 
   function renderOrder(list) {
-    document.getElementById('order-tbody').innerHTML = list.map(function (r) {
+    document.getElementById('order-tbody').innerHTML = (list || []).map(function (r) {
       return '<tr>' +
-        '<td>' + esc(r.code) + '</td>' +
-        '<td>' + esc(r.time) + '</td>' +
-        '<td>' + esc(r.device) + '</td>' +
-        '<td>' + esc(r.fault) + '</td>' +
-        '<td>' + esc(r.content) + '</td>' +
+        '<td>' + esc(dash(r.code)) + '</td>' +
+        '<td>' + esc(fmtTm(r.time)) + '</td>' +
+        '<td>' + esc(dash(r.device)) + '</td>' +
+        '<td>' + esc(dash(r.fault)) + '</td>' +
+        '<td>' + esc(dash(r.content)) + '</td>' +
         '</tr>';
-    }).join('') || '<tr><td colspan="5" style="text-align:center;color:#bfbfbf">暂无数据</td></tr>';
+    }).join('') || emptyRow(5);
+  }
+
+  function fmtRealtime(r) {
+    if (r.metric == null && r.value == null && r.textValue == null) return '—';
+    var metric = r.metric || '';
+    var val = r.textValue != null && r.textValue !== ''
+      ? r.textValue
+      : (r.value == null ? '' : String(r.value));
+    var unit = r.unit ? (' ' + r.unit) : '';
+    if (!val && !metric) return '—';
+    return esc(metric) + '<span class="num">' + esc(val + unit) + '</span>';
   }
 
   function renderDevice(list) {
-    document.getElementById('device-tbody').innerHTML = list.map(function (r) {
-      var st = r.status === '正常' ? 'ok' : 'off';
+    document.getElementById('device-tbody').innerHTML = (list || []).map(function (r) {
+      var online = r.statusCode === '#1#' || r.status === '在线' || r.status === '正常';
+      var st = online ? 'ok' : 'off';
+      var gate = r.gate == null || r.gate === '' ? '—' : (String(r.gate).indexOf('闸') >= 0 ? r.gate : (r.gate + '号闸口'));
       return '<tr>' +
-        '<td class="muted">' + esc(r.code) + '</td>' +
-        '<td class="name-strong">' + esc(r.name) + '</td>' +
-        '<td>' + esc(r.type) + '</td>' +
-        '<td>' + esc(r.gate) + '</td>' +
-        '<td><span class="dev-status ' + st + '"><i class="dot"></i>' + esc(r.status) + '</span></td>' +
-        '<td class="rt-data">' + esc(r.metric) + '<span class="num">' + esc(r.value) + '</span></td>' +
+        '<td class="muted">' + esc(dash(r.code)) + '</td>' +
+        '<td class="name-strong">' + esc(dash(r.name)) + '</td>' +
+        '<td>' + esc(dash(r.type)) + '</td>' +
+        '<td>' + esc(gate) + '</td>' +
+        '<td><span class="dev-status ' + st + '"><i class="dot"></i>' + esc(dash(r.status)) + '</span></td>' +
+        '<td class="rt-data">' + fmtRealtime(r) + '</td>' +
         '</tr>';
-    }).join('') || '<tr><td colspan="6" style="text-align:center;color:#bfbfbf">暂无数据</td></tr>';
+    }).join('') || emptyRow(6);
   }
 
-  function matchDate(rowTime, dateVal) {
-    if (!dateVal) return true;
-    return String(rowTime || '').indexOf(dateVal) === 0;
-  }
-
-  function uniqueNames(list, key) {
-    var out = [];
-    list.forEach(function (row) {
-      var n = row[key];
-      if (n && out.indexOf(n) < 0) out.push(n);
-    });
-    return out;
-  }
-
-  /** 可模糊搜索下拉：输入过滤，可点选；查询按包含匹配 */
-  function initSearchSelect(rootId, options) {
+  function initSearchSelect(rootId) {
     var root = document.getElementById(rootId);
     if (!root) return null;
     var input = root.querySelector('.ss-input');
     var panel = root.querySelector('.ss-panel');
-    var opts = options.slice();
+    var opts = [];
     var active = -1;
 
     function render(keyword) {
@@ -824,7 +691,6 @@ body{display:flex;flex-direction:column;overflow:hidden}
         return '<div class="ss-opt' + (i === active ? ' active' : '') + '" data-val="' + esc(n) + '">' + esc(n) + '</div>';
       }).join('');
     }
-
     function open() {
       root.classList.add('open');
       active = -1;
@@ -838,14 +704,14 @@ body{display:flex;flex-direction:column;overflow:hidden}
       input.value = '';
       close();
     }
+    function setOptions(list) {
+      opts = Array.isArray(list) ? list.slice() : [];
+      if (root.classList.contains('open')) render(input.value);
+    }
 
     input.addEventListener('focus', open);
     input.addEventListener('click', open);
-    input.addEventListener('input', function () {
-      active = -1;
-      open();
-      render(input.value);
-    });
+    input.addEventListener('input', function () { active = -1; open(); render(input.value); });
     input.addEventListener('keydown', function (e) {
       var items = panel.querySelectorAll('.ss-opt');
       if (e.key === 'ArrowDown') {
@@ -863,9 +729,7 @@ body{display:flex;flex-direction:column;overflow:hidden}
           input.value = items[active].getAttribute('data-val') || '';
           close();
         }
-      } else if (e.key === 'Escape') {
-        close();
-      }
+      } else if (e.key === 'Escape') close();
     });
     panel.addEventListener('mousedown', function (e) {
       var opt = e.target.closest('.ss-opt');
@@ -880,87 +744,185 @@ body{display:flex;flex-direction:column;overflow:hidden}
 
     return {
       clear: clear,
-      getValue: function () { return input.value.trim(); }
+      getValue: function () { return input.value.trim(); },
+      setOptions: setOptions
     };
   }
 
-  /** 模拟：按站点拉取设备名称下拉（接口就绪后替换） */
-  function fetchDeviceNameOptions(stationId) {
-    return Promise.resolve(
-      MOCK_DEVICE.map(function (d) { return d.name; })
-        .filter(function (n, i, arr) { return n && arr.indexOf(n) === i; })
-    );
-  }
-
-  function fillSelect(selectId, names, allLabel) {
+  function fillSelect(selectId, names) {
     var sel = document.getElementById(selectId);
     if (!sel) return;
     var cur = sel.value;
-    sel.innerHTML = '<option value="">' + (allLabel || '全部') + '</option>' +
-      names.map(function (n) {
+    sel.innerHTML = '<option value="">全部</option>' +
+      (names || []).map(function (n) {
         return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
       }).join('');
-    if (cur && names.indexOf(cur) >= 0) sel.value = cur;
+    if (cur && names && names.indexOf(cur) >= 0) sel.value = cur;
   }
 
-  var ssPatrolPerson = initSearchSelect('ss-patrol-person', uniqueNames(MOCK_PATROL, 'person'));
-  var ssIssueFinder = initSearchSelect('ss-issue-finder', uniqueNames(MOCK_ISSUE, 'finder'));
+  var ssPatrolPerson = initSearchSelect('ss-patrol-person');
+  var ssIssueFinder = initSearchSelect('ss-issue-finder');
 
-  function queryPatrol() {
-    var time = document.getElementById('patrol-time').value;
-    var person = ssPatrolPerson ? ssPatrolPerson.getValue() : '';
-    var result = document.getElementById('patrol-result').value;
-    var hasIssue = document.getElementById('patrol-has-issue').value;
-    var list = MOCK_PATROL.filter(function (r) {
-      if (!matchDate(r.time, time)) return false;
-      if (person && r.person.indexOf(person) < 0) return false;
-      if (result && r.result !== result) return false;
-      if (hasIssue === '1' && !r.hasIssue) return false;
-      if (hasIssue === '0' && r.hasIssue) return false;
-      return true;
-    });
-    renderPatrol(list);
+  async function loadBasic() {
+    try {
+      var data = await fetchApi('/station-detail/basic' + qs({ stationId: stationId }));
+      renderBasic(data);
+    } catch (e) {
+      console.error(e);
+      renderBasic({});
+      alert((e && e.message) || '基础信息加载失败');
+    }
   }
 
-  function queryIssue() {
-    var time = document.getElementById('issue-time').value;
-    var finder = ssIssueFinder ? ssIssueFinder.getValue() : '';
-    var handle = document.getElementById('issue-handle').value;
-    var status = document.getElementById('issue-status').value;
-    var list = MOCK_ISSUE.filter(function (r) {
-      if (!matchDate(r.foundAt, time)) return false;
-      if (finder && r.finder.indexOf(finder) < 0) return false;
-      if (handle && r.handle !== handle) return false;
-      if (status && r.status !== status) return false;
-      return true;
-    });
-    renderIssue(list);
+  async function loadOptions() {
+    try {
+      var data = await fetchApi('/station-detail/options' + qs({ stationId: stationId }));
+      if (ssPatrolPerson) ssPatrolPerson.setOptions(data.patrolPersons || []);
+      if (ssIssueFinder) ssIssueFinder.setOptions(data.issueFinders || []);
+      fillSelect('device-name', data.deviceNames || []);
+    } catch (e) {
+      console.error(e);
+    }
   }
 
-  function queryDevice() {
-    var code = document.getElementById('device-code').value.trim();
-    var name = document.getElementById('device-name').value;
-    var type = document.getElementById('device-type').value;
-    var status = document.getElementById('device-status').value;
-    var list = MOCK_DEVICE.filter(function (r) {
-      if (code && r.code.indexOf(code) < 0) return false;
-      if (name && r.name !== name) return false;
-      if (type && r.type !== type) return false;
-      if (status && r.status !== status) return false;
-      return true;
-    });
-    renderDevice(list);
+  async function loadPatrol() {
+    document.getElementById('patrol-tbody').innerHTML = emptyRow(8, '加载中...');
+    try {
+      var data = await fetchApi('/station-detail/patrol/page' + qs({
+        stationId: stationId,
+        date: document.getElementById('patrol-time').value,
+        person: ssPatrolPerson ? ssPatrolPerson.getValue() : '',
+        result: document.getElementById('patrol-result').value,
+        hasIssue: document.getElementById('patrol-has-issue').value,
+        page: 1,
+        size: PAGE_SIZE
+      }));
+      renderPatrol((data && data.records) || []);
+    } catch (e) {
+      console.error(e);
+      document.getElementById('patrol-tbody').innerHTML = emptyRow(8, (e && e.message) || '加载失败');
+    }
   }
 
-  renderBasic(MOCK_BASIC);
-  renderPatrol(MOCK_PATROL);
-  renderIssue(MOCK_ISSUE);
-  renderOrder(MOCK_ORDER);
-  renderDevice(MOCK_DEVICE);
+  async function openPatrolModal(recordId) {
+    try {
+      var row = await fetchApi('/station-detail/patrol/' + encodeURIComponent(recordId));
+      setText('pm-time', fmtTm(row.time));
+      setText('pm-plan', row.plan);
+      setText('pm-site', row.site);
+      setText('pm-object', row.object);
+      setText('pm-person', row.person);
+      var resultEl = document.getElementById('pm-result');
+      resultEl.textContent = dash(row.result);
+      resultEl.classList.remove('ok', 'warn');
+      if (row.result === '正常') resultEl.classList.add('ok');
+      if (row.result === '异常') resultEl.classList.add('warn');
+      document.getElementById('pm-remark').value = row.remark || '';
+      setText('pm-status', row.status);
 
-  fetchDeviceNameOptions(stationId).then(function (names) {
-    fillSelect('device-name', names);
-  });
+      var photos = row.photos || [];
+      if (!photos.length) {
+        document.getElementById('pm-photos').innerHTML = '<div class="photo-thumb">暂无照片</div>';
+      } else {
+        document.getElementById('pm-photos').innerHTML = photos.map(function (p) {
+          var src = typeof p === 'string' ? p : (p.url || p.src || '');
+          if (!src) return '<div class="photo-thumb">照片</div>';
+          return '<div class="photo-thumb"><img src="' + esc(src) + '" alt="现场照片"></div>';
+        }).join('');
+      }
+
+      var issues = row.issues || [];
+      document.getElementById('pm-issue-tbody').innerHTML = issues.length
+        ? issues.map(function (it) {
+            return '<tr><td>' + esc(dash(it.code)) + '</td><td>' + esc(dash(it.title)) + '</td><td>' + esc(dash(it.device)) + '</td></tr>';
+          }).join('')
+        : emptyRow(3, '暂无关联问题');
+
+      document.getElementById('patrol-modal').classList.add('show');
+    } catch (e) {
+      console.error(e);
+      alert((e && e.message) || '巡检详情加载失败');
+    }
+  }
+
+  function closePatrolModal() {
+    document.getElementById('patrol-modal').classList.remove('show');
+  }
+
+  async function loadIssue() {
+    document.getElementById('issue-tbody').innerHTML = emptyRow(10, '加载中...');
+    try {
+      var data = await fetchApi('/station-detail/issue/page' + qs({
+        stationId: stationId,
+        date: document.getElementById('issue-time').value,
+        finder: ssIssueFinder ? ssIssueFinder.getValue() : '',
+        handle: document.getElementById('issue-handle').value,
+        status: document.getElementById('issue-status').value,
+        page: 1,
+        size: PAGE_SIZE
+      }));
+      renderIssue((data && data.records) || []);
+    } catch (e) {
+      console.error(e);
+      document.getElementById('issue-tbody').innerHTML = emptyRow(10, (e && e.message) || '加载失败');
+    }
+  }
+
+  async function loadOrder() {
+    document.getElementById('order-tbody').innerHTML = emptyRow(5, '加载中...');
+    try {
+      var data = await fetchApi('/station-detail/order/page' + qs({
+        stationId: stationId,
+        page: 1,
+        size: PAGE_SIZE
+      }));
+      renderOrder((data && data.records) || []);
+    } catch (e) {
+      console.error(e);
+      document.getElementById('order-tbody').innerHTML = emptyRow(5, (e && e.message) || '加载失败');
+    }
+  }
+
+  async function loadDevice() {
+    document.getElementById('device-tbody').innerHTML = emptyRow(6, '加载中...');
+    try {
+      var data = await fetchApi('/station-detail/device/page' + qs({
+        stationId: stationId,
+        code: document.getElementById('device-code').value.trim(),
+        name: document.getElementById('device-name').value,
+        type: document.getElementById('device-type').value,
+        status: document.getElementById('device-status').value,
+        page: 1,
+        size: PAGE_SIZE
+      }));
+      renderDevice((data && data.records) || []);
+    } catch (e) {
+      console.error(e);
+      document.getElementById('device-tbody').innerHTML = emptyRow(6, (e && e.message) || '加载失败');
+    }
+  }
+
+  var loaded = { basic: false, patrol: false, issue: false, order: false, device: false, options: false };
+
+  async function ensureTab(key) {
+    if (!stationId) return;
+    if (key === 'basic' && !loaded.basic) {
+      loaded.basic = true;
+      await loadBasic();
+    } else if (key === 'patrol' && !loaded.patrol) {
+      loaded.patrol = true;
+      await loadPatrol();
+    } else if (key === 'issue' && !loaded.issue) {
+      loaded.issue = true;
+      await loadIssue();
+    } else if (key === 'order' && !loaded.order) {
+      loaded.order = true;
+      await loadOrder();
+    } else if (key === 'device' && !loaded.device) {
+      loaded.device = true;
+      await loadDevice();
+    }
+  }
 
   document.getElementById('tabs').addEventListener('click', function (e) {
     var tab = e.target.closest('.tab');
@@ -974,17 +936,21 @@ body{display:flex;flex-direction:column;overflow:hidden}
     });
     var pane = document.getElementById('pane-' + key);
     if (pane) pane.classList.add('active');
+    ensureTab(key);
   });
 
-  document.getElementById('patrol-query').addEventListener('click', queryPatrol);
+  document.getElementById('patrol-query').addEventListener('click', function () {
+    loaded.patrol = true;
+    loadPatrol();
+  });
   document.getElementById('patrol-reset').addEventListener('click', function () {
     document.getElementById('patrol-time').value = '';
     if (ssPatrolPerson) ssPatrolPerson.clear();
     document.getElementById('patrol-result').value = '';
     document.getElementById('patrol-has-issue').value = '';
-    renderPatrol(MOCK_PATROL);
+    loaded.patrol = true;
+    loadPatrol();
   });
-
   document.getElementById('patrol-tbody').addEventListener('click', function (e) {
     var btn = e.target.closest('[data-patrol-view]');
     if (!btn) return;
@@ -999,24 +965,46 @@ body{display:flex;flex-direction:column;overflow:hidden}
     if (e.key === 'Escape') closePatrolModal();
   });
 
-  document.getElementById('issue-query').addEventListener('click', queryIssue);
+  document.getElementById('issue-query').addEventListener('click', function () {
+    loaded.issue = true;
+    loadIssue();
+  });
   document.getElementById('issue-reset').addEventListener('click', function () {
     document.getElementById('issue-time').value = '';
     if (ssIssueFinder) ssIssueFinder.clear();
     document.getElementById('issue-handle').value = '';
     document.getElementById('issue-status').value = '';
-    renderIssue(MOCK_ISSUE);
+    loaded.issue = true;
+    loadIssue();
   });
 
-  document.getElementById('device-query').addEventListener('click', queryDevice);
+  document.getElementById('device-query').addEventListener('click', function () {
+    loaded.device = true;
+    loadDevice();
+  });
   document.getElementById('device-reset').addEventListener('click', function () {
     document.getElementById('device-code').value = '';
     document.getElementById('device-name').value = '';
     document.getElementById('device-type').value = '';
     document.getElementById('device-status').value = '';
-    renderDevice(MOCK_DEVICE);
+    loaded.device = true;
+    loadDevice();
   });
+
+  if (!stationId) {
+    renderBasic({});
+    renderPatrol([]);
+    renderIssue([]);
+    renderOrder([]);
+    renderDevice([]);
+  } else {
+    loaded.options = true;
+    loadOptions();
+    loaded.basic = true;
+    loadBasic();
+  }
 })();
 </script>
 </body>
 </html>
+

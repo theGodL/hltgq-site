@@ -152,7 +152,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
 <body>
 <div class="page-wrap">
   <div class="breadcrumb">
-    <span>水资源调度</span><span class="sep">/</span>
+    <span>业务中心</span><span class="sep">/</span>
     <span>数据统计</span><span class="sep">/</span>
     <span class="cur">雨量监测</span>
   </div>
@@ -1249,12 +1249,35 @@ function resetRes() {
   return loadResData();
 }
 
+/** 导出用：把「看起来像数字」的字符串转成 number，避免 Excel 当文本导致 SUM 为 0 */
+function cellForExcel(v, keepText) {
+  if (keepText) return v == null ? '' : v;
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'number') return Number.isFinite(v) ? v : '';
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (s === '' || s === '-' || s === '--') return s;
+    if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s);
+  }
+  return v;
+}
+
+/** 表头与首列（日期/站名等）保持文本；旬月/同期雨情第 2 列旬段也保持文本 */
+function aoaForExcel(aoa) {
+  const textCols = new Set([0]);
+  if (RES.tab === 'tenday' || RES.tab === 'sameperiod') textCols.add(1);
+  return aoa.map((row, ri) => {
+    if (ri === 0) return row.slice();
+    return row.map((cell, ci) => cellForExcel(cell, textCols.has(ci)));
+  });
+}
+
 function exportResExcel() {
   if (!RES.aoa.length || RES.aoa.length <= 1) {
     alert('暂无数据可导出');
     return;
   }
-  const ws = XLSX.utils.aoa_to_sheet(RES.aoa);
+  const ws = XLSX.utils.aoa_to_sheet(aoaForExcel(RES.aoa));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, RES.name);
   const s = $('res-start').value || '';
