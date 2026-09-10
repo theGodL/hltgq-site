@@ -4,6 +4,8 @@ CREATE INDEX IF NOT EXISTS idx_wt_site_tm
     ON "qixiao-apaas"."t_auto_hltgq_water_wt_nfo" (site, tm DESC);
 CREATE INDEX IF NOT EXISTS idx_rain_stcd_tm
     ON "qixiao-apaas".t_auto_hltgq_water_rain_info (STCD, TM DESC);
+CREATE INDEX IF NOT EXISTS idx_river_stcd_tm
+    ON "qixiao-apaas".t_auto_hltgq_water_river_info (STCD, TM DESC);
 
 -- ========== 库容曲线表 ==========
 CREATE UNIQUE INDEX uk_level_storage_water_level ON t_auto_hltgq_water_level_storage(water_level);

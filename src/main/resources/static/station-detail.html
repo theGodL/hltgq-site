@@ -115,7 +115,9 @@ body{display:flex;flex-direction:column;overflow:hidden}
 .form-item .field.warn{color:#fa8c16}
 
 .photo-list{display:flex;flex-wrap:wrap;gap:10px}
-.photo-thumb{width:88px;height:88px;border-radius:6px;border:1px solid #f0f0f0;background:#f5f7fa;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#8c8c8c;font-size:12px;position:relative}
+.photo-thumb{width:88px;height:88px;border-radius:6px;border:1px solid #f0f0f0;background:#f5f7fa;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#8c8c8c;font-size:12px;position:relative;text-decoration:none}
+a.photo-thumb{cursor:pointer}
+a.photo-thumb:hover{border-color:#1677ff}
 .photo-thumb img{width:100%;height:100%;object-fit:cover}
 .photo-add{width:88px;height:88px;border:1px dashed #d9d9d9;border-radius:6px;background:#fafafa;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#8c8c8c;font-size:12px;cursor:default}
 
@@ -295,7 +297,7 @@ body{display:flex;flex-direction:column;overflow:hidden}
         <select id="issue-handle">
           <option value="">全部</option>
           <option value="转工单">转工单</option>
-          <option value="待确定">待确定</option>
+          <option value="待确认">待确认</option>
           <option value="直接处理">直接处理</option>
         </select>
       </div>
@@ -373,22 +375,21 @@ body{display:flex;flex-direction:column;overflow:hidden}
         <label>设备类型</label>
         <select id="device-type">
           <option value="">全部</option>
+          <option value="水位">水位</option>
+          <option value="雨量">雨量</option>
+          <option value="流量">流量</option>
           <option value="闸门">闸门</option>
-          <option value="1">水位</option>
-          <option value="2">雨量</option>
-          <option value="3">流量</option>
-          <option value="4">闸门(编码)</option>
-          <option value="5">视频</option>
-          <option value="7">墒情</option>
-          <option value="8">水质</option>
+          <option value="视频">视频</option>
+          <option value="墒情">墒情</option>
+          <option value="水质">水质</option>
         </select>
       </div>
       <div class="filter-item">
         <label>设备状态</label>
         <select id="device-status">
           <option value="">全部</option>
-          <option value="正常">正常（在线）</option>
-          <option value="关闭">关闭（离线）</option>
+          <option value="在线">在线</option>
+          <option value="离线">离线</option>
         </select>
       </div>
       <div class="filter-actions">
@@ -643,13 +644,14 @@ body{display:flex;flex-direction:column;overflow:hidden}
   }
 
   function fmtRealtime(r) {
-    if (r.metric == null && r.value == null && r.textValue == null) return '—';
+    var hasText = r.textValue != null && r.textValue !== '';
+    var hasVal = r.value != null && r.value !== '';
+    if (r.metric == null && !hasText && !hasVal) return '—';
     var metric = r.metric || '';
-    var val = r.textValue != null && r.textValue !== ''
-      ? r.textValue
-      : (r.value == null ? '' : String(r.value));
-    var unit = r.unit ? (' ' + r.unit) : '';
+    var val = hasText ? r.textValue : (hasVal ? String(r.value) : '');
+    var unit = (!hasText && r.unit) ? (' ' + r.unit) : '';
     if (!val && !metric) return '—';
+    if (!metric) return '<span class="num">' + esc(val) + '</span>';
     return esc(metric) + '<span class="num">' + esc(val + unit) + '</span>';
   }
 
@@ -825,9 +827,17 @@ body{display:flex;flex-direction:column;overflow:hidden}
         document.getElementById('pm-photos').innerHTML = '<div class="photo-thumb">暂无照片</div>';
       } else {
         document.getElementById('pm-photos').innerHTML = photos.map(function (p) {
-          var src = typeof p === 'string' ? p : (p.url || p.src || '');
-          if (!src) return '<div class="photo-thumb">照片</div>';
-          return '<div class="photo-thumb"><img src="' + esc(src) + '" alt="现场照片"></div>';
+          if (typeof p === 'string') {
+            if (!p) return '<div class="photo-thumb">照片</div>';
+            return '<a class="photo-thumb" href="' + esc(p) + '" target="_blank" rel="noopener"><img src="' + esc(p) + '" alt="现场照片"></a>';
+          }
+          var full = p.url || '';
+          var thumb = p.thumb || full;
+          var name = p.name || '现场照片';
+          if (!thumb && !full) return '<div class="photo-thumb">' + esc(name) + '</div>';
+          var href = full || thumb;
+          return '<a class="photo-thumb" href="' + esc(href) + '" target="_blank" rel="noopener" title="' + esc(name) + '">' +
+            '<img src="' + esc(thumb || full) + '" alt="' + esc(name) + '"></a>';
         }).join('');
       }
 
