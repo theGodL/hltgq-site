@@ -29,8 +29,8 @@ import java.util.Map;
  *
  * <p>口径（业主 2026-09-11 确认）：
  * <ul>
- *   <li>用水量 = 按 应收水费 hsfvdh ÷ 执行水价 lgwutj 计算（表单无用水量列；水价为空/0 的记录不计入；
- *       按 m³ 换算 → 万m³，2 位截断）</li>
+ *   <li>归桶锚点 = 统计周期区间终点 xxmefs_max（跨桶按终点，终点缺失回退起点）</li>
+ *   <li>用水量 = 计划供水量 mlljya 桶内求和（直取表单值、不做推算；按 m³ 换算 → 万m³，2 位截断）</li>
  *   <li>应收水费 = 水费表单 hsfvdh 桶内求和（按 元 换算 → 万元，2 位截断，联调按日志核对单位）</li>
  *   <li>灌溉水利用系数（近似值）= Σ(北干/南干/太宿/太怀 进水闸区间累计) ÷ 渠首进水闸区间累计
  *       （同桶窗口 ttf 区间累计，3 位小数；渠首缺失/为 0 或四干渠全部无数据时为 null）</li>
@@ -138,23 +138,25 @@ public class WaterUseSummaryService {
         throw new IllegalArgumentException("dimension 仅支持 month / season / year（月 / 灌季 / 年）");
     }
 
-    /** 水费记录归桶：按统计周期日期落入桶区间（含边界）；缝隙期记录忽略并日志计数 */
+    /** 水费记录归桶：按统计周期区间终点（xxmefs_max，缺失回退起点）落入桶区间（含边界）；缝隙期记录忽略并日志计数 */
     private void fillFeeAmounts(List<Bucket> buckets, List<WaterUseFeeRecordVO> fees) {
         int sampleLogged = 0;
         int unassigned = 0;
         for (WaterUseFeeRecordVO fee : fees) {
             if (sampleLogged < FEE_SAMPLE_LOGS) {
-                log.info("[用水总结] 水费记录样例 编号={} 单位={} 统计周期={} 计算用水量(m³)={} 执行水价={} 应收水费={}",
-                        fee.getFeeNo(), fee.getUnitName(), fee.getPeriodTime(),
-                        fee.getComputedUsage(), fee.getPriceRaw(), fee.getFeeRaw());
+                log.info("[用水总结] 水费记录样例 编号={} 单位={} 统计周期={} ~ {} 计划供水量(m³)={} 执行水价={} 应收水费={}",
+                        fee.getFeeNo(), fee.getUnitName(), fee.getPeriodStartTime(), fee.getPeriodEndTime(),
+                        fee.getPlannedSupplyRaw(), fee.getPriceRaw(), fee.getFeeRaw());
                 sampleLogged++;
             }
-            if (fee.getPeriodTime() == null) {
+            LocalDateTime anchorTime = fee.getPeriodEndTime() != null
+                    ? fee.getPeriodEndTime() : fee.getPeriodStartTime();
+            if (anchorTime == null) {
                 unassigned++;
                 log.warn("[用水总结] 水费记录统计周期为空，已跳过 编号={} 单位={}", fee.getFeeNo(), fee.getUnitName());
                 continue;
             }
-            LocalDate date = fee.getPeriodTime().toLocalDate();
+            LocalDate date = anchorTime.toLocalDate();
             Bucket hit = null;
             for (Bucket bucket : buckets) {
                 if (!date.isBefore(bucket.start) && !date.isAfter(bucket.end)) {
@@ -166,9 +168,9 @@ public class WaterUseSummaryService {
                 unassigned++;
                 continue;
             }
-            if (fee.getComputedUsage() != null) {
-                hit.computedUsage = (hit.computedUsage == null ? BigDecimal.ZERO : hit.computedUsage)
-                        .add(fee.getComputedUsage());
+            if (fee.getPlannedSupplyRaw() != null) {
+                hit.plannedSupplyRaw = (hit.plannedSupplyRaw == null ? BigDecimal.ZERO : hit.plannedSupplyRaw)
+                        .add(fee.getPlannedSupplyRaw());
             }
             if (fee.getFeeRaw() != null) {
                 hit.feeRaw = (hit.feeRaw == null ? BigDecimal.ZERO : hit.feeRaw).add(fee.getFeeRaw());
@@ -179,15 +181,15 @@ public class WaterUseSummaryService {
         }
     }
 
-    /** 单桶出数：标签 + 用水量/应收水费（表单求和）+ 系数（流量区间累计近似） */
+    /** 单桶出数：标签 + 用水量(=计划供水量)/应收水费（表单求和）+ 系数（流量区间累计近似） */
     private WaterUseReportRowVO buildRow(Bucket bucket) {
         WaterUseReportRowVO row = new WaterUseReportRowVO();
         row.setPeriod(bucket.period);
         row.setLabel(bucket.label);
         row.setPeriodStart(bucket.start.toString());
         row.setPeriodEnd(bucket.end.toString());
-        row.setUsage(bucket.computedUsage != null
-                ? bucket.computedUsage.divide(TEN_THOUSAND, 2, RoundingMode.DOWN) : null);
+        row.setUsage(bucket.plannedSupplyRaw != null
+                ? bucket.plannedSupplyRaw.divide(TEN_THOUSAND, 2, RoundingMode.DOWN) : null);
         row.setReceivable(bucket.feeRaw != null
                 ? bucket.feeRaw.divide(TEN_THOUSAND, 2, RoundingMode.DOWN) : null);
         row.setIrrigationCoef(computeCoefficient(bucket));
@@ -279,8 +281,8 @@ public class WaterUseSummaryService {
         /** 桶止（含） */
         private final LocalDate end;
 
-        /** 桶内计算用水量求和（应收水费÷执行水价，单位 m³） */
-        private BigDecimal computedUsage;
+        /** 桶内计划供水量求和（mlljya，单位 m³） */
+        private BigDecimal plannedSupplyRaw;
 
         /** 桶内水费记录原始值求和（hsfvdh，单位 元） */
         private BigDecimal feeRaw;

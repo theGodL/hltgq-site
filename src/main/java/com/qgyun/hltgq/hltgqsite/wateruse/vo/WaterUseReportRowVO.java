@@ -24,7 +24,7 @@ public class WaterUseReportRowVO {
     /** 桶结束日期（yyyy-MM-dd） */
     private String periodEnd;
 
-    /** 用水量(万m³)：按 应收水费÷执行水价 计算后桶内求和；无记录为 null */
+    /** 用水量(万m³)：计划供水量 mlljya 桶内求和；无记录为 null */
     private BigDecimal usage;
 
     /** 灌溉水利用系数（近似值，3 位小数）：Σ四干渠进水闸区间累计 ÷ 渠首进水闸区间累计；不可计算为 null */

@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>节水潜力分析</title>
+<style>
+:root{
+  --bg:#f0f2f5;
+  --card:#fff;
+  --text:#1f1f1f;
+  --muted:#8c8c8c;
+  --border:#e8e8e8;
+  --line:#f0f0f0;
+  --green:#2f8f6b;
+  --green-deep:#1f6b4f;
+  --green-soft:#e8f6ef;
+  --green-chip:#d8efe4;
+  --pot:#2f9e6a;
+  --agri:#52c41a;
+  --ind:#1677ff;
+  --life:#fa8c16;
+  --shadow:0 1px 2px rgba(0,0,0,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:var(--bg);color:var(--text);font-size:14px;
+}
+.page-wrap{
+  height:100%;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden;
+}
+.main-scroll{
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;gap:12px;padding-right:2px;
+}
+.main-scroll>*{flex-shrink:0}
+
+.card{
+  background:var(--card);border-radius:10px;box-shadow:var(--shadow);
+  border:1px solid rgba(0,0,0,.02);
+}
+.filter-card{padding:14px 18px}
+.filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
+.filter-item{display:flex;align-items:center;gap:8px}
+.filter-item label{color:#666;white-space:nowrap}
+.filter-item select,.filter-item input[type=number]{
+  height:32px;min-width:120px;border:1px solid #d9d9d9;border-radius:6px;
+  padding:0 10px;font-size:13px;outline:none;background:#fff;color:#333;font-family:inherit;
+}
+.filter-item select:focus,.filter-item input:focus{
+  border-color:var(--green);box-shadow:0 0 0 2px rgba(47,143,107,.12);
+}
+
+.section{padding:18px 20px 20px}
+.section-hd{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin-bottom:16px;flex-wrap:wrap;
+}
+.section-title{
+  display:inline-flex;align-items:center;gap:10px;
+  font-size:16px;font-weight:700;color:var(--green-deep);line-height:24px;
+}
+.sec-no{
+  width:28px;height:28px;border-radius:50%;background:var(--green);
+  color:#fff;font-size:12px;font-weight:700;
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.unit-tip{color:var(--muted);font-size:13px}
+.hd-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:32px;padding:0 14px;border:1px solid transparent;border-radius:6px;
+  cursor:pointer;font-size:13px;white-space:nowrap;transition:all .2s;background:#fff;font-family:inherit;
+}
+.btn-primary{background:var(--green);color:#fff;border-color:var(--green)}
+.btn-primary:hover{background:var(--green-deep);border-color:var(--green-deep)}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:var(--green);border-color:var(--green)}
+.btn-link{
+  background:transparent;border:none;color:var(--green);padding:0 4px;height:auto;
+}
+.btn-link:hover{color:var(--green-deep);text-decoration:underline}
+.btn-ghost{
+  background:var(--green-soft);color:var(--green-deep);border-color:transparent;
+}
+.btn-ghost:hover{background:var(--green-chip)}
+.btn-lg{height:36px;padding:0 18px;font-size:14px}
+
+.field-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;
+}
+.field label{
+  display:block;color:#666;font-size:13px;margin-bottom:8px;line-height:20px;
+}
+.input-affix{
+  display:flex;align-items:center;height:36px;border:1px solid #d9d9d9;border-radius:6px;
+  background:#fff;overflow:hidden;transition:border-color .2s,box-shadow .2s;
+}
+.input-affix:focus-within{
+  border-color:var(--green);box-shadow:0 0 0 2px rgba(47,143,107,.12);
+}
+.input-affix input{
+  flex:1;min-width:0;height:100%;border:none;outline:none;padding:0 12px;
+  font-size:14px;color:#333;background:transparent;font-family:inherit;
+}
+.input-affix .suffix{
+  flex-shrink:0;padding:0 12px;color:var(--muted);font-size:13px;
+  border-left:1px solid var(--line);background:#fafafa;height:100%;
+  display:inline-flex;align-items:center;
+}
+
+.basis-row{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding-top:4px;
+}
+.basis-row .k{color:#666;font-size:13px}
+.file-name{color:var(--muted);font-size:12px}
+
+.table-wrap{width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table.calc-table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+table.calc-table thead th{
+  background:#f7faf8;color:#595959;font-weight:500;padding:12px 14px;
+  border-bottom:1px solid var(--line);text-align:center;white-space:nowrap;
+}
+table.calc-table tbody td{
+  padding:10px 14px;border-bottom:1px solid var(--line);text-align:center;color:#333;vertical-align:middle;
+}
+table.calc-table tbody tr:last-child td{border-bottom:none}
+table.calc-table td.left{text-align:left}
+table.calc-table .cat{
+  display:inline-flex;align-items:center;gap:8px;font-weight:500;
+}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot.agri{background:var(--agri)}
+.dot.ind{background:var(--ind)}
+.dot.life{background:var(--life)}
+.cell-input{
+  width:100%;max-width:160px;height:32px;border:1px solid #d9d9d9;border-radius:6px;
+  padding:0 10px;text-align:right;font-size:13px;outline:none;font-family:inherit;background:#fff;
+}
+.cell-input:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(47,143,107,.12)}
+.pot-val{color:var(--pot);font-weight:700;font-variant-numeric:tabular-nums}
+.total-row td{
+  background:#f7faf8;font-weight:600;
+}
+.total-row .pot-val{font-size:14px}
+
+.text-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px;
+}
+.text-block label{
+  display:block;color:#666;font-size:13px;margin-bottom:8px;
+}
+.text-block textarea{
+  width:100%;min-height:120px;resize:vertical;border:1px solid #d9d9d9;border-radius:8px;
+  padding:12px;font-size:13px;line-height:1.6;outline:none;font-family:inherit;color:#333;
+  background:#fff;
+}
+.text-block textarea:focus{
+  border-color:var(--green);box-shadow:0 0 0 2px rgba(47,143,107,.12);
+}
+.text-block textarea::placeholder{color:#bfbfbf}
+
+.result-card{
+  background:linear-gradient(180deg,#f3faf7 0%,#eef8f3 100%);
+  border:1px solid #d9eee3;padding:18px 20px 16px;
+}
+.result-hd{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin-bottom:14px;flex-wrap:wrap;
+}
+.result-meta{color:var(--muted);font-size:13px}
+.metric-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;
+}
+.metric{
+  background:#fff;border-radius:10px;padding:16px 18px;border:1px solid rgba(47,143,107,.08);
+  box-shadow:0 1px 2px rgba(47,143,107,.04);min-height:118px;
+}
+.metric .label{color:var(--muted);font-size:13px;margin-bottom:10px;line-height:20px}
+.metric .value{
+  font-size:28px;font-weight:700;color:#1f1f1f;line-height:1.15;
+  font-variant-numeric:tabular-nums;
+}
+.metric .value .unit{font-size:13px;font-weight:500;color:var(--muted);margin-left:6px}
+.metric .sub{margin-top:8px;color:#666;font-size:12px;line-height:18px}
+.share-bar{
+  margin-top:10px;height:10px;border-radius:999px;background:#f0f0f0;overflow:hidden;
+  display:flex;
+}
+.share-bar i{display:block;height:100%}
+.share-bar .agri{background:var(--agri)}
+.share-bar .ind{background:var(--ind)}
+.share-bar .life{background:var(--life)}
+.share-legend{
+  margin-top:8px;display:flex;flex-wrap:wrap;gap:10px 14px;color:#666;font-size:12px;
+}
+.share-legend span{display:inline-flex;align-items:center;gap:5px}
+.result-summary{
+  color:#3d5a4c;font-size:13px;line-height:22px;padding:10px 12px;
+  background:rgba(255,255,255,.55);border-radius:8px;border:1px dashed #cfe6da;
+}
+.result-status{
+  margin-top:10px;color:var(--muted);font-size:12px;
+}
+
+.footer-bar{
+  display:flex;justify-content:flex-end;align-items:center;gap:10px;
+  padding:4px 2px 2px;flex-wrap:wrap;
+}
+
+.toast{
+  position:fixed;left:50%;top:24px;transform:translateX(-50%);
+  background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;
+  font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s;
+}
+.toast.show{opacity:1}
+
+.hidden{display:none !important}
+
+@media (max-width:1100px){
+  .field-grid,.metric-grid,.text-grid{grid-template-columns:1fr}
+}
+@media (max-width:720px){
+  html,body{overflow:auto}
+  .page-wrap{height:auto;min-height:100%;overflow:visible}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="main-scroll">
+    <div class="card filter-card">
+      <div class="filter-bar">
+        <div class="filter-item">
+          <label>分析年度</label>
+          <input type="number" id="year" value="2026" min="2000" max="2100">
+        </div>
+        <div class="filter-item">
+          <label>分析范围</label>
+          <select id="scope">
+            <option value="全灌区">全灌区</option>
+            <option value="太湖县">太湖县</option>
+            <option value="望江县">望江县</option>
+            <option value="宿松县">宿松县</option>
+            <option value="怀宁县">怀宁县</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card section">
+      <div class="section-hd">
+        <div class="section-title"><span class="sec-no">01</span>基础数据</div>
+        <div class="unit-tip">水量单位：万m³</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>水资源总量</label>
+          <div class="input-affix">
+            <input type="number" id="total-resources" value="10000" min="0" step="1">
+            <span class="suffix">万m³</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>工程年供水能力</label>
+          <div class="input-affix">
+            <input type="number" id="supply-capacity" value="8500" min="0" step="1">
+            <span class="suffix">万m³</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>年可供水量</label>
+          <div class="input-affix">
+            <input type="number" id="available-supply" value="8200" min="0" step="1">
+            <span class="suffix">万m³</span>
+          </div>
+        </div>
+      </div>
+      <div class="basis-row">
+        <span class="k">基础数据依据</span>
+        <button type="button" class="btn btn-ghost" id="btn-upload-basis">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+          </svg>
+          上传附件
+        </button>
+        <input type="file" id="file-basis" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg">
+        <span class="file-name" id="basis-file-name">未上传（演示可任选本地文件）</span>
+      </div>
+    </div>
+
+    <div class="card section">
+      <div class="section-hd">
+        <div class="section-title"><span class="sec-no">02</span>分行业节水测算</div>
+        <div class="hd-actions">
+          <button type="button" class="btn btn-link" id="btn-tpl">下载导入模板</button>
+          <button type="button" class="btn btn-primary" id="btn-import">导入</button>
+          <input type="file" id="file-import" class="hidden" accept=".csv,.txt">
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="calc-table">
+          <thead>
+            <tr>
+              <th class="left" style="width:18%">用水类别</th>
+              <th>基准需水量</th>
+              <th>节水后预计需水量</th>
+              <th>节水潜力</th>
+            </tr>
+          </thead>
+          <tbody id="calc-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="text-grid" style="margin-top:18px">
+        <div class="text-block">
+          <label>节水测算依据</label>
+          <textarea id="calc-basis" placeholder="请输入节水测算依据，如定额依据、测算口径、数据来源等"></textarea>
+        </div>
+        <div class="text-block">
+          <label>拟采取措施</label>
+          <textarea id="measures" placeholder="请输入拟采取的节水措施，如渠道防渗、精准灌溉、用水定额管理等"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card result-card" id="result-card">
+      <div class="result-hd">
+        <div class="section-title"><span class="sec-no">03</span>分析结果</div>
+        <div class="result-meta" id="result-meta">2026年 · 全灌区</div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="label">预计节水总量</div>
+          <div class="value"><span id="m-total">1,200</span><span class="unit">万m³</span></div>
+          <div class="sub" id="m-rate">综合节水率 13.33%</div>
+        </div>
+        <div class="metric">
+          <div class="label">节水前 / 后供需缺口</div>
+          <div class="value"><span id="m-gap">800 → 0</span><span class="unit">万m³</span></div>
+          <div class="sub" id="m-gap-sub">供需缺口减少 800 万m³</div>
+        </div>
+        <div class="metric">
+          <div class="label">农业节水潜力占比</div>
+          <div class="value"><span id="m-agri">83.33</span><span class="unit">%</span></div>
+          <div class="share-bar" id="share-bar" aria-hidden="true">
+            <i class="agri" style="width:83.33%"></i>
+            <i class="ind" style="width:12.5%"></i>
+            <i class="life" style="width:4.17%"></i>
+          </div>
+          <div class="share-legend">
+            <span><i class="dot agri"></i>农业</span>
+            <span><i class="dot ind"></i>工业</span>
+            <span><i class="dot life"></i>生活</span>
+          </div>
+        </div>
+      </div>
+      <div class="result-summary" id="result-summary">
+        农业节水潜力最高；预计节水 1,200 万m³，节水后无供需缺口。
+      </div>
+      <div class="result-status" id="result-status">结果状态：待测算 · 演示数据</div>
+    </div>
+
+    <div class="footer-bar">
+      <button type="button" class="btn btn-default btn-lg" id="btn-save">保存到本机</button>
+      <button type="button" class="btn btn-primary btn-lg" id="btn-calc">计算节水潜力</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var SECTORS = [
+    { key: 'agri', name: '农业', cls: 'agri', baseline: 7000, after: 6000 },
+    { key: 'ind', name: '工业', cls: 'ind', baseline: 1200, after: 1050 },
+    { key: 'life', name: '生活', cls: 'life', baseline: 800, after: 750 }
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var calculated = false;
+
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg || '';
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  function num(v) {
+    var n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function fmt(n, digits) {
+    var v = Number(n);
+    if (!Number.isFinite(v)) return '—';
+    var fixed = digits == null ? Math.round(v) : +v.toFixed(digits);
+    return String(fixed).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function fmtPct(n) {
+    var v = Number(n);
+    if (!Number.isFinite(v)) return '—';
+    return v.toFixed(2);
+  }
+
+  function readSectors() {
+    return SECTORS.map(function (s) {
+      var b = num($('b-' + s.key).value);
+      var a = num($('a-' + s.key).value);
+      return {
+        key: s.key,
+        name: s.name,
+        cls: s.cls,
+        baseline: b,
+        after: a,
+        potential: Math.max(0, +(b - a).toFixed(2))
+      };
+    });
+  }
+
+  function renderTable() {
+    var rows = SECTORS.map(function (s) {
+      var pot = Math.max(0, num(s.baseline) - num(s.after));
+      return '<tr data-key="' + s.key + '">' +
+        '<td class="left"><span class="cat"><i class="dot ' + s.cls + '"></i>' + s.name + '</span></td>' +
+        '<td><input class="cell-input" type="number" min="0" step="1" id="b-' + s.key + '" value="' + s.baseline + '"></td>' +
+        '<td><input class="cell-input" type="number" min="0" step="1" id="a-' + s.key + '" value="' + s.after + '"></td>' +
+        '<td><span class="pot-val" id="p-' + s.key + '">' + fmt(pot) + '</span></td>' +
+        '</tr>';
+    }).join('');
+
+    var tb = SECTORS.reduce(function (s, x) { return s + num(x.baseline); }, 0);
+    var ta = SECTORS.reduce(function (s, x) { return s + num(x.after); }, 0);
+    var tp = Math.max(0, tb - ta);
+
+    rows += '<tr class="total-row">' +
+      '<td class="left">合计</td>' +
+      '<td id="t-baseline">' + fmt(tb) + '</td>' +
+      '<td id="t-after">' + fmt(ta) + '</td>' +
+      '<td><span class="pot-val" id="t-potential">' + fmt(tp) + '</span></td>' +
+      '</tr>';
+
+    $('calc-tbody').innerHTML = rows;
+  }
+
+  function refreshPotentials() {
+    var list = readSectors();
+    var tb = 0, ta = 0, tp = 0;
+    list.forEach(function (s) {
+      $('p-' + s.key).textContent = fmt(s.potential);
+      tb += s.baseline;
+      ta += s.after;
+      tp += s.potential;
+    });
+    $('t-baseline').textContent = fmt(tb);
+    $('t-after').textContent = fmt(ta);
+    $('t-potential').textContent = fmt(tp);
+    if (calculated) renderResult(false);
+  }
+
+  function compute() {
+    var list = readSectors();
+    var baselineTotal = list.reduce(function (s, x) { return s + x.baseline; }, 0);
+    var afterTotal = list.reduce(function (s, x) { return s + x.after; }, 0);
+    var potentialTotal = list.reduce(function (s, x) { return s + x.potential; }, 0);
+    var available = num($('available-supply').value);
+    var gapBefore = Math.max(0, +(baselineTotal - available).toFixed(2));
+    var gapAfter = Math.max(0, +(afterTotal - available).toFixed(2));
+    var rate = baselineTotal > 0 ? potentialTotal / baselineTotal * 100 : 0;
+    var agri = list.find(function (x) { return x.key === 'agri'; });
+    var agriShare = potentialTotal > 0 ? (agri ? agri.potential : 0) / potentialTotal * 100 : 0;
+    var shares = list.map(function (x) {
+      return {
+        key: x.key,
+        cls: x.cls,
+        name: x.name,
+        pct: potentialTotal > 0 ? x.potential / potentialTotal * 100 : 0,
+        potential: x.potential
+      };
+    });
+    var top = shares.slice().sort(function (a, b) { return b.potential - a.potential; })[0];
+    var summary = (top ? top.name + '节水潜力最高；' : '') +
+      '预计节水 ' + fmt(potentialTotal) + ' 万m³，' +
+      (gapAfter <= 0 ? '节水后无供需缺口。' : ('节水后仍有供需缺口 ' + fmt(gapAfter) + ' 万m³。'));
+
+    return {
+      year: String($('year').value || ''),
+      scope: $('scope').value,
+      totalResources: num($('total-resources').value),
+      supplyCapacity: num($('supply-capacity').value),
+      availableSupply: available,
+      sectors: list,
+      baselineTotal: baselineTotal,
+      afterTotal: afterTotal,
+      potentialTotal: potentialTotal,
+      gapBefore: gapBefore,
+      gapAfter: gapAfter,
+      rate: rate,
+      agriShare: agriShare,
+      shares: shares,
+      summary: summary,
+      calcBasis: $('calc-basis').value,
+      measures: $('measures').value,
+      basisFile: $('basis-file-name').textContent
+    };
+  }
+
+  function renderResult(markDone) {
+    var r = compute();
+    $('result-meta').textContent = r.year + '年 · ' + r.scope;
+    $('m-total').textContent = fmt(r.potentialTotal);
+    $('m-rate').textContent = '综合节水率 ' + fmtPct(r.rate) + '%';
+    $('m-gap').textContent = fmt(r.gapBefore) + ' → ' + fmt(r.gapAfter);
+    $('m-gap-sub').textContent = '供需缺口减少 ' + fmt(Math.max(0, r.gapBefore - r.gapAfter)) + ' 万m³';
+    $('m-agri').textContent = fmtPct(r.agriShare);
+    $('share-bar').innerHTML = r.shares.map(function (s) {
+      var w = Math.max(0, s.pct);
+      return '<i class="' + s.cls + '" style="width:' + w + '%"></i>';
+    }).join('');
+    $('result-summary').textContent = r.summary;
+    if (markDone) {
+      calculated = true;
+      $('result-status').textContent = '结果状态：已测算 · 演示结果';
+    } else if (!calculated) {
+      $('result-status').textContent = '结果状态：待测算 · 演示数据';
+    }
+  }
+
+  function downloadText(filename, text, mime) {
+    var blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function bind() {
+    $('calc-tbody').addEventListener('input', function (e) {
+      if (!e.target.classList.contains('cell-input')) return;
+      var key = e.target.id.slice(2);
+      var sector = SECTORS.find(function (s) { return s.key === key; });
+      if (!sector) return;
+      if (e.target.id.charAt(0) === 'b') sector.baseline = num(e.target.value);
+      else sector.after = num(e.target.value);
+      refreshPotentials();
+    });
+
+    ['total-resources', 'supply-capacity', 'available-supply', 'year', 'scope'].forEach(function (id) {
+      $(id).addEventListener('change', function () {
+        if (calculated) renderResult(false);
+        else $('result-meta').textContent = ($('year').value || '') + '年 · ' + $('scope').value;
+      });
+      $(id).addEventListener('input', function () {
+        if (id === 'available-supply' && calculated) renderResult(false);
+      });
+    });
+
+    $('btn-upload-basis').addEventListener('click', function () { $('file-basis').click(); });
+    $('file-basis').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      $('basis-file-name').textContent = f ? f.name : '未上传（演示可任选本地文件）';
+      if (f) toast('已选择附件：' + f.name);
+    });
+
+    $('btn-tpl').addEventListener('click', function () {
+      var csv = '\ufeff用水类别,基准需水量,节水后预计需水量\n农业,7000,6000\n工业,1200,1050\n生活,800,750\n';
+      downloadText('节水潜力导入模板.csv', csv, 'text/csv;charset=utf-8');
+      toast('模板已下载');
+    });
+
+    $('btn-import').addEventListener('click', function () { $('file-import').click(); });
+    $('file-import').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var text = String(reader.result || '').replace(/^\ufeff/, '');
+          var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+          var map = { '农业': 'agri', '工业': 'ind', '生活': 'life' };
+          var updated = 0;
+          lines.forEach(function (line, idx) {
+            if (idx === 0 && /用水类别|基准/.test(line)) return;
+            var parts = line.split(/,|\t|;/);
+            if (parts.length < 3) return;
+            var key = map[parts[0].trim()];
+            if (!key) return;
+            var sector = SECTORS.find(function (s) { return s.key === key; });
+            if (!sector) return;
+            sector.baseline = num(parts[1]);
+            sector.after = num(parts[2]);
+            updated++;
+          });
+          if (!updated) throw new Error('未识别到有效行');
+          renderTable();
+          refreshPotentials();
+          toast('导入成功（' + updated + ' 行）');
+        } catch (e) {
+          toast((e && e.message) || '导入失败');
+        }
+        $('file-import').value = '';
+      };
+      reader.readAsText(f, 'utf-8');
+    });
+
+    $('btn-calc').addEventListener('click', function () {
+      renderResult(true);
+      toast('已完成节水潜力测算');
+      $('result-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    $('btn-save').addEventListener('click', function () {
+      var data = compute();
+      data.status = calculated ? '已测算' : '待测算';
+      data.savedAt = new Date().toISOString();
+      downloadText(
+        '节水潜力分析_' + data.year + '_' + data.scope + '.json',
+        JSON.stringify(data, null, 2),
+        'application/json;charset=utf-8'
+      );
+      toast('已保存到本机');
+    });
+  }
+
+  renderTable();
+  renderResult(false);
+  bind();
+})();
+</script>
+</body>
+</html>

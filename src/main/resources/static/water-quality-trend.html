@@ -64,10 +64,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 </head>
 <body>
 <div class="page-wrap">
+  <!-- 面包屑暂隐藏，后续可能不需要
   <div class="breadcrumb">
     <span>水质监测</span><span class="sep">/</span>
     <span class="cur">水质演变趋势</span>
   </div>
+  -->
 
   <div class="main-layout">
     <div class="left-panel">
@@ -106,7 +108,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 <script>
 (function () {
+  var API = '/hltgq-site';
+  var MAX_RANGE_DAYS = 31;
+
   function $(id) { return document.getElementById(id); }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  function daysAgo(n) {
+    var d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
   function toast(msg) {
     var el = $('toast');
     if (!el) return;
@@ -115,34 +130,99 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     clearTimeout(toast._t);
     toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
   }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  async function fetchApi(path) {
+    var res = await fetch(API + path, { credentials: 'include' });
+    var body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (!res.ok) {
+      var msg = (body && (body.message || body.msg)) || ('HTTP ' + res.status);
+      throw new Error(msg);
+    }
+    if (body && typeof body === 'object' && !Array.isArray(body) && ('data' in body) && ('code' in body || 'msg' in body || 'message' in body)) {
+      if (body.code != null && Number(body.code) !== 0) {
+        throw new Error(body.msg || body.message || '请求失败');
+      }
+      return body.data;
+    }
+    return body;
+  }
+
+  function isEmptyVal(v) {
+    return v === null || v === undefined || v === '' || Number(v) === -9991;
+  }
+  function fmtNum(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    if (Number(v) === -9991) return '--';
+    var n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    return String(n);
+  }
+  function daySpan(start, end) {
+    if (!start || !end) return null;
+    var a = new Date(start.replace(/-/g, '/') + ' 00:00:00');
+    var b = new Date(end.replace(/-/g, '/') + ' 00:00:00');
+    if (isNaN(a.getTime()) || isNaN(b.getTime())) return null;
+    return Math.round((b - a) / 86400000) + 1;
+  }
 
   var stations = [];
   var activeId = '';
   var listCollapsed = false;
   var chart = null;
+  var loading = false;
+
+  function setDefaultDates() {
+    $('start-date').value = daysAgo(6);
+    $('end-date').value = todayStr();
+  }
+
+  function getRange() {
+    var start = ($('start-date').value || '').trim();
+    var end = ($('end-date').value || '').trim();
+    if (!start || !end) return { ok: false, msg: '请选择日期区间' };
+    if (start > end) return { ok: false, msg: '开始日期不能晚于结束日期' };
+    var span = daySpan(start, end);
+    if (span == null) return { ok: false, msg: '日期无效' };
+    if (span > MAX_RANGE_DAYS) {
+      return { ok: false, msg: '查询跨度建议不超过 ' + MAX_RANGE_DAYS + ' 天' };
+    }
+    return {
+      ok: true,
+      start: start,
+      end: end,
+      startTime: start + ' 00:00:00',
+      endTime: end + ' 23:59:59'
+    };
+  }
 
   function renderList() {
     var q = ($('station-search').value || '').trim();
     var html = stations.filter(function (s) {
       return !q || String(s.name || '').indexOf(q) >= 0;
     }).map(function (s) {
-      return '<div class="list-item' + (String(s.id) === String(activeId) ? ' active' : '') + '" data-id="' + s.id + '">' +
-        (s.name || s.id) + '</div>';
+      return '<div class="list-item' + (String(s.id) === String(activeId) ? ' active' : '') +
+        '" data-id="' + esc(s.id) + '">' + esc(s.name || s.id) + '</div>';
     }).join('');
     $('station-list').innerHTML = html ||
       '<div style="padding:24px;text-align:center;color:#bbb">暂无站点数据</div>';
   }
 
-  function renderStats(summary) {
-    var s = summary || {};
+  function renderStats(row) {
+    var s = row || {};
     var items = [
-      { label: '溶解氧', value: s.do != null ? s.do : '—', unit: 'mg/L' },
-      { label: '高锰酸盐指数', value: s.codmn != null ? s.codmn : '—', unit: 'mg/L' },
-      { label: '氨氮', value: s.nh3 != null ? s.nh3 : '—', unit: 'mg/L' }
+      { label: '溶解氧', value: fmtNum(s.dox), unit: 'mg/L' },
+      { label: 'COD', value: fmtNum(s.codcr), unit: 'mg/L' },
+      { label: '氨氮', value: fmtNum(s.nh3n), unit: 'mg/L' }
     ];
     $('stats-row').innerHTML = items.map(function (it) {
-      return '<div class="stat-card"><div class="label">' + it.label + '</div><div class="value">' +
-        it.value + (it.unit && it.value !== '—' ? '<span class="unit">' + it.unit + '</span>' : '') +
+      var showUnit = it.unit && it.value !== '—' && it.value !== '--';
+      return '<div class="stat-card"><div class="label">' + esc(it.label) + '</div><div class="value">' +
+        esc(it.value) + (showUnit ? '<span class="unit">' + esc(it.unit) + '</span>' : '') +
         '</div></div>';
     }).join('');
   }
@@ -168,36 +248,190 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     });
   }
 
-  /** 接口就绪后在此拉取并渲染；当前无水质接口，保持空态 */
-  function loadStation(id) {
+  function renderTrend(points) {
+    var c = ensureChart();
+    if (!c) return;
+    var list = Array.isArray(points) ? points : [];
+    if (!list.length) {
+      emptyChart('暂无趋势数据');
+      return;
+    }
+    var x = list.map(function (p) {
+      var h = String(p.hour || '').replace('T', ' ');
+      return h.length >= 16 ? h.slice(5, 16) : h;
+    });
+    var seriesDefs = [
+      { name: '溶解氧', key: 'dox', color: '#1677ff' },
+      { name: 'COD', key: 'codcr', color: '#52c41a' },
+      { name: '氨氮', key: 'nh3n', color: '#fa8c16' }
+    ];
+    var option = {
+      color: seriesDefs.map(function (s) { return s.color; }),
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(255,255,255,.96)',
+        borderColor: '#e8e8e8',
+        borderWidth: 1,
+        textStyle: { color: '#333', fontSize: 12 }
+      },
+      legend: {
+        top: 4,
+        left: 'center',
+        itemWidth: 10,
+        itemHeight: 10,
+        textStyle: { color: '#666', fontSize: 12 }
+      },
+      grid: { left: 48, right: 24, top: 40, bottom: 56 },
+      xAxis: {
+        type: 'category',
+        data: x,
+        boundaryGap: false,
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLabel: { color: '#8c8c8c', fontSize: 11 }
+      },
+      yAxis: {
+        type: 'value',
+        name: 'mg/L',
+        nameTextStyle: { color: '#8c8c8c', fontSize: 11 },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { lineStyle: { color: '#f0f0f0' } },
+        axisLabel: { color: '#8c8c8c', fontSize: 12 }
+      },
+      series: seriesDefs.map(function (s) {
+        return {
+          name: s.name,
+          type: 'line',
+          smooth: false,
+          showSymbol: false,
+          connectNulls: false,
+          lineStyle: { width: 2 },
+          data: list.map(function (p) {
+            return isEmptyVal(p[s.key]) ? null : Number(p[s.key]);
+          })
+        };
+      })
+    };
+    if (typeof buildChartDataZoom === 'function') {
+      option.dataZoom = buildChartDataZoom();
+    }
+    c.clear();
+    c.setOption(option, true);
+    setTimeout(function () { if (chart) chart.resize(); }, 40);
+  }
+
+  async function loadSites() {
+    try {
+      var list = await fetchApi('/water-quality/sites');
+      stations = (Array.isArray(list) ? list : []).map(function (x) {
+        return { id: x.code, name: x.name };
+      });
+      renderList();
+      if (stations.length) {
+        await loadStation(stations[0].id);
+      } else {
+        activeId = '';
+        renderStats(null);
+        emptyChart('暂无站点数据');
+      }
+    } catch (e) {
+      console.error(e);
+      stations = [];
+      renderList();
+      renderStats(null);
+      emptyChart('站点加载失败');
+      toast((e && e.message) || '站点加载失败');
+    }
+  }
+
+  async function loadMonitoring(code) {
+    var data = await fetchApi('/water-quality/monitoring?stcds=' + encodeURIComponent(code));
+    var row = Array.isArray(data) ? data[0] : data;
+    renderStats(row || null);
+  }
+
+  async function loadTrend(code) {
+    var range = getRange();
+    if (!range.ok) {
+      toast(range.msg);
+      emptyChart(range.msg);
+      return;
+    }
+    var p = new URLSearchParams({
+      stcd: code,
+      startTime: range.startTime,
+      endTime: range.endTime
+    });
+    var data = await fetchApi('/water-quality/trend?' + p.toString());
+    renderTrend((data && data.points) || []);
+  }
+
+  async function loadStation(id) {
     activeId = id == null ? '' : String(id);
     renderList();
-    renderStats(null);
-    emptyChart('水质接口未接入，暂无数据');
-    setTimeout(function () { if (chart) chart.resize(); }, 40);
+    if (!activeId) {
+      renderStats(null);
+      emptyChart('请选择站点');
+      return;
+    }
+    if (loading) return;
+    loading = true;
+    try {
+      var results = await Promise.allSettled([
+        loadMonitoring(activeId),
+        loadTrend(activeId)
+      ]);
+      var errs = results.filter(function (r) { return r.status === 'rejected'; });
+      if (errs.length === 2) {
+        toast((errs[0].reason && errs[0].reason.message) || '加载失败');
+      } else if (errs.length) {
+        toast((errs[0].reason && errs[0].reason.message) || '部分数据加载失败');
+      }
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function onDateChange() {
+    if (!activeId) {
+      toast('请先选择站点');
+      return;
+    }
+    var range = getRange();
+    if (!range.ok) {
+      toast(range.msg);
+      return;
+    }
+    try {
+      await loadTrend(activeId);
+    } catch (e) {
+      console.error(e);
+      emptyChart((e && e.message) || '趋势加载失败');
+      toast((e && e.message) || '趋势加载失败');
+    }
   }
 
   $('station-list').addEventListener('click', function (e) {
     var item = e.target.closest('.list-item');
     if (!item) return;
-    loadStation(item.dataset.id);
+    loadStation(item.getAttribute('data-id'));
   });
   $('station-search').addEventListener('input', renderList);
   $('station-collapse').addEventListener('click', function () {
     listCollapsed = !listCollapsed;
     $('station-list').style.display = listCollapsed ? 'none' : '';
   });
-  $('start-date').addEventListener('change', function () {
-    toast('水质接口未接入');
-  });
-  $('end-date').addEventListener('change', function () {
-    toast('水质接口未接入');
-  });
+  $('start-date').addEventListener('change', onDateChange);
+  $('end-date').addEventListener('change', onDateChange);
   window.addEventListener('resize', function () {
     if (chart) chart.resize();
   });
 
-  loadStation('');
+  setDefaultDates();
+  renderStats(null);
+  emptyChart('加载中...');
+  loadSites();
 })();
 </script>
 </body>
