@@ -143,7 +143,7 @@ public class WaterUseSummaryService {
         int unassigned = 0;
         for (WaterUseFeeRecordVO fee : fees) {
             if (sampleLogged < FEE_SAMPLE_LOGS) {
-                log.info("[用水总结] 水费记录样例 编号={} 单位={} 统计周期={} 计算用水量={} 执行水价={} 应用水费={}",
+                log.info("[用水总结] 水费记录样例 编号={} 单位={} 统计周期={} 计算用水量={} 执行水价={} 应收水费={}",
                         fee.getFeeNo(), fee.getUnitName(), fee.getPeriodTime(),
                         fee.getUsageRaw(), fee.getPriceRaw(), fee.getFeeRaw());
                 sampleLogged++;
