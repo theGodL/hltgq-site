@@ -29,7 +29,8 @@ import java.util.Map;
  *
  * <p>口径（业主 2026-09-11 确认）：
  * <ul>
- *   <li>用水量 = 水费表单 hqwvsf 桶内求和（按 m³ 换算 → 万m³，2 位截断）</li>
+ *   <li>用水量 = 按 应收水费 hsfvdh ÷ 执行水价 lgwutj 计算（表单无用水量列；水价为空/0 的记录不计入；
+ *       按 m³ 换算 → 万m³，2 位截断）</li>
  *   <li>应收水费 = 水费表单 hsfvdh 桶内求和（按 元 换算 → 万元，2 位截断，联调按日志核对单位）</li>
  *   <li>灌溉水利用系数（近似值）= Σ(北干/南干/太宿/太怀 进水闸区间累计) ÷ 渠首进水闸区间累计
  *       （同桶窗口 ttf 区间累计，3 位小数；渠首缺失/为 0 或四干渠全部无数据时为 null）</li>
@@ -143,9 +144,9 @@ public class WaterUseSummaryService {
         int unassigned = 0;
         for (WaterUseFeeRecordVO fee : fees) {
             if (sampleLogged < FEE_SAMPLE_LOGS) {
-                log.info("[用水总结] 水费记录样例 编号={} 单位={} 统计周期={} 计算用水量={} 执行水价={} 应收水费={}",
+                log.info("[用水总结] 水费记录样例 编号={} 单位={} 统计周期={} 计算用水量(m³)={} 执行水价={} 应收水费={}",
                         fee.getFeeNo(), fee.getUnitName(), fee.getPeriodTime(),
-                        fee.getUsageRaw(), fee.getPriceRaw(), fee.getFeeRaw());
+                        fee.getComputedUsage(), fee.getPriceRaw(), fee.getFeeRaw());
                 sampleLogged++;
             }
             if (fee.getPeriodTime() == null) {
@@ -165,8 +166,9 @@ public class WaterUseSummaryService {
                 unassigned++;
                 continue;
             }
-            if (fee.getUsageRaw() != null) {
-                hit.usageRaw = (hit.usageRaw == null ? BigDecimal.ZERO : hit.usageRaw).add(fee.getUsageRaw());
+            if (fee.getComputedUsage() != null) {
+                hit.computedUsage = (hit.computedUsage == null ? BigDecimal.ZERO : hit.computedUsage)
+                        .add(fee.getComputedUsage());
             }
             if (fee.getFeeRaw() != null) {
                 hit.feeRaw = (hit.feeRaw == null ? BigDecimal.ZERO : hit.feeRaw).add(fee.getFeeRaw());
@@ -184,8 +186,8 @@ public class WaterUseSummaryService {
         row.setLabel(bucket.label);
         row.setPeriodStart(bucket.start.toString());
         row.setPeriodEnd(bucket.end.toString());
-        row.setUsage(bucket.usageRaw != null
-                ? bucket.usageRaw.divide(TEN_THOUSAND, 2, RoundingMode.DOWN) : null);
+        row.setUsage(bucket.computedUsage != null
+                ? bucket.computedUsage.divide(TEN_THOUSAND, 2, RoundingMode.DOWN) : null);
         row.setReceivable(bucket.feeRaw != null
                 ? bucket.feeRaw.divide(TEN_THOUSAND, 2, RoundingMode.DOWN) : null);
         row.setIrrigationCoef(computeCoefficient(bucket));
@@ -277,8 +279,8 @@ public class WaterUseSummaryService {
         /** 桶止（含） */
         private final LocalDate end;
 
-        /** 桶内水费记录原始值求和（hqwvsf，单位 m³） */
-        private BigDecimal usageRaw;
+        /** 桶内计算用水量求和（应收水费÷执行水价，单位 m³） */
+        private BigDecimal computedUsage;
 
         /** 桶内水费记录原始值求和（hsfvdh，单位 元） */
         private BigDecimal feeRaw;
