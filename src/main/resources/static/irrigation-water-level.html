@@ -61,7 +61,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .ck{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:14px;color:#333;user-select:none;white-space:nowrap}
 .ck input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:#1677ff}
 
-.filter-actions{display:flex;gap:8px; margin-left:112px}
+.filter-actions{display:flex;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
@@ -166,11 +166,13 @@ tbody tr:hover td{background:#fafafa}
 </head>
 <body>
 <div class="page-wrap">
-  <div class="breadcrumb">
+    <!-- 面包屑暂隐藏，后续可能不需要
+<div class="breadcrumb">
     <span>业务中心</span><span class="sep">/</span>
     <span>数据统计</span><span class="sep">/</span>
     <span class="cur">水位监测</span>
   </div>
+  -->
 
   <div class="tab-bar">
     <!-- 暂隐藏：花凉亭灌区 -->
@@ -192,12 +194,17 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="st-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
+                <!-- 日期查询暂隐藏
+<div class="filter-item">
           <label>日期</label>
           <input type="date" id="start-date">
           <span class="date-sep">—</span>
           <input type="date" id="end-date">
         </div>
+        -->
+        <!-- 日期查询暂隐藏，保留隐藏字段避免脚本报错 -->
+        <input type="hidden" id="start-date" value="">
+        <input type="hidden" id="end-date" value="">
         <div class="filter-actions">
           <button class="btn btn-primary" id="query-btn">查询</button>
           <button class="btn btn-default" id="reset-btn">重置</button>
@@ -227,12 +234,17 @@ tbody tr:hover td{background:#fafafa}
   <div class="panel active" id="panel-reservoir">
     <div class="card filter-card">
       <div class="filter-bar" id="res-filter-bar">
-        <div class="filter-item" id="range-date-wrap">
+                <!-- 日期查询暂隐藏
+<div class="filter-item" id="range-date-wrap">
           <label>日期</label>
           <input type="date" id="res-start">
           <span class="date-sep">—</span>
           <input type="date" id="res-end">
         </div>
+        -->
+        <!-- 日期查询暂隐藏，保留隐藏字段避免脚本报错 -->
+        <input type="hidden" id="res-start" value="">
+        <input type="hidden" id="res-end" value="">
         <div class="filter-item" id="river-cks-wrap">
           <label>站点</label>
           <div class="cks" id="river-cks">
@@ -246,10 +258,14 @@ tbody tr:hover td{background:#fafafa}
             <label class="ck"><input type="checkbox" value="3206400007" onchange="onReservoirCk(this)">花凉亭坝上</label>
           </div>
         </div>
-        <div class="filter-item" id="brief-date-wrap" style="display:none">
+                <!-- 日期查询暂隐藏
+<div class="filter-item" id="brief-date-wrap" style="display:none">
           <label>日期</label>
           <input type="date" id="res-brief-date">
         </div>
+        -->
+        <!-- 日期查询暂隐藏，保留隐藏字段避免脚本报错 -->
+        <input type="hidden" id="res-brief-date" value="">
         <div class="filter-item" id="years-filter-wrap" style="display:none">
           <label>年份</label>
           <input type="number" id="years-start-year" min="1900" max="2100" style="width:90px">
@@ -264,10 +280,14 @@ tbody tr:hover td{background:#fafafa}
         </div>
       </div>
       <div class="filter-bar period-filter" id="period-filter" style="display:none">
-        <div class="filter-item">
+                <!-- 日期查询暂隐藏
+<div class="filter-item">
           <label>日期</label>
           <input type="date" id="period-date">
         </div>
+        -->
+        <!-- 日期查询暂隐藏，保留隐藏字段避免脚本报错 -->
+        <input type="hidden" id="period-date" value="">
         <div class="filter-item">
           <label>时段(h)</label>
           <select id="period-interval">
@@ -330,12 +350,17 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="mth-st-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
+                <!-- 日期查询暂隐藏
+<div class="filter-item">
           <label>日期</label>
           <input type="date" id="mth-start-date">
           <span class="date-sep">—</span>
           <input type="date" id="mth-end-date">
         </div>
+        -->
+        <!-- 日期查询暂隐藏，保留隐藏字段避免脚本报错 -->
+        <input type="hidden" id="mth-start-date" value="">
+        <input type="hidden" id="mth-end-date" value="">
         <div class="filter-actions">
           <button class="btn btn-primary" id="mth-query-btn">查询</button>
           <button class="btn btn-default" id="mth-reset-btn">重置</button>
@@ -1058,10 +1083,12 @@ function bindResTabs() {
       $('res-filter-bar').style.display = isPeriod ? 'none' : '';
       $('period-filter').style.display = isPeriod ? '' : 'none';
       // 日期区间仅河道/水库水情表使用；简报用单日期、多年同期用年份+月份
-      $('range-date-wrap').style.display = (S.resTab === 'river' || S.resTab === 'reservoir') ? '' : 'none';
+      const rangeWrap = $('range-date-wrap');
+      if (rangeWrap) rangeWrap.style.display = (S.resTab === 'river' || S.resTab === 'reservoir') ? '' : 'none';
       $('river-cks-wrap').style.display = S.resTab === 'river' ? '' : 'none';
       $('reservoir-cks-wrap').style.display = S.resTab === 'reservoir' ? '' : 'none';
-      $('brief-date-wrap').style.display = S.resTab === 'brief' ? '' : 'none';
+      const briefWrap = $('brief-date-wrap');
+      if (briefWrap) briefWrap.style.display = S.resTab === 'brief' ? '' : 'none';
       $('years-filter-wrap').style.display = S.resTab === 'years' ? '' : 'none';
       await loadResData();
     });

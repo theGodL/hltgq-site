@@ -118,6 +118,7 @@ body{
 }
 .basis-row .k{color:#666;font-size:13px}
 .file-name{color:var(--muted);font-size:12px}
+.basis-row a.file-name{color:var(--green);text-decoration:underline;cursor:pointer}
 
 .table-wrap{width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:8px}
 table.calc-table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
@@ -142,6 +143,7 @@ table.calc-table .cat{
   padding:0 10px;text-align:right;font-size:13px;outline:none;font-family:inherit;background:#fff;
 }
 .cell-input:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(47,143,107,.12)}
+.cell-input::placeholder{color:#bfbfbf}
 .pot-val{color:var(--pot);font-weight:700;font-variant-numeric:tabular-nums}
 .total-row td{
   background:#f7faf8;font-weight:600;
@@ -242,11 +244,11 @@ table.calc-table .cat{
         <div class="filter-item">
           <label>分析范围</label>
           <select id="scope">
-            <option value="全灌区">全灌区</option>
-            <option value="太湖县">太湖县</option>
-            <option value="望江县">望江县</option>
-            <option value="宿松县">宿松县</option>
-            <option value="怀宁县">怀宁县</option>
+            <option value="#1#">全灌区</option>
+            <option value="#2#">太湖县</option>
+            <option value="#3#">望江县</option>
+            <option value="#4#">宿松县</option>
+            <option value="#5#">怀宁县</option>
           </select>
         </div>
       </div>
@@ -261,21 +263,21 @@ table.calc-table .cat{
         <div class="field">
           <label>水资源总量</label>
           <div class="input-affix">
-            <input type="number" id="total-resources" value="10000" min="0" step="1">
+            <input type="number" id="total-resources" min="0" step="1" placeholder="请输入">
             <span class="suffix">万m³</span>
           </div>
         </div>
         <div class="field">
           <label>工程年供水能力</label>
           <div class="input-affix">
-            <input type="number" id="supply-capacity" value="8500" min="0" step="1">
+            <input type="number" id="supply-capacity" min="0" step="1" placeholder="请输入">
             <span class="suffix">万m³</span>
           </div>
         </div>
         <div class="field">
           <label>年可供水量</label>
           <div class="input-affix">
-            <input type="number" id="available-supply" value="8200" min="0" step="1">
+            <input type="number" id="available-supply" min="0" step="1" placeholder="请输入">
             <span class="suffix">万m³</span>
           </div>
         </div>
@@ -289,7 +291,8 @@ table.calc-table .cat{
           上传附件
         </button>
         <input type="file" id="file-basis" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg">
-        <span class="file-name" id="basis-file-name">未上传（演示可任选本地文件）</span>
+        <span class="file-name" id="basis-file-name">未上传</span>
+        <a class="file-name hidden" id="basis-file-link" target="_blank" rel="noopener">查看附件</a>
       </div>
     </div>
 
@@ -362,11 +365,11 @@ table.calc-table .cat{
       <div class="result-summary" id="result-summary">
         农业节水潜力最高；预计节水 1,200 万m³，节水后无供需缺口。
       </div>
-      <div class="result-status" id="result-status">结果状态：待测算 · 演示数据</div>
+      <div class="result-status" id="result-status">结果状态：待测算 · 未保存</div>
     </div>
 
     <div class="footer-bar">
-      <button type="button" class="btn btn-default btn-lg" id="btn-save">保存到本机</button>
+      <button type="button" class="btn btn-default btn-lg" id="btn-save">保存</button>
       <button type="button" class="btn btn-primary btn-lg" id="btn-calc">计算节水潜力</button>
     </div>
   </div>
@@ -375,14 +378,33 @@ table.calc-table .cat{
 
 <script>
 (function () {
+  var API = '/hltgq-site';
+
+  var SCOPE_NAME = {
+    '#1#': '全灌区',
+    '#2#': '太湖县',
+    '#3#': '望江县',
+    '#4#': '宿松县',
+    '#5#': '怀宁县'
+  };
+
   var SECTORS = [
-    { key: 'agri', name: '农业', cls: 'agri', baseline: 7000, after: 6000 },
-    { key: 'ind', name: '工业', cls: 'ind', baseline: 1200, after: 1050 },
-    { key: 'life', name: '生活', cls: 'life', baseline: 800, after: 750 }
+    { key: 'agri', name: '农业', cls: 'agri', baseline: null, after: null },
+    { key: 'ind', name: '工业', cls: 'ind', baseline: null, after: null },
+    { key: 'life', name: '生活', cls: 'life', baseline: null, after: null }
   ];
 
   var $ = function (id) { return document.getElementById(id); };
-  var calculated = false;
+
+  // 当前已加载记录的状态：year/scope 为记录键，calculated/saved/dirty 供状态展示与保存判断
+  var state = {
+    year: null,
+    scope: null,
+    basisFile: null,
+    calculated: false,
+    saved: false,
+    dirty: false
+  };
 
   function toast(msg) {
     var el = $('toast');
@@ -395,6 +417,18 @@ table.calc-table .cat{
   function num(v) {
     var n = Number(v);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  /** 空值 → null（区别于显式 0），用于提交与存储 */
+  function numOrNull(v) {
+    if (v == null || String(v).trim() === '') return null;
+    var n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** 数值 → 输入框展示值（null 显示为空） */
+  function inpVal(v) {
+    return v == null || v === '' ? '' : String(v);
   }
 
   function fmt(n, digits) {
@@ -410,10 +444,21 @@ table.calc-table .cat{
     return v.toFixed(2);
   }
 
+  async function fetchApi(path, options) {
+    var res = await fetch(API + path, Object.assign({ credentials: 'include' }, options || {}));
+    var body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (!res.ok) {
+      var msg = (body && (body.message || body.msg)) || ('HTTP ' + res.status);
+      throw new Error(msg);
+    }
+    return body;
+  }
+
   function readSectors() {
     return SECTORS.map(function (s) {
-      var b = num($('b-' + s.key).value);
-      var a = num($('a-' + s.key).value);
+      var b = num(s.baseline);
+      var a = num(s.after);
       return {
         key: s.key,
         name: s.name,
@@ -430,8 +475,8 @@ table.calc-table .cat{
       var pot = Math.max(0, num(s.baseline) - num(s.after));
       return '<tr data-key="' + s.key + '">' +
         '<td class="left"><span class="cat"><i class="dot ' + s.cls + '"></i>' + s.name + '</span></td>' +
-        '<td><input class="cell-input" type="number" min="0" step="1" id="b-' + s.key + '" value="' + s.baseline + '"></td>' +
-        '<td><input class="cell-input" type="number" min="0" step="1" id="a-' + s.key + '" value="' + s.after + '"></td>' +
+        '<td><input class="cell-input" type="number" min="0" step="1" id="b-' + s.key + '" value="' + inpVal(s.baseline) + '" placeholder="请输入"></td>' +
+        '<td><input class="cell-input" type="number" min="0" step="1" id="a-' + s.key + '" value="' + inpVal(s.after) + '" placeholder="请输入"></td>' +
         '<td><span class="pot-val" id="p-' + s.key + '">' + fmt(pot) + '</span></td>' +
         '</tr>';
     }).join('');
@@ -462,7 +507,7 @@ table.calc-table .cat{
     $('t-baseline').textContent = fmt(tb);
     $('t-after').textContent = fmt(ta);
     $('t-potential').textContent = fmt(tp);
-    if (calculated) renderResult(false);
+    if (state.calculated) renderResult(false);
   }
 
   function compute() {
@@ -486,13 +531,16 @@ table.calc-table .cat{
       };
     });
     var top = shares.slice().sort(function (a, b) { return b.potential - a.potential; })[0];
-    var summary = (top ? top.name + '节水潜力最高；' : '') +
-      '预计节水 ' + fmt(potentialTotal) + ' 万m³，' +
-      (gapAfter <= 0 ? '节水后无供需缺口。' : ('节水后仍有供需缺口 ' + fmt(gapAfter) + ' 万m³。'));
+    var summary = potentialTotal > 0
+      ? ((top ? top.name + '节水潜力最高；' : '') +
+        '预计节水 ' + fmt(potentialTotal) + ' 万m³，' +
+        (gapAfter <= 0 ? '节水后无供需缺口。' : ('节水后仍有供需缺口 ' + fmt(gapAfter) + ' 万m³。')))
+      : '暂无可计算的节水潜力，请输入基准/节水后需水量。';
 
     return {
       year: String($('year').value || ''),
       scope: $('scope').value,
+      scopeName: SCOPE_NAME[$('scope').value] || $('scope').value,
       totalResources: num($('total-resources').value),
       supplyCapacity: num($('supply-capacity').value),
       availableSupply: available,
@@ -507,14 +555,13 @@ table.calc-table .cat{
       shares: shares,
       summary: summary,
       calcBasis: $('calc-basis').value,
-      measures: $('measures').value,
-      basisFile: $('basis-file-name').textContent
+      measures: $('measures').value
     };
   }
 
   function renderResult(markDone) {
     var r = compute();
-    $('result-meta').textContent = r.year + '年 · ' + r.scope;
+    $('result-meta').textContent = r.year + '年 · ' + r.scopeName;
     $('m-total').textContent = fmt(r.potentialTotal);
     $('m-rate').textContent = '综合节水率 ' + fmtPct(r.rate) + '%';
     $('m-gap').textContent = fmt(r.gapBefore) + ' → ' + fmt(r.gapAfter);
@@ -526,11 +573,18 @@ table.calc-table .cat{
     }).join('');
     $('result-summary').textContent = r.summary;
     if (markDone) {
-      calculated = true;
-      $('result-status').textContent = '结果状态：已测算 · 演示结果';
-    } else if (!calculated) {
-      $('result-status').textContent = '结果状态：待测算 · 演示数据';
+      state.calculated = true;
+      state.dirty = true;
     }
+    renderStatus();
+  }
+
+  /** 结果状态行：结果状态（待测算/已测算）+ 保存状态（未保存/已保存/有未保存修改） */
+  function renderStatus() {
+    var txt = '结果状态：' + (state.calculated ? '已测算' : '待测算');
+    if (state.dirty) txt += ' · 有未保存修改';
+    else txt += state.saved ? ' · 已保存' : ' · 未保存';
+    $('result-status').textContent = txt;
   }
 
   function downloadText(filename, text, mime) {
@@ -542,36 +596,168 @@ table.calc-table .cat{
     URL.revokeObjectURL(a.href);
   }
 
+  /** 附件区展示：引用原文 + 可解析时给「查看附件」链接（上传通道接入前附件只读回显） */
+  function setBasisFile(ref, url) {
+    state.basisFile = ref || null;
+    $('basis-file-name').textContent = ref || '未上传';
+    var link = $('basis-file-link');
+    if (url) {
+      link.href = url;
+      link.classList.remove('hidden');
+    } else {
+      link.classList.add('hidden');
+      link.removeAttribute('href');
+    }
+  }
+
+  /** 分析年度读取（非法返回 null） */
+  function readYear() {
+    var v = parseInt($('year').value, 10);
+    return Number.isFinite(v) ? v : null;
+  }
+
+  /** 记录 → 表单回显（record 为 null 时置空表单，避免旧记录值残留） */
+  function applyRecord(year, scope, record) {
+    var hasRecord = record != null;
+    state.year = year;
+    state.scope = scope;
+    $('total-resources').value = inpVal(hasRecord ? record.totalResources : null);
+    $('supply-capacity').value = inpVal(hasRecord ? record.supplyCapacity : null);
+    $('available-supply').value = inpVal(hasRecord ? record.availableSupply : null);
+    SECTORS[0].baseline = hasRecord ? record.agriBaseline : null;
+    SECTORS[0].after = hasRecord ? record.agriTarget : null;
+    SECTORS[1].baseline = hasRecord ? record.indBaseline : null;
+    SECTORS[1].after = hasRecord ? record.indTarget : null;
+    SECTORS[2].baseline = hasRecord ? record.lifeBaseline : null;
+    SECTORS[2].after = hasRecord ? record.lifeTarget : null;
+    $('calc-basis').value = (hasRecord && record.calcBasis) || '';
+    $('measures').value = (hasRecord && record.measures) || '';
+    setBasisFile(hasRecord ? record.basisFile : null, hasRecord ? record.basisFileUrl : null);
+    state.calculated = hasRecord && record.status === '#2#';
+    state.saved = hasRecord;
+    state.dirty = false;
+    renderTable();
+    refreshPotentials();
+    renderResult(false);
+    renderStatus();
+  }
+
+  /** 按「分析年度 + 分析范围」读取记录并回显 */
+  async function load() {
+    var year = readYear();
+    if (year == null || year < 2000 || year > 2100) { toast('请输入有效年份（2000-2100）'); return; }
+    var scope = $('scope').value;
+    setBusy(true);
+    try {
+      var body = await fetchApi('/water-saving-potential/record?year=' + year + '&scope=' + encodeURIComponent(scope));
+      applyRecord(year, scope, body && body.record ? body.record : null);
+    } catch (e) {
+      console.error(e);
+      toast((e && e.message) || '读取记录失败');
+      // 读取失败同步置空表单：避免把上一记录的值误当作当前年度/范围的数据保存
+      applyRecord(year, scope, null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function setBusy(busy) {
+    $('btn-save').disabled = busy;
+    $('btn-calc').disabled = busy;
+  }
+
+  /** 保存（upsert）：状态随当前是否已测算取 #2# 已测算 / #1# 草稿 */
+  async function save() {
+    var year = readYear();
+    if (year == null || year < 2000 || year > 2100) { toast('请输入有效年份（2000-2100）'); return; }
+    var scope = $('scope').value;
+    if (!SCOPE_NAME[scope]) { toast('请选择分析范围'); return; }
+    if (year !== state.year || scope !== state.scope) { toast('数据加载中，请稍候再保存'); return; }
+
+    var payload = {
+      year: year,
+      scope: scope,
+      totalResources: numOrNull($('total-resources').value),
+      supplyCapacity: numOrNull($('supply-capacity').value),
+      availableSupply: numOrNull($('available-supply').value),
+      basisFile: state.basisFile,
+      agriBaseline: numOrNull(SECTORS[0].baseline),
+      agriTarget: numOrNull(SECTORS[0].after),
+      indBaseline: numOrNull(SECTORS[1].baseline),
+      indTarget: numOrNull(SECTORS[1].after),
+      lifeBaseline: numOrNull(SECTORS[2].baseline),
+      lifeTarget: numOrNull(SECTORS[2].after),
+      calcBasis: $('calc-basis').value.trim() || null,
+      measures: $('measures').value.trim() || null,
+      status: state.calculated ? '#2#' : '#1#'
+    };
+
+    var btn = $('btn-save');
+    btn.disabled = true;
+    try {
+      var body = await fetchApi('/water-saving-potential/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!body || !body.ok) throw new Error('保存失败');
+      state.saved = true;
+      state.dirty = false;
+      renderStatus();
+      toast('已保存（' + (state.calculated ? '已测算' : '草稿') + '）');
+    } catch (e) {
+      console.error(e);
+      toast((e && e.message) || '保存失败');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   function bind() {
     $('calc-tbody').addEventListener('input', function (e) {
       if (!e.target.classList.contains('cell-input')) return;
       var key = e.target.id.slice(2);
       var sector = SECTORS.find(function (s) { return s.key === key; });
       if (!sector) return;
-      if (e.target.id.charAt(0) === 'b') sector.baseline = num(e.target.value);
-      else sector.after = num(e.target.value);
+      if (e.target.id.charAt(0) === 'b') sector.baseline = numOrNull(e.target.value);
+      else sector.after = numOrNull(e.target.value);
+      state.dirty = true;
+      renderStatus();
       refreshPotentials();
     });
 
-    ['total-resources', 'supply-capacity', 'available-supply', 'year', 'scope'].forEach(function (id) {
-      $(id).addEventListener('change', function () {
-        if (calculated) renderResult(false);
-        else $('result-meta').textContent = ($('year').value || '') + '年 · ' + $('scope').value;
-      });
+    ['total-resources', 'supply-capacity', 'available-supply'].forEach(function (id) {
       $(id).addEventListener('input', function () {
-        if (id === 'available-supply' && calculated) renderResult(false);
+        state.dirty = true;
+        renderStatus();
+        if (state.calculated) renderResult(false);
       });
     });
 
-    $('btn-upload-basis').addEventListener('click', function () { $('file-basis').click(); });
-    $('file-basis').addEventListener('change', function () {
-      var f = this.files && this.files[0];
-      $('basis-file-name').textContent = f ? f.name : '未上传（演示可任选本地文件）';
-      if (f) toast('已选择附件：' + f.name);
+    ['calc-basis', 'measures'].forEach(function (id) {
+      $(id).addEventListener('input', function () {
+        state.dirty = true;
+        renderStatus();
+      });
+    });
+
+    ['year', 'scope'].forEach(function (id) {
+      $(id).addEventListener('change', function () {
+        if (state.dirty && !window.confirm('当前有未保存的修改，切换后将丢失，是否继续？')) {
+          if (state.year != null) $('year').value = state.year;
+          if (state.scope != null) $('scope').value = state.scope;
+          return;
+        }
+        load();
+      });
+    });
+
+    $('btn-upload-basis').addEventListener('click', function () {
+      toast('附件上传通道待平台接入，当前版本附件仅支持回显');
     });
 
     $('btn-tpl').addEventListener('click', function () {
-      var csv = '\ufeff用水类别,基准需水量,节水后预计需水量\n农业,7000,6000\n工业,1200,1050\n生活,800,750\n';
+      var csv = '\ufeff用水类别,基准需水量,节水后预计需水量\n农业,,\n工业,,\n生活,,\n';
       downloadText('节水潜力导入模板.csv', csv, 'text/csv;charset=utf-8');
       toast('模板已下载');
     });
@@ -595,13 +781,15 @@ table.calc-table .cat{
             if (!key) return;
             var sector = SECTORS.find(function (s) { return s.key === key; });
             if (!sector) return;
-            sector.baseline = num(parts[1]);
-            sector.after = num(parts[2]);
+            sector.baseline = numOrNull(parts[1]);
+            sector.after = numOrNull(parts[2]);
             updated++;
           });
           if (!updated) throw new Error('未识别到有效行');
           renderTable();
           refreshPotentials();
+          state.dirty = true;
+          renderStatus();
           toast('导入成功（' + updated + ' 行）');
         } catch (e) {
           toast((e && e.message) || '导入失败');
@@ -613,26 +801,17 @@ table.calc-table .cat{
 
     $('btn-calc').addEventListener('click', function () {
       renderResult(true);
-      toast('已完成节水潜力测算');
+      toast('测算完成，请点击保存');
       $('result-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
 
-    $('btn-save').addEventListener('click', function () {
-      var data = compute();
-      data.status = calculated ? '已测算' : '待测算';
-      data.savedAt = new Date().toISOString();
-      downloadText(
-        '节水潜力分析_' + data.year + '_' + data.scope + '.json',
-        JSON.stringify(data, null, 2),
-        'application/json;charset=utf-8'
-      );
-      toast('已保存到本机');
-    });
+    $('btn-save').addEventListener('click', save);
   }
 
   renderTable();
   renderResult(false);
   bind();
+  load();
 })();
 </script>
 </body>

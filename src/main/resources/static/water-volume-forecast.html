@@ -131,11 +131,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .moisture-body{flex:1;min-height:0;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .moisture-body .right-scroll{padding:20px}
 .tenday-slider-wrap{position:relative;width:160px;height:28px;flex-shrink:0}
-.tenday-slider-wrap input[type=range]{position:absolute;left:0;top:8px;width:100%;margin:0;pointer-events:none;appearance:none;background:transparent;height:12px}
-.tenday-slider-wrap input[type=range]::-webkit-slider-runnable-track{height:4px;background:#e8e8e8;border-radius:2px}
-.tenday-slider-wrap input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;margin-top:-5px;border:2px solid #fff;box-shadow:0 0 0 1px #91caff}
-.tenday-slider-wrap input[type=range]::-moz-range-track{height:4px;background:#e8e8e8;border-radius:2px}
-.tenday-slider-wrap input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;border:2px solid #fff}
+.tenday-slider-wrap::before{content:'';position:absolute;left:0;right:0;top:50%;height:4px;margin-top:-2px;background:#e8e8e8;border-radius:2px;z-index:0;pointer-events:none}
+.tenday-slider-wrap input[type=range]{position:absolute;left:0;top:8px;width:100%;margin:0;pointer-events:none;appearance:none;background:transparent;height:12px;z-index:1}
+.tenday-slider-wrap input[type=range]::-webkit-slider-runnable-track{height:4px;background:transparent;border:none}
+.tenday-slider-wrap input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;margin-top:-5px;border:2px solid #fff;box-shadow:0 0 0 1px #91caff;position:relative;z-index:2}
+.tenday-slider-wrap input[type=range]::-moz-range-track{height:4px;background:transparent;border:none}
+.tenday-slider-wrap input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;border:2px solid #fff;box-shadow:0 0 0 1px #91caff;position:relative;z-index:2}
 .btn.topo-fullscreen{height:32px!important;width:32px!important;min-width:32px!important;padding:0!important;color:#595959}
 .btn.topo-fullscreen svg{display:block;width:16px;height:16px}
 .stat-card{background:#fafafa;border:1px solid #f0f0f0;border-radius:8px;padding:16px 20px}
@@ -251,11 +252,13 @@ tbody tr:hover td{background:#fafafa}
 </head>
 <body>
 <div class="page-wrap">
-  <div class="breadcrumb">
+    <!-- 面包屑暂隐藏，后续可能不需要
+<div class="breadcrumb">
     <span>水资源调度</span><span class="sep">/</span>
     <span>水量预报</span><span class="sep">/</span>
     <span class="cur">短期来水预报</span>
   </div>
+  -->
 
   <div class="top-tabs" id="top-tabs">
     <div class="top-tab active" data-panel="short">短期来水预报</div>
@@ -3299,16 +3302,13 @@ tbody tr:hover td{background:#fafafa}
   function exportShortDetail() {
     const rows = filteredRows();
     if (!rows.length) return toast('暂无数据可导出');
-    const header = ['时间', '降雨量(mm)', '入库流量(m3/s)', '出库流量(m3/s)', '水位(m)', '库容(万方)', '入库水量(万方)', '出库水量(万方)'];
+    if (!window.XLSX) return toast('导出组件未加载');
+    const header = ['时间', '降雨量(mm)', '入库流量(m³/s)', '出库流量(m³/s)', '水位(m)', '库容(万方)', '入库水量(万方)', '出库水量(万方)'];
     const data = rows.map(r => [r.date, r.rain, r.inFlow, r.outFlow, r.level, r.capacity, r.inflow, r.outflow]);
-    if (window.XLSX) {
-      const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, '明细');
-      XLSX.writeFile(wb, '短期来水预报明细.xlsx');
-    } else {
-      toast('导出组件未加载');
-    }
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '明细');
+    XLSX.writeFile(wb, '短期来水预报明细.xlsx');
   }
   $('detail-export').addEventListener('click', exportShortDetail);
   if ($('short-detail-export')) $('short-detail-export').addEventListener('click', exportShortDetail);

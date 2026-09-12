@@ -49,7 +49,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .ss-opt:hover,.ss-opt.active{background:#e6f4ff;color:#1677ff}
 .ss-empty{padding:12px;color:#bbb;text-align:center;font-size:13px}
 
-.filter-actions{display:flex;gap:8px;margin-left:112px}
+.filter-actions{display:flex;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
@@ -191,11 +191,13 @@ tbody tr:hover td{background:#fafafa}
 </head>
 <body>
 <div class="page-wrap">
-  <div class="breadcrumb">
+    <!-- 面包屑暂隐藏，后续可能不需要
+<div class="breadcrumb">
     <span>业务中心</span><span class="sep">/</span>
     <span>数据统计</span><span class="sep">/</span>
     <span class="cur">闸门监测</span>
   </div>
+  -->
 
   <div class="tab-bar">
     <div class="tab-item active" data-tab="hlt">花凉亭灌区</div>
@@ -216,12 +218,17 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="dev-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
+                <!-- 日期查询暂隐藏
+<div class="filter-item">
           <label>日期</label>
           <input type="date" id="start-date">
           <span class="date-sep">—</span>
           <input type="date" id="end-date">
         </div>
+        -->
+        <!-- 日期查询暂隐藏，保留隐藏字段避免脚本报错 -->
+        <input type="hidden" id="start-date" value="">
+        <input type="hidden" id="end-date" value="">
         <div class="filter-actions">
           <button class="btn btn-primary" id="query-btn">查询</button>
           <button class="btn btn-default" id="reset-btn">重置</button>
@@ -269,12 +276,17 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="mth-dev-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
+                <!-- 日期查询暂隐藏
+<div class="filter-item">
           <label>日期</label>
           <input type="date" id="mth-start-date">
           <span class="date-sep">—</span>
           <input type="date" id="mth-end-date">
         </div>
+        -->
+        <!-- 日期查询暂隐藏，保留隐藏字段避免脚本报错 -->
+        <input type="hidden" id="mth-start-date" value="">
+        <input type="hidden" id="mth-end-date" value="">
         <div class="filter-actions">
           <button class="btn btn-primary" id="mth-query-btn">查询</button>
           <button class="btn btn-default" id="mth-reset-btn">重置</button>

@@ -59,11 +59,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .stat-card .value{font-size:24px;font-weight:700;color:#1f1f1f;line-height:1.2}
 .stat-card .value .unit{font-size:13px;font-weight:400;color:#999;margin-left:4px}
 .tenday-slider-wrap{position:relative;width:160px;height:28px;flex-shrink:0}
-.tenday-slider-wrap input[type=range]{position:absolute;left:0;top:8px;width:100%;margin:0;pointer-events:none;appearance:none;background:transparent;height:12px}
-.tenday-slider-wrap input[type=range]::-webkit-slider-runnable-track{height:4px;background:#e8e8e8;border-radius:2px}
-.tenday-slider-wrap input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;margin-top:-5px;border:2px solid #fff;box-shadow:0 0 0 1px #91caff}
-.tenday-slider-wrap input[type=range]::-moz-range-track{height:4px;background:#e8e8e8;border-radius:2px}
-.tenday-slider-wrap input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;border:2px solid #fff}
+.tenday-slider-wrap::before{content:'';position:absolute;left:0;right:0;top:50%;height:4px;margin-top:-2px;background:#e8e8e8;border-radius:2px;z-index:0;pointer-events:none}
+.tenday-slider-wrap input[type=range]{position:absolute;left:0;top:8px;width:100%;margin:0;pointer-events:none;appearance:none;background:transparent;height:12px;z-index:1}
+.tenday-slider-wrap input[type=range]::-webkit-slider-runnable-track{height:4px;background:transparent;border:none}
+.tenday-slider-wrap input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;margin-top:-5px;border:2px solid #fff;box-shadow:0 0 0 1px #91caff;position:relative;z-index:2}
+.tenday-slider-wrap input[type=range]::-moz-range-track{height:4px;background:transparent;border:none}
+.tenday-slider-wrap input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#1677ff;cursor:pointer;pointer-events:auto;border:2px solid #fff;box-shadow:0 0 0 1px #91caff;position:relative;z-index:2}
 .btn.topo-fullscreen{height:32px!important;width:32px!important;min-width:32px!important;padding:0!important;color:#595959}
 .btn.topo-fullscreen svg{display:block;width:16px;height:16px}
 .chart-card{border:1px solid #f0f0f0;border-radius:8px;padding:16px 16px 8px;margin-bottom:16px}
@@ -136,10 +137,12 @@ tbody tr:hover td{background:#fafafa}
 </head>
 <body>
 <div class="page-wrap">
-  <div class="breadcrumb">
+    <!-- 面包屑暂隐藏，后续可能不需要
+<div class="breadcrumb">
     <span>水资源调度</span><span class="sep">/</span>
     <span class="cur">配水调度预测</span>
   </div>
+  -->
 
   <div class="main-layout">
     <div class="left-panel">
@@ -972,16 +975,7 @@ tbody tr:hover td{background:#fafafa}
     page = +btn.dataset.page;
     renderTable();
   });
-  $('export-btn').addEventListener('click', async () => {
-    if (currentRecordId) {
-      try {
-        await API.decision.downloadExcel(currentRecordId);
-      } catch (e) {
-        toast(API.friendlyError(e, '导出失败'));
-      }
-      return;
-    }
-    const rows = filteredRows();
+  function exportBranchExcel(rows, filename) {
     if (!rows.length) return toast('暂无数据可导出');
     if (!window.XLSX) return toast('导出组件未加载');
     const header = ['旬','片区','分灌区','支渠','灌区面积','种植作物种类','需水量','净需水量','建议供水量','是否满足'];
@@ -993,7 +987,22 @@ tbody tr:hover td{background:#fafafa}
     const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '配水调度明细');
-    XLSX.writeFile(wb, '配水调度详细结果.xlsx');
+    XLSX.writeFile(wb, filename || '配水调度详细结果.xlsx');
+  }
+
+  $('export-btn').addEventListener('click', async () => {
+    const rows = filteredRows();
+    // 有筛选时导出当前筛选结果；无筛选且有方案记录时走后端全量下载
+    if (!filter.trim() && currentRecordId) {
+      try {
+        await API.decision.downloadExcel(currentRecordId);
+      } catch (e) {
+        toast(API.friendlyError(e, '导出失败'));
+      }
+      return;
+    }
+    const suffix = filter.trim() ? '_' + filter.trim() : '';
+    exportBranchExcel(rows, '配水调度详细结果' + suffix + '.xlsx');
   });
 
   $('history-btn').addEventListener('click', async () => {
@@ -1030,12 +1039,19 @@ tbody tr:hover td{background:#fafafa}
     renderViewTable();
   });
   $('view-export-btn').addEventListener('click', async () => {
-    if (!viewRecordId) return toast('暂无方案可下载');
-    try {
-      await API.decision.downloadExcel(viewRecordId);
-    } catch (err) {
-      toast(API.friendlyError(err, '下载失败'));
+    const rows = filteredViewRows();
+    // 有筛选时导出当前筛选结果；无筛选时走后端全量下载
+    if (!viewFilter.trim()) {
+      if (!viewRecordId) return toast('暂无方案可下载');
+      try {
+        await API.decision.downloadExcel(viewRecordId);
+      } catch (err) {
+        toast(API.friendlyError(err, '下载失败'));
+      }
+      return;
     }
+    const suffix = '_' + viewFilter.trim();
+    exportBranchExcel(rows, '配水调度详细结果' + suffix + '.xlsx');
   });
 
   $('hist-list').addEventListener('click', async e => {

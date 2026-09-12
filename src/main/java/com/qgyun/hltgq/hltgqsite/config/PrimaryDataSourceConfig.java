@@ -25,7 +25,7 @@ import javax.sql.DataSource;
 @MapperScan(basePackages = {"com.qgyun.hltgq.hltgqsite.mapper", "com.qgyun.hltgq.hltgqsite.decision.mapper",
         "com.qgyun.hltgq.hltgqsite.external.mapper", "com.qgyun.hltgq.hltgqsite.h5.mapper",
         "com.qgyun.hltgq.hltgqsite.stationdetail.mapper", "com.qgyun.hltgq.hltgqsite.irrigation.mapper",
-        "com.qgyun.hltgq.hltgqsite.wateruse.mapper"},
+        "com.qgyun.hltgq.hltgqsite.wateruse.mapper", "com.qgyun.hltgq.hltgqsite.watersaving.mapper"},
         sqlSessionFactoryRef = "primarySqlSessionFactory")
 public class PrimaryDataSourceConfig {
 
