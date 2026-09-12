@@ -16,8 +16,8 @@ import java.util.Map;
 
 /**
  * H5 统计服务：巡查及问题统计（柱状图，近 12 个月）、维修养护统计（饼状图，巡检结果 6 档）。
- * <p>口径与 PC 端一致：巡检仅已提交（status=#2#）；问题全状态按发现时间；
- * 缺月份/缺档补 0，返回固定长度序列供前端图表直接消费。
+ * <p>柱状图巡查数按巡检计划统计（排除草稿 #1#、含已取消 #4#，按 start_time 归月）；
+ * 问题全状态按发现时间；缺月份/缺档补 0，返回固定长度序列供前端图表直接消费。
  */
 @Service
 public class H5StatService {
@@ -38,6 +38,7 @@ public class H5StatService {
 
     /**
      * 巡查及问题月度统计：基准月 endMonth（yyyy-MM，默认当前月）及往前 11 个月，共 12 个月升序。
+     * <p>巡查数 = 区间内巡检计划数（含已取消计划，排除草稿）；问题数 = 全状态问题数。
      */
     public PatrolIssueMonthlyVO patrolIssueMonthly(String endMonth) {
         YearMonth base = parseEndMonth(endMonth);
