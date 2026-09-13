@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.stationdetail.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.qgyun.hltgq.hltgqsite.auth.SessionContextService;
 import com.qgyun.hltgq.hltgqsite.stationdetail.client.FileClient;
 import com.qgyun.hltgq.hltgqsite.stationdetail.mapper.StationDetailMapper;
@@ -11,12 +12,15 @@ import com.qgyun.hltgq.hltgqsite.stationdetail.vo.PatrolRecordVO;
 import com.qgyun.hltgq.hltgqsite.stationdetail.vo.StationBasicVO;
 import com.qgyun.hltgq.hltgqsite.stationdetail.vo.StationOptionsVO;
 import com.qgyun.hltgq.hltgqsite.stationdetail.vo.WorkOrderVO;
+import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -29,6 +33,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -56,6 +61,13 @@ public class StationDetailService {
     /** 在线状态：#1# 在线、#2# 离线（站点 zebpsu / 设备 status 共用） */
     private static final Map<String, String> ON_OFF_LABELS = new LinkedHashMap<>();
 
+    /** 丢包率熔断键：mq 到报统计调用失败/过慢时写入，熔断期内跳过调用（值为「1」） */
+    private static final String LOSS_BREAKER_KEY = "station:loss:breaker";
+    /** 丢包率熔断时长（秒）：到期放行一次重新探测，避免 mq 异常持续拖慢接口 */
+    private static final long LOSS_BREAKER_SECONDS = 60;
+    /** mq 调用耗时上限（ms）：内网 + mq 侧 60s 缓存下应远低于此值，超过视为服务异常 */
+    private static final long LOSS_SLOW_THRESHOLD_MS = 2000;
+
     static {
         RESULT_LABELS.put("#1#", "待填写");
         RESULT_LABELS.put("#2#", "正常");
@@ -82,8 +94,10 @@ public class StationDetailService {
         TYPE_LABELS.put("#3#", "流量");
         TYPE_LABELS.put("#4#", "闸门");
         TYPE_LABELS.put("#5#", "视频");
+        TYPE_LABELS.put("#6#", "模型");
         TYPE_LABELS.put("#7#", "墒情");
         TYPE_LABELS.put("#8#", "水质");
+        TYPE_LABELS.put("#9#", "气象");
 
         ON_OFF_LABELS.put("#1#", "在线");
         ON_OFF_LABELS.put("#2#", "离线");
@@ -98,19 +112,29 @@ public class StationDetailService {
     @Autowired
     private SessionContextService sessionContextService;
 
+    @Autowired
+    private MqStatsClient mqStatsClient;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
     // ==================== 基础信息 ====================
 
     /**
-     * 基础信息聚合：档案字段 + 闸口数量 + 供电（电压表最新）+ 视频通道。
-     * <p>无数据源项（电流/信号/通信延迟/所属单位/位置等）恒 null，不补造数据。
+     * 基础信息聚合：档案字段 + 闸口数量 + 供电/通信（电压表 + 监测数据兜底）+ 丢包率（mq 到报统计）+ 视频通道。
+     * <p>无数据源项（电流/信号/通信延迟/额定电压等）恒 null，不补造数据。
      *
      * @param stationKey 站点键（档案 id 或站点编号 iofhpi 双键兼容）
      */
     public StationBasicVO basic(String stationKey) {
+        long beginMs = System.currentTimeMillis();
         StationKey key = resolveStation(stationKey);
         String siteId = key.getId();
+        long resolveMs = System.currentTimeMillis() - beginMs;
 
+        long archiveBeginMs = System.currentTimeMillis();
         StationBasicVO vo = mapper.selectStationBasic(siteId);
+        long archiveMs = System.currentTimeMillis() - archiveBeginMs;
         if (vo == null) {
             throw new IllegalArgumentException("站点档案不存在：id=" + siteId);
         }
@@ -132,23 +156,114 @@ public class StationDetailService {
         }
 
         // 闸口数量
+        long gatesBeginMs = System.currentTimeMillis();
         vo.setGates((int) mapper.countGateDevices(siteId));
+        long gatesMs = System.currentTimeMillis() - gatesBeginMs;
 
-        // 供电：电压表最新 vol 电压 + tm 最近通信时间（JDBC 返回 Timestamp，需转换；电流/信号强度列库中未确认，恒 null）
-        Map<String, Object> vol = mapper.selectLatestVol(siteId);
+        // 供电：电压表最新 vol 电压 + tm 最近通信时间（site 键 id/站号双写兼容；JDBC 返回 Timestamp，需转换；电流/信号强度列库中未确认，恒 null）
+        long volBeginMs = System.currentTimeMillis();
+        Map<String, Object> vol = mapper.selectLatestVol(siteId, key.getIofhpi());
+        long volMs = System.currentTimeMillis() - volBeginMs;
         if (vol != null) {
             vo.setVolt(dec(vol.get("vol")));
             vo.setCommTime(toLocalDateTime(vol.get("tm")));
         }
+        // 最近通信时间兜底：电压表无数据时取该站各监测表最新上报时间（网络情况语义 = 站点最近一次数据上报）
+        long reportTmMs = 0;
+        if (vo.getCommTime() == null) {
+            long reportTmBeginMs = System.currentTimeMillis();
+            Map<String, Object> latestReport = mapper.selectLatestReportTm(siteId, key.getIofhpi());
+            reportTmMs = System.currentTimeMillis() - reportTmBeginMs;
+            if (latestReport != null) {
+                vo.setCommTime(toLocalDateTime(latestReport.get("tm")));
+            }
+        }
+
+        // 网络：丢包率（今日缺报率，mq 到报统计同源口径；未参与统计或 mq 不可达为 null，失败/过慢自动熔断 60s 不阻断）
+        long lossBeginMs = System.currentTimeMillis();
+        vo.setLoss(calcLossRate(siteId, key.getIofhpi()));
+        long lossMs = System.currentTimeMillis() - lossBeginMs;
 
         // 视频通道
+        long videosBeginMs = System.currentTimeMillis();
         List<StationBasicVO.VideoChannel> videos = mapper.selectVideoChannels(siteId);
         for (StationBasicVO.VideoChannel v : videos) {
             v.setStatus(ON_OFF_LABELS.getOrDefault(v.getStatusCode(), v.getStatusCode()));
         }
         vo.setVideos(videos);
+        long videosMs = System.currentTimeMillis() - videosBeginMs;
 
+        // 分步耗时日志：慢请求定位用（外部调用另有 mq stats 带 cost 的日志）
+        log.info("station basic siteId={} total={}ms resolve={}ms archive={}ms gates={}ms vol={}ms reportTmFallback={}ms loss={}ms videos={}ms",
+                siteId, System.currentTimeMillis() - beginMs, resolveMs, archiveMs, gatesMs, volMs, reportTmMs, lossMs, videosMs);
         return vo;
+    }
+
+    /**
+     * 今日丢包率（缺报率）= 缺报窗 ÷ 应报窗 × 100，保留 2 位小数，文本如「6.67%」。
+     * <p>数据源为 mq 到报统计（与数据统计页同源，今日口径、mq 侧 60s 缓存），
+     * 按 siteId/站号双键匹配站点行；站点未参与统计（测试站/无设备站被剔除）、
+     * 无应报窗或 mq 不可达时返回 null（降级不阻断基础信息，展示口径归前端）。
+     * <p>性能保护：调用失败或耗时超 {@link #LOSS_SLOW_THRESHOLD_MS} 开启熔断
+     * （{@link #LOSS_BREAKER_KEY}，60 秒内直接跳过），避免 mq 异常拖慢基础信息接口。
+     */
+    private String calcLossRate(String siteId, String iofhpi) {
+        if (isLossBreakerOpen()) {
+            return null;
+        }
+        try {
+            long beginMs = System.currentTimeMillis();
+            JsonNode list = mqStatsClient.arrivalDetail(null, null);
+            long costMs = System.currentTimeMillis() - beginMs;
+            if (costMs > LOSS_SLOW_THRESHOLD_MS) {
+                openLossBreaker("响应过慢 cost=" + costMs + "ms");
+            }
+            if (list == null || !list.isArray()) {
+                return null;
+            }
+            for (JsonNode row : list) {
+                String rowSiteId = row.path("siteId").asText("");
+                String rowStcd = row.path("stcd").asText("");
+                boolean match = rowSiteId.equals(siteId)
+                        || (iofhpi != null && !iofhpi.isEmpty() && iofhpi.equals(rowStcd));
+                if (!match) {
+                    continue;
+                }
+                int expected = row.path("expected").asInt(0);
+                if (expected <= 0) {
+                    return null;
+                }
+                int missed = row.path("missed").asInt(0);
+                return BigDecimal.valueOf(missed).multiply(BigDecimal.valueOf(100))
+                        .divide(BigDecimal.valueOf(expected), 2, RoundingMode.HALF_UP)
+                        .toPlainString() + "%";
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("站点丢包率获取失败（mq 到报统计不可达），siteId={}：{}", siteId, e.getMessage());
+            openLossBreaker("调用异常 " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** 丢包率熔断是否开启（redis 读取失败视为未开启，宁可直查一次也不误屏蔽） */
+    private boolean isLossBreakerOpen() {
+        try {
+            return Boolean.TRUE.equals(redisTemplate.hasKey(LOSS_BREAKER_KEY));
+        } catch (Exception e) {
+            log.debug("丢包率熔断状态读取失败，按未熔断处理: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** 开启丢包率熔断（LOSS_BREAKER_SECONDS 内跳过 mq 调用；redis 写入失败仅 debug） */
+    private void openLossBreaker(String reason) {
+        try {
+            redisTemplate.opsForValue().set(LOSS_BREAKER_KEY, "1", LOSS_BREAKER_SECONDS, TimeUnit.SECONDS);
+            log.warn("站点丢包率熔断开启（{}s）：{}", LOSS_BREAKER_SECONDS, reason);
+        } catch (Exception e) {
+            log.debug("丢包率熔断写入失败: {}", e.getMessage());
+        }
     }
 
     // ==================== 巡检记录 ====================

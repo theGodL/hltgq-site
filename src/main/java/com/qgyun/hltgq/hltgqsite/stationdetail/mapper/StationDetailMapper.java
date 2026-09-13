@@ -39,14 +39,19 @@ public interface StationDetailMapper {
     /**
      * 站点档案行（按档案 id）：基础信息所需档案字段。
      * <p>列别名与 StationBasicVO 属性同名；bviiio_x/y 经纬度、zebpsu 运行状态、
-     * waljdn 是否接通市电、bhsqxd 传输方法；org 由 ahieto 自关联本表取管理单位名称
-     * （ahieto 存管理单位 id，单位间有上下级；本实现取直接上级名称，mivbcz 值同站名不取）。
+     * waljdn 是否接通市电、bhsqxd 传输方法、mivbcz 站点位置、lhwhuc 负责人、
+     * cbitue 联系电话、viwmmc 站点简介；org 由 ahieto 自关联本表取管理单位名称
+     * （ahieto 存管理单位 id，单位间有上下级；本实现取直接上级名称）；
+     * canal 由 ywvyds 关联渠系管理表取渠系名称（ywvyds 存渠系记录 id）。
      */
     @Select("SELECT s.iofhpi AS code, s.zzkaec AS name, s.epjutj AS typeCodes, " +
             "s.bviiio_x AS lon, s.bviiio_y AS lat, s.zebpsu AS runStatusCode, " +
-            "s.waljdn AS mainsPowerCode, s.bhsqxd AS comm, u.zzkaec AS org " +
+            "s.waljdn AS mainsPowerCode, s.bhsqxd AS comm, s.mivbcz AS loc, " +
+            "s.lhwhuc AS owner, s.cbitue AS phone, s.viwmmc AS intro, u.zzkaec AS org, " +
+            "c.gfaegg AS canal " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" u ON s.ahieto = u.id " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON s.ywvyds = c.id " +
             "WHERE s.id = #{id}")
     StationBasicVO selectStationBasic(@Param("id") String id);
 
@@ -54,13 +59,41 @@ public interface StationDetailMapper {
 
     /**
      * 电压表最新一行（供电情况）：vol 电压、tm 时间。
+     * <p>site 键双写兼容（档案 id 或站点编号 iofhpi，与墒情/水质同模式），防电压表按站号落库时查不到；
      * 电流（via/vib/vic）与信号强度（wc）列库中未确认存在，恒 null 不查；
      * 报文表库中不存在，通信延迟恒 null。键全小写，Java 侧按小写键取值。
      */
     @Select("SELECT vol, tm " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info " +
-            "WHERE site = #{site} ORDER BY tm DESC LIMIT 1")
-    Map<String, Object> selectLatestVol(@Param("site") String site);
+            "WHERE (site = #{site} OR site = #{stcd}) ORDER BY tm DESC LIMIT 1")
+    Map<String, Object> selectLatestVol(@Param("site") String site, @Param("stcd") String stcd);
+
+    /**
+     * 站点最近一次上报时间（网络情况「最近通信时间」兜底）：各监测表最新 tm 的最大值。
+     * <p>键口径与设备实时数据一致——水位/雨量按 STCD（=iofhpi）、流量/闸门按 site（档案 id）、
+     * 墒情/水质双键；只按站点键过滤（任何一条上报都算通信），无监测数据的站点返回 null；
+     * pcp_info 无 tm 列（历史结构）不参与。
+     */
+    @Select("SELECT MAX(t) AS tm FROM (" +
+            "SELECT MAX(\"TM\") AS t FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info " +
+            "WHERE \"STCD\" = #{stcd} " +
+            "UNION ALL " +
+            "SELECT MAX(\"TM\") FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info " +
+            "WHERE \"STCD\" = #{stcd} " +
+            "UNION ALL " +
+            "SELECT MAX(tm) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" " +
+            "WHERE site = #{site} " +
+            "UNION ALL " +
+            "SELECT MAX(tm) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" " +
+            "WHERE site = #{site} " +
+            "UNION ALL " +
+            "SELECT MAX(tm) FROM \"qixiao-apaas\".t_auto_hltgq_water_soil_data " +
+            "WHERE (stcd = #{stcd} OR site = #{site}) " +
+            "UNION ALL " +
+            "SELECT MAX(tm) FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info " +
+            "WHERE (stcd = #{stcd} OR site = #{site}) " +
+            ") t")
+    Map<String, Object> selectLatestReportTm(@Param("site") String site, @Param("stcd") String stcd);
 
     // ==================== 闸口数量 / 视频通道 ====================
 

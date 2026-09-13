@@ -9,8 +9,9 @@ import java.util.List;
 /**
  * 站点详情-基础信息聚合结果（一次请求渲染「基础信息」整页）。
  * <p>数据来源：站点档案表 t_auto_hltgq_5nw74_vnqqef + 电压表 t_auto_hltgq_water_vol_info
- * + 设备表 t_auto_hltgq_water_device（闸口计数/视频通道）。
- * <p>档案表无对应字段的页面项（所属渠系/负责人/电话/建成/投运时间/站点简介/额定电压/丢包率等）
+ * + 设备表 t_auto_hltgq_water_device（闸口计数/视频通道）+ 渠系管理表 t_auto_hltgq_knc3g_egvnhw（渠系名称）
+ * + mq 到报统计 arrival-detail（丢包率）。
+ * <p>档案表无对应字段且无外部来源的页面项（主要功能/建成/投运时间/额定电压等）
  * 恒返回 null，前端显示占位符，后端不补造数据。
  */
 @Data
@@ -31,7 +32,7 @@ public class StationBasicVO {
     /** 所属管理单位（档案表 ahieto 自关联本表取管理单位名称 zzkaec；无上级或上级记录不存在为 null） */
     private String org;
 
-    /** 所属渠系（档案表无此字段，恒 null） */
+    /** 所属渠系名称（渠系管理表 t_auto_hltgq_knc3g_egvnhw.gfaegg，经档案表 ywvyds 关联；无关联或记录不存在为 null） */
     private String canal;
 
     /** 闸口数量（设备表 type 含 #4# 闸门的设备数） */
@@ -40,11 +41,8 @@ public class StationBasicVO {
     /** 主要功能（档案表无此字段，恒 null） */
     private String func;
 
-    /** 站点位置（档案表 mivbcz 值同站名，不取，恒 null） */
+    /** 站点位置（档案表 mivbcz 文本，原样返回） */
     private String loc;
-
-    /** 详细地址（档案表无此字段，恒 null，loc 即位置） */
-    private String addr;
 
     /** 经纬度文本「经度, 纬度」（档案表 bviiio_x/bviiio_y，缺任一为 null，由 Service 拼接） */
     private String lnglat;
@@ -64,10 +62,10 @@ public class StationBasicVO {
     /** 运行状态是否正常（zebpsu=#1#） */
     private Boolean runStatusOk;
 
-    /** 负责人（档案表无此字段，恒 null） */
+    /** 负责人（档案表 lhwhuc 文本，原样返回） */
     private String owner;
 
-    /** 联系电话（档案表无此字段，恒 null） */
+    /** 联系电话（档案表 cbitue 文本，原样返回） */
     private String phone;
 
     /** 建成时间（档案表无此字段，恒 null） */
@@ -79,7 +77,7 @@ public class StationBasicVO {
     /** 运行年限（档案表无建成时间，恒 null） */
     private String years;
 
-    /** 站点简介（档案表无此字段，恒 null） */
+    /** 站点简介（档案表 viwmmc 文本，原样返回） */
     private String intro;
 
     /** 当前电压 V（电压表 vol_info 最新 vol） */
@@ -109,13 +107,13 @@ public class StationBasicVO {
     /** 信号强度（电压表信号列库中未确认，恒 null） */
     private BigDecimal signal;
 
-    /** 最近通信时间（电压表最新 tm） */
+    /** 最近通信时间（优取电压表最新 tm，与 volt 同一行；电压表无数据时兜底取该站各监测表最新上报时间；均无则 null） */
     private LocalDateTime commTime;
 
     /** 通信延迟 ms（无数据源，恒 null） */
     private Long latency;
 
-    /** 丢包率（无数据源，恒 null） */
+    /** 今日丢包率（缺报率%，如「6.67%」；mq 到报统计 missed/expected×100，未参与统计或 mq 不可达为 null） */
     private String loss;
 
     /** 网络状态（zebpsu：#1# 在线、#2# 离线） */

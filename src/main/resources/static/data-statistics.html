@@ -928,6 +928,11 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     }
   }
 
+  /** 纯数字长码（如站点编号 9000000001）导出时强制 Excel 按文本解析，避免显示成科学计数法（9E+09） */
+  function excelText(v) {
+    return '="' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  }
+
   function exportCsv(filename, headers, rows) {
     var lines = [headers.join(',')].concat(rows.map(function (r) {
       return r.map(function (c) {
@@ -954,7 +959,7 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     exportCsv('站点到报明细.csv',
       ['序号', '站点名称', '编号', '报文类型', '应到次数', '实到次数', '缺报次数', '到报率', '状态'],
       state.arrival.list.map(function (r, i) {
-        return [i + 1, r.name, r.code, r.type, r.expected, r.actual, r.missing, fmtRate(r.rate), r.status];
+        return [i + 1, r.name, excelText(r.code), r.type, r.expected, r.actual, r.missing, fmtRate(r.rate), r.status];
       })
     );
     toast('已导出到报明细');
@@ -964,7 +969,7 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     exportCsv('缺测明细.csv',
       ['序号', '站点名称', '编号', '缺测时间段', '缺测时长', '数据类型', '当前状态'],
       state.missing.list.map(function (r, i) {
-        return [i + 1, r.name, r.code, r.period, r.duration, r.dataType, r.status];
+        return [i + 1, r.name, excelText(r.code), r.period, r.duration, r.dataType, r.status];
       })
     );
     toast('已导出缺测明细');
