@@ -109,7 +109,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     <div class="main-scroll" id="flood-scroll">
       <div class="card chart-card">
         <div class="chart-hd">
-          <div class="chart-title">洪水预报过程线 <span class="chart-tip" id="flood-tip"></span></div>
+          <div class="chart-title">洪水预报过程线 <span class="chart-tip" id="flood-tip"></span><span class="chart-tip" id="flood-tip-pred"></span></div>
         </div>
         <div class="chart-box flood-combo" id="chart-flood"></div>
       </div>
@@ -341,6 +341,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     if (payload.stnm) tipParts.push('站点：' + payload.stnm);
     if (split) tipParts.push('分界：' + split + '（含）起为预测，与实测衔接');
     $('flood-tip').textContent = tipParts.join(' · ');
+    $('flood-tip-pred').textContent = '';
 
     c.setOption({
       tooltip: {
@@ -462,6 +463,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     stationsLoaded = true;
   }
 
+  /** 进页面概览：后端预跑的实测 + 预测（毫秒级纯读取，不触发模型），预测状态写入标题右侧提示 */
+  async function loadFloodOverview() {
+    var ov = await API.floodDrought.overview();
+    if (!ov || !ov.dates || !ov.dates.length) {
+      emptyChart('flood', 'chart-flood', '暂无数据，请点击「计算」');
+      return;
+    }
+    if (ov.stnm && $('flood-stnm')) $('flood-stnm').value = ov.stnm;
+    renderFloodCombo(ov);
+    var meta = ov.predMeta || {};
+    if (meta.tag === 'available' && meta.generatedAt) {
+      // partial=跨天过渡先给老数据（尾部缺天）；refreshing=已有新一轮在算，稍后刷新即换新
+      var suffix = meta.partial
+        ? '（更新中，稍后刷新可见完整预测）'
+        : (meta.refreshing ? '（新结果生成中，稍后刷新可见）' : '（可点「计算」获取最新）');
+      $('flood-tip-pred').textContent = '预测生成：' + API.fmtDateTime(meta.generatedAt) + suffix;
+    } else if (meta.tag === 'generating') {
+      $('flood-tip-pred').textContent = '预测生成中，稍后刷新可见';
+    } else {
+      $('flood-tip-pred').textContent = '暂无预测结果，可点「计算」获取（约 20 秒）';
+    }
+  }
+
   async function loadFloodCombo() {
     var start = ($('flood-start').value || '').trim();
     var end = ($('flood-end').value || '').trim();
@@ -480,7 +504,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     var btn = $('flood-query-btn');
     btn.disabled = true;
     btn.textContent = '计算中…';
-    emptyChart('flood', 'chart-flood', '加载中…');
+    // 保留已渲染图（概览/上次结果）不闪空，等新结果直接覆盖；仅更新提示
+    $('flood-tip-pred').textContent = '正在获取最新预测…';
 
     var rainMap = {};
     var levelMap = {};
@@ -560,6 +585,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       });
     } catch (e) {
       emptyChart('flood', 'chart-flood', (e && e.message) || '计算失败');
+      $('flood-tip-pred').textContent = '';
       toast(API.friendlyError ? API.friendlyError(e, '计算失败') : ((e && e.message) || '计算失败'));
     } finally {
       btn.disabled = false;
@@ -571,7 +597,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   /* ---------- bind & init ---------- */
   function initFlood() {
     setFloodDefaultDates();
-    emptyChart('flood', 'chart-flood', '请选择日期后计算');
+    emptyChart('flood', 'chart-flood', '加载中…');
 
     $('flood-query-btn').addEventListener('click', loadFloodCombo);
     $('flood-reset-btn').addEventListener('click', function () {
@@ -591,7 +617,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       } catch (e) {
         toast((e && e.message) || '站点列表加载失败');
       }
-      // 首次加载只预填站点，不自动跑模型计算（避免页面打开即提交短期预报方案并同步等待，加载慢且每次刷新产生新方案）；用户点击「计算」按钮再触发 loadFloodCombo
+      // 进页面自动加载概览（实测 + 后端定时预跑的预测，毫秒级纯读取，不触发模型计算）；
+      // 预测未就绪时标题右侧提示点击「计算」获取最新（手动提交行为不变）
+      try {
+        await loadFloodOverview();
+      } catch (e) {
+        emptyChart('flood', 'chart-flood', '概览加载失败，请点击「计算」');
+        toast(API.friendlyError ? API.friendlyError(e, '概览加载失败') : ((e && e.message) || '概览加载失败'));
+      }
     })();
   }
 

@@ -537,12 +537,17 @@
     },
     /**
      * 防洪抗旱决策（会议 2 重构）
-     * 历史：stations + history（同步）；预测：复用 short list/detail
+     * 历史：stations + history（同步）；概览：overview（实测 + 预置预测，进页面自动加载）；
+     * 预测计算：复用 short list/detail/submit
      * 旧 hydro 异步三连已退役
      */
     floodDrought: {
       stations: function () {
         return getJson('/flood-drought/stations');
+      },
+      /** 默认区间概览（实测 + 预置预测一次返回；后端定时预跑，纯读取不触发模型） */
+      overview: function () {
+        return getJson('/flood-drought/overview');
       },
       history: function (startDate, endDate, opts) {
         var o = opts || {};

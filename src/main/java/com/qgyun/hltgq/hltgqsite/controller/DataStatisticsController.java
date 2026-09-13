@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.qgyun.hltgq.hltgqsite.mapper.DataStatsMapper;
 import com.qgyun.hltgq.hltgqsite.stats.client.DeviceStatsClient;
 import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsClient;
+import com.qgyun.hltgq.hltgqsite.stats.service.StatsCacheService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +23,9 @@ import java.util.Map;
  * 前端字段契约与 hltgq-mq 数据统计.md 一致；mq/device 不可达或返回业务错误时统一 HTTP 502。
  * <p>说明：到报/缺测口径由 mq 统一计算（mq 侧 60s 缓存），site 不另起口径、不做本地 COUNT；
  * 仅「信息发布情况（预警信息）」为 site 本地数据（本项目无发布动作，每次生成告警即发布）。
+ * <p>性能（2026-09-13）：六个转发端点统一先走 {@link StatsCacheService} 响应缓存
+ * （默认今日口径定时预热，页面进入秒开），未命中回退上游实时查询并回填；
+ * publish-stats 为本地毫秒级查询，不缓存。
  */
 @RestController
 @RequestMapping("/data-statistics")
@@ -32,6 +36,9 @@ public class DataStatisticsController {
 
     @Autowired
     private DeviceStatsClient deviceStatsClient;
+
+    @Autowired
+    private StatsCacheService statsCacheService;
 
     @Autowired
     private DataStatsMapper dataStatsMapper;
@@ -45,7 +52,8 @@ public class DataStatisticsController {
     @GetMapping("/arrival-stats")
     public JsonNode arrivalStats(@RequestParam(required = false) String startDate,
                                  @RequestParam(required = false) String endDate) {
-        return mqStatsClient.arrivalStats(startDate, endDate);
+        return statsCacheService.getOrLoad(StatsCacheService.PATH_ARRIVAL_STATS, startDate, endDate,
+                () -> mqStatsClient.arrivalStats(startDate, endDate));
     }
 
     /**
@@ -56,21 +64,24 @@ public class DataStatisticsController {
     @GetMapping("/arrival-detail")
     public JsonNode arrivalDetail(@RequestParam(required = false) String startDate,
                                   @RequestParam(required = false) String endDate) {
-        return mqStatsClient.arrivalDetail(startDate, endDate);
+        return statsCacheService.getOrLoad(StatsCacheService.PATH_ARRIVAL_DETAIL, startDate, endDate,
+                () -> mqStatsClient.arrivalDetail(startDate, endDate));
     }
 
     /** 缺测明细：连续缺测窗合并为段，含起止时间/时长/数据类型/当前状态；startDate/endDate 可选，透传 mq */
     @GetMapping("/miss-detail")
     public JsonNode missDetail(@RequestParam(required = false) String startDate,
                                @RequestParam(required = false) String endDate) {
-        return mqStatsClient.missDetail(startDate, endDate);
+        return statsCacheService.getOrLoad(StatsCacheService.PATH_MISS_DETAIL, startDate, endDate,
+                () -> mqStatsClient.missDetail(startDate, endDate));
     }
 
     /** 数据采集状态统计：水位/流量/雨量/闸门开度/墒情各维度应采/实采/成功/失败/成功率/失败率；startDate/endDate 可选，透传 mq */
     @GetMapping("/collect-stats")
     public JsonNode collectStats(@RequestParam(required = false) String startDate,
                                  @RequestParam(required = false) String endDate) {
-        return mqStatsClient.collectStats(startDate, endDate);
+        return statsCacheService.getOrLoad(StatsCacheService.PATH_COLLECT_STATS, startDate, endDate,
+                () -> mqStatsClient.collectStats(startDate, endDate));
     }
 
     /**
@@ -83,14 +94,16 @@ public class DataStatisticsController {
     @GetMapping("/video-collect")
     public JsonNode videoCollect(@RequestParam(required = false) String startDate,
                                  @RequestParam(required = false) String endDate) {
-        return deviceStatsClient.videoPatrolStats(startDate, endDate);
+        return statsCacheService.getOrLoad(StatsCacheService.PATH_VIDEO_COLLECT, startDate, endDate,
+                () -> deviceStatsClient.videoPatrolStats(startDate, endDate));
     }
 
     /** 采集服务状态：mq 进程指标（启动时间/时长/CPU/内存）+ 数据接收/解析/存储三逻辑服务；startDate/endDate 可选，透传 mq */
     @GetMapping("/service-status")
     public JsonNode serviceStatus(@RequestParam(required = false) String startDate,
                                   @RequestParam(required = false) String endDate) {
-        return mqStatsClient.serviceStatus(startDate, endDate);
+        return statsCacheService.getOrLoad(StatsCacheService.PATH_SERVICE_STATUS, startDate, endDate,
+                () -> mqStatsClient.serviceStatus(startDate, endDate));
     }
 
     /**
