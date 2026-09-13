@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>值班记录导出</title>
+<script src="./lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:#fff;color:#333;font-size:14px;
+  display:flex;flex-direction:column;
+}
+.page{flex:1;min-height:0;display:flex;flex-direction:column;padding:20px 24px 16px}
+
+.filter-list{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0}
+.filter-item{display:flex;align-items:center;gap:12px}
+.filter-item label{width:72px;flex-shrink:0;color:#666;text-align:right}
+.filter-item input,.filter-item select{
+  height:32px;width:280px;border:1px solid #d9d9d9;border-radius:6px;
+  padding:0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;
+}
+.filter-item select{
+  padding-right:28px;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.filter-item input:focus,.filter-item select:focus,.ss-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12)}
+
+.ss{position:relative;width:280px}
+.ss-input{
+  width:100%;height:32px;border:1px solid #d9d9d9;border-radius:6px;
+  padding:0 28px 0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.ss-input::placeholder{color:#bfbfbf}
+.ss-dd{
+  display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;
+  max-height:240px;overflow-y:auto;background:#fff;border:1px solid #d9d9d9;
+  border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08);
+}
+.ss-dd.open{display:block}
+.ss-opt{padding:8px 12px;cursor:pointer;color:#262626}
+.ss-opt:hover,.ss-opt.active{background:#e6f4ff;color:#1677ff}
+.ss-empty{padding:10px 12px;color:#bfbfbf;font-size:13px}
+
+.foot{flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;padding-top:20px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
+}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff}
+.btn-default{color:#595959;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+.toast{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+  background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
+  font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="filter-list">
+    <div class="filter-item">
+      <label>值班日期</label>
+      <input type="date" id="f-date">
+    </div>
+    <div class="filter-item">
+      <label>班次时间</label>
+      <input type="text" id="f-shift" placeholder="不填则不按班次筛选" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <label>所在单位</label>
+      <input type="text" id="f-unit" placeholder="不填则不按单位筛选" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <label>值班人员</label>
+      <div class="ss" id="person-ss">
+        <input type="text" class="ss-input" id="person-input" placeholder="不选则不按人员筛选" autocomplete="off">
+        <input type="hidden" id="person-id" value="">
+        <div class="ss-dd" id="person-dd"></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+    <button type="button" class="btn btn-primary" id="export-btn">导出</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var PERSON_API = '/qx-api/qx-apaas-run/rt/5jOWKz1OmNy9DPgtwyt/m/ZTLDEDRiUSH1VLV0NrB/search';
+  var EXPORT_API = '/hltgq-site/duty/list';
+
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function getCookie(name) {
+    var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&') + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  function qs(name) {
+    return new URLSearchParams(location.search).get(name) || '';
+  }
+
+  function parentVal(keys) {
+    try {
+      var w = window.parent && window.parent !== window ? window.parent : null;
+      var srcs = [window, w];
+      for (var i = 0; i < srcs.length; i++) {
+        var ctx = srcs[i];
+        if (!ctx) continue;
+        for (var k = 0; k < keys.length; k++) {
+          var v = ctx[keys[k]];
+          if (typeof v === 'string' && v) return v;
+        }
+      }
+    } catch (e) {}
+    return '';
+  }
+
+  function pickRuntime(names, cookies) {
+    var i, v;
+    for (i = 0; i < names.length; i++) {
+      v = qs(names[i]);
+      if (v) return v;
+    }
+    v = parentVal(names);
+    if (v) return v;
+    for (i = 0; i < (cookies || []).length; i++) {
+      v = getCookie(cookies[i]);
+      if (v) return v;
+    }
+    return '';
+  }
+
+  function platformHeaders() {
+    var headers = {
+      'Accept': 'application/json, text/plain, */*',
+      'Content-Type': 'application/json;charset=UTF-8'
+    };
+    var auth = pickRuntime(['Authorization', 'authorization'], ['TOKEN', 'QIXIAO_TOKEN', 'sessionid', 'qixiao_hltgq_session']);
+    if (auth) headers.Authorization = auth;
+    return headers;
+  }
+
+  function buildSearchBody(keyword, pageNum) {
+    var filterSet = [];
+    var kw = (keyword || '').trim();
+    if (kw) filterSet.push({ field: 'dataTitle', op: 'LIKE', value: kw });
+    return {
+      autoCount: true,
+      sortField: null,
+      queryFields: ['dataTitle'],
+      sort: null,
+      filter: { filterSet: filterSet, conjunction: 'AND' },
+      pageNum: pageNum || 1,
+      pageSize: 20
+    };
+  }
+
+  var personPager = { keyword: '', pageNum: 0, hasNext: true, loading: false, list: [] };
+
+  function mapPerson(x) {
+    return { id: String(x.id || ''), name: String(x.dataTitle || x.id || '') };
+  }
+
+  function renderDd() {
+    var dd = $('person-dd');
+    var cur = $('person-id').value;
+    var list = personPager.list;
+    var html = '';
+    if (!list.length && !personPager.loading) {
+      html = '<div class="ss-empty">无匹配人员</div>';
+    } else {
+      html = list.map(function (s) {
+        return '<div class="ss-opt' + (s.id === cur ? ' active' : '') + '" data-id="' + esc(s.id) + '" data-name="' + esc(s.name) + '">' +
+          esc(s.name) + '</div>';
+      }).join('');
+      if (personPager.loading) html += '<div class="ss-empty">加载中…</div>';
+      else if (!personPager.hasNext && list.length) html += '<div class="ss-empty">没有更多了</div>';
+    }
+    dd.innerHTML = html;
+    dd.classList.add('open');
+  }
+
+  function fetchPersonPage(pageNum, keyword) {
+    return fetch(PERSON_API, {
+      method: 'POST',
+      credentials: 'include',
+      headers: platformHeaders(),
+      body: JSON.stringify(buildSearchBody(keyword, pageNum))
+    }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).then(function (json) {
+      var data = json && json.data ? json.data : {};
+      var list = (data.list || []).map(mapPerson).filter(function (s) { return s.id || s.name; });
+      var hasNext = data.hasNextPage === true || (Number(data.pageNum) || pageNum) < (Number(data.pages) || 0);
+      return { list: list, hasNext: hasNext, pageNum: Number(data.pageNum) || pageNum };
+    });
+  }
+
+  function loadPersons(keyword, reset) {
+    if (personPager.loading) return;
+    if (!reset && !personPager.hasNext) return;
+    if (reset) {
+      personPager.keyword = keyword || '';
+      personPager.pageNum = 0;
+      personPager.hasNext = true;
+      personPager.list = [];
+    }
+    var nextPage = personPager.pageNum + 1;
+    personPager.loading = true;
+    renderDd();
+    fetchPersonPage(nextPage, personPager.keyword).then(function (pg) {
+      var seen = {};
+      personPager.list.forEach(function (s) { seen[s.id] = true; });
+      pg.list.forEach(function (s) {
+        if (!seen[s.id]) {
+          seen[s.id] = true;
+          personPager.list.push(s);
+        }
+      });
+      personPager.pageNum = pg.pageNum;
+      personPager.hasNext = pg.hasNext && pg.list.length > 0;
+    }).catch(function () {
+      personPager.hasNext = false;
+    }).then(function () {
+      personPager.loading = false;
+      renderDd();
+    });
+  }
+
+  function setPerson(id, name) {
+    $('person-id').value = id || '';
+    $('person-input').value = name || '';
+    $('person-dd').classList.remove('open');
+  }
+
+  var searchTimer = null;
+  function bindPersonSelect() {
+    var input = $('person-input');
+    var dd = $('person-dd');
+    var wrap = $('person-ss');
+
+    function openIfClosed() {
+      if (!dd.classList.contains('open')) loadPersons('', true);
+    }
+    input.addEventListener('focus', openIfClosed);
+    input.addEventListener('click', openIfClosed);
+    input.addEventListener('input', function () {
+      $('person-id').value = '';
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { loadPersons(input.value, true); }, 250);
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') dd.classList.remove('open');
+      if (e.key === 'Enter') {
+        var first = dd.querySelector('.ss-opt');
+        if (first && dd.classList.contains('open')) {
+          e.preventDefault();
+          setPerson(first.dataset.id, first.dataset.name);
+        }
+      }
+    });
+    dd.addEventListener('scroll', function () {
+      if (dd.scrollTop + dd.clientHeight >= dd.scrollHeight - 24) {
+        loadPersons(personPager.keyword, false);
+      }
+    });
+    dd.addEventListener('mousedown', function (e) {
+      var opt = e.target.closest('.ss-opt');
+      if (!opt) return;
+      e.preventDefault();
+      setPerson(opt.dataset.id, opt.dataset.name);
+    });
+    document.addEventListener('click', function (e) {
+      if (!wrap.contains(e.target)) dd.classList.remove('open');
+    });
+  }
+
+  function cell(v) {
+    if (v == null || v === '') return '';
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.replace('T', ' ');
+    return v;
+  }
+
+  function getQuery() {
+    var q = {};
+    var date = $('f-date').value;
+    var shift = ($('f-shift').value || '').trim();
+    var unit = ($('f-unit').value || '').trim();
+    var personId = $('person-id').value;
+    var personName = ($('person-input').value || '').trim();
+    if (date) q.date = date;
+    if (shift) q.shift = shift;
+    if (unit) q.unit = unit;
+    if (personId) q.person = personId;
+    else if (personName) q.person = personName;
+    return q;
+  }
+
+  function fetchRows(q) {
+    var p = new URLSearchParams(q);
+    return fetch(EXPORT_API + (p.toString() ? '?' + p : ''), { credentials: 'include' })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = text ? JSON.parse(text) : null; } catch (e) {}
+          if (!res.ok) throw new Error((json && json.message) || text || ('HTTP ' + res.status));
+          if (Array.isArray(json)) return json;
+          if (json && Array.isArray(json.data)) return json.data;
+          if (json && Array.isArray(json.list)) return json.list;
+          return [];
+        });
+      });
+  }
+
+  function exportRows(rows) {
+    if (!rows.length) return toast('暂无数据可导出');
+    if (!window.XLSX) return toast('导出组件未加载');
+    var header = ['值班日期', '班次时间', '所在单位', '带班领导', '实际开始时间', '实际交班时间', '值班内容摘要', '状态'];
+    var data = rows.map(function (r) {
+      return [
+        cell(r.dutyDate), cell(r.shift), cell(r.unit), cell(r.leader),
+        cell(r.actualStart), cell(r.actualEnd), cell(r.summary), cell(r.status)
+      ];
+    });
+    var ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '值班记录');
+    XLSX.writeFile(wb, '值班记录.xlsx');
+    toast('已导出 ' + rows.length + ' 条');
+  }
+
+  $('reset-btn').addEventListener('click', function () {
+    $('f-date').value = '';
+    $('f-shift').value = '';
+    $('f-unit').value = '';
+    setPerson('', '');
+  });
+
+  $('export-btn').addEventListener('click', function () {
+    var btn = $('export-btn');
+    btn.disabled = true;
+    fetchRows(getQuery()).then(function (rows) {
+      exportRows(rows);
+    }).catch(function (err) {
+      toast((err && err.message) || '导出失败');
+    }).then(function () {
+      btn.disabled = false;
+    });
+  });
+
+  bindPersonSelect();
+})();
+</script>
+</body>
+</html>

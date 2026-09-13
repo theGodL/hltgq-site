@@ -44,8 +44,9 @@ import java.util.Set;
  *       未匹配、重名的项忽略并在行结果提示；全部项均未匹配判行失败</li>
  * </ul>
  *
- * <p>关系中间表（巡查范围/巡检人员）为直写平台关系表，表名/field_id 按平台命名约定推导，
- * 属联调核对项（见 PatrolScheduleMapper 注释与服务日志 [巡查导入] 关系表写入）。
+ * <p>关系中间表（巡查范围/巡检人员）为直写平台关系表：表名已按平台元数据实证（t_lcode_model 关系模型
+ * fun_code → 物理表，见 PatrolScheduleMapper 注释），列结构取同型专表实测形态；
+ * 服务日志 [巡查导入] 关系表写入 打印实际写入条数。
  */
 @Service
 public class PatrolScheduleImportService {
@@ -88,12 +89,6 @@ public class PatrolScheduleImportService {
         PLAN_TYPE_CODES.put("#1#", "#1#");
         PLAN_TYPE_CODES.put("#zjgg#", "#zjgg#");
     }
-
-    /** 关系表 field_id：巡查范围多选字段 key（联调核对项，见 PatrolScheduleMapper） */
-    private static final String FIELD_SCOPE_SITE = "inspection_scope_site";
-
-    /** 关系表 field_id：巡检人员多选字段 key（联调核对项，见 PatrolScheduleMapper） */
-    private static final String FIELD_USER = "user";
 
     /** 多值分隔符：顿号为主，兼容逗号/竖线/全角分号 */
     private static final String MULTI_VALUE_SEPARATOR = "[、,|；]+";
@@ -298,17 +293,18 @@ public class PatrolScheduleImportService {
                 @Override
                 protected void doInTransactionWithoutResult(TransactionStatus status) {
                     mapper.insert(entity);
+                    int siteOrder = 1;
                     for (String siteId : scopeSiteIds) {
                         mapper.insertSiteRelation(shortIdGenerator.nextUUID(null), siteId,
-                                entity.getId(), FIELD_SCOPE_SITE, corpCode, now, creatorId);
+                                entity.getId(), String.valueOf(siteOrder++), corpCode, now, creatorId);
                     }
+                    int userOrder = 1;
                     for (String userId : inspectorIds) {
                         mapper.insertUserRelation(shortIdGenerator.nextUUID(null), userId,
-                                entity.getId(), FIELD_USER, corpCode, now, creatorId);
+                                entity.getId(), String.valueOf(userOrder++), corpCode, now, creatorId);
                     }
-                    log.info("[巡查导入] 关系表写入：计划id={}, 编号={}, 巡查范围={}条(field_id={}), 巡检人员={}条(field_id={})",
-                            entity.getId(), entity.getCode(), scopeSiteIds.size(), FIELD_SCOPE_SITE,
-                            inspectorIds.size(), FIELD_USER);
+                    log.info("[巡查导入] 关系表写入：计划id={}, 编号={}, 巡查范围={}条, 巡检人员={}条",
+                            entity.getId(), entity.getCode(), scopeSiteIds.size(), inspectorIds.size());
                 }
             });
         } catch (Exception e) {

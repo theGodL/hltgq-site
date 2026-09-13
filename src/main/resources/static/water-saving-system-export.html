@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>节水体系导出</title>
+<script src="./lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:#fff;color:#333;font-size:14px;
+  display:flex;flex-direction:column;
+}
+.page{flex:1;min-height:0;display:flex;flex-direction:column;padding:20px 24px 16px}
+
+.filter-list{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0}
+.filter-item{display:flex;align-items:center;gap:12px}
+.filter-item label{width:72px;flex-shrink:0;color:#666;text-align:right}
+.filter-item input,.filter-item select{
+  height:32px;width:280px;border:1px solid #d9d9d9;border-radius:6px;
+  padding:0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;
+}
+.filter-item select{
+  padding-right:28px;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.filter-item input:focus,.filter-item select:focus,.yp-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12)}
+.yp{position:relative;width:280px}
+.yp-input{
+  width:100%;height:32px;border:1px solid #d9d9d9;border-radius:6px;
+  padding:0 32px 0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;cursor:pointer;
+}
+.yp-input::placeholder{color:#bfbfbf}
+.yp-ico{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#bfbfbf;pointer-events:none}
+.yp-panel{
+  display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:30;
+  width:420px;max-width:calc(100vw - 48px);background:#fff;border-radius:8px;
+  box-shadow:0 6px 16px rgba(0,0,0,.12);padding:12px 16px 16px;
+}
+.yp.open .yp-panel{display:block}
+.yp-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.yp-range{flex:1;text-align:center;font-size:14px;color:#262626}
+.yp-nav{width:24px;height:24px;border:none;background:transparent;cursor:pointer;color:#8c8c8c;font-size:16px;line-height:24px}
+.yp-nav:hover{color:#1677ff}
+.yp-cols{display:flex;gap:16px}
+.yp-col{flex:1}
+.yp-col-title{text-align:center;font-size:13px;color:#262626;margin-bottom:8px}
+.yp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.yp-cell{
+  height:28px;border:none;background:transparent;border-radius:4px;
+  font-size:13px;color:#262626;cursor:pointer;font-family:inherit;
+}
+.yp-cell:hover{background:#e6f4ff;color:#1677ff}
+.yp-cell.active{background:#1677ff;color:#fff}
+.yp-cell.out{color:#bfbfbf}
+
+.foot{flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;padding-top:20px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
+}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff}
+.btn-default{color:#595959;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+.toast{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+  background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
+  font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="filter-list">
+    <div class="filter-item">
+      <label>指标名称</label>
+      <input type="text" id="f-name" placeholder="不填则不按名称筛选" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <label>年度</label>
+      <div class="yp" id="year-picker">
+        <input type="text" class="yp-input" id="f-year" placeholder="不选则不按年度筛选" readonly autocomplete="off">
+        <span class="yp-ico">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </span>
+        <div class="yp-panel" id="year-panel"></div>
+      </div>
+    </div>
+    <div class="filter-item">
+      <label>状态</label>
+      <select id="f-status">
+        <option value="">全部（不按状态筛选）</option>
+        <option value="待填报">待填报</option>
+        <option value="已填报">已填报</option>
+        <option value="审核中">审核中</option>
+        <option value="已退回">已退回</option>
+        <option value="已归档">已归档</option>
+      </select>
+    </div>
+  </div>
+  <div class="foot">
+    <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+    <button type="button" class="btn btn-primary" id="export-btn">导出</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var API = '/hltgq-site/water-saving-indicator/list';
+  var yearDecade = Math.floor(new Date().getFullYear() / 10) * 10;
+
+  function renderYearPanel() {
+    var selected = $('f-year').value;
+    var left = yearDecade;
+    var right = yearDecade + 10;
+    var html = '<div class="yp-hd">' +
+      '<button type="button" class="yp-nav" data-nav="-10">&lt;&lt;</button>' +
+      '<div class="yp-range">' + left + '年—' + (left + 9) + '年　　' + right + '年—' + (right + 9) + '年</div>' +
+      '<button type="button" class="yp-nav" data-nav="10">&gt;&gt;</button>' +
+      '</div><div class="yp-cols">';
+    [left, right].forEach(function (start) {
+      html += '<div class="yp-col"><div class="yp-col-title">' + start + '年—' + (start + 9) + '年</div><div class="yp-grid">';
+      for (var i = -1; i < 11; i++) {
+        var y = start + i;
+        var cls = 'yp-cell' + (String(y) === selected ? ' active' : '') + (i < 0 || i > 9 ? ' out' : '');
+        html += '<button type="button" class="' + cls + '" data-year="' + y + '">' + y + '</button>';
+      }
+      html += '</div></div>';
+    });
+    html += '</div>';
+    $('year-panel').innerHTML = html;
+  }
+
+  function bindYearPicker() {
+    var wrap = $('year-picker');
+    var input = $('f-year');
+    input.addEventListener('click', function () {
+      wrap.classList.toggle('open');
+      if (wrap.classList.contains('open')) renderYearPanel();
+    });
+    $('year-panel').addEventListener('click', function (e) {
+      var nav = e.target.closest('[data-nav]');
+      if (nav) {
+        yearDecade += Number(nav.dataset.nav);
+        renderYearPanel();
+        return;
+      }
+      var cellEl = e.target.closest('[data-year]');
+      if (!cellEl) return;
+      input.value = cellEl.dataset.year;
+      wrap.classList.remove('open');
+    });
+    document.addEventListener('click', function (e) {
+      if (!wrap.contains(e.target)) wrap.classList.remove('open');
+    });
+  }
+
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  function cell(v) {
+    if (v == null || v === '') return '';
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.replace('T', ' ');
+    return v;
+  }
+
+  function getQuery() {
+    var q = {};
+    var name = ($('f-name').value || '').trim();
+    var year = ($('f-year').value || '').trim();
+    var status = $('f-status').value || '';
+    if (name) q.name = name;
+    if (year) q.year = year;
+    if (status) q.status = status;
+    return q;
+  }
+
+  function fetchRows(q) {
+    var p = new URLSearchParams(q);
+    return fetch(API + (p.toString() ? '?' + p : ''), { credentials: 'include' })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = text ? JSON.parse(text) : null; } catch (e) {}
+          if (!res.ok) throw new Error((json && json.message) || text || ('HTTP ' + res.status));
+          if (Array.isArray(json)) return json;
+          if (json && Array.isArray(json.data)) return json.data;
+          if (json && Array.isArray(json.list)) return json.list;
+          return [];
+        });
+      });
+  }
+
+  function exportRows(rows) {
+    if (!rows.length) return toast('暂无数据可导出');
+    if (!window.XLSX) return toast('导出组件未加载');
+    var header = ['指标名称', '年度', '目标值', '状态', '审核意见', '更新时间'];
+    var data = rows.map(function (r) {
+      return [cell(r.name), cell(r.year), cell(r.target), cell(r.status), cell(r.reviewOpinion), cell(r.updatedAt)];
+    });
+    var ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '节水体系');
+    XLSX.writeFile(wb, '节水体系.xlsx');
+    toast('已导出 ' + rows.length + ' 条');
+  }
+
+  $('reset-btn').addEventListener('click', function () {
+    $('f-name').value = '';
+    $('f-year').value = '';
+    $('f-status').value = '';
+  });
+
+  $('export-btn').addEventListener('click', function () {
+    var btn = $('export-btn');
+    btn.disabled = true;
+    fetchRows(getQuery()).then(function (rows) {
+      exportRows(rows);
+    }).catch(function (err) {
+      toast((err && err.message) || '导出失败');
+    }).then(function () {
+      btn.disabled = false;
+    });
+  });
+
+  bindYearPicker();
+})();
+</script>
+</body>
+</html>

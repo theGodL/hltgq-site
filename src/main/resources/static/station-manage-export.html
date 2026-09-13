@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>站点管理导出</title>
+<script src="./lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:#fff;color:#333;font-size:14px;
+  display:flex;flex-direction:column;
+}
+.page{flex:1;min-height:0;display:flex;flex-direction:column;padding:20px 24px 16px}
+
+.filter-list{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0}
+.filter-item{display:flex;align-items:center;gap:12px}
+.filter-item label{width:72px;flex-shrink:0;color:#666;text-align:right}
+.filter-item input,.filter-item select{
+  height:32px;width:280px;border:1px solid #d9d9d9;border-radius:6px;
+  padding:0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;
+}
+.filter-item select{
+  padding-right:28px;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.filter-item input:focus,.filter-item select:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12)}
+
+.foot{flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;padding-top:20px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
+}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff}
+.btn-default{color:#595959;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+.toast{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+  background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
+  font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="filter-list">
+    <div class="filter-item">
+      <label>站点编号</label>
+      <input type="text" id="f-code" placeholder="不填则不按编号筛选" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <label>站点名称</label>
+      <input type="text" id="f-name" placeholder="不填则不按名称筛选" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <label>站点状态</label>
+      <select id="f-status">
+        <option value="">全部（不按状态筛选）</option>
+        <option value="在线">在线</option>
+        <option value="离线">离线</option>
+      </select>
+    </div>
+  </div>
+  <div class="foot">
+    <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+    <button type="button" class="btn btn-primary" id="export-btn">导出</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var API = '/hltgq-site/station-data/list';
+
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  function cell(v) {
+    return v == null || v === '' ? '' : v;
+  }
+
+  function getQuery() {
+    var q = {};
+    var code = ($('f-code').value || '').trim();
+    var name = ($('f-name').value || '').trim();
+    var status = $('f-status').value || '';
+    if (code) q.code = code;
+    if (name) q.name = name;
+    if (status) q.status = status;
+    return q;
+  }
+
+  function fetchRows(q) {
+    var p = new URLSearchParams(q);
+    return fetch(API + (p.toString() ? '?' + p : ''), { credentials: 'include' })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = text ? JSON.parse(text) : null; } catch (e) {}
+          if (!res.ok) throw new Error((json && json.message) || text || ('HTTP ' + res.status));
+          if (Array.isArray(json)) return json;
+          if (json && Array.isArray(json.data)) return json.data;
+          if (json && Array.isArray(json.list)) return json.list;
+          return [];
+        });
+      });
+  }
+
+  function exportRows(rows) {
+    if (!rows.length) return toast('暂无数据可导出');
+    if (!window.XLSX) return toast('导出组件未加载');
+    var header = ['站点名称', '站点编号', '站点位置', '坐标定位', '经度', '纬度', '监测类型', '站点状态', '核心指标-水位', '核心指标-雨量', '监测方法', '负责人', '联系电话'];
+    var data = rows.map(function (r) {
+      return [
+        cell(r.name), String(cell(r.code)), cell(r.location), cell(r.lnglat),
+        cell(r.lon), cell(r.lat), cell(r.type), cell(r.status),
+        cell(r.waterIndicator), cell(r.rainIndicator), cell(r.method),
+        cell(r.owner), cell(r.phone)
+      ];
+    });
+    var ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+    data.forEach(function (_, i) {
+      var cellB = ws['B' + (i + 2)];
+      if (cellB) { cellB.t = 's'; cellB.z = '@'; cellB.v = String(cellB.v == null ? '' : cellB.v); }
+    });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '站点管理');
+    XLSX.writeFile(wb, '站点管理.xlsx');
+    toast('已导出 ' + rows.length + ' 条');
+  }
+
+  $('reset-btn').addEventListener('click', function () {
+    $('f-code').value = '';
+    $('f-name').value = '';
+    $('f-status').value = '';
+  });
+
+  $('export-btn').addEventListener('click', function () {
+    var btn = $('export-btn');
+    btn.disabled = true;
+    fetchRows(getQuery()).then(function (rows) {
+      exportRows(rows);
+    }).catch(function (err) {
+      toast((err && err.message) || '导出失败');
+    }).then(function () {
+      btn.disabled = false;
+    });
+  });
+})();
+</script>
+</body>
+</html>

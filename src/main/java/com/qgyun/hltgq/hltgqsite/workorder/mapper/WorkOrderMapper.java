@@ -17,6 +17,8 @@ public interface WorkOrderMapper {
      * <p>site 参数支持 站点 id / 站点编号 iofhpi / 站点名称 zzkaec 三写法；
      * 部门名按 org（部门 id 或短码 code）双匹配；"time"/"user" 为关键字列需双引号；
      * 处理时间过滤按 pyxcen 半开区间 [startTime, endTime)。
+     * <p>关联问题取数：工单表无「关联问题记录」物理列（表单字段 azgquf 仅存在于表单定义，
+     * 运行实证报列不存在），改由问题记录表 work_order_id 反查（与站点详情问题记录同口径）。
      */
     @Select("<script>" +
             "SELECT w.id AS id, w.code AS code, w.title AS title, w.qjulvf AS typeCode, " +
@@ -24,13 +26,13 @@ public interface WorkOrderMapper {
             "w.device AS deviceId, d.name AS deviceName, w.org AS orgId, o.name AS orgName, " +
             "w.\"user\" AS userId, u.name AS userName, w.\"time\" AS \"time\", " +
             "w.pyxcen AS handleTime, w.result AS result, w.status AS statusCode, " +
-            "w.azgquf AS issueId, i.title AS issueTitle " +
+            "(SELECT i.id FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" i WHERE i.work_order_id = w.id LIMIT 1) AS issueId, " +
+            "(SELECT string_agg(i.title, '、') FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" i WHERE i.work_order_id = w.id) AS issueTitle " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_work_order\" w " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON w.site = s.id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d ON w.device = d.id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_org\" o ON (o.id = w.org OR o.code = w.org) AND o.corp_code = 'hltgq' " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" u ON w.\"user\" = u.id " +
-            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" i ON w.azgquf = i.id " +
             "WHERE w.corp_code = 'hltgq' " +
             "<if test='site != null and site != \"\"'>AND (w.site = #{site} OR s.zzkaec = #{site} OR s.iofhpi = #{site}) </if>" +
             "<if test='startTime != null'>AND w.pyxcen &gt;= #{startTime} </if>" +

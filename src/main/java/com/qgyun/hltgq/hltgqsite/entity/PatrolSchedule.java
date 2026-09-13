@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
  * 隐藏统计列（pwtlmi 预算金额 / ftumeu~zxvbxm 巡查统计与考核）不映射不写入。
  * <p>时间口径：start_time / end_time 库中存 'YYYY-MM-DD 00:00:00'，导入按当日零点落库。
  * <p>巡查范围 / 巡检人员为多对多关系（主表无列），落库在中间表
- * （见 patrol.mapper.PatrolScheduleMapper，联调核对项）。
+ * （表名与列结构均已实证，见 patrol.mapper.PatrolScheduleMapper）。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

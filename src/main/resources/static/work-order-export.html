@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工单管理导出</title>
+<script src="./lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:#fff;color:#333;font-size:14px;
+  display:flex;flex-direction:column;
+}
+.page{flex:1;min-height:0;display:flex;flex-direction:column;padding:20px 24px 16px}
+
+.filter-list{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0}
+.filter-item{display:flex;align-items:center;gap:12px}
+.filter-item label{width:72px;flex-shrink:0;color:#666;text-align:right}
+.filter-item input[type=date],.filter-item select{
+  height:32px;width:280px;border:1px solid #d9d9d9;border-radius:6px;
+  padding:0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;
+}
+.filter-item select{
+  padding-right:28px;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.filter-item input:focus,.filter-item select:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12)}
+.date-range{display:flex;align-items:center;gap:8px;width:280px}
+.date-range input{width:0;flex:1;min-width:0}
+.date-sep{color:#bbb;flex-shrink:0}
+
+.ss{position:relative;width:280px}
+.ss-input{
+  width:100%;height:32px;border:1px solid #d9d9d9;border-radius:6px;
+  padding:0 28px 0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.ss-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12)}
+.ss-input::placeholder{color:#bfbfbf}
+.ss-dd{
+  display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;
+  max-height:240px;overflow-y:auto;background:#fff;border:1px solid #d9d9d9;
+  border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08);
+}
+.ss-dd.open{display:block}
+.ss-opt{padding:8px 12px;cursor:pointer;color:#262626}
+.ss-opt:hover,.ss-opt.active{background:#e6f4ff;color:#1677ff}
+.ss-empty{padding:10px 12px;color:#bfbfbf;font-size:13px}
+
+.foot{flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;padding-top:20px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
+}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff}
+.btn-default{color:#595959;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+.toast{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+  background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
+  font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="filter-list">
+    <div class="filter-item">
+      <label>所属站点</label>
+      <div class="ss" id="site-ss">
+        <input type="text" class="ss-input" id="site-input" placeholder="不选则不按站点筛选" autocomplete="off">
+        <input type="hidden" id="site-id" value="">
+        <div class="ss-dd" id="site-dd"></div>
+      </div>
+    </div>
+    <div class="filter-item">
+      <label>处理时间</label>
+      <div class="date-range">
+        <input type="date" id="f-start">
+        <span class="date-sep">—</span>
+        <input type="date" id="f-end">
+      </div>
+    </div>
+    <div class="filter-item">
+      <label>状态</label>
+      <select id="f-status">
+        <option value="">全部（不按状态筛选）</option>
+        <option value="待处理">待处理</option>
+        <option value="处理中">处理中</option>
+        <option value="已关闭">已关闭</option>
+        <option value="已取消">已取消</option>
+        <option value="已逾期">已逾期</option>
+      </select>
+    </div>
+  </div>
+  <div class="foot">
+    <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+    <button type="button" class="btn btn-primary" id="export-btn">导出</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var SITE_API = '/qx-api/qx-apaas-run/rt/4idWo4GcvCd8fWPQSif/m/J4y9B5D8MgxSvFf7vmU/search';
+  var EXPORT_API = '/hltgq-site/work-order/list';
+
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function getCookie(name) {
+    var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&') + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  function qs(name) {
+    return new URLSearchParams(location.search).get(name) || '';
+  }
+
+  function parentVal(keys) {
+    try {
+      var w = window.parent && window.parent !== window ? window.parent : null;
+      var srcs = [window, w];
+      for (var i = 0; i < srcs.length; i++) {
+        var ctx = srcs[i];
+        if (!ctx) continue;
+        for (var k = 0; k < keys.length; k++) {
+          var v = ctx[keys[k]];
+          if (typeof v === 'string' && v) return v;
+        }
+      }
+    } catch (e) {}
+    return '';
+  }
+
+  function pickRuntime(names, cookies) {
+    var i, v;
+    for (i = 0; i < names.length; i++) {
+      v = qs(names[i]);
+      if (v) return v;
+    }
+    v = parentVal(names);
+    if (v) return v;
+    for (i = 0; i < (cookies || []).length; i++) {
+      v = getCookie(cookies[i]);
+      if (v) return v;
+    }
+    return '';
+  }
+
+  function platformHeaders() {
+    var headers = {
+      'Accept': 'application/json, text/plain, */*',
+      'Content-Type': 'application/json;charset=UTF-8'
+    };
+    var auth = pickRuntime(['Authorization', 'authorization'], ['TOKEN', 'QIXIAO_TOKEN', 'sessionid', 'qixiao_hltgq_session']);
+    if (auth) headers.Authorization = auth;
+    return headers;
+  }
+
+  function buildSearchBody(keyword, pageNum) {
+    var filterSet = [];
+    var kw = (keyword || '').trim();
+    if (kw) {
+      filterSet.push({ field: 'dataTitle', op: 'LIKE', value: kw });
+    }
+    return {
+      autoCount: true,
+      sortField: null,
+      queryFields: ['dataTitle'],
+      sort: null,
+      filter: { filterSet: filterSet, conjunction: 'AND' },
+      pageNum: pageNum || 1,
+      pageSize: 20
+    };
+  }
+
+  var sitePager = { keyword: '', pageNum: 0, hasNext: true, loading: false, list: [] };
+
+  function mapSite(x) {
+    return { id: String(x.id || ''), name: String(x.dataTitle || x.id || '') };
+  }
+
+  function renderDd() {
+    var dd = $('site-dd');
+    var cur = $('site-id').value;
+    var list = sitePager.list;
+    var html = '';
+    if (!list.length && !sitePager.loading) {
+      html = '<div class="ss-empty">无匹配站点</div>';
+    } else {
+      html = list.map(function (s) {
+        return '<div class="ss-opt' + (s.id === cur ? ' active' : '') + '" data-id="' + esc(s.id) + '" data-name="' + esc(s.name) + '">' +
+          esc(s.name) + '</div>';
+      }).join('');
+      if (sitePager.loading) html += '<div class="ss-empty">加载中…</div>';
+      else if (!sitePager.hasNext && list.length) html += '<div class="ss-empty">没有更多了</div>';
+    }
+    dd.innerHTML = html;
+    dd.classList.add('open');
+  }
+
+  function fetchSitePage(pageNum, keyword) {
+    return fetch(SITE_API, {
+      method: 'POST',
+      credentials: 'include',
+      headers: platformHeaders(),
+      body: JSON.stringify(buildSearchBody(keyword, pageNum))
+    }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).then(function (json) {
+      var data = json && json.data ? json.data : {};
+      var list = (data.list || []).map(mapSite).filter(function (s) { return s.id || s.name; });
+      var hasNext = data.hasNextPage === true || (Number(data.pageNum) || pageNum) < (Number(data.pages) || 0);
+      return { list: list, hasNext: hasNext, pageNum: Number(data.pageNum) || pageNum };
+    });
+  }
+
+  function loadSites(keyword, reset) {
+    if (sitePager.loading) return;
+    if (!reset && !sitePager.hasNext) return;
+    if (reset) {
+      sitePager.keyword = keyword || '';
+      sitePager.pageNum = 0;
+      sitePager.hasNext = true;
+      sitePager.list = [];
+    }
+    var nextPage = sitePager.pageNum + 1;
+    sitePager.loading = true;
+    renderDd();
+    fetchSitePage(nextPage, sitePager.keyword).then(function (pg) {
+      var seen = {};
+      sitePager.list.forEach(function (s) { seen[s.id] = true; });
+      pg.list.forEach(function (s) {
+        if (!seen[s.id]) {
+          seen[s.id] = true;
+          sitePager.list.push(s);
+        }
+      });
+      sitePager.pageNum = pg.pageNum;
+      sitePager.hasNext = pg.hasNext && pg.list.length > 0;
+    }).catch(function () {
+      sitePager.hasNext = false;
+    }).then(function () {
+      sitePager.loading = false;
+      renderDd();
+    });
+  }
+
+  function setSite(id, name) {
+    $('site-id').value = id || '';
+    $('site-input').value = name || '';
+    $('site-dd').classList.remove('open');
+  }
+
+  var searchTimer = null;
+  function bindSiteSelect() {
+    var input = $('site-input');
+    var dd = $('site-dd');
+    var wrap = $('site-ss');
+
+    function openIfClosed() {
+      if (!dd.classList.contains('open')) loadSites('', true);
+    }
+    input.addEventListener('focus', openIfClosed);
+    input.addEventListener('click', openIfClosed);
+    input.addEventListener('input', function () {
+      $('site-id').value = '';
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { loadSites(input.value, true); }, 250);
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') dd.classList.remove('open');
+      if (e.key === 'Enter') {
+        var first = dd.querySelector('.ss-opt');
+        if (first && dd.classList.contains('open')) {
+          e.preventDefault();
+          setSite(first.dataset.id, first.dataset.name);
+        }
+      }
+    });
+    dd.addEventListener('scroll', function () {
+      if (dd.scrollTop + dd.clientHeight >= dd.scrollHeight - 24) {
+        loadSites(sitePager.keyword, false);
+      }
+    });
+    dd.addEventListener('mousedown', function (e) {
+      var opt = e.target.closest('.ss-opt');
+      if (!opt) return;
+      e.preventDefault();
+      setSite(opt.dataset.id, opt.dataset.name);
+    });
+    document.addEventListener('click', function (e) {
+      if (!wrap.contains(e.target)) dd.classList.remove('open');
+    });
+  }
+
+  function cell(v) {
+    if (v == null || v === '') return '';
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.replace('T', ' ');
+    return v;
+  }
+
+  function getQuery() {
+    var q = {};
+    var id = $('site-id').value;
+    var name = ($('site-input').value || '').trim();
+    var start = $('f-start').value;
+    var end = $('f-end').value;
+    var status = $('f-status').value;
+    if (id) q.site = id;
+    else if (name) q.site = name;
+    if (start) q.startDate = start;
+    if (end) q.endDate = end;
+    if (status) q.status = status;
+    return q;
+  }
+
+  function fetchOrders(q) {
+    var p = new URLSearchParams(q);
+    return fetch(EXPORT_API + (p.toString() ? '?' + p : ''), { credentials: 'include' })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = text ? JSON.parse(text) : null; } catch (e) {}
+          if (!res.ok) throw new Error((json && json.message) || text || ('HTTP ' + res.status));
+          if (Array.isArray(json)) return json;
+          if (json && Array.isArray(json.data)) return json.data;
+          if (json && Array.isArray(json.list)) return json.list;
+          return [];
+        });
+      });
+  }
+
+  function exportRows(rows) {
+    if (!rows.length) return toast('暂无数据可导出');
+    if (!window.XLSX) return toast('导出组件未加载');
+    var header = ['工单编号', '工单标题', '工单类型', '内容描述', '所属站点', '关联设备', '负责部门', '处理人员', '要求完成时间', '处理时间', '处理结果', '状态', '关联问题'];
+    var data = rows.map(function (r) {
+      return [
+        String(cell(r.code)), cell(r.title), cell(r.type), cell(r.content),
+        cell(r.siteName), cell(r.deviceName), cell(r.orgName), cell(r.userName),
+        cell(r.time), cell(r.handleTime), cell(r.result), cell(r.status), cell(r.issueTitle)
+      ];
+    });
+    var ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+    data.forEach(function (_, i) {
+      var c = ws['A' + (i + 2)];
+      if (c) { c.t = 's'; c.z = '@'; c.v = String(c.v == null ? '' : c.v); }
+    });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '工单管理');
+    XLSX.writeFile(wb, '工单管理.xlsx');
+    toast('已导出 ' + rows.length + ' 条');
+  }
+
+  $('reset-btn').addEventListener('click', function () {
+    setSite('', '');
+    $('f-start').value = '';
+    $('f-end').value = '';
+    $('f-status').value = '';
+  });
+
+  $('export-btn').addEventListener('click', function () {
+    var btn = $('export-btn');
+    btn.disabled = true;
+    fetchOrders(getQuery()).then(function (rows) {
+      exportRows(rows);
+    }).catch(function (err) {
+      toast((err && err.message) || '导出失败');
+    }).then(function () {
+      btn.disabled = false;
+    });
+  });
+
+  bindSiteSelect();
+})();
+</script>
+</body>
+</html>

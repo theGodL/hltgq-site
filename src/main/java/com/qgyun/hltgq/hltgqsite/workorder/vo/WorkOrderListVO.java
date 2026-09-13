@@ -70,9 +70,9 @@ public class WorkOrderListVO {
     /** 状态编码原文（status，权威值） */
     private String statusCode;
 
-    /** 关联问题记录 id（azgquf） */
+    /** 关联问题记录 id（问题表 work_order_id 反查工单取一条，未关联为 null；工单主表无该列） */
     private String issueId;
 
-    /** 关联问题名称（JOIN 问题表 title，未关联为 null） */
+    /** 关联问题名称（问题表按 work_order_id 反查「、」拼接，未关联为 null） */
     private String issueTitle;
 }

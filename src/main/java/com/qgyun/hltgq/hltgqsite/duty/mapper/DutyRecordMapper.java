@@ -14,8 +14,9 @@ public interface DutyRecordMapper {
     /**
      * 值班记录列表：按值班日期倒序（id 兜底）。
      * <p>值班日期过滤：yaaebo 兼容时间戳与文本两种形态，用 [当日, 次日) 半开区间字符串比较；
-     * 人员过滤同时匹配值班人员多选列 _d_10233_ahygpx（LIKE，值形态为联调核对项）
-     * 与带班领导 atfzxl（关键词与解析出的 userId 双试）。
+     * 人员过滤同时匹配值班人员多选列 _d_10233_ahygpx 与带班领导 atfzxl；
+     * 多选列双路 LIKE（原文 + 解析出的用户 id），兼容 ID/姓名两种存储形态（personId 非空才拼，
+     * 避免 PG CONCAT 忽略 NULL 导致 LIKE '%%' 恒真）。
      */
     @Select("<script>" +
             "SELECT d.id AS id, d.yaaebo AS dutyDateRaw, d.lzcjgq AS shift, d.sdcgli AS unit, " +
@@ -28,6 +29,7 @@ public interface DutyRecordMapper {
             "<if test='shift != null and shift != \"\"'>AND d.lzcjgq LIKE CONCAT('%', #{shift}, '%') </if>" +
             "<if test='unit != null and unit != \"\"'>AND d.sdcgli LIKE CONCAT('%', #{unit}, '%') </if>" +
             "<if test='person != null and person != \"\"'>AND (d._d_10233_ahygpx LIKE CONCAT('%', #{person}, '%') " +
+            "<if test='personId != null'>OR d._d_10233_ahygpx LIKE CONCAT('%', #{personId}, '%') </if>" +
             "OR d.atfzxl = #{person} OR d.atfzxl = #{personId}) </if>" +
             "ORDER BY d.yaaebo DESC, d.id DESC" +
             "</script>")

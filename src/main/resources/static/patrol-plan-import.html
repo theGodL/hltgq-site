@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>巡检计划导入</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:#fff;color:#333;font-size:14px;
+  display:flex;flex-direction:column;
+}
+.page{flex:1;min-height:0;display:flex;flex-direction:column;padding:20px 24px 16px}
+.tip{color:#8c8c8c;font-size:13px;line-height:22px;margin-bottom:16px}
+.tip a{color:#1677ff;cursor:pointer;text-decoration:none}
+.tip a:hover{opacity:.85}
+
+.drop{
+  flex:1;min-height:120px;border:1px dashed #d9d9d9;border-radius:8px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;color:#8c8c8c;cursor:pointer;transition:border-color .2s,background .2s;
+}
+.drop:hover,.drop.drag{border-color:#1677ff;background:#f0f7ff;color:#1677ff}
+.drop .name{color:#262626;font-size:14px}
+.drop .meta{font-size:12px;color:#bfbfbf}
+.file{display:none}
+
+.result{
+  display:none;flex-shrink:0;margin-top:12px;max-height:180px;overflow:auto;
+  border:1px solid #f0f0f0;border-radius:8px;padding:10px 12px;
+}
+.result.show{display:block}
+.result-sum{font-size:13px;color:#262626;margin-bottom:6px}
+.result-row{font-size:12px;line-height:20px;color:#595959}
+.result-row.ok{color:#389e0d}
+.result-row.fail{color:#cf1322}
+
+.foot{flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;padding-top:16px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
+}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff}
+.btn-default{color:#595959;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+.toast{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+  background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
+  font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="tip">请先<a id="tpl-btn">下载导入模板</a>，按模板填写后上传。</div>
+  <div class="drop" id="drop">
+    <div>点击或拖拽文件到此处</div>
+    <div class="name" id="file-name"></div>
+    <div class="meta" id="file-meta">支持 .xlsx，单次一个文件</div>
+  </div>
+  <input class="file" id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+  <div class="result" id="result">
+    <div class="result-sum" id="result-sum"></div>
+    <div id="result-list"></div>
+  </div>
+  <div class="foot">
+    <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+    <button type="button" class="btn btn-primary" id="import-btn">导入</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var TPL_API = '/hltgq-site/patrol-schedule/import-template';
+  var IMPORT_API = '/hltgq-site/patrol-schedule/import';
+  var selected = null;
+
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  function parseJson(text) {
+    try { return text ? JSON.parse(text) : null; } catch (e) { return null; }
+  }
+
+  function readError(res, text) {
+    var json = parseJson(text);
+    return (json && (json.message || json.msg)) || text || ('HTTP ' + res.status);
+  }
+
+  function filenameFromDisposition(dispo) {
+    if (!dispo) return '巡查计划导入模板.xlsx';
+    var star = dispo.match(/filename\*=UTF-8''([^;]+)/i);
+    if (star) {
+      try { return decodeURIComponent(star[1]); } catch (e) { return star[1]; }
+    }
+    var plain = dispo.match(/filename="?([^";]+)"?/i);
+    return plain ? plain[1] : '巡查计划导入模板.xlsx';
+  }
+
+  function downloadTemplate() {
+    return fetch(TPL_API, { credentials: 'include' }).then(function (res) {
+      return res.blob().then(function (blob) {
+        if (!res.ok) {
+          return blob.text().then(function (text) {
+            throw new Error(readError(res, text));
+          });
+        }
+        var name = filenameFromDisposition(res.headers.get('Content-Disposition'));
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+    });
+  }
+
+  function setFile(file) {
+    if (!file) return;
+    if (!/\.xlsx$/i.test(file.name)) return toast('请上传 .xlsx 文件');
+    selected = file;
+    $('file-name').textContent = file.name;
+    $('file-meta').textContent = (file.size / 1024).toFixed(1) + ' KB';
+    hideResult();
+  }
+
+  function hideResult() {
+    $('result').classList.remove('show');
+    $('result-sum').textContent = '';
+    $('result-list').innerHTML = '';
+  }
+
+  function clearFile() {
+    selected = null;
+    $('file').value = '';
+    $('file-name').textContent = '';
+    $('file-meta').textContent = '支持 .xlsx，单次一个文件';
+    hideResult();
+  }
+
+  function showResult(data) {
+    var total = Number(data && data.total) || 0;
+    var success = Number(data && data.success) || 0;
+    var failed = Number(data && data.failed) || 0;
+    var rows = (data && data.rows) || [];
+    $('result-sum').textContent = '共 ' + total + ' 行，成功 ' + success + '，失败 ' + failed;
+    $('result-list').innerHTML = rows.map(function (r) {
+      var cls = r.ok ? 'ok' : 'fail';
+      var extra = r.code ? '（' + r.code + '）' : '';
+      var msg = r.message ? ' — ' + r.message : (r.ok ? ' — 成功' : '');
+      return '<div class="result-row ' + cls + '">第 ' + r.row + ' 行' + extra + msg + '</div>';
+    }).join('');
+    $('result').classList.add('show');
+    toast('成功 ' + success + ' / 失败 ' + failed);
+  }
+
+  function submit(file) {
+    var fd = new FormData();
+    fd.append('file', file);
+    return fetch(IMPORT_API, {
+      method: 'POST',
+      credentials: 'include',
+      body: fd
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var json = parseJson(text);
+        if (!res.ok) throw new Error(readError(res, text));
+        return json || {};
+      });
+    });
+  }
+
+  var drop = $('drop');
+  drop.addEventListener('click', function () { $('file').click(); });
+  drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', function () { drop.classList.remove('drag'); });
+  drop.addEventListener('drop', function (e) {
+    e.preventDefault();
+    drop.classList.remove('drag');
+    setFile(e.dataTransfer.files && e.dataTransfer.files[0]);
+  });
+  $('file').addEventListener('change', function () {
+    setFile(this.files && this.files[0]);
+  });
+  $('tpl-btn').addEventListener('click', function (e) {
+    e.preventDefault();
+    downloadTemplate().catch(function (err) {
+      toast((err && err.message) || '模板下载失败');
+    });
+  });
+  $('reset-btn').addEventListener('click', clearFile);
+  $('import-btn').addEventListener('click', function () {
+    if (!selected) return toast('请先选择文件');
+    var btn = $('import-btn');
+    btn.disabled = true;
+    submit(selected).then(function (data) {
+      showResult(data);
+      selected = null;
+      $('file').value = '';
+      $('file-name').textContent = '';
+      $('file-meta').textContent = '支持 .xlsx，单次一个文件';
+    }).catch(function (err) {
+      toast((err && err.message) || '导入失败');
+    }).then(function () {
+      btn.disabled = false;
+    });
+  });
+})();
+</script>
+</body>
+</html>

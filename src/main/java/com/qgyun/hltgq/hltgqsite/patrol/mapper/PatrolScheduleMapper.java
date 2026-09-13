@@ -16,16 +16,19 @@ import java.util.Map;
  * <p>主表新增走 MyBatis-Plus 内建（insert，主键 ASSIGN_UUID 短ID）；
  * 其余为手写 SQL：编号查重、站点/用户按名称（或站点编号）精确匹配、关系中间表插入。
  *
- * <p><b>关系中间表（联调核对项）</b>：巡查范围 / 巡检人员为多选多对多，主表无列（也无 _d_ 动态列，
- * 已由 INSERT 样例确认），按平台关系表命名约定推导：
+ * <p><b>关系中间表（表名已实证）</b>：巡查范围 / 巡检人员为多选多对多，主表无列（也无 _d_ 动态列，
+ * 已由 INSERT 样例确认）。表名取平台元数据实证：t_lcode_model 中巡检计划模型 fun_code=nlbdju
+ * （应用 ZzrirqCf7oZ4cudrUOY = 表前缀 knc3g），两个关系模型 fun_code=nlbdjuTkwovkRel / nlbdjuUserRel，
+ * 与库中 _rel 表清单逐一对应：
  * <ul>
- *   <li>巡查范围 → {@code t_auto_hltgq_water_patrol_schedule_inspection_scope_site_rel}</li>
- *   <li>巡检人员 → {@code t_auto_hltgq_water_patrol_schedule_user_rel}</li>
+ *   <li>巡查范围 → {@code t_auto_hltgq_knc3g_nlbdju_tkwovk_rel}</li>
+ *   <li>巡检人员 → {@code t_auto_hltgq_knc3g_nlbdju_user_rel}</li>
  * </ul>
- * 列结构按平台通用形态（与既有关系表 cols=9 吻合）：id / rel_id（关联记录id）/ biz_id（本表记录id）/
- * field_id（所属多选字段key）/ corp_code / 审计四列；field_id 取字段 key（inspection_scope_site / user）。
- * 平台自建数据经表单写入，本模块为直写；若表名或列语义与库中实际不一致，部署联调时按服务日志
- * （[巡查导入] 关系表写入）核对修正——只需改本类中对应 @Insert。
+ * 命名规律：t_auto_&lt;corp&gt;_&lt;appCode&gt;_&lt;主表code&gt;_&lt;关系模型fun_code去主表前缀与Rel后缀，驼峰转下划线小写&gt;_rel
+ * （同型对照：巡检照片 t_auto_hltgq_knc3g_ychwbx_site_image_rel、值班人员 t_auto_hltgq_yn8cm_igahxz_ahygpx_rel）。
+ * 列结构已按库中实际核对（2026-09-13 实测两表均为 9 列，与同型专表一致）：id / corp_code / 审计四列 /
+ * biz_id（本表记录id）/ rel_id（关联记录id）/ nature_order（顺序号）；无 field_id 列。
+ * 平台自建数据经表单写入，本模块为直写。
  */
 @Mapper
 public interface PatrolScheduleMapper extends BaseMapper<PatrolSchedule> {
@@ -56,31 +59,32 @@ public interface PatrolScheduleMapper extends BaseMapper<PatrolSchedule> {
     List<Map<String, Object>> selectUserMatches(@Param("name") String name);
 
     /**
-     * 巡查范围关系写入（多选多对多）：biz_id = 计划 id，rel_id = 站点 id。
-     * <p>列取平台关系表通用 9 列（不含 nature_order 等可选列），顺序与展示顺序无关。
+     * 巡查范围关系写入（多选多对多）：biz_id = 计划 id，rel_id = 站点 id，nature_order = 顺序号（1 起）。
+     * <p>列取同型专表实测形态（巡检照片关系表真实 INSERT 样例为 9 列：
+     * id/corp_code/created_at/created_by/updated_at/updated_by/biz_id/rel_id/nature_order）。
      */
-    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_schedule_inspection_scope_site_rel\" " +
-            "(\"id\", \"rel_id\", \"biz_id\", \"field_id\", \"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\") " +
-            "VALUES (#{id}, #{relId}, #{bizId}, #{fieldId}, #{corpCode}, #{now}, #{userId}, #{now}, #{userId})")
+    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_knc3g_nlbdju_tkwovk_rel\" " +
+            "(\"id\", \"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\", \"biz_id\", \"rel_id\", \"nature_order\") " +
+            "VALUES (#{id}, #{corpCode}, #{now}, #{userId}, #{now}, #{userId}, #{bizId}, #{relId}, #{natureOrder})")
     int insertSiteRelation(@Param("id") String id,
                            @Param("relId") String relId,
                            @Param("bizId") String bizId,
-                           @Param("fieldId") String fieldId,
+                           @Param("natureOrder") String natureOrder,
                            @Param("corpCode") String corpCode,
                            @Param("now") LocalDateTime now,
                            @Param("userId") String userId);
 
     /**
-     * 巡检人员关系写入（多选多对多）：biz_id = 计划 id，rel_id = 用户 id。
-     * <p>列结构同巡查范围关系表。
+     * 巡检人员关系写入（多选多对多）：biz_id = 计划 id，rel_id = 用户 id，nature_order = 顺序号（1 起）。
+     * <p>列结构同巡查范围关系表（同型专表实测 9 列）。
      */
-    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_schedule_user_rel\" " +
-            "(\"id\", \"rel_id\", \"biz_id\", \"field_id\", \"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\") " +
-            "VALUES (#{id}, #{relId}, #{bizId}, #{fieldId}, #{corpCode}, #{now}, #{userId}, #{now}, #{userId})")
+    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_knc3g_nlbdju_user_rel\" " +
+            "(\"id\", \"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\", \"biz_id\", \"rel_id\", \"nature_order\") " +
+            "VALUES (#{id}, #{corpCode}, #{now}, #{userId}, #{now}, #{userId}, #{bizId}, #{relId}, #{natureOrder})")
     int insertUserRelation(@Param("id") String id,
                            @Param("relId") String relId,
                            @Param("bizId") String bizId,
-                           @Param("fieldId") String fieldId,
+                           @Param("natureOrder") String natureOrder,
                            @Param("corpCode") String corpCode,
                            @Param("now") LocalDateTime now,
                            @Param("userId") String userId);
