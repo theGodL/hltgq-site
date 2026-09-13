@@ -90,7 +90,7 @@ public interface WaterQualityMapper {
      *
      * @param stcd      站点编号或 site UUID（必填）
      * @param startTime 起始时间（含，必填，Service 层已默认近 24h 并对齐偶数小时）
-     * @param endTime   截止时间（含，必填）
+     * @param endTime   数据过滤上界（不含，必填；Service 层传序列末桶起点 + 2h，保证末桶为完整 2h 窗）
      */
     @Select("<script>" +
             "SELECT b.tm, " +
@@ -108,7 +108,7 @@ public interface WaterQualityMapper {
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "  WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +
             "  AND n.tm &gt;= #{startTime} " +
-            "  AND n.tm &lt;= #{endTime} " +
+            "  AND n.tm &lt; #{endTime} " +
             ") b " +
             "GROUP BY b.tm " +
             "ORDER BY b.tm" +

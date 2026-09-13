@@ -78,8 +78,12 @@ public class MqStatsClient {
      * GET 并解析 {code,msg,data}：code=0 返回 data 节点，否则抛异常（调用失败/非 200 一并包装）。
      * <p>startDate/endDate（yyyy-MM-dd，含两端）可选，非空时透传 mq；null/空不传，
      * mq 按今日口径返回。参数校验（格式/区间上限）由 mq 侧负责，本层不重复校验。
+     * <p>每次调用输出一条 info 日志（接口路径 / 查询区间 / 转发耗时 ms），联调期核对慢接口直接看日志。
      */
     private JsonNode get(String path, String startDate, String endDate) {
+        long beginMs = System.currentTimeMillis();
+        String range = (StringUtils.hasText(startDate) ? startDate.trim() : "-")
+                + "~" + (StringUtils.hasText(endDate) ? endDate.trim() : "-");
         try {
             UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl + path);
             if (StringUtils.hasText(startDate)) builder.queryParam("startDate", startDate.trim());
@@ -87,16 +91,19 @@ public class MqStatsClient {
             ResponseEntity<String> response = restTemplate.getForEntity(builder.toUriString(), String.class);
             JsonNode root = objectMapper.readTree(response.getBody());
             int code = root.path("code").asInt(-1);
+            long costMs = System.currentTimeMillis() - beginMs;
             if (code != 0) {
                 String msg = root.path("msg").asText("未知错误");
-                log.error("mq stats {} business error, code={}: {}", path, code, msg);
+                log.error("mq stats {} range={} cost={}ms business error, code={}: {}", path, range, costMs, code, msg);
                 throw new MqStatsCallException("数据统计服务返回错误(" + path + "): " + msg);
             }
+            log.info("mq stats {} range={} cost={}ms", path, range, costMs);
             return root.path("data");
         } catch (MqStatsCallException e) {
             throw e;
         } catch (Exception e) {
-            log.error("mq stats {} call failed: {}", path, e.getMessage());
+            log.error("mq stats {} range={} cost={}ms call failed: {}", path, range,
+                    System.currentTimeMillis() - beginMs, e.getMessage());
             throw new MqStatsCallException("数据统计服务调用失败(" + path + "): " + e.getMessage(), e);
         }
     }

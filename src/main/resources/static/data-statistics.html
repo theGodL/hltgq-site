@@ -798,13 +798,13 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     }).join('');
   }
 
-  function renderAll() {
-    renderKpi();
-    renderArrival();
-    renderMissing();
-    renderServices();
-    renderCollect();
-    renderPublish();
+  function setLoadingKpi() {
+    var icons = ['blue', 'green', 'cyan', 'orange', 'red'];
+    var labels = ['监测站点总数', '今日数据到报率', '本月平均到报率', '未到报站点', '今日缺测站点'];
+    document.getElementById('kpi-row').innerHTML = labels.map(function (t, i) {
+      return '<div class="card kpi-card"><div class="kpi-icon ' + icons[i] + '" style="opacity:.3"></div>' +
+        '<div class="kpi-meta"><div class="kpi-value">-</div><div class="kpi-label">' + t + '</div></div></div>';
+    }).join('');
   }
 
   function setLoadingTables(text) {
@@ -815,6 +815,16 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     document.getElementById('publish-tbody').innerHTML = emptyRow(7, text);
   }
 
+  function setBlockFail(tbodyId, colspan) {
+    document.getElementById(tbodyId).innerHTML = emptyRow(colspan, '加载失败，请重试');
+  }
+
+  function clearPager(infoId, btnsId) {
+    document.getElementById(infoId).textContent = '';
+    document.getElementById(btnsId).innerHTML = '';
+  }
+
+  // 先到先渲染：各接口独立返回后立即渲染对应区块，页面不再等 7 个请求全部完成（整页耗时曾被最慢接口拖到 8s+）
   async function loadAll(showToast) {
     var range = resolveRange();
     if (!range.ok) {
@@ -830,45 +840,78 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
 
     var btn = document.getElementById('query-btn');
     btn.disabled = true;
+    setLoadingKpi();
     setLoadingTables('加载中...');
+
+    var errors = [];
+    var HARD_TOTAL = 6;
+    function failBlock(tbodyId, colspan, infoId, btnsId) {
+      return function (e) {
+        errors.push(e && e.message ? e.message : '接口失败');
+        if (tbodyId) setBlockFail(tbodyId, colspan);
+        if (infoId && btnsId) clearPager(infoId, btnsId);
+      };
+    }
+
+    // 采集状态 = mq 五维行 + 视频行：mq 行先到先渲染，视频行后到补渲染（失败静默省略）
+    var collectMqReady = false;
+    var collectMqList = [];
+    var collectVideoRow = null;
+    function applyCollect() {
+      if (!collectMqReady) return;
+      state.collect = mergeCollect(collectMqList, collectVideoRow);
+      renderCollect();
+    }
+
     try {
       var q = range.qs;
       var mq = range.missQs || q;
       // publish-stats 不受区间参数影响，始终今日口径
-      var results = await Promise.allSettled([
-        fetchApi('/data-statistics/arrival-stats' + q),
-        fetchApi('/data-statistics/arrival-detail' + q),
-        fetchApi('/data-statistics/miss-detail' + mq),
-        fetchApi('/data-statistics/service-status' + q),
-        fetchApi('/data-statistics/collect-stats' + q),
-        fetchApi('/data-statistics/publish-stats'),
-        fetchApi('/data-statistics/video-collect' + q)
-      ]);
+      var tasks = [
+        fetchApi('/data-statistics/arrival-stats' + q).then(function (d) {
+          state.kpi = d || {};
+          renderKpi();
+        }).catch(function (e) {
+          errors.push(e && e.message ? e.message : '接口失败');
+          document.getElementById('kpi-row').innerHTML =
+            '<div class="card kpi-card" style="grid-column:1/-1"><div class="kpi-meta">' +
+            '<div class="kpi-value">-</div><div class="kpi-label">统计卡片加载失败，请重试</div></div></div>';
+        }),
+        fetchApi('/data-statistics/arrival-detail' + q).then(function (d) {
+          state.arrival.list = mapArrival(d);
+          state.arrival.page = 1;
+          renderArrival();
+        }).catch(failBlock('arrival-tbody', 9, 'arrival-pg-info', 'arrival-pg-btns')),
+        fetchApi('/data-statistics/miss-detail' + mq).then(function (d) {
+          state.missing.list = mapMissing(d);
+          state.missing.page = 1;
+          renderMissing();
+        }).catch(failBlock('missing-tbody', 7, 'missing-pg-info', 'missing-pg-btns')),
+        fetchApi('/data-statistics/service-status' + q).then(function (d) {
+          var svc = mapServices(d);
+          state.process = svc.process;
+          state.services = svc.services;
+          renderServices();
+        }).catch(failBlock('service-tbody', 8)),
+        fetchApi('/data-statistics/collect-stats' + q).then(function (d) {
+          collectMqReady = true;
+          collectMqList = d || [];
+          applyCollect();
+        }).catch(failBlock('collect-tbody', 7)),
+        fetchApi('/data-statistics/publish-stats').then(function (d) {
+          state.publish = mapPublish(d);
+          renderPublish();
+        }).catch(failBlock('publish-tbody', 7)),
+        // 视频行失败/缺失时静默省略，不计入硬错误；collected=0 仍展示
+        fetchApi('/data-statistics/video-collect' + q).then(function (d) {
+          collectVideoRow = mapVideoCollect(d);
+          applyCollect();
+        }).catch(function () {})
+      ];
 
-      var errors = [];
-      function take(i, fallback, soft) {
-        var r = results[i];
-        if (r.status === 'fulfilled') return r.value;
-        if (!soft) errors.push(r.reason && r.reason.message ? r.reason.message : '接口失败');
-        return fallback;
-      }
+      await Promise.allSettled(tasks);
 
-      state.kpi = take(0, null) || {};
-      state.arrival.list = mapArrival(take(1, []));
-      state.arrival.page = 1;
-      state.missing.list = mapMissing(take(2, []));
-      state.missing.page = 1;
-
-      var svc = mapServices(take(3, { process: null, services: [] }));
-      state.process = svc.process;
-      state.services = svc.services;
-      // 视频行失败/缺失时静默省略，不计入硬错误；collected=0 仍展示
-      state.collect = mergeCollect(take(4, []), mapVideoCollect(take(6, null, true)));
-      state.publish = mapPublish(take(5, []));
-
-      renderAll();
-
-      if (errors.length === results.length) {
+      if (errors.length >= HARD_TOTAL) {
         toast('数据加载失败：' + errors[0]);
       } else if (errors.length) {
         toast('部分数据加载失败（' + errors.length + '）');
@@ -880,7 +923,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     } catch (e) {
       console.error(e);
       toast((e && e.message) || '数据加载失败');
-      setLoadingTables('加载失败，请重试');
     } finally {
       btn.disabled = false;
     }

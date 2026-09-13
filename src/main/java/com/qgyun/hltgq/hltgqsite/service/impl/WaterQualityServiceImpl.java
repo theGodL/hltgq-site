@@ -76,7 +76,8 @@ public class WaterQualityServiceImpl implements WaterQualityService {
         }
 
         // 3. 查询 2 小时级聚合（SQL 内已完成 -9991/-999 排除与 AVG）
-        List<Map<String, Object>> rows = waterQualityMapper.selectTwoHourTrend(stcd, startTime, endTime);
+        //    过滤上界取末桶终点 endTime+2h（不含），保证序列末桶聚合完整 2h 窗数据（如 22:00 桶含 23 点数据）
+        List<Map<String, Object>> rows = waterQualityMapper.selectTwoHourTrend(stcd, startTime, endTime.plusHours(2));
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00");
         Map<String, Map<String, Object>> hourMap = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {

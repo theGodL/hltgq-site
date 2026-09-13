@@ -11,33 +11,38 @@ html,body{width:100%;height:100%;overflow:hidden}
 body{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
   background:#fff;color:#333;font-size:14px;
-  display:flex;flex-direction:column;
 }
-.page{flex:1;min-height:0;display:flex;flex-direction:column;padding:20px 24px 16px}
-
-.filter-list{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0}
-.filter-item{display:flex;align-items:center;gap:12px}
-.filter-item label{width:72px;flex-shrink:0;color:#666;text-align:right}
-.filter-item input,.filter-item select{
-  height:32px;width:280px;border:1px solid #d9d9d9;border-radius:6px;
-  padding:0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;
+.page{height:100%;display:flex;flex-direction:column;min-height:0}
+.body{flex:1;min-height:0;overflow:auto;padding:20px 20px 16px;background:#f6f7fb}
+.lead{
+  margin-bottom:16px;padding:16px 18px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
 }
-.filter-item select{
+.lead h2{font-size:16px;font-weight:600;color:#262626;line-height:24px}
+.lead p{margin-top:6px;font-size:13px;color:#8c8c8c;line-height:20px}
+.fields{display:flex;flex-direction:column;gap:16px}
+.field{
+  display:flex;flex-direction:column;gap:10px;
+  padding:18px 18px 20px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
+}
+.field label{color:#262626;font-weight:500;line-height:22px}
+.field input,.field select,.yp-input{
+  width:100%;height:40px;border:1px solid #e6e8eb;border-radius:8px;
+  padding:0 12px;font-size:14px;outline:none;background:#fafbfc;color:#333;font-family:inherit;
+}
+.field select{
   padding-right:28px;appearance:none;cursor:pointer;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 10px center;
+  background-repeat:no-repeat;background-position:right 12px center;
 }
-.filter-item input:focus,.filter-item select:focus,.yp-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12)}
-.yp{position:relative;width:280px}
-.yp-input{
-  width:100%;height:32px;border:1px solid #d9d9d9;border-radius:6px;
-  padding:0 32px 0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;cursor:pointer;
-}
+.yp{position:relative;width:100%}
+.yp-input{padding-right:32px;cursor:pointer}
 .yp-input::placeholder{color:#bfbfbf}
-.yp-ico{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#bfbfbf;pointer-events:none}
+.yp-ico{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#bfbfbf;pointer-events:none}
 .yp-panel{
-  display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:30;
-  width:420px;max-width:calc(100vw - 48px);background:#fff;border-radius:8px;
+  display:none;position:fixed;z-index:40;
+  width:420px;max-width:calc(100vw - 16px);background:#fff;border-radius:8px;
   box-shadow:0 6px 16px rgba(0,0,0,.12);padding:12px 16px 16px;
 }
 .yp.open .yp-panel{display:block}
@@ -56,11 +61,16 @@ body{
 .yp-cell:hover{background:#e6f4ff;color:#1677ff}
 .yp-cell.active{background:#1677ff;color:#fff}
 .yp-cell.out{color:#bfbfbf}
-
-.foot{flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;padding-top:20px}
+.field input:hover,.field select:hover,.yp-input:hover{border-color:#d0d5dd}
+.field input:focus,.field select:focus,.yp-input:focus{background:#fff;border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12)}
+.field input::placeholder{color:#bfbfbf}
+.foot{
+  flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:8px;
+  padding:12px 24px;border-top:1px solid #f0f0f0;background:#fff;
+}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;
-  height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  min-width:64px;height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
   cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
 }
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
@@ -68,9 +78,8 @@ body{
 .btn-default{color:#595959;border-color:#d9d9d9}
 .btn-default:hover{color:#1677ff;border-color:#1677ff}
 .btn:disabled{opacity:.55;cursor:not-allowed}
-
 .toast{
-  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+  position:fixed;left:50%;bottom:72px;transform:translateX(-50%);
   background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
   font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
 }
@@ -79,31 +88,37 @@ body{
 </head>
 <body>
 <div class="page">
-  <div class="filter-list">
-    <div class="filter-item">
-      <label>指标名称</label>
-      <input type="text" id="f-name" placeholder="不填则不按名称筛选" autocomplete="off">
+  <div class="body">
+    <div class="lead">
+      <h2>导出筛选</h2>
+      <p>按条件筛选后导出节水体系指标。不填的条件不参与筛选。</p>
     </div>
-    <div class="filter-item">
-      <label>年度</label>
-      <div class="yp" id="year-picker">
-        <input type="text" class="yp-input" id="f-year" placeholder="不选则不按年度筛选" readonly autocomplete="off">
-        <span class="yp-ico">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        </span>
-        <div class="yp-panel" id="year-panel"></div>
+    <div class="fields">
+      <div class="field">
+        <label>指标名称</label>
+        <input type="text" id="f-name" placeholder="不填则不按名称筛选" autocomplete="off">
       </div>
-    </div>
-    <div class="filter-item">
-      <label>状态</label>
-      <select id="f-status">
-        <option value="">全部（不按状态筛选）</option>
-        <option value="待填报">待填报</option>
-        <option value="已填报">已填报</option>
-        <option value="审核中">审核中</option>
-        <option value="已退回">已退回</option>
-        <option value="已归档">已归档</option>
-      </select>
+      <div class="field">
+        <label>年度</label>
+        <div class="yp" id="year-picker">
+          <input type="text" class="yp-input" id="f-year" placeholder="不选则不按年度筛选" readonly autocomplete="off">
+          <span class="yp-ico">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </span>
+          <div class="yp-panel" id="year-panel"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>状态</label>
+        <select id="f-status">
+          <option value="">全部（不按状态筛选）</option>
+          <option value="待填报">待填报</option>
+          <option value="已填报">已填报</option>
+          <option value="审核中">审核中</option>
+          <option value="已退回">已退回</option>
+          <option value="已归档">已归档</option>
+        </select>
+      </div>
     </div>
   </div>
   <div class="foot">
@@ -141,18 +156,43 @@ body{
     $('year-panel').innerHTML = html;
   }
 
+  function placeYearPanel() {
+    var wrap = $('year-picker');
+    var input = $('f-year');
+    var panel = $('year-panel');
+    if (!wrap.classList.contains('open')) return;
+    var r = input.getBoundingClientRect();
+    var gap = 4;
+    var vh = window.innerHeight;
+    var vw = window.innerWidth;
+    var width = Math.min(420, vw - 16);
+    var left = r.left;
+    if (left + width > vw - 8) left = Math.max(8, vw - width - 8);
+    var below = vh - r.bottom - gap - 8;
+    panel.style.left = left + 'px';
+    panel.style.width = width + 'px';
+    panel.style.top = (r.bottom + gap) + 'px';
+    panel.style.maxHeight = Math.max(120, below) + 'px';
+    panel.style.overflow = 'auto';
+    if (window.dialogFit) window.dialogFit.fit();
+  }
+
   function bindYearPicker() {
     var wrap = $('year-picker');
     var input = $('f-year');
     input.addEventListener('click', function () {
       wrap.classList.toggle('open');
-      if (wrap.classList.contains('open')) renderYearPanel();
+      if (wrap.classList.contains('open')) {
+        renderYearPanel();
+        placeYearPanel();
+      }
     });
     $('year-panel').addEventListener('click', function (e) {
       var nav = e.target.closest('[data-nav]');
       if (nav) {
         yearDecade += Number(nav.dataset.nav);
         renderYearPanel();
+        placeYearPanel();
         return;
       }
       var cellEl = e.target.closest('[data-year]');
@@ -163,6 +203,7 @@ body{
     document.addEventListener('click', function (e) {
       if (!wrap.contains(e.target)) wrap.classList.remove('open');
     });
+    window.addEventListener('resize', placeYearPanel);
   }
 
   function toast(msg) {

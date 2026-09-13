@@ -10,37 +10,44 @@ html,body{width:100%;height:100%;overflow:hidden}
 body{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
   background:#fff;color:#333;font-size:14px;
-  display:flex;flex-direction:column;
 }
-.page{flex:1;min-height:0;display:flex;flex-direction:column;padding:20px 24px 16px}
-.tip{color:#8c8c8c;font-size:13px;line-height:22px;margin-bottom:16px}
-.tip a{color:#1677ff;cursor:pointer;text-decoration:none}
-.tip a:hover{opacity:.85}
-
+.page{height:100%;display:flex;flex-direction:column;min-height:0}
+.body{flex:1;min-height:0;overflow:auto;padding:20px 20px 16px;background:#f6f7fb}
+.lead{
+  margin-bottom:16px;padding:16px 18px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
+}
+.lead h2{font-size:16px;font-weight:600;color:#262626;line-height:24px}
+.lead p{margin-top:6px;font-size:13px;color:#8c8c8c;line-height:20px}
+.lead a{color:#1677ff;cursor:pointer;text-decoration:none}
+.lead a:hover{opacity:.85}
 .drop{
-  flex:1;min-height:120px;border:1px dashed #d9d9d9;border-radius:8px;
+  min-height:220px;border:1px dashed #d0d5dd;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:8px;color:#8c8c8c;cursor:pointer;transition:border-color .2s,background .2s;
+  gap:8px;padding:28px 18px;color:#8c8c8c;cursor:pointer;transition:border-color .2s,background .2s,box-shadow .2s;
 }
-.drop:hover,.drop.drag{border-color:#1677ff;background:#f0f7ff;color:#1677ff}
-.drop .name{color:#262626;font-size:14px}
+.drop:hover,.drop.drag{border-color:#1677ff;background:#f0f7ff;color:#1677ff;box-shadow:0 4px 16px rgba(22,119,255,.12)}
+.drop .name{color:#262626;font-size:14px;font-weight:500}
 .drop .meta{font-size:12px;color:#bfbfbf}
 .file{display:none}
-
 .result{
-  display:none;flex-shrink:0;margin-top:12px;max-height:180px;overflow:auto;
-  border:1px solid #f0f0f0;border-radius:8px;padding:10px 12px;
+  display:none;margin-top:16px;max-height:180px;overflow:auto;
+  padding:16px 18px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
 }
 .result.show{display:block}
 .result-sum{font-size:13px;color:#262626;margin-bottom:6px}
 .result-row{font-size:12px;line-height:20px;color:#595959}
 .result-row.ok{color:#389e0d}
 .result-row.fail{color:#cf1322}
-
-.foot{flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;padding-top:16px}
+.foot{
+  flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:8px;
+  padding:12px 24px;border-top:1px solid #f0f0f0;background:#fff;
+}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;
-  height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  min-width:64px;height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
   cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
 }
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
@@ -48,9 +55,8 @@ body{
 .btn-default{color:#595959;border-color:#d9d9d9}
 .btn-default:hover{color:#1677ff;border-color:#1677ff}
 .btn:disabled{opacity:.55;cursor:not-allowed}
-
 .toast{
-  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+  position:fixed;left:50%;bottom:72px;transform:translateX(-50%);
   background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
   font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
 }
@@ -59,16 +65,21 @@ body{
 </head>
 <body>
 <div class="page">
-  <div class="tip">请先<a id="tpl-btn">下载导入模板</a>，按模板填写后上传。</div>
-  <div class="drop" id="drop">
-    <div>点击或拖拽文件到此处</div>
-    <div class="name" id="file-name"></div>
-    <div class="meta" id="file-meta">支持 .xlsx，单次一个文件</div>
-  </div>
-  <input class="file" id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-  <div class="result" id="result">
-    <div class="result-sum" id="result-sum"></div>
-    <div id="result-list"></div>
+  <div class="body">
+    <div class="lead">
+      <h2>巡检计划导入</h2>
+      <p>请先<a id="tpl-btn">下载导入模板</a>，按模板填写后上传。</p>
+    </div>
+    <div class="drop" id="drop">
+      <div>点击或拖拽文件到此处</div>
+      <div class="name" id="file-name"></div>
+      <div class="meta" id="file-meta">支持 .xlsx，单次一个文件</div>
+    </div>
+    <input class="file" id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    <div class="result" id="result">
+      <div class="result-sum" id="result-sum"></div>
+      <div id="result-list"></div>
+    </div>
   </div>
   <div class="foot">
     <button type="button" class="btn btn-default" id="reset-btn">重置</button>

@@ -11,28 +11,48 @@ html,body{width:100%;height:100%;overflow:hidden}
 body{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
   background:#fff;color:#333;font-size:14px;
-  display:flex;flex-direction:column;
 }
-.page{flex:1;min-height:0;display:flex;flex-direction:column;padding:20px 24px 16px}
+.page{height:100%;display:flex;flex-direction:column;min-height:0}
 
-.filter-list{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0}
-.filter-item{display:flex;align-items:center;gap:12px}
-.filter-item label{width:72px;flex-shrink:0;color:#666;text-align:right}
-.filter-item input,.filter-item select{
-  height:32px;width:280px;border:1px solid #d9d9d9;border-radius:6px;
-  padding:0 11px;font-size:14px;outline:none;background:#fff;color:#333;font-family:inherit;
+.body{
+  flex:1;min-height:0;overflow:auto;padding:20px 20px 16px;background:#f6f7fb;
 }
-.filter-item select{
+.lead{
+  margin-bottom:16px;padding:16px 18px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
+}
+.lead h2{font-size:16px;font-weight:600;color:#262626;line-height:24px}
+.lead p{margin-top:6px;font-size:13px;color:#8c8c8c;line-height:20px}
+
+.fields{display:flex;flex-direction:column;gap:16px}
+.field{
+  display:flex;flex-direction:column;gap:10px;
+  padding:18px 18px 20px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
+}
+.field label{color:#262626;font-weight:500;line-height:22px}
+.field input,.field select{
+  width:100%;height:40px;border:1px solid #e6e8eb;border-radius:8px;
+  padding:0 12px;font-size:14px;outline:none;background:#fafbfc;color:#333;font-family:inherit;
+}
+.field select{
   padding-right:28px;appearance:none;cursor:pointer;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 10px center;
+  background-repeat:no-repeat;background-position:right 12px center;
 }
-.filter-item input:focus,.filter-item select:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12)}
+.field input:hover,.field select:hover{border-color:#d0d5dd}
+.field input:focus,.field select:focus{
+  background:#fff;border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12);
+}
+.field input::placeholder{color:#bfbfbf}
 
-.foot{flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;padding-top:20px}
+.foot{
+  flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:8px;
+  padding:12px 24px;border-top:1px solid #f0f0f0;background:#fff;
+}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;
-  height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  min-width:64px;height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
   cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
 }
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
@@ -42,7 +62,7 @@ body{
 .btn:disabled{opacity:.55;cursor:not-allowed}
 
 .toast{
-  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+  position:fixed;left:50%;bottom:72px;transform:translateX(-50%);
   background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
   font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
 }
@@ -51,22 +71,28 @@ body{
 </head>
 <body>
 <div class="page">
-  <div class="filter-list">
-    <div class="filter-item">
-      <label>站点编号</label>
-      <input type="text" id="f-code" placeholder="不填则不按编号筛选" autocomplete="off">
+  <div class="body">
+    <div class="lead">
+      <h2>导出筛选</h2>
+      <p>按条件筛选后导出站点数据。不填的条件不参与筛选。</p>
     </div>
-    <div class="filter-item">
-      <label>站点名称</label>
-      <input type="text" id="f-name" placeholder="不填则不按名称筛选" autocomplete="off">
-    </div>
-    <div class="filter-item">
-      <label>站点状态</label>
-      <select id="f-status">
-        <option value="">全部（不按状态筛选）</option>
-        <option value="在线">在线</option>
-        <option value="离线">离线</option>
-      </select>
+    <div class="fields">
+      <div class="field">
+        <label for="f-code">站点编号</label>
+        <input type="text" id="f-code" placeholder="不填则不按编号筛选" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-name">站点名称</label>
+        <input type="text" id="f-name" placeholder="不填则不按名称筛选" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-status">站点状态</label>
+        <select id="f-status">
+          <option value="">全部（不按状态筛选）</option>
+          <option value="在线">在线</option>
+          <option value="离线">离线</option>
+        </select>
+      </div>
     </div>
   </div>
   <div class="foot">
