@@ -3,13 +3,17 @@ package com.qgyun.hltgq.hltgqsite.h5.controller;
 import com.qgyun.hltgq.hltgqsite.auth.UnauthorizedException;
 import com.qgyun.hltgq.hltgqsite.auth.UserContext;
 import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
+import com.qgyun.hltgq.hltgqsite.h5.service.H5PatrolScheduleService;
 import com.qgyun.hltgq.hltgqsite.h5.service.H5StatService;
+import com.qgyun.hltgq.hltgqsite.h5.service.H5WaterResourceService;
 import com.qgyun.hltgq.hltgqsite.h5.service.MessageService;
+import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolSchedulePageVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.InspectionResultStatsVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessagePageVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessageReadRequest;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessageSummaryVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.PatrolIssueMonthlyVO;
+import com.qgyun.hltgq.hltgqsite.h5.vo.WaterResourceOverviewVO;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,7 +27,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * H5 移动端接口：巡查及问题统计 / 维修养护统计 / 消息中心。
+ * H5 移动端接口：巡查及问题统计 / 维修养护统计 / 消息中心 / 巡检计划列表 / 水资源概览。
  * <p>全部接口需登录态（拦截器校验），当前登录人取自 {@link UserContextHolder}，
  * 消息中心未读与已读均为当前登录人视角。
  */
@@ -33,10 +37,16 @@ public class H5Controller {
 
     private final H5StatService statService;
     private final MessageService messageService;
+    private final H5PatrolScheduleService patrolScheduleService;
+    private final H5WaterResourceService waterResourceService;
 
-    public H5Controller(H5StatService statService, MessageService messageService) {
+    public H5Controller(H5StatService statService, MessageService messageService,
+                        H5PatrolScheduleService patrolScheduleService,
+                        H5WaterResourceService waterResourceService) {
         this.statService = statService;
         this.messageService = messageService;
+        this.patrolScheduleService = patrolScheduleService;
+        this.waterResourceService = waterResourceService;
     }
 
     /**
@@ -64,7 +74,34 @@ public class H5Controller {
     }
 
     /**
-     * 未读消息数汇总（角标）：三类未读数基于当前登录人接收记录。
+     * 巡检计划分页列表：仅「进行中 #2# / 已完成 #3#」两类（草稿/已取消不入列）。
+     *
+     * @param name   任务名称模糊（title），可选
+     * @param status 状态：进行中/已完成 或编码 #2#/#3#，可选（不传返回两类全部）
+     * @param page   页码，默认 1（越界返回空页）
+     * @param size   每页条数，默认 10，上限 100
+     */
+    @GetMapping("/patrol-schedule/list")
+    public H5PatrolSchedulePageVO patrolScheduleList(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size) {
+        return patrolScheduleService.list(name, status, page, size);
+    }
+
+    /**
+     * 水资源概览：聚合返回页面四块组件——饼状图（水资源量分布）、列表（分配方案及执行）、
+     * 两卡片（灌溉统计）、四卡片（各区域灌溉详情）。
+     * <p>默认取最新已完成需水方案与最新已完成配水方案，无参数。
+     */
+    @GetMapping("/water-resource/overview")
+    public WaterResourceOverviewVO waterResourceOverview() {
+        return waterResourceService.overview();
+    }
+
+    /**
+     * 未读消息数汇总（角标）：四类未读数基于当前登录人接收记录。
      */
     @GetMapping("/message/summary")
     public MessageSummaryVO messageSummary() {
@@ -74,7 +111,7 @@ public class H5Controller {
     /**
      * 消息分页列表：按类型返回对应结构行。
      *
-     * @param messageType 消息类型：#1# 告警 / #2# 举报投诉 / #3# 意见征集（URL 中 # 转义 %23）
+     * @param messageType 消息类型：#1# 告警 / #2# 举报投诉 / #3# 意见征集 / #4# 值班提醒（URL 中 # 转义 %23）
      * @param page        页码，默认 1
      * @param size        每页条数，默认 10
      */

@@ -195,14 +195,6 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
           </div>
         </div>
       </div>
-      <div class="filter-item">
-        <label>日期</label>
-        <div class="date-range">
-          <input type="date" id="start-date">
-          <span class="date-sep">—</span>
-          <input type="date" id="end-date">
-        </div>
-      </div>
       <button type="button" class="btn btn-primary" id="btn-query">查询</button>
       <button type="button" class="btn btn-default" id="btn-reset">重置</button>
     </div>
@@ -769,10 +761,6 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
       const p = new URLSearchParams();
       const codes = [...state.selected];
       if (codes.length) p.set('stcds', codes.join(','));
-      const s = $('start-date').value;
-      const e = $('end-date').value;
-      if (s) p.set('startDate', s);
-      if (e) p.set('endDate', e);
       const qs = p.toString();
       const data = await fetchApi('/water-quality/monitoring' + (qs ? '?' + qs : ''));
       state.rows = Array.isArray(data) ? data : [];
@@ -790,8 +778,6 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   function resetFilters() {
     state.selected.clear();
     $('site-kw').value = '';
-    $('start-date').value = '';
-    $('end-date').value = '';
     renderSiteList();
     renderSiteTrigger();
     setMsOpen(false);
@@ -856,9 +842,6 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     chartDo && chartDo.resize();
   });
 
-  // 默认近 3 天
-  $('start-date').value = daysAgo(2);
-  $('end-date').value = todayStr();
   loadSites().then(loadMonitoring);
 })();
 </script>

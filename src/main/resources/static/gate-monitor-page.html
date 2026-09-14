@@ -218,12 +218,6 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="dev-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
-          <label>日期</label>
-          <input type="date" id="start-date">
-          <span class="date-sep">—</span>
-          <input type="date" id="end-date">
-        </div>
         <div class="filter-actions">
           <button class="btn btn-primary" id="query-btn">查询</button>
           <button class="btn btn-default" id="reset-btn">重置</button>
@@ -270,12 +264,6 @@ tbody tr:hover td{background:#fafafa}
             <input type="hidden" id="mth-dev-code" value="">
             <div class="ss-dd" id="mth-dev-dd"></div>
           </div>
-        </div>
-        <div class="filter-item">
-          <label>日期</label>
-          <input type="date" id="mth-start-date">
-          <span class="date-sep">—</span>
-          <input type="date" id="mth-end-date">
         </div>
         <div class="filter-actions">
           <button class="btn btn-primary" id="mth-query-btn">查询</button>
@@ -579,8 +567,8 @@ function fmtAxisTm(v) {
 
 function setModalDefaultDates() {
   const now = new Date();
-  const s = $('start-date').value || fmtDate(new Date(now - 7 * 24 * 3600e3));
-  const e = $('end-date').value || fmtDate(now);
+  const s = fmtDate(new Date(now - 7 * 24 * 3600e3));
+  const e = fmtDate(now);
   ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
   ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
 }
@@ -759,13 +747,7 @@ async function loadList() {
   if (keepH > 0) wrap.style.minHeight = keepH + 'px';
   setLoading(wrap, true);
   try {
-    const p = new URLSearchParams();
-    const s = dateToStart($('start-date').value);
-    const e = dateToEnd($('end-date').value);
-    if (s) p.set('startTime', s);
-    if (e) p.set('endTime', e);
-    const qs = p.toString();
-    const res = await fetch(`${API}/gate-monitor/monitoring${qs ? `?${qs}` : ''}`);
+    const res = await fetch(`${API}/gate-monitor/monitoring`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     let list = Array.isArray(data) ? data : [];
@@ -803,8 +785,6 @@ async function query() {
 
 async function reset() {
   clearDev();
-  $('start-date').value = '';
-  $('end-date').value = '';
   S.page = 1;
   await loadList();
 }
@@ -817,6 +797,7 @@ function fmtHolesOpen(holes) {
   return shown.map(h => fmtOpen(h.openDegree)).join('+');
 }
 
+/** 列表渲染：采集时间列标红已暂停（后续可能恢复），恢复时还原 isStaleTm(r.tm, r.siteName) → class="tm-stale" 判定 */
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
@@ -831,7 +812,7 @@ function renderTable() {
       <td>${fmtN2(r.downZ)}</td>
       <td>${fmtN3(r.q)}</td>
       <td>${fmtN2(r.cumulativeFlow)}</td>
-      <td${isStaleTm(r.tm, r.siteName) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
+      <td>${fmtTm(r.tm)}</td>
       <td>${fmtN2(r.vol)}</td>
       <td>
         <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>
@@ -1618,14 +1599,6 @@ function showToast(msg) {
 /* ===== 麻塘湖灌区：同款 UI，接口暂空 ===== */
 let MTH_GATE_SITES = []; // 后续接接口再填
 
-function setMthDefaultDates() {
-  const now = new Date();
-  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
-  const e = fmtDate(now);
-  $('mth-start-date').value = s;
-  $('mth-end-date').value = e;
-}
-
 function setMthDev(code, name) {
   $('mth-dev-code').value = code || '';
   $('mth-dev-input').value = name || '';
@@ -1701,7 +1674,6 @@ async function mthQuery() {
 
 async function mthReset() {
   clearMthDev();
-  setMthDefaultDates();
   renderMthEmpty();
 }
 
@@ -2146,7 +2118,6 @@ function bindStatsModal() {
 }
 
 async function init() {
-  setMthDefaultDates();
   bindModal();
   bindDevSelect();
   bindMthDevSelect();

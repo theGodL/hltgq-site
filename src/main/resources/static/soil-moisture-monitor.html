@@ -169,10 +169,6 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="hlt-dev-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
-          <label>日期</label>
-          <input type="date" id="hlt-date">
-        </div>
         <div class="filter-actions">
           <button class="btn btn-primary" id="hlt-query-btn">查询</button>
           <button class="btn btn-default" id="hlt-reset-btn">重置</button>
@@ -214,12 +210,6 @@ tbody tr:hover td{background:#fafafa}
             <input type="hidden" id="mth-dev-code" value="">
             <div class="ss-dd" id="mth-dev-dd"></div>
           </div>
-        </div>
-        <div class="filter-item">
-          <label>日期</label>
-          <input type="date" id="mth-start-date">
-          <span class="date-sep">—</span>
-          <input type="date" id="mth-end-date">
         </div>
         <div class="filter-actions">
           <button class="btn btn-primary" id="mth-query-btn">查询</button>
@@ -477,30 +467,10 @@ let moistureChart = null;
 function cfg(key) { return DIST[key]; }
 function elId(key, suffix) { return `${cfg(key).prefix}-${suffix}`; }
 
-function setDefaultDates(key) {
+function setModalDefaultDates() {
   const now = new Date();
-  if (key === 'hlt') {
-    const el = $('hlt-date');
-    if (el) el.value = fmtDate(now);
-    return;
-  }
-  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
   const e = fmtDate(now);
-  $(elId(key, 'start-date')).value = s;
-  $(elId(key, 'end-date')).value = e;
-}
-
-function setModalDefaultDates(key) {
-  const now = new Date();
-  if (key === 'hlt') {
-    const e = fmtDate(now);
-    const s = fmtDate(new Date(now - 7 * 24 * 3600e3));
-    ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
-    ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
-    return;
-  }
-  const s = $(elId(key, 'start-date')).value;
-  const e = $(elId(key, 'end-date')).value;
+  const s = fmtDate(new Date(now - 7 * 24 * 3600e3));
   ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
   ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
 }
@@ -606,8 +576,6 @@ async function fetchMonitoring(key) {
   const p = new URLSearchParams();
   const stcd = ($(elId(key, 'dev-code')).value || '').trim();
   if (stcd) p.set('stcds', stcd);
-  const date = ($('hlt-date')?.value || '').trim();
-  if (date) p.set('date', date);
   const qs = p.toString();
   const res = await fetch(`${API}/soil-moisture/monitoring${qs ? `?${qs}` : ''}`);
   if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -672,7 +640,6 @@ async function query(key) {
 
 async function reset(key) {
   clearDev(key);
-  setDefaultDates(key);
   cfg(key).state.page = 1;
   await loadList(key);
 }
@@ -775,7 +742,7 @@ function closeModal(id) {
 function openDetail(key, row) {
   activeDist = key;
   cfg(key).state.current = row;
-  setModalDefaultDates(key);
+  setModalDefaultDates();
   HIST.page = 1;
   $('detail-title').textContent = row.siteName || '站点详情';
 
@@ -1036,11 +1003,11 @@ function bindModal() {
   bindAsyncClick($('chart-query-btn'), reloadChart);
   bindAsyncClick($('hist-query-btn'), async () => { HIST.page = 1; await loadHistory(); });
   bindAsyncClick($('chart-reset-btn'), async () => {
-    setModalDefaultDates(activeDist);
+    setModalDefaultDates();
     await reloadChart();
   });
   bindAsyncClick($('hist-reset-btn'), async () => {
-    setModalDefaultDates(activeDist);
+    setModalDefaultDates();
     HIST.page = 1;
     await loadHistory();
   });
@@ -1074,7 +1041,6 @@ function bindDistrictTabs() {
 
 async function init() {
   ['hlt', 'mth'].forEach(key => {
-    setDefaultDates(key);
     bindDevSelect(key);
     bindAsyncClick($(elId(key, 'query-btn')), () => query(key));
     bindAsyncClick($(elId(key, 'reset-btn')), () => reset(key));

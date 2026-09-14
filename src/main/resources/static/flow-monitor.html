@@ -164,12 +164,6 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="st-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
-          <label>日期</label>
-          <input type="date" id="start-date">
-          <span class="date-sep">—</span>
-          <input type="date" id="end-date">
-        </div>
         <div class="filter-actions">
           <button class="btn btn-primary" id="query-btn">查询</button>
           <button class="btn btn-default" id="reset-btn">重置</button>
@@ -211,12 +205,6 @@ tbody tr:hover td{background:#fafafa}
             <input type="hidden" id="mth-st-code" value="">
             <div class="ss-dd" id="mth-st-dd"></div>
           </div>
-        </div>
-        <div class="filter-item">
-          <label>日期</label>
-          <input type="date" id="mth-start-date">
-          <span class="date-sep">—</span>
-          <input type="date" id="mth-end-date">
         </div>
         <div class="filter-actions">
           <button class="btn btn-primary" id="mth-query-btn">查询</button>
@@ -508,8 +496,8 @@ async function loadFlowSites() {
 
 function setModalDefaultDates() {
   const now = new Date();
-  const s = $('start-date').value || fmtDate(new Date(now - 7 * 24 * 3600e3));
-  const e = $('end-date').value || fmtDate(now);
+  const s = fmtDate(new Date(now - 7 * 24 * 3600e3));
+  const e = fmtDate(now);
   ['chart-start', 'hist-start'].forEach(id => $(id).value = s);
   ['chart-end', 'hist-end'].forEach(id => $(id).value = e);
 }
@@ -517,11 +505,7 @@ function setModalDefaultDates() {
 function buildListParams() {
   const p = new URLSearchParams();
   const stcd = ($('st-code').value || '').trim();
-  const s = dateToStart($('start-date').value);
-  const e = dateToEnd($('end-date').value);
   if (stcd) p.set('stcds', stcd);
-  if (s) p.set('startTime', s);
-  if (e) p.set('endTime', e);
   return p;
 }
 
@@ -571,12 +555,11 @@ async function query() {
 
 async function reset() {
   clearSite();
-  $('start-date').value = '';
-  $('end-date').value = '';
   S.page = 1;
   await loadList();
 }
 
+/** 列表渲染：采集时间列标红已暂停（后续可能恢复），恢复时还原 isStaleTm(r.tm, r.stnm) → class="tm-stale" 判定 */
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
@@ -589,7 +572,7 @@ function renderTable() {
       <td>${r.stcd ? fmtN(r.stcd) : '--'}</td>
       <td>${fmtN3(r.q)}</td>
       <td>${fmtN2(r.cumulativeFlow)}</td>
-      <td${isStaleTm(r.tm, r.stnm) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
+      <td>${fmtTm(r.tm)}</td>
       <td>${fmtN2(r.vol)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
     </tr>
@@ -913,14 +896,6 @@ function onTableClick(e) {
 const MTH = { page: 1, size: 20, total: 0 };
 let MTH_SITES = []; // 后续接接口再填
 
-function setMthDefaultDates() {
-  const now = new Date();
-  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
-  const e = fmtDate(now);
-  $('mth-start-date').value = s;
-  $('mth-end-date').value = e;
-}
-
 function setMthSite(code, name) {
   $('mth-st-code').value = code || '';
   $('mth-st-input').value = name || '';
@@ -1001,7 +976,6 @@ async function mthQuery() {
 
 async function mthReset() {
   clearMthSite();
-  setMthDefaultDates();
   renderMthEmpty();
 }
 
@@ -1019,7 +993,6 @@ function bindDistrictTabs() {
 }
 
 function init() {
-  setMthDefaultDates();
   bindSiteSelect();
   bindMthSiteSelect();
   bindDistrictTabs();
