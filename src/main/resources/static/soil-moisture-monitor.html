@@ -99,8 +99,8 @@ tbody tr:hover td{background:#fafafa}
 .status-normal{background:#f6ffed;color:#52c41a;border:1px solid #b7eb8f}
 .status-warn{background:#fff7e6;color:#fa8c16;border:1px solid #ffd591}
 .status-error{background:#fff1f0;color:#ff4d4f;border:1px solid #ffa39e}
-/* 站报文中断：最新监测时间滞后超过阈值时红色标识 */
-.tm-stale{color:#ff4d4f;font-weight:600}
+/* 站报文中断：最新监测时间滞后超过阈值时红色标识（已暂时禁用，后续启用请恢复） */
+/* .tm-stale{color:#ff4d4f;font-weight:600} */
 
 .pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:12px 0 0;gap:4px;flex-shrink:0}
 .pg-info{color:#666;font-size:13px;margin-right:8px}
@@ -169,10 +169,7 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="hlt-dev-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
-          <label>日期</label>
-          <input type="date" id="hlt-date">
-        </div>
+        <!-- 首页展示最新数据：日期查询器已移除（后续如需要可恢复） -->
         <div class="filter-actions">
           <button class="btn btn-primary" id="hlt-query-btn">查询</button>
           <button class="btn btn-default" id="hlt-reset-btn">重置</button>
@@ -215,12 +212,9 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="mth-dev-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
-          <label>日期</label>
-          <input type="date" id="mth-start-date">
-          <span class="date-sep">—</span>
-          <input type="date" id="mth-end-date">
-        </div>
+        <!-- 首页展示最新数据：日期查询器已移除（后续如需要可恢复） -->
+        <input type="hidden" id="mth-start-date" value="">
+        <input type="hidden" id="mth-end-date" value="">
         <div class="filter-actions">
           <button class="btn btn-primary" id="mth-query-btn">查询</button>
           <button class="btn btn-default" id="mth-reset-btn">重置</button>
@@ -691,7 +685,7 @@ function renderTable(key) {
   tbody.innerHTML = st.rows.map((r, i) => `
     <tr>
       <td>${fmtN(r.siteName)}</td>
-      <td${isStaleTm(r.tm, r.siteName) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
+      <td>${fmtTm(r.tm)}</td>
       ${renderDepthCells(r)}
       <td>${statusTag(r.status)}</td>
       <td>${fmtN2(r.vol)}</td>

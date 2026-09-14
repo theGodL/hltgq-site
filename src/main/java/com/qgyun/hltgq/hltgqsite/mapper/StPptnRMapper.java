@@ -53,7 +53,8 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
     List<StPptnR> selectTodaySumPerStation(@Param("start") Timestamp start, @Param("end") Timestamp end);
 
     /**
-     * 灌区雨量：每站点最新一条，含该时刻及1h/3h/6h前的DYP值（用于计算时段增量）
+     * 灌区雨量：每站点最新一条，含该时刻及1h/3h/6h前的DYP值（用于计算时段增量；
+     * 1h/3h/6h 窗口按当前水文日 8:00 边界截断，不跨水文日，8 点后自动"清零"）
      * <p>性能：用 DISTINCT ON 替代 ROW_NUMBER 窗口（配合 (STCD, TM DESC) 索引，
      * 每组直接取最新行，无需全量窗口排序）；基线子查询仅对每站最新一行执行。
      * 支持按站点编号、监测日期范围筛选
@@ -67,13 +68,13 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
             + "  s.zzkaec AS stnm, s.id AS id, s.bviiio_x AS lon, s.bviiio_y AS lat, "
             + "  fv.vol AS vol, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
-            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' + INTERVAL '1 second' "
+            + "            WHERE STCD = t.STCD AND TM &lt;= GREATEST(t.TM - INTERVAL '1 hour', ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours')) + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_1h, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
-            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '3 hours' + INTERVAL '1 second' "
+            + "            WHERE STCD = t.STCD AND TM &lt;= GREATEST(t.TM - INTERVAL '3 hours', ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours')) + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_3h, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
-            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '6 hours' + INTERVAL '1 second' "
+            + "            WHERE STCD = t.STCD AND TM &lt;= GREATEST(t.TM - INTERVAL '6 hours', ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours')) + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_6h, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= "
@@ -107,7 +108,8 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
                                                     @Param("hydroBase") LocalDateTime hydroBase);
 
     /**
-     * 灌区雨情历史：单站点分页记录（TM 倒序），每一条含1h/3h/6h前DYP值（用于计算时段增量）
+     * 灌区雨情历史：单站点分页记录（TM 倒序），每一条含1h/3h/6h前DYP值（用于计算时段增量；
+     * 1h/3h/6h 窗口按该行所属水文日 8:00 边界截断，不跨水文日）
      * <p>性能：先分页取当前页行，基线子查询仅对当前页行执行
      * （原实现全量行 × 4 次子查询，接口慢到 2 秒）。
      * stcd 必填，startTime/endTime 可选
@@ -125,13 +127,13 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
             + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
             + "  s.zzkaec AS stnm, s.id AS id, s.bviiio_x AS lon, s.bviiio_y AS lat, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
-            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '1 hour' + INTERVAL '1 second' "
+            + "            WHERE STCD = t.STCD AND TM &lt;= GREATEST(t.TM - INTERVAL '1 hour', ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours')) + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_1h, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
-            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '3 hours' + INTERVAL '1 second' "
+            + "            WHERE STCD = t.STCD AND TM &lt;= GREATEST(t.TM - INTERVAL '3 hours', ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours')) + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_3h, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
-            + "            WHERE STCD = t.STCD AND TM &lt;= t.TM - INTERVAL '6 hours' + INTERVAL '1 second' "
+            + "            WHERE STCD = t.STCD AND TM &lt;= GREATEST(t.TM - INTERVAL '6 hours', ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours')) + INTERVAL '1 second' "
             + "            ORDER BY TM DESC LIMIT 1), t.DYP) AS dyp_6h, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours') "
