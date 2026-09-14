@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -105,10 +106,17 @@ public class FloodDroughtOverviewService {
         LocalDate end = today.plusDays(PRED_LOOKAHEAD_DAYS);
 
         HydroHistoryVO hist = floodDroughtService.history(start, today, null, null, null);
-        List<String> dates = hist.getDates();
-        Map<String, Object> rainMap = toDayMap(dates, hist.getRain() == null ? null : hist.getRain().getValues());
-        Map<String, Object> levelMap = toDayMap(dates, hist.getLevel() == null ? null : hist.getLevel().getValues());
-        Map<String, Object> flowMap = toDayMap(dates, hist.getFlow() == null ? null : hist.getFlow().getValues());
+        List<String> histDates = hist.getDates();
+        Map<String, Object> rainMap = toDayMap(histDates, hist.getRain() == null ? null : hist.getRain().getValues());
+        Map<String, Object> levelMap = toDayMap(histDates, hist.getLevel() == null ? null : hist.getLevel().getValues());
+        Map<String, Object> flowMap = toDayMap(histDates, hist.getFlow() == null ? null : hist.getFlow().getValues());
+
+        // x 轴 = 完整展示区间（今日-2 ~ 今日+12）逐日序列：实测段在前、预测段在后，
+        // 预测数据未就绪的日子自动留白（前端按 dates 逐日取值渲染，dates 缺日则预测段不可见）
+        List<String> dates = new ArrayList<>();
+        for (LocalDate day = start; !day.isAfter(end); day = day.plusDays(1)) {
+            dates.add(day.format(DATE_FMT));
+        }
 
         String predTag = "none";
         String recordId = null;
