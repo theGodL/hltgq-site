@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>库存盘点导出</title>
+<script src="./lib/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:#fff;color:#333;font-size:14px;
+}
+.page{height:100%;display:flex;flex-direction:column;min-height:0}
+.body{flex:1;min-height:0;overflow:auto;padding:20px 20px 16px;background:#f6f7fb}
+.lead{
+  margin-bottom:16px;padding:16px 18px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
+}
+.lead h2{font-size:16px;font-weight:600;color:#262626;line-height:24px}
+.lead p{margin-top:6px;font-size:13px;color:#8c8c8c;line-height:20px}
+.fields{display:flex;flex-direction:column;gap:16px}
+.field{
+  display:flex;flex-direction:column;gap:10px;
+  padding:18px 18px 20px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
+}
+.field label{color:#262626;font-weight:500;line-height:22px}
+.ti{
+  width:100%;height:40px;border:1px solid #e6e8eb;border-radius:8px;
+  padding:0 12px;font-size:14px;outline:none;background:#fafbfc;color:#333;font-family:inherit;
+}
+.ti:hover{border-color:#d0d5dd}
+.ti:focus{background:#fff;border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12)}
+.ti::placeholder{color:#bfbfbf}
+.range{display:flex;align-items:center;gap:10px}
+.range .ti{flex:1;min-width:0}
+.range .sep{color:#bfbfbf;flex-shrink:0}
+.foot{
+  flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:8px;
+  padding:12px 24px;border-top:1px solid #f0f0f0;background:#fff;
+}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:64px;height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
+}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff}
+.btn-default{color:#595959;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.toast{
+  position:fixed;left:50%;bottom:72px;transform:translateX(-50%);
+  background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
+  font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="body">
+    <div class="lead">
+      <h2>导出筛选</h2>
+      <p>按条件筛选后导出库存盘点。不填的条件不参与筛选。</p>
+    </div>
+    <div class="fields">
+      <div class="field">
+        <label>编号</label>
+        <input type="text" class="ti" id="f-code" placeholder="请输入编号" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>盘点日期</label>
+        <div class="range">
+          <input type="date" class="ti" id="f-start">
+          <span class="sep">至</span>
+          <input type="date" class="ti" id="f-end">
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+    <button type="button" class="btn btn-primary" id="export-btn">导出</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+
+  var EXPORT_API = '/hltgq-site/inventory-check/export';
+
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  function cell(v) {
+    return v == null || v === '' ? '' : v;
+  }
+
+  function getQuery() {
+    var q = {};
+    var code = $('f-code').value.trim();
+    var start = $('f-start').value;
+    var end = $('f-end').value;
+    if (code) q.code = code;
+    if (start) q.startDate = start;
+    if (end) q.endDate = end;
+    return q;
+  }
+
+  function fetchRows(q) {
+    var p = new URLSearchParams(q);
+    return fetch(EXPORT_API + (p.toString() ? '?' + p : ''), { credentials: 'include' })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = text ? JSON.parse(text) : null; } catch (e) {}
+          if (!res.ok) throw new Error((json && json.message) || text || ('HTTP ' + res.status));
+          if (Array.isArray(json)) return json;
+          if (json && Array.isArray(json.data)) return json.data;
+          if (json && Array.isArray(json.list)) return json.list;
+          return [];
+        });
+      });
+  }
+
+  /** 主表 1 条 → 盘点明细展开为多行（无明细则 1 行，明细列留空） */
+  function flattenRows(list) {
+    var rows = [];
+    (list || []).forEach(function (r) {
+      var details = r.details && r.details.length ? r.details : [null];
+      details.forEach(function (d) {
+        rows.push([
+          cell(r.code),
+          cell(r.checkDate),
+          d ? cell(d.itemCode) : '',
+          d ? cell(d.itemName) : '',
+          d ? cell(d.bookQty) : '',
+          d ? cell(d.checkQty) : '',
+          d ? cell(d.profitQty) : '',
+          d ? cell(d.lossQty) : '',
+          d ? (cell(d.unit) || '个') : '',
+          cell(r.remark),
+          cell(r.attachmentName),
+          cell(r.attachmentUrl)
+        ]);
+      });
+    });
+    return rows;
+  }
+
+  function exportRows(list) {
+    if (!list.length) return toast('暂无数据可导出');
+    if (!window.XLSX) return toast('导出组件未加载');
+    var header = ['编号', '盘点日期', '物资编号', '物资名称', '当前账面库存', '本次盘点数量', '盘盈数量', '盘亏数量', '单位', '备注', '附件', '附件地址'];
+    var data = flattenRows(list);
+    if (!data.length) return toast('暂无数据可导出');
+    var ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+    // 编号（A）、物资编号（C）强制文本，避免长数字被 Excel 识别为科学计数法
+    data.forEach(function (_, i) {
+      ['A', 'C'].forEach(function (col) {
+        var c = ws[col + (i + 2)];
+        if (c) { c.t = 's'; c.z = '@'; c.v = String(c.v == null ? '' : c.v); }
+      });
+    });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '库存盘点');
+    XLSX.writeFile(wb, '库存盘点.xlsx');
+    toast('已导出 ' + data.length + ' 条');
+  }
+
+  $('reset-btn').addEventListener('click', function () {
+    $('f-code').value = '';
+    $('f-start').value = '';
+    $('f-end').value = '';
+  });
+
+  $('export-btn').addEventListener('click', function () {
+    var q = getQuery();
+    if (q.startDate && q.endDate && q.startDate > q.endDate) {
+      return toast('开始日期不能晚于结束日期');
+    }
+    var btn = $('export-btn');
+    btn.disabled = true;
+    fetchRows(q).then(function (list) {
+      exportRows(list || []);
+    }).catch(function (err) {
+      toast((err && err.message) || '导出失败');
+    }).then(function () {
+      btn.disabled = false;
+    });
+  });
+})();
+</script>
+</body>
+</html>

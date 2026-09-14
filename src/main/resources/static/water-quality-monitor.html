@@ -195,9 +195,14 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
           </div>
         </div>
       </div>
-      <!-- 首页展示最新数据：日期查询器已移除（后续如需要可恢复） -->
-      <input type="hidden" id="start-date" value="">
-      <input type="hidden" id="end-date" value="">
+      <div class="filter-item">
+        <label>日期</label>
+        <div class="date-range">
+          <input type="date" id="start-date">
+          <span class="date-sep">—</span>
+          <input type="date" id="end-date">
+        </div>
+      </div>
       <button type="button" class="btn btn-primary" id="btn-query">查询</button>
       <button type="button" class="btn btn-default" id="btn-reset">重置</button>
     </div>
@@ -851,7 +856,9 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     chartDo && chartDo.resize();
   });
 
-  // 首页展示最新数据，不再预填日期区间
+  // 默认近 3 天
+  $('start-date').value = daysAgo(2);
+  $('end-date').value = todayStr();
   loadSites().then(loadMonitoring);
 })();
 </script>

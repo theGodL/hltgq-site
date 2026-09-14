@@ -30,13 +30,15 @@ public class StocktakeController {
      * 盘点记录列表（按盘点日期倒序，裸 List）。
      *
      * @param code      编号模糊（yogpxf），可选
-     * @param checkDate 盘点日期 yyyy-MM-dd（含当日，khntiy），可选
+     * @param startDate 盘点日期起 yyyy-MM-dd（含当日，khntiy），可选
+     * @param endDate   盘点日期止 yyyy-MM-dd（含当日，khntiy），可选
      */
     @GetMapping("/export")
     public List<InventoryCheckExportVO> export(
             @RequestParam(required = false) String code,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate checkDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
             HttpServletRequest request) {
-        return stocktakeExportService.list(code, checkDate, request);
+        return stocktakeExportService.list(code, startDate, endDate, request);
     }
 }

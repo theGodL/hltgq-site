@@ -1,13 +1,18 @@
 package com.qgyun.hltgq.hltgqsite.stationdata.service;
 
 import com.qgyun.hltgq.hltgqsite.stationdata.mapper.StationDataMapper;
+import com.qgyun.hltgq.hltgqsite.stationdata.vo.StationCoordsVO;
 import com.qgyun.hltgq.hltgqsite.stationdata.vo.StationDataVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 站点数据查询服务：编码 → 中文翻译（口径见《数据表结构汇总.md》第 1 节）。
@@ -119,5 +124,28 @@ public class StationDataService {
         }
         String t = s.trim();
         return t.isEmpty() ? null : t;
+    }
+
+    /**
+     * 批量站点经纬度（按站点档案主键 IN 查询）。
+     * <p>id 列表去空去重（保序）；空列表直接返回空（避免 IN () 语法错误）；
+     * 未命中/非本企业/坐标未填的行均不出现在结果中（或 lon/lat 为 null）。
+     *
+     * @param ids 站点档案主键列表（可含空白项/重复项，容忍）
+     */
+    public List<StationCoordsVO> coords(List<String> ids) {
+        Set<String> unique = new LinkedHashSet<>();
+        if (ids != null) {
+            for (String id : ids) {
+                String t = trimToNull(id);
+                if (t != null) {
+                    unique.add(t);
+                }
+            }
+        }
+        if (unique.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return mapper.selectCoordsByIds(new ArrayList<>(unique));
     }
 }

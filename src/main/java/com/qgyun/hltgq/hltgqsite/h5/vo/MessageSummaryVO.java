@@ -17,6 +17,9 @@ public class MessageSummaryVO {
     /** 未读意见征集数 */
     private long suggestionUnread;
 
-    /** 三者之和 */
+    /** 未读值班提醒数 */
+    private long dutyUnread;
+
+    /** 四者之和 */
     private long totalUnread;
 }

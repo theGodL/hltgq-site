@@ -16,7 +16,8 @@ public interface StocktakeMapper {
 
     /**
      * 盘点记录列表（按盘点日期倒序，id 兜底排序稳定）。
-     * <p>过滤参数：code = yogpxf（编号，模糊 LIKE）、dayStart/dayEnd = khntiy（盘点日期半开区间）。
+     * <p>过滤参数：code = yogpxf（编号，模糊 LIKE）、dayStart/dayEnd = khntiy（盘点日期半开区间，
+     * 两端独立可选：仅起=从该日起、仅止=截至该日含当日）。
      */
     @Select("<script>" +
             "SELECT t.id AS id, t.yogpxf AS code, t.khntiy AS checkDateRaw, " +
@@ -24,7 +25,8 @@ public interface StocktakeMapper {
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_apsypa\" t " +
             "WHERE t.corp_code = 'hltgq' " +
             "<if test='code != null and code != \"\"'>AND t.yogpxf LIKE CONCAT('%', #{code}, '%') </if>" +
-            "<if test='dayStart != null'>AND t.khntiy &gt;= #{dayStart} AND t.khntiy &lt; #{dayEnd} </if>" +
+            "<if test='dayStart != null'>AND t.khntiy &gt;= #{dayStart} </if>" +
+            "<if test='dayEnd != null'>AND t.khntiy &lt; #{dayEnd} </if>" +
             "ORDER BY t.khntiy DESC, t.id DESC" +
             "</script>")
     List<InventoryCheckExportVO> selectCheckList(@Param("code") String code,

@@ -12,6 +12,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -21,11 +22,12 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * H5 消息中心服务：未读汇总 / 三类消息分页 / 标记已读，全部基于当前登录人接收记录。
+ * H5 消息中心服务：未读汇总 / 四类消息分页 / 标记已读，全部基于当前登录人接收记录。
  * <p>同步模型（无定时任务）：summary/page 被调用时按规则把当前登录人可见消息补建为接收记录
  * （未读 #1#，NOT EXISTS 幂等绝不重复），阅读后 UPDATE 已读 #2#；
- * 可见性规则：无规则全员可见，有规则任一命中即可见（#user# 匹配 login_name，
- * #org#/#position#/#role# 匹配用户所属编码），角色仅直接指派。
+ * 可见性规则：前三类按规则表（无规则全员可见，有规则任一命中即可见，#user# 匹配 login_name，
+ * #org#/#position#/#role# 匹配用户所属编码，角色仅直接指派）；
+ * 值班提醒（#4#）不走规则表，定向同步：带班领导 alidpq = 当前登录人 且 提醒状态未提醒 且 值班日期含今日及以后。
  * <p>已读口径：接收记录 is_read=#2#；告警类再叠加业务状态过滤（已关闭告警不计未读）。
  */
 @Service
@@ -34,7 +36,7 @@ public class MessageService {
     private static final Logger log = LoggerFactory.getLogger(MessageService.class);
 
     /** 消息类型合法编码 */
-    private static final List<String> MESSAGE_TYPES = Arrays.asList("#1#", "#2#", "#3#");
+    private static final List<String> MESSAGE_TYPES = Arrays.asList("#1#", "#2#", "#3#", "#4#");
 
     /** 同步防抖窗口：同一用户该窗口内不重复同步（幂等，防抖仅减查询开销） */
     private static final Duration SYNC_COOLDOWN = Duration.ofSeconds(30);
@@ -52,6 +54,11 @@ public class MessageService {
     private static final String[][] SUGGESTION_LABELS = {
             {"#1#", "水资源管理"}, {"#eosz#", "防洪减灾"}, {"#olcg#", "水生态保护"},
             {"#avxv#", "公共服务"}, {"#douo#", "其他建议"}
+    };
+
+    /** 值班排班状态编码 → 权威名称（peuzwi，4 档） */
+    private static final String[][] SCHEDULE_LABELS = {
+            {"#1#", "未开始"}, {"#zzkl#", "待值班"}, {"#cmiu#", "值班中"}, {"#qavx#", "已完成"}
     };
 
     private final MessageQueryMapper queryMapper;
@@ -79,7 +86,8 @@ public class MessageService {
         vo.setAlertUnread(receiveMapper.countAlertUnread(userId));
         vo.setComplaintUnread(receiveMapper.countUnread(userId, "#2#"));
         vo.setSuggestionUnread(receiveMapper.countUnread(userId, "#3#"));
-        vo.setTotalUnread(vo.getAlertUnread() + vo.getComplaintUnread() + vo.getSuggestionUnread());
+        vo.setDutyUnread(receiveMapper.countUnread(userId, "#4#"));
+        vo.setTotalUnread(vo.getAlertUnread() + vo.getComplaintUnread() + vo.getSuggestionUnread() + vo.getDutyUnread());
         return vo;
     }
 
@@ -111,6 +119,16 @@ public class MessageService {
                 List<MessagePageVO.ComplaintMessage> rows =
                         queryMapper.selectComplaintPage(userId, limit, offset);
                 rows.forEach(r -> r.setComplaintTypeLabel(label(r.getComplaintType(), COMPLAINT_LABELS)));
+                vo.setTotal(total);
+                vo.setPages(pages(total, pageSize));
+                vo.setRecords(rows);
+                break;
+            }
+            case "#4#": {
+                long total = queryMapper.countDuty(userId);
+                List<MessagePageVO.DutyMessage> rows =
+                        queryMapper.selectDutyPage(userId, limit, offset);
+                rows.forEach(r -> r.setScheduleStatusLabel(label(r.getScheduleStatus(), SCHEDULE_LABELS)));
                 vo.setTotal(total);
                 vo.setPages(pages(total, pageSize));
                 vo.setRecords(rows);
@@ -191,8 +209,10 @@ public class MessageService {
             int alertRows = alertVisible ? queryMapper.syncAlertReceives(userId) : 0;
             int complaintRows = complaintVisible ? queryMapper.syncComplaintReceives(userId) : 0;
             int suggestionRows = suggestionVisible ? queryMapper.syncSuggestionReceives(userId) : 0;
-            log.info("h5 message sync done: userId={}, loginName={}, alertVisible={} rows={}, complaintVisible={} rows={}, suggestionVisible={} rows={}",
-                    userId, loginName, alertVisible, alertRows, complaintVisible, complaintRows, suggestionVisible, suggestionRows);
+            // 值班提醒定向到带班领导本人，不走规则表；值班日期过滤取今日及以后
+            int dutyRows = queryMapper.syncDutyReceives(userId, LocalDate.now().toString());
+            log.info("h5 message sync done: userId={}, loginName={}, alertVisible={} rows={}, complaintVisible={} rows={}, suggestionVisible={} rows={}, duty rows={}",
+                    userId, loginName, alertVisible, alertRows, complaintVisible, complaintRows, suggestionVisible, suggestionRows, dutyRows);
         } catch (Exception e) {
             log.error("h5 message sync failed: userId={}", userId, e);
             try {
@@ -276,7 +296,7 @@ public class MessageService {
 
     private void requireMessageType(String messageType) {
         if (messageType == null || !MESSAGE_TYPES.contains(messageType)) {
-            throw new IllegalArgumentException("messageType 仅支持 #1# 告警 / #2# 举报投诉 / #3# 意见征集");
+            throw new IllegalArgumentException("messageType 仅支持 #1# 告警 / #2# 举报投诉 / #3# 意见征集 / #4# 值班提醒");
         }
     }
 

@@ -147,4 +147,42 @@ public interface MessageQueryMapper {
             "  WHERE r.user_id = #{userId} AND r.message_type = '#3#' AND r.message_id = s.id" +
             ")")
     int syncSuggestionReceives(@Param("userId") String userId);
+
+    /** 值班提醒总数（接收表 JOIN 值班排班表，带班领导定向） */
+    @Select("SELECT COUNT(*) " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
+            "JOIN \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s ON r.message_id = s.id " +
+            "WHERE r.user_id = #{userId} AND r.message_type = '#4#'")
+    long countDuty(@Param("userId") String userId);
+
+    /** 值班提醒分页：按值班日期倒序，id 兜底分页稳定 */
+    @Select("SELECT s.id AS messageId, s.owcvsv AS dutyDate, s.itxmyy AS shiftTime, " +
+            "s.ihdflq AS dutyUnit, s.peuzwi AS scheduleStatus, " +
+            "CASE WHEN r.is_read = '#2#' THEN true ELSE false END AS isRead " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
+            "JOIN \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s ON r.message_id = s.id " +
+            "WHERE r.user_id = #{userId} AND r.message_type = '#4#' " +
+            "ORDER BY s.owcvsv DESC, s.id DESC " +
+            "LIMIT #{limit} OFFSET #{offset}")
+    List<MessagePageVO.DutyMessage> selectDutyPage(@Param("userId") String userId,
+                                                   @Param("limit") int limit,
+                                                   @Param("offset") int offset);
+
+    /**
+     * 按需同步值班提醒接收记录：带班领导（alidpq 单选人员 ID）= 当前登录人，
+     * 提醒状态未提醒（hfxuuk=#1#）、值班日期含今日及以后；NOT EXISTS 幂等。
+     */
+    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
+            "(id, user_id, message_type, message_id, is_read, corp_code, created_at, created_by) " +
+            "SELECT CONCAT(#{userId}, '_', s.id), #{userId}, '#4#', s.id, '#1#', 'hltgq', CURRENT_TIMESTAMP, #{userId} " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s " +
+            "WHERE s.corp_code = 'hltgq' " +
+            "AND s.alidpq = #{userId} " +
+            "AND s.hfxuuk = '#1#' " +
+            "AND s.owcvsv >= #{today} " +
+            "AND NOT EXISTS (" +
+            "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
+            "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
+            ")")
+    int syncDutyReceives(@Param("userId") String userId, @Param("today") String today);
 }

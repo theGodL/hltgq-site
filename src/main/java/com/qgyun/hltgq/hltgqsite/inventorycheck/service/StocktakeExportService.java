@@ -48,14 +48,17 @@ public class StocktakeExportService {
      * 盘点记录列表（按盘点日期倒序，裸 List，供前端导出 Excel）。
      *
      * @param code      编号模糊（yogpxf），可选
-     * @param checkDate 盘点日期 yyyy-MM-dd（含当日），可选
+     * @param startDate 盘点日期起 yyyy-MM-dd（含当日），可选
+     * @param endDate   盘点日期止 yyyy-MM-dd（含当日），可选
      * @param request   当前请求（提取会话透传文件服务，解析附件文件名/签名地址）
      */
-    public List<InventoryCheckExportVO> list(String code, LocalDate checkDate, HttpServletRequest request) {
-        String dayStart = checkDate == null ? null : checkDate.toString();
-        String dayEnd = checkDate == null ? null : checkDate.plusDays(1).toString();
+    public List<InventoryCheckExportVO> list(String code, LocalDate startDate, LocalDate endDate,
+                                              HttpServletRequest request) {
+        String dayStart = startDate == null ? null : startDate.toString();
+        String dayEnd = endDate == null ? null : endDate.plusDays(1).toString();
         String sessionId = sessionContextService.extractSessionId(request);
 
+        log.info("[设备盘点] 导出查询参数 code={}, dayStart={}, dayEnd={}", trimToNull(code), dayStart, dayEnd);
         List<InventoryCheckExportVO> rows = mapper.selectCheckList(trimToNull(code), dayStart, dayEnd);
         for (InventoryCheckExportVO row : rows) {
             row.setCheckDate(normalizeDate(row.getCheckDateRaw()));

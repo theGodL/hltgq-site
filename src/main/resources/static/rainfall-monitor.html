@@ -99,8 +99,8 @@ tbody tr:hover td{background:#fafafa}
 tbody tr.total-row td{background:#e6f4ff;font-weight:600;color:#000000d9}
 tbody tr.total-row:hover td{background:#e6f4ff}
 .empty{text-align:center;color:#bbb;padding:48px;font-size:14px}
-/* 站报文中断：最新监测时间滞后超过阈值时红色标识（已暂时禁用，后续启用请恢复） */
-/* .tm-stale{color:#ff4d4f;font-weight:600} */
+/* 站报文中断：最新监测时间滞后超过阈值时红色标识 */
+.tm-stale{color:#ff4d4f;font-weight:600}
 .act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s}
 .act-btn:hover{opacity:.7}
 
@@ -206,9 +206,9 @@ tbody tr.total-row:hover td{background:#e6f4ff}
               <th>站点</th>
               <th>监测时间</th>
               <th>当前降雨量 (mm)<div class="th-sub">早8点到当前时间累计的降雨量</div></th>
-              <th>1h降雨量 (mm)<div class="th-sub">近1小时降雨量(不跨8点)</div></th>
-              <th>3h降雨量 (mm)<div class="th-sub">近3小时降雨量(不跨8点)</div></th>
-              <th>6h降雨量 (mm)<div class="th-sub">近6小时降雨量(不跨8点)</div></th>
+              <th>1h降雨量 (mm)<div class="th-sub">近1小时降雨量</div></th>
+              <th>3h降雨量 (mm)<div class="th-sub">近3小时降雨量</div></th>
+              <th>6h降雨量 (mm)<div class="th-sub">近6小时降雨量</div></th>
               <th>电压 (V)</th>
               <th>操作</th>
             </tr>
@@ -393,9 +393,9 @@ tbody tr.total-row:hover td{background:#e6f4ff}
               <tr>
                 <th>监测时间</th>
                 <th>当前降雨量 (mm)<div class="th-sub">早8点到当前时间累计的降雨量</div></th>
-                <th>1h降雨量 (mm)<div class="th-sub">近1小时降雨量(不跨8点)</div></th>
-                <th>3h降雨量 (mm)<div class="th-sub">近3小时降雨量(不跨8点)</div></th>
-                <th>6h降雨量 (mm)<div class="th-sub">近6小时降雨量(不跨8点)</div></th>
+                <th>1h降雨量 (mm)<div class="th-sub">近1小时降雨量</div></th>
+                <th>3h降雨量 (mm)<div class="th-sub">近3小时降雨量</div></th>
+                <th>6h降雨量 (mm)<div class="th-sub">近6小时降雨量</div></th>
               </tr>
             </thead>
             <tbody id="hist-body"></tbody>
@@ -858,7 +858,7 @@ function renderIrrList() {
   tbody.innerHTML = IRR.rows.map((r, i) => `
     <tr>
       <td>${fmtN(r.stnm)}</td>
-      <td>${fmtTm(r.tm)}</td>
+      <td${isStaleTm(r.tm, r.stnm) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
       <td>${fmtN(r.drp)}</td>
       <td>${fmtN(r.rain1h)}</td>
       <td>${fmtN(r.rain3h)}</td>

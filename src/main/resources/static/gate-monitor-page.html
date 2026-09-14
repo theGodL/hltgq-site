@@ -109,8 +109,8 @@ tbody tr:hover td{background:#fafafa}
 .status-part{background:#fff7e6;color:#fa8c16}
 .status-moving{background:#f0f5ff;color:#597ef7}
 .status-fault{background:#fff1f0;color:#ff4d4f}
-/* 站报文中断：最新采集时间滞后超过阈值时红色标识（已暂时禁用，后续启用请恢复） */
-/* .tm-stale{color:#ff4d4f;font-weight:600} */
+/* 站报文中断：最新采集时间滞后超过阈值时红色标识 */
+.tm-stale{color:#ff4d4f;font-weight:600}
 
 .pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:12px 0 0;gap:4px;flex-shrink:0}
 .pg-info{color:#666;font-size:13px;margin-right:8px}
@@ -218,9 +218,12 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="dev-dd"></div>
           </div>
         </div>
-        <!-- 首页展示最新数据：日期查询器已移除（后续如需要可恢复） -->
-        <input type="hidden" id="start-date" value="">
-        <input type="hidden" id="end-date" value="">
+        <div class="filter-item">
+          <label>日期</label>
+          <input type="date" id="start-date">
+          <span class="date-sep">—</span>
+          <input type="date" id="end-date">
+        </div>
         <div class="filter-actions">
           <button class="btn btn-primary" id="query-btn">查询</button>
           <button class="btn btn-default" id="reset-btn">重置</button>
@@ -268,9 +271,12 @@ tbody tr:hover td{background:#fafafa}
             <div class="ss-dd" id="mth-dev-dd"></div>
           </div>
         </div>
-        <!-- 首页展示最新数据：日期查询器已移除（后续如需要可恢复） -->
-        <input type="hidden" id="mth-start-date" value="">
-        <input type="hidden" id="mth-end-date" value="">
+        <div class="filter-item">
+          <label>日期</label>
+          <input type="date" id="mth-start-date">
+          <span class="date-sep">—</span>
+          <input type="date" id="mth-end-date">
+        </div>
         <div class="filter-actions">
           <button class="btn btn-primary" id="mth-query-btn">查询</button>
           <button class="btn btn-default" id="mth-reset-btn">重置</button>
@@ -825,7 +831,7 @@ function renderTable() {
       <td>${fmtN2(r.downZ)}</td>
       <td>${fmtN3(r.q)}</td>
       <td>${fmtN2(r.cumulativeFlow)}</td>
-      <td>${fmtTm(r.tm)}</td>
+      <td${isStaleTm(r.tm, r.siteName) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
       <td>${fmtN2(r.vol)}</td>
       <td>
         <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>

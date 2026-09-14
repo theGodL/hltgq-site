@@ -147,7 +147,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
                 <th>实到次数</th>
                 <th>缺报次数</th>
                 <th>到报率</th>
-                <th>状态</th>
               </tr>
             </thead>
             <tbody id="arrival-tbody"></tbody>
@@ -176,7 +175,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
                 <th>缺测时间段</th>
                 <th>缺测时长</th>
                 <th>数据类型</th>
-                <th>当前状态</th>
               </tr>
             </thead>
             <tbody id="missing-tbody"></tbody>
@@ -283,6 +281,106 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     publish: [],
     range: { mode: 'today', start: null, end: null, missClamped: false }
   };
+
+  // ===== MOCK 数据（接口未就绪，暂用本地假数据） =====
+  // 闭环原则：各 KPI 一律由下方明细反推，确保「卡片 ↔ 明细」数值对得上；
+  //   到报明细：缺报次数=应到-实到，到报率=实到/应到（统一 ≥98%）；
+  //   未到报站点：不计入到报明细、单独计数（<5）；
+  //   缺测站点数 = 缺测明细去重站点数（<5）；
+  //   采集统计：失败=实采-成功，成功率/失败率按实采算（成功率 >90%）。
+  // 接口恢复后：删除本块，并取消 loadAll 中各处 mock 分支的注释即可。
+  function mockRound1(v) { return Math.round(Number(v) * 10) / 10; }
+
+  // 站点到报明细（到报率统一 ≥98%，逐行自洽）
+  var MOCK_ARRIVAL = [
+    { siteName: '花凉亭水库坝上', stcd: '3206400007', msgType: '水位', expected: 96, arrived: 96, missed: 0, arrivalRate: 100 },
+    { siteName: '花凉亭水库坝下', stcd: '3206400008', msgType: '水位', expected: 96, arrived: 95, missed: 1, arrivalRate: 99.0 },
+    { siteName: '太湖县渠首', stcd: '3206400011', msgType: '流量', expected: 96, arrived: 96, missed: 0, arrivalRate: 100 },
+    { siteName: '宿松县渠首', stcd: '3206400012', msgType: '流量', expected: 96, arrived: 95, missed: 1, arrivalRate: 99.0 },
+    { siteName: '望江县渠首', stcd: '3206400013', msgType: '流量', expected: 96, arrived: 95, missed: 1, arrivalRate: 99.0 },
+    { siteName: '怀宁县渠首', stcd: '3206400014', msgType: '流量', expected: 96, arrived: 96, missed: 0, arrivalRate: 100 },
+    { siteName: '潜山县渠首', stcd: '3206400015', msgType: '流量', expected: 96, arrived: 95, missed: 1, arrivalRate: 99.0 },
+    { siteName: '太湖毕岭', stcd: '9000000132', msgType: '雨量', expected: 288, arrived: 285, missed: 3, arrivalRate: 99.0 },
+    { siteName: '望江华阳', stcd: '9000000133', msgType: '雨量', expected: 288, arrived: 284, missed: 4, arrivalRate: 98.6 },
+    { siteName: '宿松复兴', stcd: '9000000134', msgType: '雨量', expected: 288, arrived: 288, missed: 0, arrivalRate: 100 },
+    { siteName: '怀宁麻塘湖', stcd: '9000000135', msgType: '墒情', expected: 96, arrived: 95, missed: 1, arrivalRate: 99.0 },
+    { siteName: '桐城练潭', stcd: '9000000136', msgType: '雨量', expected: 288, arrived: 284, missed: 4, arrivalRate: 98.6 },
+    { siteName: '岳西响肠', stcd: '9000000137', msgType: '雨量', expected: 288, arrived: 283, missed: 5, arrivalRate: 98.3 },
+    { siteName: '桐城范岗', stcd: '9000000141', msgType: '水位', expected: 96, arrived: 95, missed: 1, arrivalRate: 99.0 },
+    { siteName: '潜山源潭', stcd: '9000000142', msgType: '水位', expected: 96, arrived: 95, missed: 1, arrivalRate: 99.0 },
+    { siteName: '望江赛口', stcd: '9000000143', msgType: '水位', expected: 96, arrived: 95, missed: 1, arrivalRate: 99.0 }
+  ];
+
+  // 未到报站点：不计入到报明细（无报文），单独计数
+  var MOCK_NOREPORT = [
+    { siteName: '潜山黄铺', stcd: '9000000138' },
+    { siteName: '太湖新仓', stcd: '9000000139' },
+    { siteName: '望江太慈', stcd: '9000000140' }
+  ];
+
+  // 缺测明细（当前状态列不展示；去重站点数即「缺测站点」KPI）
+  var MOCK_MISS = [
+    { siteName: '望江华阳', stcd: '9000000133', startTm: '2026-09-14T02:00:00', endTm: '2026-09-14T03:30:00', missMinutes: 90, dataTypes: ['水位', '流量'] },
+    { siteName: '望江华阳', stcd: '9000000133', startTm: '2026-09-14T08:00:00', endTm: '2026-09-14T09:00:00', missMinutes: 60, dataTypes: ['雨量'] },
+    { siteName: '桐城练潭', stcd: '9000000136', startTm: '2026-09-14T05:15:00', endTm: '2026-09-14T06:00:00', missMinutes: 45, dataTypes: ['雨量'] },
+    { siteName: '岳西响肠', stcd: '9000000137', startTm: '2026-09-14T10:00:00', endTm: '2026-09-14T11:20:00', missMinutes: 80, dataTypes: ['墒情'] },
+    { siteName: '岳西响肠', stcd: '9000000137', startTm: '2026-09-14T14:00:00', endTm: '2026-09-14T14:40:00', missMinutes: 40, dataTypes: ['墒情'] }
+  ];
+
+  // 数据采集状态统计（成功率统一 >90%）
+  var MOCK_COLLECT_MQ = [
+    { dataType: '雨量', expected: 2880, collected: 2880, success: 2800 },
+    { dataType: '水位', expected: 1440, collected: 1440, success: 1400 },
+    { dataType: '流量', expected: 1440, collected: 1438, success: 1405 },
+    { dataType: '墒情', expected: 960, collected: 958, success: 941 }
+  ];
+  var MOCK_COLLECT_VIDEO = { dataType: '视频', expected: 480, collected: 470, success: 440 };
+
+  function mockPct(part, whole) { return whole > 0 ? mockRound1(part / whole * 100) : 0; }
+  function mockCollectRows(seeds) {
+    return seeds.map(function (s) {
+      var failed = Math.max(0, Number(s.collected) - Number(s.success));
+      return {
+        dataType: s.dataType,
+        expected: s.expected,
+        collected: s.collected,
+        success: s.success,
+        failed: failed,
+        successRate: mockPct(s.success, s.collected),
+        failRate: mockPct(failed, s.collected)
+      };
+    });
+  }
+  function mockAggRate(list) {
+    var exp = 0, arr = 0;
+    list.forEach(function (r) { exp += Number(r.expected) || 0; arr += Number(r.arrived) || 0; });
+    return exp > 0 ? mockRound1(arr / exp * 100) : 0;
+  }
+  function mockAvgRate(list) {
+    if (!list.length) return 0;
+    var s = 0;
+    list.forEach(function (r) { s += Number(r.arrivalRate) || 0; });
+    return mockRound1(s / list.length);
+  }
+  function mockUniqSites(list) {
+    var seen = {}, out = [];
+    list.forEach(function (r) {
+      if (r.siteName && !seen[r.siteName]) { seen[r.siteName] = 1; out.push({ siteName: r.siteName, stcd: r.stcd }); }
+    });
+    return out;
+  }
+  // KPI 全部由明细派生，保证卡片与明细闭环
+  function buildMockKpi() {
+    return {
+      stationTotal: MOCK_ARRIVAL.length + MOCK_NOREPORT.length,
+      todayArrivalRate: mockAggRate(MOCK_ARRIVAL),
+      monthAvgArrivalRate: mockAvgRate(MOCK_ARRIVAL),
+      statStartDate: null,
+      noReportSites: MOCK_NOREPORT.slice(),
+      missedSites: mockUniqSites(MOCK_MISS)
+    };
+  }
+  // ===== MOCK END =====
 
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
   function todayStr() {
@@ -678,7 +776,7 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     var page = state.arrival.page;
     var tbody = document.getElementById('arrival-tbody');
     if (!list.length) {
-      tbody.innerHTML = emptyRow(9, '暂无数据');
+      tbody.innerHTML = emptyRow(8, '暂无数据');
       renderPager('arrival-pg-info', 'arrival-pg-btns', list, 1, function () {});
       return;
     }
@@ -697,7 +795,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
         '<td>' + esc(r.missing) + '</td>' +
         '<td><div class="rate-cell"><span class="rate-bar ' + cls + '"><i style="width:' + w + '%"></i></span>' +
         '<span class="rate-txt">' + fmtRate(r.rate) + '</span></div></td>' +
-        '<td><span class="tag ' + arrivalTagClass(r.status) + '">' + esc(r.status) + '</span></td>' +
         '</tr>';
     }).join('');
     renderPager('arrival-pg-info', 'arrival-pg-btns', list, page, function (p) {
@@ -711,14 +808,13 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     var page = state.missing.page;
     var tbody = document.getElementById('missing-tbody');
     if (!list.length) {
-      tbody.innerHTML = emptyRow(7, '暂无数据');
+      tbody.innerHTML = emptyRow(6, '暂无数据');
       renderPager('missing-pg-info', 'missing-pg-btns', list, 1, function () {});
       return;
     }
     var rows = pageSlice(list, page);
     var start = (page - 1) * PAGE_SIZE;
     tbody.innerHTML = rows.map(function (r, idx) {
-      var tagCls = r.status === '缺测中' ? 'tag-missing' : 'tag-recovered';
       return '<tr>' +
         '<td>' + (start + idx + 1) + '</td>' +
         '<td class="left">' + esc(r.name) + '</td>' +
@@ -726,7 +822,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
         '<td>' + esc(r.period) + '</td>' +
         '<td>' + esc(r.duration) + '</td>' +
         '<td>' + esc(r.dataType) + '</td>' +
-        '<td><span class="tag ' + tagCls + '">' + esc(r.status) + '</span></td>' +
         '</tr>';
     }).join('');
     renderPager('missing-pg-info', 'missing-pg-btns', list, page, function (p) {
@@ -808,8 +903,8 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
   }
 
   function setLoadingTables(text) {
-    document.getElementById('arrival-tbody').innerHTML = emptyRow(9, text);
-    document.getElementById('missing-tbody').innerHTML = emptyRow(7, text);
+    document.getElementById('arrival-tbody').innerHTML = emptyRow(8, text);
+    document.getElementById('missing-tbody').innerHTML = emptyRow(6, text);
     document.getElementById('service-tbody').innerHTML = emptyRow(8, text);
     document.getElementById('collect-tbody').innerHTML = emptyRow(7, text);
     document.getElementById('publish-tbody').innerHTML = emptyRow(7, text);
@@ -868,45 +963,73 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
       var mq = range.missQs || q;
       // publish-stats 不受区间参数影响，始终今日口径
       var tasks = [
-        fetchApi('/data-statistics/arrival-stats' + q).then(function (d) {
+        // 接口未就绪，暂用 buildMockKpi()（由明细反推）；恢复后取消下方注释并删除 mock 分支
+        // fetchApi('/data-statistics/arrival-stats' + q).then(function (d) {
+        //   state.kpi = d || {};
+        //   renderKpi();
+        // }).catch(function (e) {
+        //   errors.push(e && e.message ? e.message : '接口失败');
+        //   document.getElementById('kpi-row').innerHTML =
+        //     '<div class="card kpi-card" style="grid-column:1/-1"><div class="kpi-meta">' +
+        //     '<div class="kpi-value">-</div><div class="kpi-label">统计卡片加载失败，请重试</div></div></div>';
+        // }),
+        Promise.resolve(buildMockKpi()).then(function (d) {
           state.kpi = d || {};
           renderKpi();
-        }).catch(function (e) {
-          errors.push(e && e.message ? e.message : '接口失败');
-          document.getElementById('kpi-row').innerHTML =
-            '<div class="card kpi-card" style="grid-column:1/-1"><div class="kpi-meta">' +
-            '<div class="kpi-value">-</div><div class="kpi-label">统计卡片加载失败，请重试</div></div></div>';
         }),
-        fetchApi('/data-statistics/arrival-detail' + q).then(function (d) {
+        // 接口未就绪，暂用 MOCK_ARRIVAL；恢复后启用下方 fetchApi 并删除 mock 分支
+        // fetchApi('/data-statistics/arrival-detail' + q).then(function (d) {
+        //   state.arrival.list = mapArrival(d);
+        //   state.arrival.page = 1;
+        //   renderArrival();
+        // }).catch(failBlock('arrival-tbody', 8, 'arrival-pg-info', 'arrival-pg-btns')),
+        Promise.resolve(MOCK_ARRIVAL).then(function (d) {
           state.arrival.list = mapArrival(d);
           state.arrival.page = 1;
           renderArrival();
-        }).catch(failBlock('arrival-tbody', 9, 'arrival-pg-info', 'arrival-pg-btns')),
-        fetchApi('/data-statistics/miss-detail' + mq).then(function (d) {
+        }),
+        // 接口未就绪，暂用 MOCK_MISS；恢复后启用下方 fetchApi 并删除 mock 分支
+        // fetchApi('/data-statistics/miss-detail' + mq).then(function (d) {
+        //   state.missing.list = mapMissing(d);
+        //   state.missing.page = 1;
+        //   renderMissing();
+        // }).catch(failBlock('missing-tbody', 6, 'missing-pg-info', 'missing-pg-btns')),
+        Promise.resolve(MOCK_MISS).then(function (d) {
           state.missing.list = mapMissing(d);
           state.missing.page = 1;
           renderMissing();
-        }).catch(failBlock('missing-tbody', 7, 'missing-pg-info', 'missing-pg-btns')),
+        }),
         fetchApi('/data-statistics/service-status' + q).then(function (d) {
           var svc = mapServices(d);
           state.process = svc.process;
           state.services = svc.services;
           renderServices();
         }).catch(failBlock('service-tbody', 8)),
-        fetchApi('/data-statistics/collect-stats' + q).then(function (d) {
+        // 接口未就绪，暂用 MOCK_COLLECT_MQ；恢复后启用下方注释的 fetchApi
+        // fetchApi('/data-statistics/collect-stats' + q).then(function (d) {
+        //   collectMqReady = true;
+        //   collectMqList = d || [];
+        //   applyCollect();
+        // }).catch(failBlock('collect-tbody', 7)),
+        Promise.resolve(mockCollectRows(MOCK_COLLECT_MQ)).then(function (d) {
           collectMqReady = true;
           collectMqList = d || [];
           applyCollect();
-        }).catch(failBlock('collect-tbody', 7)),
+        }),
         fetchApi('/data-statistics/publish-stats').then(function (d) {
           state.publish = mapPublish(d);
           renderPublish();
         }).catch(failBlock('publish-tbody', 7)),
+        // 视频行：接口未就绪，暂用 MOCK_COLLECT_VIDEO；恢复后启用下方注释的 fetchApi
         // 视频行失败/缺失时静默省略，不计入硬错误；collected=0 仍展示
-        fetchApi('/data-statistics/video-collect' + q).then(function (d) {
-          collectVideoRow = mapVideoCollect(d);
+        // fetchApi('/data-statistics/video-collect' + q).then(function (d) {
+        //   collectVideoRow = mapVideoCollect(d);
+        //   applyCollect();
+        // }).catch(function () {})
+        Promise.resolve(mockCollectRows([MOCK_COLLECT_VIDEO])).then(function (d) {
+          collectVideoRow = mapVideoCollect(d[0]);
           applyCollect();
-        }).catch(function () {})
+        })
       ];
 
       await Promise.allSettled(tasks);
@@ -957,9 +1080,9 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
   document.getElementById('export-arrival').addEventListener('click', function () {
     if (!state.arrival.list.length) { toast('暂无数据可导出'); return; }
     exportCsv('站点到报明细.csv',
-      ['序号', '站点名称', '编号', '报文类型', '应到次数', '实到次数', '缺报次数', '到报率', '状态'],
+      ['序号', '站点名称', '编号', '报文类型', '应到次数', '实到次数', '缺报次数', '到报率'],
       state.arrival.list.map(function (r, i) {
-        return [i + 1, r.name, excelText(r.code), r.type, r.expected, r.actual, r.missing, fmtRate(r.rate), r.status];
+        return [i + 1, r.name, excelText(r.code), r.type, r.expected, r.actual, r.missing, fmtRate(r.rate)];
       })
     );
     toast('已导出到报明细');
@@ -967,9 +1090,9 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
   document.getElementById('export-missing').addEventListener('click', function () {
     if (!state.missing.list.length) { toast('暂无数据可导出'); return; }
     exportCsv('缺测明细.csv',
-      ['序号', '站点名称', '编号', '缺测时间段', '缺测时长', '数据类型', '当前状态'],
+      ['序号', '站点名称', '编号', '缺测时间段', '缺测时长', '数据类型'],
       state.missing.list.map(function (r, i) {
-        return [i + 1, r.name, excelText(r.code), r.period, r.duration, r.dataType, r.status];
+        return [i + 1, r.name, excelText(r.code), r.period, r.duration, r.dataType];
       })
     );
     toast('已导出缺测明细');

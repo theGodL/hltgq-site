@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * 消息中心分页结果：total/current/size/pages 与 PC 端分页结构一致，
- * records 元素结构按消息类型区分（AlertMessage / ComplaintMessage / SuggestionMessage）。
+ * records 元素结构按消息类型区分（AlertMessage / ComplaintMessage / SuggestionMessage / DutyMessage）。
  */
 @Data
 public class MessagePageVO {
@@ -116,6 +116,32 @@ public class MessagePageVO {
 
         /** 提交时间（平台公共字段 created_at） */
         private LocalDateTime createdAt;
+
+        /** 当前登录人是否已读 */
+        private Boolean isRead;
+    }
+
+    /** 值班提醒消息行（接收表 JOIN 值班排班表，带班领导定向） */
+    @Data
+    public static class DutyMessage {
+
+        /** 消息主键（排班表 id） */
+        private String messageId;
+
+        /** 值班日期（排班表 owcvsv） */
+        private String dutyDate;
+
+        /** 班次时间（排班表 itxmyy） */
+        private String shiftTime;
+
+        /** 所在单位（排班表 ihdflq） */
+        private String dutyUnit;
+
+        /** 排班状态编码（排班表 peuzwi：#1# 未开始/#zzkl# 待值班/#cmiu# 值班中/#qavx# 已完成） */
+        private String scheduleStatus;
+
+        /** 排班状态名称（权威映射） */
+        private String scheduleStatusLabel;
 
         /** 当前登录人是否已读 */
         private Boolean isRead;
