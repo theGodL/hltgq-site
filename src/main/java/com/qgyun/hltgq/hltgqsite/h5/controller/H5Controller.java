@@ -93,11 +93,14 @@ public class H5Controller {
     /**
      * 水资源概览：聚合返回页面四块组件——饼状图（水资源量分布）、列表（分配方案及执行）、
      * 两卡片（灌溉统计）、四卡片（各区域灌溉详情）。
-     * <p>默认取最新已完成需水方案与最新已完成配水方案，无参数。
+     * <p>年度区间（yyyy-MM-dd HH:mm:ss，前端 date.min/date.max 直传）可选，缺省=本年度；
+     * 年份作用于用水计划/需水方案/配水方案选取。
      */
     @GetMapping("/water-resource/overview")
-    public WaterResourceOverviewVO waterResourceOverview() {
-        return waterResourceService.overview();
+    public WaterResourceOverviewVO waterResourceOverview(
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        return waterResourceService.overview(startDate, endDate);
     }
 
     /**
