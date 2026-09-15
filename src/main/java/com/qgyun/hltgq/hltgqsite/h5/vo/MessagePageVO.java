@@ -146,4 +146,27 @@ public class MessagePageVO {
         /** 当前登录人是否已读 */
         private Boolean isRead;
     }
+
+    /** 模型计算消息行（提交人定向：接收表按模块前缀反查方案主表） */
+    @Data
+    public static class ModelCalcMessage {
+
+        /** 消息主键（接收表 message_id，带模块前缀，如 short:xxx） */
+        private String messageId;
+
+        /** 方案名称 */
+        private String schemeName;
+
+        /** 模块编码：short/long/loss/demand/moisture/allocation/decision */
+        private String module;
+
+        /** 模块名称（权威映射） */
+        private String moduleLabel;
+
+        /** 计算完成时间（方案主表 updated_at） */
+        private LocalDateTime finishedAt;
+
+        /** 当前登录人是否已读 */
+        private Boolean isRead;
+    }
 }

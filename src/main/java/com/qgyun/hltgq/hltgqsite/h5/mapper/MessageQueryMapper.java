@@ -185,4 +185,113 @@ public interface MessageQueryMapper {
             "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
             ")")
     int syncDutyReceives(@Param("userId") String userId, @Param("today") String today);
+
+    // ==================== 模型计算消息（#5#，提交人定向） ====================
+
+    /** 模型计算消息总数：接收表纯计数不 JOIN 主表（方案软删不物理删，接收记录保留，与列表口径一致） */
+    @Select("SELECT COUNT(*) " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
+            "WHERE user_id = #{userId} AND message_type = '#5#'")
+    long countModelCalc(@Param("userId") String userId);
+
+    /**
+     * 模型计算消息分页第一段：接收表按 created_at 倒序取本页（同步时写入方案完成时间，即排序键）。
+     * <p>只取 messageId/isRead，方案展示字段由 Service 按模块前缀拆分后第二段反查（避免 7 表 UNION 大排序）。
+     */
+    @Select("SELECT r.message_id AS messageId, " +
+            "CASE WHEN r.is_read = '#2#' THEN true ELSE false END AS isRead " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
+            "WHERE r.user_id = #{userId} AND r.message_type = '#5#' " +
+            "ORDER BY r.created_at DESC, r.message_id DESC " +
+            "LIMIT #{limit} OFFSET #{offset}")
+    List<MessagePageVO.ModelCalcMessage> selectModelCalcPage(@Param("userId") String userId,
+                                                             @Param("limit") int limit,
+                                                             @Param("offset") int offset);
+
+    /**
+     * 按需同步模型计算接收记录：提交人（created_by）= 当前登录人且状态已完成的方案，7 张主表 UNION ALL。
+     * <p>message_id 带模块前缀（防跨表主键冲突，也是分页第二段拆表反查依据）；
+     * created_at 写方案完成时间（updated_at），供列表按完成时间倒序；
+     * 墒情主表 status 为平台字典 #2#=已完成，其余 6 张为纯值 completed；
+     * 系统触发任务（预跑/恢复）created_by 为固定账号，不匹配任何真实用户，天然不产生消息。
+     */
+    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
+            "(id, user_id, message_type, message_id, is_read, corp_code, created_at, created_by) " +
+            "SELECT CONCAT(#{userId}, '_', x.message_id), #{userId}, '#5#', x.message_id, '#1#', 'hltgq', x.finished_at, #{userId} " +
+            "FROM (" +
+            "SELECT CONCAT('short:', id) AS message_id, updated_at AS finished_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_short_forecast_record\" " +
+            "WHERE created_by = #{userId} AND status = 'completed' AND del_flag = '#2#' " +
+            "UNION ALL " +
+            "SELECT CONCAT('long:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_long_predict_record\" " +
+            "WHERE created_by = #{userId} AND status = 'completed' AND del_flag = '#2#' " +
+            "UNION ALL " +
+            "SELECT CONCAT('loss:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_loss_record\" " +
+            "WHERE created_by = #{userId} AND status = 'completed' AND del_flag = '#2#' " +
+            "UNION ALL " +
+            "SELECT CONCAT('demand:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_demand_record\" " +
+            "WHERE created_by = #{userId} AND status = 'completed' AND del_flag = '#2#' " +
+            "UNION ALL " +
+            "SELECT CONCAT('moisture:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_moisture_detail\" " +
+            "WHERE created_by = #{userId} AND status = '#2#' AND del_flag = '#2#' " +
+            "UNION ALL " +
+            "SELECT CONCAT('allocation:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_allocate_record\" " +
+            "WHERE created_by = #{userId} AND status = 'completed' AND del_flag = '#2#' " +
+            "UNION ALL " +
+            "SELECT CONCAT('decision:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_decision_record\" " +
+            "WHERE created_by = #{userId} AND status = 'completed' AND del_flag = '#2#' " +
+            ") x " +
+            "WHERE NOT EXISTS (" +
+            "SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
+            "WHERE r.user_id = #{userId} AND r.message_type = '#5#' AND r.message_id = x.message_id" +
+            ")")
+    int syncModelCalcReceives(@Param("userId") String userId);
+
+    /** 模型计算消息第二段反查：短期预报方案详情（主键 IN，每模块独立查询） */
+    @Select("<script>SELECT CONCAT('short:', id) AS messageId, scheme_name AS schemeName, updated_at AS finishedAt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_short_forecast_record\" WHERE id IN " +
+            "<foreach collection='ids' item='i' open='(' separator=',' close=')'>#{i}</foreach></script>")
+    List<MessagePageVO.ModelCalcMessage> selectShortCalcDetails(@Param("ids") List<String> ids);
+
+    /** 模型计算消息第二段反查：长期预测方案详情 */
+    @Select("<script>SELECT CONCAT('long:', id) AS messageId, scheme_name AS schemeName, updated_at AS finishedAt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_long_predict_record\" WHERE id IN " +
+            "<foreach collection='ids' item='i' open='(' separator=',' close=')'>#{i}</foreach></script>")
+    List<MessagePageVO.ModelCalcMessage> selectLongCalcDetails(@Param("ids") List<String> ids);
+
+    /** 模型计算消息第二段反查：水量损失方案详情 */
+    @Select("<script>SELECT CONCAT('loss:', id) AS messageId, scheme_name AS schemeName, updated_at AS finishedAt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_loss_record\" WHERE id IN " +
+            "<foreach collection='ids' item='i' open='(' separator=',' close=')'>#{i}</foreach></script>")
+    List<MessagePageVO.ModelCalcMessage> selectLossCalcDetails(@Param("ids") List<String> ids);
+
+    /** 模型计算消息第二段反查：需水预测方案详情 */
+    @Select("<script>SELECT CONCAT('demand:', id) AS messageId, scheme_name AS schemeName, updated_at AS finishedAt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_demand_record\" WHERE id IN " +
+            "<foreach collection='ids' item='i' open='(' separator=',' close=')'>#{i}</foreach></script>")
+    List<MessagePageVO.ModelCalcMessage> selectDemandCalcDetails(@Param("ids") List<String> ids);
+
+    /** 模型计算消息第二段反查：墒情预测方案详情（主表 moisture_detail，status 平台字典） */
+    @Select("<script>SELECT CONCAT('moisture:', id) AS messageId, scheme_name AS schemeName, updated_at AS finishedAt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_moisture_detail\" WHERE id IN " +
+            "<foreach collection='ids' item='i' open='(' separator=',' close=')'>#{i}</foreach></script>")
+    List<MessagePageVO.ModelCalcMessage> selectMoistureCalcDetails(@Param("ids") List<String> ids);
+
+    /** 模型计算消息第二段反查：配水方案详情 */
+    @Select("<script>SELECT CONCAT('allocation:', id) AS messageId, scheme_name AS schemeName, updated_at AS finishedAt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_allocate_record\" WHERE id IN " +
+            "<foreach collection='ids' item='i' open='(' separator=',' close=')'>#{i}</foreach></script>")
+    List<MessagePageVO.ModelCalcMessage> selectAllocationCalcDetails(@Param("ids") List<String> ids);
+
+    /** 模型计算消息第二段反查：配水决策方案详情 */
+    @Select("<script>SELECT CONCAT('decision:', id) AS messageId, scheme_name AS schemeName, updated_at AS finishedAt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_decision_record\" WHERE id IN " +
+            "<foreach collection='ids' item='i' open='(' separator=',' close=')'>#{i}</foreach></script>")
+    List<MessagePageVO.ModelCalcMessage> selectDecisionCalcDetails(@Param("ids") List<String> ids);
 }

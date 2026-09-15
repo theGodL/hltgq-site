@@ -141,7 +141,7 @@ public class AllocateService {
         record.setDemandRecordId(demandRecordId);
         record.setCorpCode(corpCode);
         record.setCreatedAt(LocalDateTime.now());
-        record.setCreatedBy(createdBy);
+        record.setCreatedBy(ModelRecordCommonService.operatorId(createdBy));
         record.setUpdatedAt(record.getCreatedAt());
         record.setUpdatedBy(createdBy);
         try {

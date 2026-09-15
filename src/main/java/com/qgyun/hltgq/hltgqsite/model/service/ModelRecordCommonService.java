@@ -2,6 +2,8 @@ package com.qgyun.hltgq.hltgqsite.model.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.qgyun.hltgq.hltgqsite.auth.UserContext;
+import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
 import com.qgyun.hltgq.hltgqsite.entity.BaseRecordEntity;
 import com.qgyun.hltgq.hltgqsite.model.util.BoolTextUtils;
 import org.springframework.http.HttpStatus;
@@ -25,6 +27,16 @@ public class ModelRecordCommonService {
     public static final String STATUS_CALCULATING = "calculating";
     public static final String STATUS_COMPLETED = "completed";
     public static final String STATUS_FAILED = "failed";
+
+    /**
+     * 方案提交人：当前登录人优先（H5 消息中心「模型计算」消息定向推送依据）；
+     * 无用户上下文（预置预跑/启动恢复等系统触发任务）时回退固定账号——
+     * 系统触发记录不匹配任何真实用户，消息同步时天然不产生消息。
+     */
+    public static String operatorId(String fallback) {
+        UserContext user = UserContextHolder.currentUser();
+        return user != null && user.getUserId() != null ? user.getUserId() : fallback;
+    }
 
     /** 按主键查询，不存在抛 404 */
     public <T extends BaseRecordEntity> T require(String id, BaseMapper<T> mapper) {

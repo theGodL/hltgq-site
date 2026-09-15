@@ -169,7 +169,7 @@ public class MoisturePredictService {
         record.setStationCount((double) initStates.size());
         record.setCorpCode(corpCode);
         record.setCreatedAt(LocalDateTime.now());
-        record.setCreatedBy(createdBy);
+        record.setCreatedBy(ModelRecordCommonService.operatorId(createdBy));
         record.setUpdatedAt(record.getCreatedAt());
         record.setUpdatedBy(createdBy);
         try {

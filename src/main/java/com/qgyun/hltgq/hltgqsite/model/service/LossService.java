@@ -118,7 +118,7 @@ public class LossService {
         record.setRetrain(BoolTextUtils.boolToText(Boolean.TRUE.equals(body.get("retrain"))));
         record.setCorpCode(corpCode);
         record.setCreatedAt(LocalDateTime.now());
-        record.setCreatedBy(createdBy);
+        record.setCreatedBy(ModelRecordCommonService.operatorId(createdBy));
         record.setUpdatedAt(record.getCreatedAt());
         record.setUpdatedBy(createdBy);
         try {

@@ -15,19 +15,23 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * H5 消息中心服务：未读汇总 / 四类消息分页 / 标记已读，全部基于当前登录人接收记录。
+ * H5 消息中心服务：未读汇总 / 五类消息分页 / 标记已读，全部基于当前登录人接收记录。
  * <p>同步模型（无定时任务）：summary/page 被调用时按规则把当前登录人可见消息补建为接收记录
  * （未读 #1#，NOT EXISTS 幂等绝不重复），阅读后 UPDATE 已读 #2#；
  * 可见性规则：前三类按规则表（无规则全员可见，有规则任一命中即可见，#user# 匹配 login_name，
  * #org#/#position#/#role# 匹配用户所属编码，角色仅直接指派）；
- * 值班提醒（#4#）不走规则表，定向同步：带班领导 alidpq = 当前登录人 且 提醒状态未提醒 且 值班日期含今日及以后。
+ * 值班提醒（#4#）不走规则表，定向同步：带班领导 alidpq = 当前登录人 且 提醒状态未提醒 且 值班日期含今日及以后；
+ * 模型计算（#5#）不走规则表，定向同步：方案提交人 created_by = 当前登录人且已完成的方案
+ * （系统预跑/恢复任务 created_by 为固定账号，天然不产生消息）。
  * <p>已读口径：接收记录 is_read=#2#；告警类再叠加业务状态过滤（已关闭告警不计未读）。
  */
 @Service
@@ -36,7 +40,7 @@ public class MessageService {
     private static final Logger log = LoggerFactory.getLogger(MessageService.class);
 
     /** 消息类型合法编码 */
-    private static final List<String> MESSAGE_TYPES = Arrays.asList("#1#", "#2#", "#3#", "#4#");
+    private static final List<String> MESSAGE_TYPES = Arrays.asList("#1#", "#2#", "#3#", "#4#", "#5#");
 
     /** 同步防抖窗口：同一用户该窗口内不重复同步（幂等，防抖仅减查询开销） */
     private static final Duration SYNC_COOLDOWN = Duration.ofSeconds(30);
@@ -59,6 +63,12 @@ public class MessageService {
     /** 值班排班状态编码 → 权威名称（peuzwi，4 档） */
     private static final String[][] SCHEDULE_LABELS = {
             {"#1#", "未开始"}, {"#zzkl#", "待值班"}, {"#cmiu#", "值班中"}, {"#qavx#", "已完成"}
+    };
+
+    /** 模型计算模块编码 → 权威名称（消息行 module/moduleLabel） */
+    private static final String[][] MODULE_LABELS = {
+            {"short", "短期预报"}, {"long", "长期预测"}, {"loss", "水量损失"},
+            {"demand", "需水预测"}, {"moisture", "墒情预测"}, {"allocation", "配水方案"}, {"decision", "配水决策"}
     };
 
     private final MessageQueryMapper queryMapper;
@@ -87,7 +97,9 @@ public class MessageService {
         vo.setComplaintUnread(receiveMapper.countUnread(userId, "#2#"));
         vo.setSuggestionUnread(receiveMapper.countUnread(userId, "#3#"));
         vo.setDutyUnread(receiveMapper.countUnread(userId, "#4#"));
-        vo.setTotalUnread(vo.getAlertUnread() + vo.getComplaintUnread() + vo.getSuggestionUnread() + vo.getDutyUnread());
+        vo.setModelCalcUnread(receiveMapper.countUnread(userId, "#5#"));
+        vo.setTotalUnread(vo.getAlertUnread() + vo.getComplaintUnread() + vo.getSuggestionUnread()
+                + vo.getDutyUnread() + vo.getModelCalcUnread());
         return vo;
     }
 
@@ -129,6 +141,16 @@ public class MessageService {
                 List<MessagePageVO.DutyMessage> rows =
                         queryMapper.selectDutyPage(userId, limit, offset);
                 rows.forEach(r -> r.setScheduleStatusLabel(label(r.getScheduleStatus(), SCHEDULE_LABELS)));
+                vo.setTotal(total);
+                vo.setPages(pages(total, pageSize));
+                vo.setRecords(rows);
+                break;
+            }
+            case "#5#": {
+                long total = queryMapper.countModelCalc(userId);
+                List<MessagePageVO.ModelCalcMessage> rows =
+                        queryMapper.selectModelCalcPage(userId, limit, offset);
+                fillModelCalcDetails(rows);
                 vo.setTotal(total);
                 vo.setPages(pages(total, pageSize));
                 vo.setRecords(rows);
@@ -211,8 +233,10 @@ public class MessageService {
             int suggestionRows = suggestionVisible ? queryMapper.syncSuggestionReceives(userId) : 0;
             // 值班提醒定向到带班领导本人，不走规则表；值班日期过滤取今日及以后
             int dutyRows = queryMapper.syncDutyReceives(userId, LocalDate.now().toString());
-            log.info("h5 message sync done: userId={}, loginName={}, alertVisible={} rows={}, complaintVisible={} rows={}, suggestionVisible={} rows={}, duty rows={}",
-                    userId, loginName, alertVisible, alertRows, complaintVisible, complaintRows, suggestionVisible, suggestionRows, dutyRows);
+            // 模型计算定向到方案提交人本人，不走规则表；仅已完成方案（系统预跑/恢复任务天然不匹配）
+            int modelCalcRows = queryMapper.syncModelCalcReceives(userId);
+            log.info("h5 message sync done: userId={}, loginName={}, alertVisible={} rows={}, complaintVisible={} rows={}, suggestionVisible={} rows={}, duty rows={}, modelCalc rows={}",
+                    userId, loginName, alertVisible, alertRows, complaintVisible, complaintRows, suggestionVisible, suggestionRows, dutyRows, modelCalcRows);
         } catch (Exception e) {
             log.error("h5 message sync failed: userId={}", userId, e);
             try {
@@ -296,7 +320,78 @@ public class MessageService {
 
     private void requireMessageType(String messageType) {
         if (messageType == null || !MESSAGE_TYPES.contains(messageType)) {
-            throw new IllegalArgumentException("messageType 仅支持 #1# 告警 / #2# 举报投诉 / #3# 意见征集 / #4# 值班提醒");
+            throw new IllegalArgumentException("messageType 仅支持 #1# 告警 / #2# 举报投诉 / #3# 意见征集 / #4# 值班提醒 / #5# 模型计算");
+        }
+    }
+
+    /**
+     * 模型计算消息第二段：按模块前缀拆分本页 message_id，分组调各模块详情查询（每段主键 IN），
+     * 避免 7 表 UNION 大排序；回填后保持第一段（接收表 created_at 倒序）分页顺序。
+     */
+    private void fillModelCalcDetails(List<MessagePageVO.ModelCalcMessage> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        // 模块前缀 → 主表 id 列表（message_id 形如 short:xxx）
+        Map<String, List<String>> idsByModule = new LinkedHashMap<>();
+        for (MessagePageVO.ModelCalcMessage row : rows) {
+            if (row.getMessageId() == null) {
+                continue;
+            }
+            int sep = row.getMessageId().indexOf(':');
+            if (sep <= 0) {
+                continue;
+            }
+            idsByModule.computeIfAbsent(row.getMessageId().substring(0, sep), k -> new ArrayList<>())
+                    .add(row.getMessageId().substring(sep + 1));
+        }
+
+        Map<String, MessagePageVO.ModelCalcMessage> details = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : idsByModule.entrySet()) {
+            List<MessagePageVO.ModelCalcMessage> part;
+            switch (entry.getKey()) {
+                case "short":
+                    part = queryMapper.selectShortCalcDetails(entry.getValue());
+                    break;
+                case "long":
+                    part = queryMapper.selectLongCalcDetails(entry.getValue());
+                    break;
+                case "loss":
+                    part = queryMapper.selectLossCalcDetails(entry.getValue());
+                    break;
+                case "demand":
+                    part = queryMapper.selectDemandCalcDetails(entry.getValue());
+                    break;
+                case "moisture":
+                    part = queryMapper.selectMoistureCalcDetails(entry.getValue());
+                    break;
+                case "allocation":
+                    part = queryMapper.selectAllocationCalcDetails(entry.getValue());
+                    break;
+                case "decision":
+                    part = queryMapper.selectDecisionCalcDetails(entry.getValue());
+                    break;
+                default:
+                    part = new ArrayList<>();
+            }
+            for (MessagePageVO.ModelCalcMessage d : part) {
+                if (d.getMessageId() != null) {
+                    d.setModule(entry.getKey());
+                    d.setModuleLabel(label(entry.getKey(), MODULE_LABELS));
+                    details.put(d.getMessageId(), d);
+                }
+            }
+        }
+
+        // 回填（保持接收表分页顺序），isRead 已在第一段填充
+        for (MessagePageVO.ModelCalcMessage row : rows) {
+            MessagePageVO.ModelCalcMessage d = details.get(row.getMessageId());
+            if (d != null) {
+                row.setSchemeName(d.getSchemeName());
+                row.setModule(d.getModule());
+                row.setModuleLabel(d.getModuleLabel());
+                row.setFinishedAt(d.getFinishedAt());
+            }
         }
     }
 

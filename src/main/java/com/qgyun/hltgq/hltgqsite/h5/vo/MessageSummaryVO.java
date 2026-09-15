@@ -20,6 +20,9 @@ public class MessageSummaryVO {
     /** 未读值班提醒数 */
     private long dutyUnread;
 
-    /** 四者之和 */
+    /** 未读模型计算消息数 */
+    private long modelCalcUnread;
+
+    /** 五者之和 */
     private long totalUnread;
 }

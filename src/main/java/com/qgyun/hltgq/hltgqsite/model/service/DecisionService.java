@@ -149,7 +149,7 @@ public class DecisionService {
         }
         record.setCorpCode(corpCode);
         record.setCreatedAt(LocalDateTime.now());
-        record.setCreatedBy(createdBy);
+        record.setCreatedBy(ModelRecordCommonService.operatorId(createdBy));
         record.setUpdatedAt(record.getCreatedAt());
         record.setUpdatedBy(createdBy);
         recordMapper.insert(record);

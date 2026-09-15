@@ -6,6 +6,7 @@ import com.qgyun.hltgq.hltgqsite.weather.client.WeatherCallException;
 import com.qgyun.hltgq.hltgqsite.weather.support.RateLimiter;
 import com.qgyun.hltgq.hltgqsite.weather.support.StaleCacheSupport;
 import com.qgyun.hltgq.hltgqsite.weather.support.WeatherConvertUtils;
+import com.qgyun.hltgq.hltgqsite.weather.support.WeatherExecutors;
 import com.qgyun.hltgq.hltgqsite.weather.vo.TyphoonActiveVO;
 import com.qgyun.hltgq.hltgqsite.weather.vo.TyphoonDetailVO;
 import com.qgyun.hltgq.hltgqsite.weather.vo.TyphoonItemVO;
@@ -26,6 +27,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * N3 台风观测服务（方案 §5）。
@@ -44,6 +48,12 @@ public class TyphoonService {
     private static final String CACHE_KEY_ACTIVE = "weather:typhoon:active";
     private static final String CACHE_KEY_DETAIL_PREFIX = "weather:typhoon:detail:";
 
+    /** 最近台风列表缓存 key 前缀（补 limit，按条数分别缓存） */
+    private static final String CACHE_KEY_RECENT_PREFIX = "weather:typhoon:recent:";
+
+    /** 最近台风列表详情补全的整体等待上限（秒） */
+    private static final int FILL_TIMEOUT_SECONDS = 5;
+
     /** 活跃状态标记（上游列表项下标 7） */
     private static final String STATUS_ACTIVE = "start";
 
@@ -54,6 +64,9 @@ public class TyphoonService {
     private static final String NAME_UNNAMED = "未命名";
 
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+
+    /** 上游紧凑时间口径（`yyyyMMddHHmm`） */
+    private static final DateTimeFormatter COMPACT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
 
     /** 上游强度缩写 → 中文（方案 §5.2） */
     private static final Map<String, String> LEVEL_NAMES = new HashMap<>();
@@ -81,6 +94,9 @@ public class TyphoonService {
     @Autowired
     private RateLimiter rateLimiter;
 
+    @Autowired
+    private WeatherExecutors executors;
+
     /** 缓存新鲜期（分钟） */
     @Value("${typhoon.cache-ttl-minutes:30}")
     private int cacheTtlMinutes;
@@ -97,6 +113,14 @@ public class TyphoonService {
     @Value("${weather.single-flight.timeout-seconds:3}")
     private int singleFlightWaitSeconds;
 
+    /** 最近台风列表默认条数（含已停编） */
+    @Value("${typhoon.recent.default-limit:5}")
+    private int recentDefaultLimit;
+
+    /** 最近台风列表条数上限 */
+    @Value("${typhoon.recent.max-limit:10}")
+    private int recentMaxLimit;
+
     /** 灌区参考中心经度（距离计算基准，唯一来源见方案 §5.3） */
     @Value("${weather.site-lon:116.359678}")
     private double siteLon;
@@ -112,6 +136,29 @@ public class TyphoonService {
     public TyphoonActiveVO active() {
         rateLimiter.acquire();
         return loadActive();
+    }
+
+    /**
+     * 最近台风列表（含已停止编号；方案 §5.2 可选增强的落地形态，独立端点而非 `?recent=true`）。
+     * <p><b>存在意义</b>：`/active` 在非台风季必然为空——前端拿不到可渲染数据、也看不到字段；
+     * 本接口按上游时间倒序返回最近 N 个台风（不论活跃与否），**任何时候都能取到数据**，
+     * 供前端联调核对字段与「历史台风回看」。
+     * <p>`limit` 缺省取 `typhoon.recent.default-limit`，越界按边界钳制（与 `/weather/daily` 的 days 口径一致）。
+     *
+     * @param limit 返回条数（可选）
+     */
+    public TyphoonActiveVO recent(Integer limit) {
+        rateLimiter.acquire();
+        return loadRecent(normalizeLimit(limit));
+    }
+
+    /** 条数归一：缺省取配置默认值，< 1 视为 1，> 上限按上限处理 */
+    private int normalizeLimit(Integer limit) {
+        int size = limit == null ? recentDefaultLimit : limit;
+        if (size < 1) {
+            size = 1;
+        }
+        return Math.min(size, Math.max(1, recentMaxLimit));
     }
 
     /**
@@ -171,20 +218,7 @@ public class TyphoonService {
     private TyphoonActiveVO pullActive() {
         JsonNode root = client.listDefault();
         List<TyphoonItemVO> items = parseList(root);
-        for (TyphoonItemVO item : items) {
-            if (!validTyphoonId(item.getTyphoonId())) {
-                // 上游列表 id 异常：跳过详情拉取（避免把非法串拼进 view_{id}），列表项仍保留基础字段
-                log.warn("台风列表项 id 非法，跳过详情拉取: id={}", item.getTyphoonId());
-                continue;
-            }
-            try {
-                TyphoonDetailVO detail = pullDetail(item.getTyphoonId());
-                fillItem(item, detail);
-            } catch (Exception e) {
-                // 单条详情失败：保留列表项的基础字段（名称/编号/状态），位置强度留空
-                log.warn("台风详情拉取失败 id={}: {}", item.getTyphoonId(), e.getMessage());
-            }
-        }
+        items.forEach(this::fillItemQuietly);
         TyphoonActiveVO vo = new TyphoonActiveVO();
         vo.setCount(items.size());
         vo.setList(items);
@@ -217,6 +251,81 @@ public class TyphoonService {
         if (item.getLon() != null && item.getLat() != null) {
             double km = haversine(siteLon, siteLat, item.getLon(), item.getLat());
             item.setDistanceKm(Math.round(km * 10D) / 10D);
+        }
+    }
+
+    /** 单条列表项的详情补全（失败仅记日志，不阻断整体；活跃列表串行与最近列表并行共用） */
+    private void fillItemQuietly(TyphoonItemVO item) {
+        if (!validTyphoonId(item.getTyphoonId())) {
+            // 上游列表 id 异常：跳过详情拉取（避免把非法串拼进 view_{id}），列表项仍保留基础字段
+            log.warn("台风列表项 id 非法，跳过详情拉取: id={}", item.getTyphoonId());
+            return;
+        }
+        try {
+            fillItem(item, pullDetail(item.getTyphoonId()));
+        } catch (Exception e) {
+            // 单条详情失败：保留列表项的基础字段（名称/编号/状态），位置强度留空
+            log.warn("台风详情拉取失败 id={}: {}", item.getTyphoonId(), e.getMessage());
+        }
+    }
+
+    // ==================== 最近台风（含已停编） ====================
+
+    /**
+     * 最近台风列表读取（缓存 + 旧值兜底 + 单飞）。
+     * <p>与活跃列表的唯一差异：**空白结果不驻留缓存**——上游异常时宁可回退 fallback，
+     * 也不把「一次失败」固化成 30 分钟的空数据。
+     */
+    private TyphoonActiveVO loadRecent(int limit) {
+        String key = CACHE_KEY_RECENT_PREFIX + limit;
+        long now = StaleCacheSupport.nowMs();
+        StaleCacheSupport.Envelope<TyphoonActiveVO> envelope = cache.read(key, TyphoonActiveVO.class);
+        if (envelope != null && envelope.getData() != null && !envelope.getData().getList().isEmpty()) {
+            if (now < envelope.getExpireAt()) {
+                return envelope.getData();
+            }
+            if (!beyondStaleLimit(envelope, now)) {
+                cache.refreshAsync(key, "台风最近列表", () -> pullRecent(limit));
+                return envelope.getData();
+            }
+        }
+        TyphoonActiveVO fallback = usable(envelope, now) ? envelope.getData() : emptyActive();
+        return cache.singleFlight(key, "台风最近列表", () -> pullRecent(limit), fallback, singleFlightWaitSeconds);
+    }
+
+    /** 拉取最近 limit 条台风（含已停编），并行补全最新位置强度后写缓存 */
+    private TyphoonActiveVO pullRecent(int limit) {
+        JsonNode root = client.listDefault();
+        List<TyphoonItemVO> items = parseList(root, true, limit);
+        fillItems(items);
+        TyphoonActiveVO vo = new TyphoonActiveVO();
+        vo.setCount(items.size());
+        vo.setList(items);
+        cache.write(CACHE_KEY_RECENT_PREFIX + limit, vo, ttlSeconds(), staleMaxSeconds());
+        log.info("台风最近列表已刷新: 条数={}（含已停编，limit={}）", items.size(), limit);
+        return vo;
+    }
+
+    /**
+     * 并行补全列表项详情（走 `weather-upstream` 命名池，禁用 commonPool，评审 A5 约束）。
+     * <p>条数可达 {@code typhoon.recent.max-limit}（默认 10），串行会拖到数秒，故并行；
+     * 整体等待上限 {@value #FILL_TIMEOUT_SECONDS} 秒，超时只记日志并返回已补全的部分（其余保留基础字段）。
+     */
+    private void fillItems(List<TyphoonItemVO> items) {
+        if (items.isEmpty()) {
+            return;
+        }
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (TyphoonItemVO item : items) {
+            futures.add(CompletableFuture.runAsync(() -> fillItemQuietly(item), executors.upstream()));
+        }
+        try {
+            CompletableFuture<?>[] array = futures.toArray(new CompletableFuture<?>[0]);
+            CompletableFuture.allOf(array).get(FILL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            log.warn("台风最近列表详情补全超时（{}s），返回已补全部分", FILL_TIMEOUT_SECONDS);
+        } catch (Exception e) {
+            log.warn("台风最近列表详情补全异常: {}", e.getMessage());
         }
     }
 
@@ -254,6 +363,16 @@ public class TyphoonService {
      * <p>下标含义（方案 §2.6）：0 ID / 1 英文名 / 2 中文名 / 3 编号 / 7 状态。
      */
     private List<TyphoonItemVO> parseList(JsonNode root) {
+        return parseList(root, false, 0);
+    }
+
+    /**
+     * 台风列表解析（带状态与条数开关）。
+     *
+     * @param includeStopped 是否保留已停止编号（下标 7 ≠ `start`）的台风；`/recent` 为 true
+     * @param limit          最多返回条数（按上游顺序截取，上游为时间倒序）；≤ 0 表示不限
+     */
+    private List<TyphoonItemVO> parseList(JsonNode root, boolean includeStopped, int limit) {
         JsonNode typhoonList = root == null ? null : root.get("typhoonList");
         if (typhoonList == null || !typhoonList.isArray()) {
             log.warn("台风列表结构异常（缺少 typhoonList 数组）");
@@ -265,7 +384,7 @@ public class TyphoonService {
                 continue;
             }
             String status = cleanStr(item, 7);
-            if (!STATUS_ACTIVE.equals(status)) {
+            if (!includeStopped && !STATUS_ACTIVE.equals(status)) {
                 continue;
             }
             TyphoonItemVO vo = new TyphoonItemVO();
@@ -275,14 +394,19 @@ public class TyphoonService {
             vo.setCode(cleanStr(item, 3));
             vo.setStatus(status);
             list.add(vo);
+            if (limit > 0 && list.size() >= limit) {
+                break;
+            }
         }
-        log.info("台风列表解析完成: 总条数={} 活跃条数={}", typhoonList.size(), list.size());
+        log.info("台风列表解析完成: 总条数={} 采用条数={}（含已停编={}）", typhoonList.size(), list.size(), includeStopped);
         return list;
     }
 
     /**
-     * 台风详情解析：`typhoon` 数组内含「元信息头 + 实况轨迹点」，逐元素按判据分流（方案 §5.4）。
-     * <p>轨迹点下标：0 点ID / 1 时间 / 2 epoch 毫秒（权威）/ 3 强度 / 4 经度 / 5 纬度 /
+     * 台风详情解析（2026-09-15 依上游实测结构修订）：`typhoon` 是<b>扁平数组</b>——
+     * 下标 0~7 为元信息标量，其后的<b>嵌套数组</b>才是实况轨迹（实测下标 8）与附加编码（下标 9）。
+     * <p>元信息下标：0 ID / 1 英文名 / 2 中文名 / 3 编号（缺失时回退下标 5）/ 6 名字含义 / 7 状态。
+     * <p>轨迹点下标：0 点ID / 1 时间(yyyyMMddHHmm) / 2 epoch 毫秒（权威）/ 3 强度 / 4 经度 / 5 纬度 /
      * 6 气压 / 7 风速 / 8 移向 / 9 移速 / 11 预报路径字典。
      */
     private TyphoonDetailVO parseDetail(String typhoonId, JsonNode root) {
@@ -293,35 +417,34 @@ public class TyphoonService {
 
         TyphoonDetailVO vo = new TyphoonDetailVO();
         vo.setTyphoonId(typhoonId);
+        vo.setNameEn(normalizeName(cleanStr(typhoon, 1)));
+        vo.setNameCn(cleanStr(typhoon, 2));
+        // 编号口径：下标 3 为主（实测常规台风），为空时回退下标 5（未命名低压等样本的编号在该位）
+        String code = cleanStr(typhoon, 3);
+        vo.setCode(code != null ? code : cleanStr(typhoon, 5));
+        vo.setStatus(cleanStr(typhoon, 7));
+
         List<TyphoonDetailVO.TrackPoint> track = new ArrayList<>();
-        JsonNode metaNode = null;
         JsonNode latestPoint = null;
         Long latestEpoch = null;
-        for (JsonNode element : typhoon) {
-            if (element == null || !element.isArray()) {
-                continue;
-            }
-            if (isTrackPoint(element)) {
-                TyphoonDetailVO.TrackPoint point = parseTrackPoint(element);
-                if (point != null) {
-                    track.add(point);
-                    // 取 epoch 最大者作为「最新点」（不依赖上游顺序）
-                    Long epoch = longAt(element, 2);
-                    if (epoch != null && (latestEpoch == null || epoch > latestEpoch)) {
-                        latestEpoch = epoch;
-                        latestPoint = element;
-                    }
+        JsonNode trackNode = findTrackNode(typhoon);
+        if (trackNode != null) {
+            for (JsonNode element : trackNode) {
+                if (!isTrackPoint(element)) {
+                    continue;
                 }
-            } else if (metaNode == null) {
-                metaNode = element;
+                TyphoonDetailVO.TrackPoint point = parseTrackPoint(element);
+                if (point == null) {
+                    continue;
+                }
+                track.add(point);
+                // 取 epoch 最大者作为「最新点」（不依赖上游顺序）
+                Long epoch = longAt(element, 2);
+                if (epoch != null && (latestEpoch == null || epoch > latestEpoch)) {
+                    latestEpoch = epoch;
+                    latestPoint = element;
+                }
             }
-        }
-
-        if (metaNode != null) {
-            vo.setNameEn(normalizeName(cleanStr(metaNode, 1)));
-            vo.setNameCn(cleanStr(metaNode, 2));
-            vo.setCode(cleanStr(metaNode, 3));
-            vo.setStatus(cleanStr(metaNode, 7));
         }
 
         track.sort(Comparator.comparing(TyphoonDetailVO.TrackPoint::getTime,
@@ -350,22 +473,54 @@ public class TyphoonService {
         return vo;
     }
 
-    /** 轨迹点判据：下标 2（epoch 毫秒）、4（经度）、5（纬度）均为数字（元信息头的下标 2 是中文名） */
+    /**
+     * 定位实况轨迹数组：`typhoon` 内「子元素满足轨迹点判据」的嵌套数组（实测下标 8）。
+     * <p>上游另有「省份影响编码」等同为嵌套数组的下标 9，其子元素不含 epoch/经纬度，被判据天然排除；
+     * 多个候选时取点数最多者；未找到返回 null（调用方降级为空轨迹）。
+     */
+    private JsonNode findTrackNode(JsonNode typhoon) {
+        JsonNode best = null;
+        int bestPoints = 0;
+        for (JsonNode element : typhoon) {
+            if (element == null || !element.isArray()) {
+                continue;
+            }
+            int points = 0;
+            for (JsonNode child : element) {
+                if (isTrackPoint(child)) {
+                    points++;
+                }
+            }
+            if (points > bestPoints) {
+                bestPoints = points;
+                best = element;
+            }
+        }
+        if (best == null) {
+            log.warn("台风详情未找到实况轨迹数组（typhoon 元素数={}）", typhoon.size());
+        }
+        return best;
+    }
+
+    /**
+     * 轨迹点判据：下标 2（epoch 毫秒）、4（经度）、5（纬度）均为数字，长度 ≥ 12（实测 13）。
+     * <p>同一判据兼作「嵌套数组类型区分」（元信息标量与省份影响编码均不满足）。
+     */
     private boolean isTrackPoint(JsonNode element) {
-        return element.size() >= 12
+        return element != null && element.isArray() && element.size() >= 12
                 && numeric(element.get(2)) && numeric(element.get(4)) && numeric(element.get(5));
     }
 
     private TyphoonDetailVO.TrackPoint parseTrackPoint(JsonNode point) {
         Double lon = doubleAt(point, 4);
         Double lat = doubleAt(point, 5);
-        Long epoch = longAt(point, 2);
-        if (lon == null || lat == null || epoch == null) {
+        String time = pointTime(point);
+        if (lon == null || lat == null || time == null) {
             return null;
         }
         String level = cleanStr(point, 3);
         TyphoonDetailVO.TrackPoint vo = new TyphoonDetailVO.TrackPoint();
-        vo.setTime(epochToTime(epoch));
+        vo.setTime(time);
         vo.setLevel(level);
         vo.setLevelName(levelName(level));
         vo.setLon(lon);
@@ -377,7 +532,8 @@ public class TyphoonService {
 
     /**
      * 预报路径解析（下标 11 的机构字典，默认取 BABJ；BABJ 缺失时退化为首个机构）。
-     * <p>每个预报点：[时效h, 起始时间(epoch 毫秒), lon, lat, 气压, 风速, 机构, 强度]。
+     * <p>每个预报点：[时效h, 起始时间(yyyyMMddHHmm 文本), lon, lat, 气压, 风速, 机构, 强度]，
+     * 预报时刻 = 起始时间 + 时效小时。
      */
     private List<TyphoonDetailVO.ForecastPoint> parseForecast(JsonNode point) {
         List<TyphoonDetailVO.ForecastPoint> list = new ArrayList<>();
@@ -410,7 +566,7 @@ public class TyphoonService {
             String level = cleanStr(entry, 7);
             TyphoonDetailVO.ForecastPoint vo = new TyphoonDetailVO.ForecastPoint();
             vo.setHourOffset(hourOffset);
-            vo.setTime(forecastTime(longAt(entry, 1), hourOffset));
+            vo.setTime(forecastTime(cleanStr(entry, 1), longAt(entry, 1), hourOffset));
             vo.setLevel(level);
             vo.setLevelName(levelName(level));
             vo.setLon(lon);
@@ -506,23 +662,46 @@ public class TyphoonService {
         return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1D, Math.sqrt(a)));
     }
 
-    /** epoch 毫秒（兼容 10 位秒级时间戳）→ 北京时间字符串 */
-    private String epochToTime(Long epoch) {
+    /** 轨迹点时间：epoch 毫秒（权威）优先，缺失时回退下标 1 的 `yyyyMMddHHmm` 文本 */
+    private String pointTime(JsonNode point) {
+        return formatTime(epochToLocalDateTime(longAt(point, 2)), parseCompactTime(cleanStr(point, 1)));
+    }
+
+    /** 预报时间 = 起始时间 + 时效小时；起始时间取 `yyyyMMddHHmm` 文本（实测口径），缺失时退化为 epoch */
+    private String forecastTime(String baseTime, Long baseEpoch, Integer hourOffset) {
+        return formatTime(plusHours(parseCompactTime(baseTime), hourOffset),
+                plusHours(epochToLocalDateTime(baseEpoch), hourOffset));
+    }
+
+    /** 时间格式化：主口径缺失时用兜底口径，均缺失返回 null（不伪造） */
+    private String formatTime(LocalDateTime primary, LocalDateTime fallback) {
+        LocalDateTime time = primary != null ? primary : fallback;
+        return time == null ? null : time.format(TIME_FORMAT);
+    }
+
+    private LocalDateTime plusHours(LocalDateTime time, Integer hourOffset) {
+        return time == null ? null : time.plusHours(hourOffset == null ? 0L : hourOffset);
+    }
+
+    /** epoch 毫秒（兼容 10 位秒级时间戳）→ 系统时区时间 */
+    private LocalDateTime epochToLocalDateTime(Long epoch) {
         if (epoch == null) {
             return null;
         }
         long millis = epoch < 100000000000L ? epoch * 1000L : epoch;
-        return LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault()).format(TIME_FORMAT);
+        return LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault());
     }
 
-    /** 预报时间 = 起始时间 + 时效小时（起始时间缺失则返回 null，不伪造） */
-    private String forecastTime(Long baseEpoch, Integer hourOffset) {
-        if (baseEpoch == null) {
+    /** `yyyyMMddHHmm` 文本（上游时间口径，超长按前 12 位截取）→ 系统时区时间；解析失败返回 null */
+    private LocalDateTime parseCompactTime(String text) {
+        if (text == null || !text.matches("\\d{12,14}")) {
             return null;
         }
-        long millis = baseEpoch < 100000000000L ? baseEpoch * 1000L : baseEpoch;
-        LocalDateTime time = LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault());
-        return time.plusHours(hourOffset == null ? 0L : hourOffset).format(TIME_FORMAT);
+        try {
+            return LocalDateTime.parse(text.substring(0, 12), COMPACT_TIME_FORMAT);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 下标取值 + 空值归一：`""`、`"pass"`、`"null"` 统一为 null（方案 §5.4） */

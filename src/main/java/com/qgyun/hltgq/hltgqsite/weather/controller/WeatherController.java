@@ -24,7 +24,8 @@ import java.util.List;
  * 天气数据接口（Open-Meteo 代理 + 台风观测）
  * <p>实时天气卡片 /weather/current，逐小时天气列表 /weather/hourly，
  * 40 天日级预报 /weather/daily，雨情趋势 /weather/rain-trend，
- * 活跃台风列表 /weather/typhoon/active，台风路径详情 /weather/typhoon/detail。
+ * 活跃台风列表 /weather/typhoon/active，最近台风列表 /weather/typhoon/recent，
+ * 台风路径详情 /weather/typhoon/detail。
  * <p>坐标由前端地图传入（WGS-84，与天地图一致，无需坐标转换），站点名称 location 可选，
  * 缺省取 weather.default-location 配置。参数越界 400（全局 IllegalArgumentException 处理），
  * 超限 429（ResponseStatusException），上游失败降级不抛 5xx。
@@ -148,9 +149,21 @@ public class WeatherController {
     }
 
     /**
+     * 最近台风列表（含已停编，方案 §5.2 可选增强的落地形态）。
+     * <p>与 `/typhoon/active` 字段完全一致，区别仅在数据范围：本接口**不论活跃与否、任何季节都能返回数据**，
+     * 用于前端联调核对字段与「历史台风回看」；活跃期用 `/typhoon/active`，`status` 字段区分两者。
+     *
+     * @param limit 返回条数（可选，默认 5，范围 1~10，越界按边界值处理）
+     */
+    @GetMapping("/typhoon/recent")
+    public TyphoonActiveVO typhoonRecent(@RequestParam(required = false) Integer limit) {
+        return typhoonService.recent(limit);
+    }
+
+    /**
      * 台风路径详情（方案 §5.2 ②）：`track` 为实况路径、`forecast` 为预报路径
      *
-     * @param typhoonId 台风 ID（来自 /weather/typhoon/active，纯数字；非法入参 400）
+     * @param typhoonId 台风 ID（来自 /weather/typhoon/active 或 /weather/typhoon/recent，纯数字；非法入参 400）
      */
     @GetMapping("/typhoon/detail")
     public TyphoonDetailVO typhoonDetail(@RequestParam String typhoonId) {

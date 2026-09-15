@@ -151,6 +151,18 @@ CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_receive (
 CREATE INDEX IF NOT EXISTS idx_message_receive_user
     ON t_auto_hltgq_water_message_receive(user_id, message_type, is_read);
 
+-- ========== H5 消息中心：模型计算消息（#5#，2026-09 新增） ==========
+-- 7 张方案主表按 created_by 定位提交人（同步 UNION 各段过滤条件）
+CREATE INDEX IF NOT EXISTS idx_short_forecast_record_by_status ON t_auto_hltgq_water_short_forecast_record(created_by, status);
+CREATE INDEX IF NOT EXISTS idx_long_predict_record_by_status ON t_auto_hltgq_water_long_predict_record(created_by, status);
+CREATE INDEX IF NOT EXISTS idx_loss_record_by_status ON t_auto_hltgq_water_loss_record(created_by, status);
+CREATE INDEX IF NOT EXISTS idx_demand_record_by_status ON t_auto_hltgq_water_demand_record(created_by, status);
+CREATE INDEX IF NOT EXISTS idx_moisture_detail_by_status ON t_auto_hltgq_water_moisture_detail(created_by, status);
+CREATE INDEX IF NOT EXISTS idx_allocate_record_by_status ON t_auto_hltgq_water_allocate_record(created_by, status);
+CREATE INDEX IF NOT EXISTS idx_decision_record_by_status ON t_auto_hltgq_water_decision_record(created_by, status);
+-- 接收表分页第一段：按收信人+类型过滤、按同步写入的方案完成时间倒序
+CREATE INDEX IF NOT EXISTS idx_message_receive_user_type_created ON t_auto_hltgq_water_message_receive(user_id, message_type, created_at DESC);
+
 -- 消息接收规则表：message_type × 接收维度（部门/岗位/角色/人员编码，多个逗号分隔）
 CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_rule (
     id           VARCHAR(64) PRIMARY KEY,
