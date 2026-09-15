@@ -59,7 +59,10 @@ public class ModelWeatherRainService {
             return result;
         }
         try {
-            List<WeatherListItemVO> hours = weatherService.hourlyWeather(coord[0], coord[1], null, null, null);
+            // 走内部入口（不限流）：模型跑批不经对外限流窗口，既不挤占前端接口配额，
+            // 也不会因被限流而降级（使降雨输入静默变 0）
+            List<WeatherListItemVO> hours = weatherService.hourlyWeatherInternal(coord[0], coord[1], null, null);
+            int missing = 0;
             Map<LocalDateTime, Double> byHour = new HashMap<>();
             for (WeatherListItemVO h : hours) {
                 if (h.getDate() == null || h.getHour() == null || h.getRainfall() == null) {
@@ -75,7 +78,15 @@ public class ModelWeatherRainService {
                 Double v = byHour.get(start.plusHours(i));
                 if (v != null) {
                     result.set(i, Math.round(v * 10.0) / 10.0);
+                } else {
+                    missing++;
                 }
+            }
+            // 缺失小时按 0 填充（气象为非关键旁路），但必须留痕：气象逐小时窗口上界为「今天 + 15 天 23:00」，
+            // 模型窗口从初始时刻起算时末端必然缺一段，静默填 0 会让「窗口越界」与「真的无雨」无法区分
+            if (missing > 0) {
+                log.warn("气象逐小时降雨：窗口 {} ~ {} 共 {} 小时，缺失 {} 小时已按 0 填充（检查是否超出气象窗口：今天起 16 天）",
+                        start, start.plusHours(steps - 1), steps, missing);
             }
         } catch (Exception e) {
             log.warn("气象逐小时降雨获取失败，按 0 处理：{}", e.getMessage());

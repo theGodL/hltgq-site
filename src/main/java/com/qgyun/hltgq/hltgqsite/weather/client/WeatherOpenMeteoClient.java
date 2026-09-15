@@ -56,13 +56,28 @@ public class WeatherOpenMeteoClient {
 
     /**
      * 逐小时天气：返回响应中 hourly 节点（列表弹窗用）。
-     * <p>pastDays 历史天数 + forecastDays 预报天数，覆盖前端默认日期筛选范围（7 天前 ~ 2 天后）。
+     * <p>窗口 = pastDays 历史天数 + forecastDays 预报天数（当前配置 7 + 16，约 550 条），
+     * 前端只能在该窗口内按 startDate/endDate 筛选。
      */
     public JsonNode hourly(double lon, double lat, int pastDays, int forecastDays) {
         String url = baseUrl + "/forecast?latitude=" + lat + "&longitude=" + lon
                 + "&hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m"
                 + "&timezone=Asia/Shanghai"
                 + "&past_days=" + pastDays + "&forecast_days=" + forecastDays;
+        return getJson(url);
+    }
+
+    /**
+     * 逐日天气：返回响应中 daily 节点（N1 的 A 段 / 第 1~16 天，方案 §2.2）。
+     * <p>含 `precipitation_probability_max`（上游预计算概率），与 B 段的成员比例口径不同（方案 §9.2）。
+     * `forecast_days` 上游硬上限 16。
+     */
+    public JsonNode daily(double lon, double lat, int forecastDays) {
+        String url = baseUrl + "/forecast?latitude=" + lat + "&longitude=" + lon
+                + "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,"
+                + "precipitation_probability_max,weather_code,"
+                + "wind_speed_10m_max,wind_direction_10m_dominant,relative_humidity_2m_mean"
+                + "&timezone=Asia/Shanghai&forecast_days=" + forecastDays;
         return getJson(url);
     }
 
