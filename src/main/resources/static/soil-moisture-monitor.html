@@ -138,6 +138,8 @@ tbody tr:hover td{background:#fafafa}
 .chart-title{font-size:14px;font-weight:500;color:#333;margin-bottom:8px}
 .chart-box{width:100%;height:320px;position:relative}
 .chart-box-lg{height:420px}
+/* 电压列（业主要求隐藏）；恢复：删除本规则，并把 COL_SPAN 加回 1 */
+.col-vol{display:none}
 </style>
 </head>
 <body>
@@ -186,7 +188,7 @@ tbody tr:hover td{background:#fafafa}
               <th>20cm含水量</th>
               <th>30cm含水量</th>
               <th>状态</th>
-              <th>电压 (V)</th>
+              <th class="col-vol">电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -228,7 +230,7 @@ tbody tr:hover td{background:#fafafa}
               <th>20cm含水量</th>
               <th>30cm含水量</th>
               <th>状态</th>
-              <th>电压 (V)</th>
+              <th class="col-vol">电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -331,7 +333,7 @@ const DEPTHS = [10, 20, 30];
 const MOISTURE_FIELDS = {
   10: 'mten', 20: 'mtwenty', 30: 'mthirty',
 };
-const COL_SPAN = 8;
+const COL_SPAN = 7;
 const MOISTURE_COLORS = ['#9254DE', '#FF7875', '#69C0FF'];
 const HIST_COL_SPAN = 4;
 
@@ -661,7 +663,7 @@ function renderTable(key) {
       <td${isStaleTm(r.tm, r.siteName) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
       ${renderDepthCells(r)}
       <td>${statusTag(r.status)}</td>
-      <td>${fmtN2(r.vol)}</td>
+      <td class="col-vol">${fmtN2(r.vol)}</td>
       <td><button class="act-btn" data-action="detail" data-dist="${key}" data-idx="${i}">查看</button></td>
     </tr>
   `).join('');

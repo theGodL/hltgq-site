@@ -147,6 +147,8 @@ tbody tr.total-row:hover td{background:#e6f4ff}
 .modal-pane.active{display:block}
 .modal-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}
 .chart-box{width:100%;height:360px;position:relative}
+/* 电压列（业主要求隐藏）；恢复：删除本规则，并把各表空数据行的 colspan 加回 1 */
+.col-vol{display:none}
 </style>
 </head>
 <body>
@@ -209,7 +211,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
               <th>1h降雨量 (mm)<div class="th-sub">近1小时降雨量</div></th>
               <th>3h降雨量 (mm)<div class="th-sub">近3小时降雨量</div></th>
               <th>6h降雨量 (mm)<div class="th-sub">近6小时降雨量</div></th>
-              <th>电压 (V)</th>
+              <th class="col-vol">电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -335,7 +337,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
               <th>3h降雨量 (mm)</th>
               <th>6h降雨量 (mm)</th>
               <th>累计雨量 (mm)</th>
-              <th>电压 (V)</th>
+              <th class="col-vol">电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -691,7 +693,7 @@ function bindMthSiteSelect() {
 }
 
 function renderMthEmpty() {
-  $('mth-tbody').innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>';
+  $('mth-tbody').innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
   $('mth-pg').innerHTML = `<span class="pg-info">共 0 条</span>
     <select class="pg-size" disabled><option>20条/页</option></select>
     <button class="pg-btn" disabled>&lt;</button>
@@ -842,7 +844,7 @@ async function loadIrrList() {
     console.error(e);
     IRR.rows = [];
     IRR.total = 0;
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">数据加载失败，请重试</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">数据加载失败，请重试</td></tr>';
     renderIrrPager();
   } finally {
     setLoading(wrap, false);
@@ -852,7 +854,7 @@ async function loadIrrList() {
 function renderIrrList() {
   const tbody = $('irr-tbody');
   if (!IRR.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = IRR.rows.map((r, i) => `
@@ -863,7 +865,7 @@ function renderIrrList() {
       <td>${fmtN(r.rain1h)}</td>
       <td>${fmtN(r.rain3h)}</td>
       <td>${fmtN(r.rain6h)}</td>
-      <td>${fmtN2(r.vol)}</td>
+      <td class="col-vol">${fmtN2(r.vol)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
     </tr>
   `).join('');

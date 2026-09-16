@@ -18,12 +18,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
 .filter-item{display:flex;align-items:center;gap:8px}
 .filter-item > label{color:#666;font-size:14px;white-space:nowrap}
+.filter-item > input{width:170px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;color:#333;font-family:inherit}
+.filter-item > input::placeholder{color:#bfbfbf}
+.filter-item > input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap;transition:all .2s;background:#fff}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-primary:disabled{opacity:.6;cursor:not-allowed}
 .btn-default{background:#fff;color:#333;border-color:#d9d9d9}
 .btn-default:hover{color:#1677ff;border-color:#1677ff}
+.filter-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
 
 /* 需水方案多选 */
 .ms{position:relative;width:320px}
@@ -52,20 +57,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 }
 .ms.open .ms-arrow{transform:translateY(-50%) rotate(180deg)}
 .ms-dd{
-  display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;
-  max-height:260px;overflow-y:auto;background:#fff;border:1px solid #d9d9d9;border-radius:6px;
-  box-shadow:0 6px 16px rgba(0,0,0,.08);padding:4px 0;
+  display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;
+  max-height:300px;overflow-y:auto;background:#fff;border:1px solid #e9ecf2;border-radius:10px;
+  box-shadow:0 10px 28px rgba(16,42,67,.14);padding:6px;
 }
 .ms.open .ms-dd{display:block}
+.ms-dd::-webkit-scrollbar{width:8px}
+.ms-dd::-webkit-scrollbar-thumb{background:#d9dee6;border-radius:8px}
+.ms-dd::-webkit-scrollbar-thumb:hover{background:#c2cad6}
 .ms-opt{
-  display:flex;align-items:flex-start;gap:8px;padding:8px 12px;cursor:pointer;color:#333;line-height:1.4;
-  user-select:none;
+  display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;color:#333;line-height:1.35;
+  user-select:none;transition:background .15s;
 }
-.ms-opt:hover{background:#e6f4ff}
-.ms-opt input{margin-top:2px;accent-color:#1677ff;cursor:pointer;flex-shrink:0}
-.ms-opt-body{min-width:0}
-.ms-opt-name{font-size:13px}
-.ms-opt-meta{margin-top:2px;font-size:12px;color:#8c8c8c}
+.ms-opt:hover{background:#f0f6ff}
+.ms-opt input{width:15px;height:15px;margin:0;accent-color:#1677ff;cursor:pointer;flex-shrink:0}
+.ms-opt-body{min-width:0;flex:1}
+.ms-opt-name{display:block;font-size:13px;color:#262626;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-opt-meta{display:block;margin-top:3px;font-size:12px;color:#9aa4b2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ms-empty{padding:16px;text-align:center;color:#bbb;font-size:13px}
 
 .main-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px}
@@ -86,12 +94,19 @@ table.data-table tbody td{
 table.data-table tbody tr:last-child td{border-bottom:none}
 table.data-table tbody tr:hover td{background:#fafafa}
 table.data-table td.left,table.data-table th.left{text-align:left}
+table.data-table tr.group td{background:#f7faff;color:#1677ff;font-weight:500;text-align:left;padding:10px;white-space:normal}
 table.data-table td.empty{color:#bbb;padding:48px 10px}
+
+.miss{display:inline-block;margin-left:6px;font-size:11px;line-height:16px;padding:0 6px;border-radius:8px;background:#fff7e6;color:#fa8c16;cursor:help;vertical-align:middle}
+
+.toast{position:fixed;left:50%;bottom:72px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
+.toast.show{opacity:1}
 
 @media (max-width:720px){
   html,body{overflow:auto}
   .page-wrap{height:auto;min-height:100%;overflow:visible}
   .ms{width:100%;min-width:220px}
+  .filter-actions{margin-left:0}
 }
 </style>
 </head>
@@ -116,8 +131,10 @@ table.data-table td.empty{color:#bbb;padding:48px 10px}
           <div class="ms-dd" id="scheme-dd" role="listbox" aria-multiselectable="true"></div>
         </div>
       </div>
-      <button type="button" class="btn btn-primary" id="btn-query">查询</button>
-      <button type="button" class="btn btn-default" id="btn-reset">重置</button>
+      <div class="filter-actions">
+        <button type="button" class="btn btn-primary" id="btn-query">查询</button>
+        <button type="button" class="btn btn-default" id="btn-reset">重置</button>
+      </div>
     </div>
   </div>
 
@@ -145,212 +162,242 @@ table.data-table td.empty{color:#bbb;padding:48px 10px}
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
-/** Mock：需水方案及其灌区明细（后续可换接口） */
-const MOCK_SCHEMES = [
-  {
-    id: 'S2026-X1',
-    name: '2026年夏灌一期方案',
-    meta: '2026-07-06 ~ 2026-07-26',
-    rows: [
-      { district: '宿松县', period: '2026-07-06 — 2026-07-26', demand: 1200, supply: 1080, designRate: 90 },
-      { district: '怀宁县', period: '2026-07-06 — 2026-07-26', demand: 850, supply: 722, designRate: 85 },
-      { district: '望江县', period: '2026-07-06 — 2026-07-26', demand: 2000, supply: 1600, designRate: 80 },
-      { district: '太湖县', period: '2026-07-06 — 2026-07-26', demand: 600, supply: 570, designRate: 95 },
-    ],
-  },
-  {
-    id: 'S2026-X2',
-    name: '2026年夏灌二期方案',
-    meta: '2026-08-01 ~ 2026-08-20',
-    rows: [
-      { district: '宿松县', period: '2026-08-01 — 2026-08-20', demand: 980, supply: 910, designRate: 90 },
-      { district: '怀宁县', period: '2026-08-01 — 2026-08-20', demand: 720, supply: 650, designRate: 85 },
-      { district: '望江县', period: '2026-08-01 — 2026-08-20', demand: 1650, supply: 1400, designRate: 80 },
-      { district: '太湖县', period: '2026-08-01 — 2026-08-20', demand: 540, supply: 500, designRate: 95 },
-    ],
-  },
-  {
-    id: 'S2026-Q1',
-    name: '2026年秋灌方案',
-    meta: '2026-09-05 ~ 2026-09-25',
-    rows: [
-      { district: '宿松县', period: '2026-09-05 — 2026-09-25', demand: 760, supply: 700, designRate: 90 },
-      { district: '怀宁县', period: '2026-09-05 — 2026-09-25', demand: 610, supply: 540, designRate: 85 },
-      { district: '望江县', period: '2026-09-05 — 2026-09-25', demand: 1320, supply: 1100, designRate: 80 },
-      { district: '太湖县', period: '2026-09-05 — 2026-09-25', demand: 430, supply: 410, designRate: 95 },
-    ],
-  },
-];
+(function () {
+  var API = '/hltgq-site';
+  var MAX_SCHEMES = 10;
+  var $ = function (id) { return document.getElementById(id); };
 
-const $ = id => document.getElementById(id);
-const selectedIds = new Set();
-/** 查询结果用的选中快照，避免未点查询就改表 */
-let queriedIds = [];
+  var schemes = [];
+  var selectedIds = new Set();
+  var loading = false;
 
-function fmt1(n) {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return '-';
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
-}
-
-function calcRates(row) {
-  const demand = Number(row.demand) || 0;
-  const supply = Number(row.supply) || 0;
-  const actual = demand > 0 ? +(supply / demand * 100).toFixed(1) : 0;
-  return {
-    ...row,
-    actualRate: actual,
-    progress: actual,
-  };
-}
-
-function buildRows(ids) {
-  const list = [];
-  MOCK_SCHEMES.forEach(s => {
-    if (!ids.includes(s.id)) return;
-    s.rows.forEach(r => list.push(calcRates(r)));
-  });
-  return list;
-}
-
-function renderTable(rows) {
-  const tbody = $('tbody');
-  if (!rows.length) {
-    tbody.innerHTML = '<tr><td class="empty" colspan="7">请选择需水方案后查询</td></tr>';
-    return;
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-  tbody.innerHTML = rows.map(r => `
-    <tr>
-      <td class="left">${esc(r.district)}</td>
-      <td>${esc(r.period)}</td>
-      <td>${fmt1(r.demand)}</td>
-      <td>${fmt1(r.supply)}</td>
-      <td>${fmt1(r.designRate)}</td>
-      <td>${fmt1(r.actualRate)}</td>
-      <td>${fmt1(r.progress)}</td>
-    </tr>
-  `).join('');
-}
+  function dash(v) { return v == null || v === '' ? '—' : v; }
+  function fmtFix(v, digits) {
+    var n = Number(v);
+    if (v == null || v === '' || !Number.isFinite(n)) return '—';
+    return n.toFixed(digits);
+  }
+  function periodText(r) {
+    if (r.periodStart || r.periodEnd) return dash(r.periodStart) + ' ~ ' + dash(r.periodEnd);
+    if (r.startTenday || r.endTenday) return dash(r.startTenday) + ' ~ ' + dash(r.endTenday);
+    return '—';
+  }
+  function missBadge(md) {
+    var arr = Array.isArray(md) ? md.filter(function (x) { return x; }) : [];
+    if (!arr.length) return '';
+    return '<span class="miss" title="' + esc(arr.join('；')) + '">缺失 ' + arr.length + ' 项</span>';
+  }
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
 
-function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+  function qs(params) {
+    var p = new URLSearchParams();
+    Object.keys(params).forEach(function (k) {
+      var v = params[k];
+      if (v == null || v === '') return;
+      p.set(k, String(v));
+    });
+    var s = p.toString();
+    return s ? ('?' + s) : '';
+  }
 
-function renderMsTrigger() {
-  const trigger = $('scheme-trigger');
-  const placeholder = $('scheme-placeholder');
-  const selected = MOCK_SCHEMES.filter(s => selectedIds.has(s.id));
-  trigger.querySelectorAll('.ms-tag').forEach(el => el.remove());
-  if (!selected.length) {
-    if (!placeholder) {
-      const span = document.createElement('span');
-      span.className = 'ms-placeholder';
-      span.id = 'scheme-placeholder';
-      span.textContent = '请选择';
-      trigger.appendChild(span);
-    } else {
-      placeholder.style.display = '';
-      placeholder.textContent = '请选择';
+  async function fetchApi(path) {
+    var res = await fetch(API + path, { credentials: 'include' });
+    var body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (!res.ok) throw new Error((body && (body.message || body.msg)) || ('HTTP ' + res.status));
+    if (body && typeof body === 'object' && !Array.isArray(body) && ('data' in body) && ('code' in body || 'msg' in body || 'message' in body)) {
+      if (body.code != null && Number(body.code) !== 0) throw new Error(body.msg || body.message || '请求失败');
+      return body.data;
     }
-    return;
+    return body;
   }
-  if (placeholder) placeholder.style.display = 'none';
-  selected.forEach(s => {
-    const tag = document.createElement('span');
-    tag.className = 'ms-tag';
-    tag.innerHTML = `<span title="${esc(s.name)}">${esc(s.name)}</span><button type="button" data-id="${esc(s.id)}" aria-label="移除">×</button>`;
-    trigger.appendChild(tag);
-  });
-}
 
-function renderMsOptions() {
-  const dd = $('scheme-dd');
-  if (!MOCK_SCHEMES.length) {
-    dd.innerHTML = '<div class="ms-empty">暂无方案</div>';
-    return;
+  /* ===== 方案下拉 ===== */
+  function schemeMeta(s) {
+    var parts = [];
+    if (s.guaranteeRate != null && s.guaranteeRate !== '') parts.push('保证率' + s.guaranteeRate);
+    if (s.year != null) parts.push(s.year + '年');
+    if (s.periodStart || s.periodEnd) parts.push(dash(s.periodStart) + '~' + dash(s.periodEnd));
+    if (s.districtCount != null) parts.push(s.districtCount + '灌区');
+    if (s.totalDemand != null) parts.push('总需水' + s.totalDemand + '万m³');
+    return parts.join(' · ');
   }
-  dd.innerHTML = MOCK_SCHEMES.map(s => `
-    <label class="ms-opt">
-      <input type="checkbox" value="${esc(s.id)}" ${selectedIds.has(s.id) ? 'checked' : ''}>
-      <span class="ms-opt-body">
-        <span class="ms-opt-name">${esc(s.name)}</span>
-        <span class="ms-opt-meta">${esc(s.meta)} · ${s.rows.length} 个灌区</span>
-      </span>
-    </label>
-  `).join('');
-}
 
-function setMsOpen(open) {
-  const root = $('scheme-ms');
-  const trigger = $('scheme-trigger');
-  root.classList.toggle('open', open);
-  trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-}
-
-function query() {
-  queriedIds = [...selectedIds];
-  renderTable(buildRows(queriedIds));
-}
-
-function reset() {
-  selectedIds.clear();
-  queriedIds = [];
-  renderMsOptions();
-  renderMsTrigger();
-  setMsOpen(false);
-  renderTable([]);
-}
-
-function bind() {
-  const root = $('scheme-ms');
-  const trigger = $('scheme-trigger');
-  const dd = $('scheme-dd');
-
-  trigger.addEventListener('click', e => {
-    if (e.target.closest('button[data-id]')) return;
-    setMsOpen(!root.classList.contains('open'));
-  });
-  trigger.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      setMsOpen(!root.classList.contains('open'));
+  function renderMsOptions() {
+    var dd = $('scheme-dd');
+    if (!schemes.length) {
+      dd.innerHTML = '<div class="ms-empty">暂无方案</div>';
+      return;
     }
-  });
+    dd.innerHTML = schemes.map(function (s) {
+      var id = String(s.schemeId);
+      return '<label class="ms-opt">' +
+        '<input type="checkbox" value="' + esc(id) + '"' + (selectedIds.has(id) ? ' checked' : '') + '>' +
+        '<span class="ms-opt-body">' +
+        '<span class="ms-opt-name">' + esc(s.schemeName || id) + '</span>' +
+        '<span class="ms-opt-meta">' + esc(schemeMeta(s)) + '</span>' +
+        '</span></label>';
+    }).join('');
+  }
 
-  trigger.addEventListener('click', e => {
-    const btn = e.target.closest('button[data-id]');
-    if (!btn) return;
-    e.stopPropagation();
-    selectedIds.delete(btn.dataset.id);
+  function renderMsTrigger() {
+    var trigger = $('scheme-trigger');
+    var placeholder = $('scheme-placeholder');
+    var map = {};
+    schemes.forEach(function (s) { map[String(s.schemeId)] = s; });
+    trigger.querySelectorAll('.ms-tag').forEach(function (el) { el.remove(); });
+    var selected = Array.from(selectedIds).map(function (id) { return map[id]; }).filter(Boolean);
+    if (!selected.length) {
+      if (placeholder) { placeholder.style.display = ''; placeholder.textContent = '请选择'; }
+      return;
+    }
+    if (placeholder) placeholder.style.display = 'none';
+    selected.forEach(function (s) {
+      var tag = document.createElement('span');
+      tag.className = 'ms-tag';
+      tag.innerHTML = '<span title="' + esc(s.schemeName) + '">' + esc(s.schemeName) + '</span>' +
+        '<button type="button" data-id="' + esc(String(s.schemeId)) + '" aria-label="移除">×</button>';
+      trigger.appendChild(tag);
+    });
+  }
+
+  function setMsOpen(open) {
+    $('scheme-ms').classList.toggle('open', open);
+    $('scheme-trigger').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  async function loadSchemes() {
+    try {
+      var data = await fetchApi('/irrigation-water/schemes');
+      schemes = Array.isArray(data) ? data : [];
+    } catch (e) {
+      schemes = [];
+      toast((e && e.message) || '方案加载失败');
+    }
+    var valid = new Set(schemes.map(function (s) { return String(s.schemeId); }));
+    Array.from(selectedIds).forEach(function (id) { if (!valid.has(id)) selectedIds.delete(id); });
     renderMsOptions();
     renderMsTrigger();
-  });
+  }
 
-  dd.addEventListener('change', e => {
-    const input = e.target.closest('input[type=checkbox]');
-    if (!input) return;
-    if (input.checked) selectedIds.add(input.value);
-    else selectedIds.delete(input.value);
-    renderMsTrigger();
-  });
+  /* ===== 汇总表 ===== */
+  function renderTable(list, err) {
+    var tbody = $('tbody');
+    if (err) {
+      tbody.innerHTML = '<tr><td class="empty" colspan="7">' + esc(err) + '</td></tr>';
+      return;
+    }
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td class="empty" colspan="7">请选择需水方案后查询</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(function (s) {
+      var meta = [];
+      if (s.guaranteeRate != null && s.guaranteeRate !== '') meta.push('保证率 ' + s.guaranteeRate);
+      if (s.year != null) meta.push(s.year + ' 年');
+      if (s.periodStart || s.periodEnd) meta.push(dash(s.periodStart) + ' ~ ' + dash(s.periodEnd));
+      var head = '<tr class="group"><td class="left" colspan="7">方案：' + esc(s.schemeName || '-') +
+        (meta.length ? '（' + esc(meta.join(' · ')) + '）' : '') + '</td></tr>';
+      var rows = (s.rows || []).map(function (r) {
+        return '<tr>' +
+          '<td class="left">' + esc(dash(r.district)) + missBadge(r.missingData) + '</td>' +
+          '<td>' + esc(periodText(r)) + '</td>' +
+          '<td>' + fmtFix(r.demandVolume, 2) + '</td>' +
+          '<td>' + fmtFix(r.supplyVolume, 3) + '</td>' +
+          '<td>' + fmtFix(r.designGuaranteeRate, 1) + '</td>' +
+          '<td>' + fmtFix(r.actualGuaranteeRate, 1) + '</td>' +
+          '<td>' + fmtFix(r.irrigationProgress, 1) + '</td>' +
+          '</tr>';
+      }).join('');
+      return head + rows;
+    }).join('');
+  }
 
-  document.addEventListener('click', e => {
-    if (!root.contains(e.target)) setMsOpen(false);
-  });
+  async function query() {
+    var ids = Array.from(selectedIds);
+    if (!ids.length) { renderTable([]); return; }
+    if (loading) return;
+    loading = true;
+    $('btn-query').disabled = true;
+    $('tbody').innerHTML = '<tr><td class="empty" colspan="7">查询中…</td></tr>';
+    try {
+      var data = await fetchApi('/irrigation-water/summary' + qs({ schemeIds: ids.join(',') }));
+      renderTable(Array.isArray(data) ? data : []);
+    } catch (e) {
+      renderTable([], (e && e.message) || '加载失败');
+    } finally {
+      loading = false;
+      $('btn-query').disabled = false;
+    }
+  }
 
-  $('btn-query').addEventListener('click', query);
-  $('btn-reset').addEventListener('click', reset);
-}
+  function reset() {
+    selectedIds.clear();
+    renderTable([]);
+    loadSchemes();
+    setMsOpen(false);
+  }
 
-renderMsOptions();
-renderMsTrigger();
-renderTable([]);
-bind();
+  function bind() {
+    var root = $('scheme-ms');
+    var trigger = $('scheme-trigger');
+    var dd = $('scheme-dd');
+
+    trigger.addEventListener('click', function (e) {
+      if (e.target.closest('button[data-id]')) return;
+      setMsOpen(!root.classList.contains('open'));
+    });
+    trigger.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMsOpen(!root.classList.contains('open')); }
+    });
+    trigger.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-id]');
+      if (!btn) return;
+      e.stopPropagation();
+      selectedIds.delete(btn.dataset.id);
+      renderMsOptions();
+      renderMsTrigger();
+    });
+    dd.addEventListener('change', function (e) {
+      var input = e.target.closest('input[type=checkbox]');
+      if (!input) return;
+      if (input.checked) {
+        if (selectedIds.size >= MAX_SCHEMES) {
+          input.checked = false;
+          toast('最多选择 ' + MAX_SCHEMES + ' 个方案');
+          return;
+        }
+        selectedIds.add(input.value);
+      } else {
+        selectedIds.delete(input.value);
+      }
+      renderMsTrigger();
+    });
+    document.addEventListener('click', function (e) {
+      if (!root.contains(e.target)) setMsOpen(false);
+    });
+
+    $('btn-query').addEventListener('click', query);
+    $('btn-reset').addEventListener('click', reset);
+  }
+
+  renderTable([]);
+  bind();
+  loadSchemes();
+})();
 </script>
 </body>
 </html>

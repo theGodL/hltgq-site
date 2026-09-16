@@ -187,6 +187,8 @@ tbody tr:hover td{background:#fafafa}
 .dc-hint.ok{color:#52c41a}
 .toast{position:fixed;left:50%;top:80px;transform:translateX(-50%);background:rgba(0,0,0,.72);color:#fff;font-size:14px;padding:10px 20px;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000}
 .toast.show{opacity:1}
+/* 电压列（业主要求隐藏）；恢复：删除本规则，并把各表空数据行的 colspan 加回 1 */
+.col-vol{display:none}
 </style>
 </head>
 <body>
@@ -240,7 +242,7 @@ tbody tr:hover td{background:#fafafa}
               <th>瞬时流量 (m³/s)</th>
               <th>累计流量 (万m³)</th>
               <th>采集时间</th>
-              <th>电压 (V)</th>
+              <th class="col-vol">电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -282,7 +284,7 @@ tbody tr:hover td{background:#fafafa}
               <th>闸前水位 (m)</th>
               <th>闸后水位 (m)</th>
               <th>采集时间</th>
-              <th>电压 (V)</th>
+              <th class="col-vol">电压 (V)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -761,7 +763,7 @@ async function loadList() {
     S.allRows = [];
     S.total = 0;
     S.rows = [];
-    $('tbl-body').innerHTML = '<tr><td colspan="9" class="empty">数据加载失败，请重试</td></tr>';
+    $('tbl-body').innerHTML = '<tr><td colspan="8" class="empty">数据加载失败，请重试</td></tr>';
     renderPager();
   } finally {
     setLoading(wrap, false);
@@ -801,7 +803,7 @@ function fmtHolesOpen(holes) {
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = S.rows.map((r, i) => `
@@ -813,7 +815,7 @@ function renderTable() {
       <td>${fmtN3(r.q)}</td>
       <td>${fmtN3(r.cumulativeFlow)}</td>
       <td>${fmtTm(r.tm)}</td>
-      <td>${fmtN2(r.vol)}</td>
+      <td class="col-vol">${fmtN2(r.vol)}</td>
       <td>
         <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>
         ${isDischargeSite(r.siteName) ? `<button class="act-btn" data-action="discharge" data-idx="${i}" style="margin-left:10px">流量计算</button>` : ''}
@@ -1660,7 +1662,7 @@ function bindMthDevSelect() {
 }
 
 function renderMthEmpty() {
-  $('mth-tbl-body').innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+  $('mth-tbl-body').innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
   $('mth-tbl-pg').innerHTML = `<span class="pg-info">共 0 条</span>
     <select class="pg-size" disabled><option>20条/页</option></select>
     <button class="pg-btn" disabled>&lt;</button>
