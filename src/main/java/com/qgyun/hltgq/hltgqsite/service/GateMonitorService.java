@@ -1,8 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
-import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
 
@@ -48,28 +46,6 @@ public interface GateMonitorService {
      * 毕岭节制闸、汪元节制闸、北干渠进水闸、南干渠进水闸）
      */
     List<GateStationWaterLevelVO> stationWaterLevel(LocalDateTime time);
-
-    /**
-     * 闸站累计流量（月累计 + 年累计）
-     * <p>月累计 = 当月 1日 0点起至最新数据时间 = ttf(最新) − ttf(monthStart 前最近行)；
-     * 年累计 = 当年 1月1日 0点起至最新数据时间（流量表 ytf）。
-     *
-     * @param siteId     站点 UUID（必填）
-     * @param monthStart 月累计起点（可选，null 默认当月 1日 0点）
-     * @return 月累计与年累计（改造前无 ytf/ttf 数据时为 null）
-     */
-    GateCumulativeFlowVO cumulativeFlow(String siteId, LocalDateTime monthStart);
-
-    /**
-     * 闸站月度累计取水量趋势（近 months 个月，含当月）
-     * <p>月累计口径同 cumulativeFlow：当月 1日 0点 ≤ tm < 下月 1日 0点
-     * = ttf(月内最新) − ttf(月初前最近)，当月累计截至最新数据时间。
-     *
-     * @param siteId 站点 UUID（必填）
-     * @param months 月数（默认 12，上限 24），当前月为最后一个月
-     * @return 每月一个数据点（时间升序，最早在前），月内无 ttf 数据时累计为 null
-     */
-    List<GateMonthCumulativeFlowVO> monthlyCumulativeFlow(String siteId, int months);
 
     /**
      * 闸站召测：对四站（北干渠进水闸、南干渠进水闸、毕岭节制闸、汪元节制闸）下发召测指令

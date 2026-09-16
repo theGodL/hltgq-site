@@ -7,8 +7,8 @@ import java.util.List;
 
 /**
  * 灌溉用水汇总 VO（方案 × 四县）。
- * <p>行内字段口径见 {@link CountyRow}；数值精度：需水量/供水量保留 2 位小数（截断），
- * 保证率/进度保留 1 位小数（截断）。
+ * <p>行内字段口径见 {@link CountyRow}；数值精度：需水量（模型直出值）保留 2 位小数（截断），
+ * 实际供水量（累计流量区间口径）保留 3 位小数（截断），保证率/进度保留 1 位小数（截断）。
  */
 @Data
 public class IrrigationSummaryVO {
@@ -62,7 +62,7 @@ public class IrrigationSummaryVO {
         /** 需水量(万m³)：该县对应片区 18 旬求和；无汇总数据时为 null */
         private BigDecimal demandVolume;
 
-        /** 实际供水量(万m³)：按县口径从流量监测区间累计计算；部件数据缺失时为 null */
+        /** 实际供水量(万m³，3 位小数截断)：按县口径从流量监测区间累计计算（m³ 原值相减后换算）；部件数据缺失时为 null */
         private BigDecimal supplyVolume;
 
         /** 设计保证率(%)：逐县配置（业务定稿前用产品稿默认值） */

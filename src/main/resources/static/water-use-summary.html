@@ -409,7 +409,7 @@ table.data-table tbody tr:hover td{background:#fafafa}
     tbody.innerHTML = rows.map(function (r) {
       return '<tr>' +
         '<td>' + esc(r.period) + '</td>' +
-        '<td>' + esc(fmt2(r.usage)) + '</td>' +
+        '<td>' + esc(fmt3(r.usage)) + '</td>' +
         '<td>' + esc(fmt3(r.coef)) + '</td>' +
         '<td>' + esc(fmt2(r.receivable)) + '</td>' +
         '</tr>';
@@ -457,7 +457,7 @@ table.data-table tbody tr:hover td{background:#fafafa}
           if (!params || !params.length) return '';
           var head = params[0].axisValue;
           var lines = params.map(function (p) {
-            var v = p.seriesName === '灌溉水利用系数' ? fmt3(p.value) : fmt2(p.value);
+            var v = fmt3(p.value); // 该图两系列均 3 位：用水量(万m³) / 灌溉水利用系数
             return p.marker + p.seriesName + '  <b>' + v + '</b>';
           });
           return head + '<br/>' + lines.join('<br/>');

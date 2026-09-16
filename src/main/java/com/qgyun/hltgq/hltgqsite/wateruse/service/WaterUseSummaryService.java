@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.wateruse.service;
 
 import com.qgyun.hltgq.hltgqsite.irrigation.mapper.IrrigationWaterMapper;
 import com.qgyun.hltgq.hltgqsite.irrigation.vo.IrrigationIntervalVO;
+import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.wateruse.config.WaterUseCoeffStations;
 import com.qgyun.hltgq.hltgqsite.wateruse.config.WaterUseSeasonConfig;
 import com.qgyun.hltgq.hltgqsite.wateruse.mapper.WaterUseSummaryMapper;
@@ -30,7 +31,8 @@ import java.util.Map;
  * <p>口径（业主 2026-09-11 确认）：
  * <ul>
  *   <li>归桶锚点 = 统计周期区间终点 xxmefs_max（跨桶按终点，终点缺失回退起点）</li>
- *   <li>用水量 = 计划供水量 mlljya 桶内求和（直取表单值、不做推算；按 m³ 换算 → 万m³，2 位截断）</li>
+ *   <li>用水量 = 计划供水量 mlljya 桶内求和（直取表单值、不做推算；按 m³ 换算 → 万m³，3 位截断，
+ *       与累计流量展示同口径）</li>
  *   <li>应收水费 = 水费表单 hsfvdh 桶内求和（按 元 换算 → 万元，2 位截断，联调按日志核对单位）</li>
  *   <li>灌溉水利用系数（近似值）= Σ(北干/南干/太宿/太怀 进水闸区间累计) ÷ 渠首进水闸区间累计
  *       （同桶窗口 ttf 区间累计，3 位小数；渠首缺失/为 0 或四干渠全部无数据时为 null）</li>
@@ -181,15 +183,14 @@ public class WaterUseSummaryService {
         }
     }
 
-    /** 单桶出数：标签 + 用水量(=计划供水量)/应收水费（表单求和）+ 系数（流量区间累计近似） */
+    /** 单桶出数：标签 + 用水量(=计划供水量，m³→万m³ 3 位截断)/应收水费（元→万元 2 位截断）+ 系数（流量区间累计近似） */
     private WaterUseReportRowVO buildRow(Bucket bucket) {
         WaterUseReportRowVO row = new WaterUseReportRowVO();
         row.setPeriod(bucket.period);
         row.setLabel(bucket.label);
         row.setPeriodStart(bucket.start.toString());
         row.setPeriodEnd(bucket.end.toString());
-        row.setUsage(bucket.plannedSupplyRaw != null
-                ? bucket.plannedSupplyRaw.divide(TEN_THOUSAND, 2, RoundingMode.DOWN) : null);
+        row.setUsage(WaterVolumeUtils.m3ToWan(bucket.plannedSupplyRaw));
         row.setReceivable(bucket.feeRaw != null
                 ? bucket.feeRaw.divide(TEN_THOUSAND, 2, RoundingMode.DOWN) : null);
         row.setIrrigationCoef(computeCoefficient(bucket));

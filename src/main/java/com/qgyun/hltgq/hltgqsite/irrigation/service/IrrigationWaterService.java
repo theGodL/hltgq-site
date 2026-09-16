@@ -14,6 +14,7 @@ import com.qgyun.hltgq.hltgqsite.model.service.ModelRecordCommonService;
 import com.qgyun.hltgq.hltgqsite.model.util.BoolTextUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.TenDayDateUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.TenDayMapUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,7 +44,8 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>需水量 = 该县对应片区（太宿干渠/太怀灌区/南干渠+北干渠/总干渠）18 旬求和（万m³）</li>
  *   <li>实际供水量 = 该县需水时间窗口内的区间累计流量（= 末行 ttf − 起点前最近 ttf，与流量监测同口径），
- *       站点口径见 {@link IrrigationStationConfig}；太湖为总量扣减口径（含三电站与损耗）</li>
+ *       站点口径见 {@link IrrigationStationConfig}；太湖为总量扣减口径（含三电站与损耗）；
+ *       m³ 原值相减后最后一步换算万m³（3 位小数截断，与累计流量展示同口径）</li>
  *   <li>实际保证率 = 实际供水量 ÷ 需水量 × 100（万m³ 口径相除）；灌溉进度暂同实际保证率（产品稿）</li>
  *   <li>部件站点无数据时供水量记 null 并在 missingData 说明（设备未接入/窗口内无流量数据），不做近似估算</li>
  * </ul>
@@ -62,7 +64,6 @@ public class IrrigationWaterService {
     private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
     private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
 
-    private static final BigDecimal TEN_THOUSAND = new BigDecimal("10000");
     private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
 
     /** 旬标签格式："5月上旬" / "10月下旬" */
@@ -217,7 +218,7 @@ public class IrrigationWaterService {
         row.setPeriodStart(formatDate(firstDate));
         row.setPeriodEnd(formatDate(lastDate));
 
-        // 实际供水量（m³ → 万m³，2 位截断）
+        // 实际供水量（m³ → 万m³，3 位截断，与累计流量展示同口径）
         List<String> missing = new ArrayList<>();
         BigDecimal supplyM3 = null;
         if (firstDate == null || lastDate == null) {
@@ -228,8 +229,7 @@ public class IrrigationWaterService {
             supplyM3 = supply.volume;
             missing.addAll(supply.missing);
         }
-        BigDecimal supplyWan = supplyM3 != null
-                ? supplyM3.divide(TEN_THOUSAND, 2, RoundingMode.DOWN) : null;
+        BigDecimal supplyWan = WaterVolumeUtils.m3ToWan(supplyM3);
         row.setSupplyVolume(supplyWan);
 
         // 设计保证率（逐县配置，业务定稿前用产品稿默认值）

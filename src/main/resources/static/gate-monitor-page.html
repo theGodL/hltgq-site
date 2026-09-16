@@ -238,7 +238,7 @@ tbody tr:hover td{background:#fafafa}
               <th>闸前水位 (m)</th>
               <th>闸后水位 (m)</th>
               <th>瞬时流量 (m³/s)</th>
-              <th>累计流量 (m³)</th>
+              <th>累计流量 (万m³)</th>
               <th>采集时间</th>
               <th>电压 (V)</th>
               <th>操作</th>
@@ -811,7 +811,7 @@ function renderTable() {
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
       <td>${fmtN3(r.q)}</td>
-      <td>${fmtN2(r.cumulativeFlow)}</td>
+      <td>${fmtN3(r.cumulativeFlow)}</td>
       <td>${fmtTm(r.tm)}</td>
       <td>${fmtN2(r.vol)}</td>
       <td>
@@ -1221,7 +1221,7 @@ function renderHistHead() {
     thead.innerHTML = `<tr>
       <th>监测日期</th>
       <th>瞬时流量 (m³/s)</th>
-      <th>累计流量 (m³)</th>
+      <th>累计流量 (万m³)</th>
     </tr>`;
   } else {
     thead.innerHTML = `<tr>
@@ -1252,7 +1252,7 @@ function renderHistory() {
       <tr>
         <td>${fmtTm(r.tm)}</td>
         <td>${fmtN3(r.q)}</td>
-        <td>${fmtN2(r.tf)}</td>
+        <td>${fmtN3(r.tf)}</td>
       </tr>
     `).join('');
   } else {

@@ -26,10 +26,13 @@ public class DashboardController {
      * <p>在线按站点状态字段 zebpsu（#1# 在线，由报文入库项目维护）；闸门开启按各闸孔最新开度 > 0
      * 判定（近 24h 有上报、排除站级行 gate_no='0' 与无信号/异常闸孔）；
      * 未处理告警 = 未关闭（#1# 未确认/#2# 已确认/#3# 处理中）。百分比 1 位小数，分母 0 时为 null。
+     *
+     * @param site 站点主键 ID（可选；不传 = 全部站点，与 /dashboard/alerts 的 site 同口径）；
+     *             传了但站点不存在/无设备无闸门无告警时各计数为 0、百分比为 null
      */
     @GetMapping("/overview")
-    public DashboardOverviewVO overview() {
-        return dashboardService.overview();
+    public DashboardOverviewVO overview(@RequestParam(required = false) String site) {
+        return dashboardService.overview(site);
     }
 
     /**

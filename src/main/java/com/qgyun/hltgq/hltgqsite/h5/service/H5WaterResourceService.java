@@ -26,10 +26,11 @@ import java.util.Map;
  * <ul>
  *   <li>饼状图：水资源量分布 = 年度区间内最新已完成配水方案供水来源求和（塘坝/水厂/花凉亭水库灌溉）</li>
  *   <li>列表：水资源分配方案及执行 = 年度已确认用水计划 × 四县，分配水量=计划量、执行进度=实际供水量÷计划量</li>
- *   <li>两卡片：灌溉总面积固定 105.83 万亩；已完成灌溉 = 四县实际供水量合计（万m³，亩为前端展示标签）</li>
- *   <li>四卡片：四县灌溉面积（需水方案支渠面积归县，万亩）+ 实际供水量（固定顺序：宿松/怀宁/望江/太湖）</li>
+ *   <li>两卡片：灌溉总面积固定 105.83 万亩；已完成灌溉 = 四县实际供水量合计（万m³，3 位截断，亩为前端展示标签）</li>
+ *   <li>四卡片：四县灌溉面积（需水方案支渠面积归县，万亩）+ 实际供水量（万m³，3 位截断；固定顺序：宿松/怀宁/望江/太湖）</li>
  * </ul>
- * <p>数值精度：供水量/分配水量 2 位截断、面积 亩→万亩 2 位截断、进度 1 位截断，与灌溉用水接口同口径。
+ * <p>数值精度：实际供水量及其合计（已完成灌溉）3 位截断（累计流量口径，与灌溉用水接口同口径）；
+ * 分配水量（年度用水计划表单值）/面积 亩→万亩 2 位截断；进度 1 位截断。
  * <p>年度区间：startDate/endDate 格式 yyyy-MM-dd HH:mm:ss（前端 date.min/date.max 直传），
  * 缺省=本年度 [01-01, 次年 01-01)；年份取 startDate 年份，作用于用水计划/需水方案选取。
  */
@@ -248,7 +249,7 @@ public class H5WaterResourceService {
                 }
             }
         }
-        stats.setFinishedVolume(sum == null ? null : scale2(sum));
+        stats.setFinishedVolume(sum == null ? null : scale3(sum));
         log.info("[水资源概览] 灌溉统计 总面积={}万亩 已完成灌溉合计={}万m³", TOTAL_AREA, stats.getFinishedVolume());
         return stats;
     }
@@ -278,8 +279,13 @@ public class H5WaterResourceService {
         }
     }
 
-    /** 2 位截断 */
+    /** 2 位截断（模型直出水量/面积等非累计流量口径） */
     private BigDecimal scale2(BigDecimal value) {
         return value.setScale(2, RoundingMode.DOWN);
+    }
+
+    /** 3 位截断（累计流量口径水量：实际供水量及其合计） */
+    private BigDecimal scale3(BigDecimal value) {
+        return value.setScale(3, RoundingMode.DOWN);
     }
 }

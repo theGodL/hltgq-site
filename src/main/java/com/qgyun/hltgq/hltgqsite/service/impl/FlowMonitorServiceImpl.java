@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.service.FlowMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowTrendVO;
@@ -48,6 +49,9 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     /** -999 = 设备不存在：视为缺失转 null 返回（-9991 设备异常保留，透传由前端展示 '--'） */
     private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
 
+    /** -9991 = 设备异常：保留原值透传（前端展示 '--'），不参与单位换算 */
+    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
+
     /**
      * 水位水情站权威展示顺序（业主口径）：周家河 > 花凉亭坝上 > 花凉亭坝下。
      * 日时段水情表按此顺序分组输出，不受前端传入 stcds 顺序影响。
@@ -61,6 +65,18 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
     private static BigDecimal nullIfMissing(BigDecimal v) {
         return (v != null && v.compareTo(DEVICE_MISSING) == 0) ? null : v;
+    }
+
+    /**
+     * 累计流量展示换算：m³ → 万m³（3 位小数截断）。
+     * <p>-999（设备不存在）→ null；-9991（设备异常）保留原值透传（前端展示 '--'），不参与换算。
+     */
+    private static BigDecimal toWanFlow(BigDecimal v) {
+        BigDecimal m3 = nullIfMissing(v);
+        if (m3 == null || m3.compareTo(DEVICE_ERROR) == 0) {
+            return m3;
+        }
+        return WaterVolumeUtils.m3ToWan(m3);
     }
 
     /**
@@ -105,9 +121,10 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         // -999 = 设备不存在：转 null 返回（-9991 设备异常保留，透传由前端展示 '--'）
         rows.forEach(r -> {
             r.setQ(nullIfMissing(r.getQ()));
-            r.setTf(nullIfMissing(r.getTf()));
+            r.setTf(toWanFlow(r.getTf()));
             // 累计流量（站点级，与闸门监测同口径）：默认（无起始时间）= 末行 ytf（当年 1月1日 0点起至最新数据时间）；
-            // 指定起始时间 = 时间框范围累计 = ttf(范围内末行) − ttf(起点前最近一行)，起点前无积分行基准按 0
+            // 指定起始时间 = 时间框范围累计 = ttf(范围内末行) − ttf(起点前最近一行)，起点前无积分行基准按 0；
+            // 先按 m³ 原值相减，最后一步再换算为万m³（缩放后相减会放大误差）
             BigDecimal ytf = nullIfMissing(r.getYtf());
             BigDecimal ttf = nullIfMissing(r.getTtf());
             BigDecimal prevTtf = nullIfMissing(r.getPrevTtf());
@@ -119,8 +136,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             } else {
                 cumulativeFlow = ttf.subtract(prevTtf != null ? prevTtf : BigDecimal.ZERO);
             }
-            r.setCumulativeFlow(cumulativeFlow != null
-                    ? cumulativeFlow.setScale(2, RoundingMode.DOWN) : null);
+            r.setCumulativeFlow(toWanFlow(cumulativeFlow));
         });
         return rows;
     }
@@ -171,8 +187,8 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             }
 
             // -9991 设备异常、-999 设备不存在，均视为缺失不参与聚合
-            if (q.compareTo(new BigDecimal("-9991")) == 0
-                    || q.compareTo(new BigDecimal("-999")) == 0) continue;
+            if (q.compareTo(DEVICE_ERROR) == 0
+                    || q.compareTo(DEVICE_MISSING) == 0) continue;
 
             String hourKey = tm.truncatedTo(ChronoUnit.HOURS)
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));
@@ -235,7 +251,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         List<FlowMonitoringVO> records = waterFlowMapper.selectHistoryPage(stcd, startTime, endTime, limit, offset);
         records.forEach(r -> {
             r.setQ(nullIfMissing(r.getQ()));
-            r.setTf(nullIfMissing(r.getTf()));
+            r.setTf(toWanFlow(r.getTf()));
         });
         result.setRecords(records);
 

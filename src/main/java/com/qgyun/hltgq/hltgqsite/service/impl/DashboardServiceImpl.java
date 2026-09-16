@@ -23,11 +23,13 @@ public class DashboardServiceImpl implements DashboardService {
     private DashboardMapper dashboardMapper;
 
     @Override
-    public DashboardOverviewVO overview() {
+    public DashboardOverviewVO overview(String site) {
+        // 站点过滤（可选）：站点主键 ID（= 设备/闸门/告警表 site 列值）；空串/空白归一为 null（全量）
+        String siteKey = (site == null || site.trim().isEmpty()) ? null : site.trim();
         DashboardOverviewVO vo = new DashboardOverviewVO();
 
         // ① 设备总数/在线数：完全按站点状态字段 zebpsu（#1# 在线、#2# 离线，由报文入库项目维护）
-        Map<String, Object> deviceRow = dashboardMapper.selectDeviceCount();
+        Map<String, Object> deviceRow = dashboardMapper.selectDeviceCount(siteKey);
         long totalDevices = toLong(deviceRow, "total_cnt");
         long onlineDevices = toLong(deviceRow, "online_cnt");
         vo.setTotalDeviceCount(totalDevices);
@@ -35,7 +37,7 @@ public class DashboardServiceImpl implements DashboardService {
         vo.setOnlineDevicePercent(percent(onlineDevices, totalDevices));
 
         // ② 闸门总数/开启数：各闸孔最新开度 > 0 判定开启（排除站级行与无信号/异常闸孔，近 24h 窗口）
-        Map<String, Object> gateRow = dashboardMapper.selectGateCount();
+        Map<String, Object> gateRow = dashboardMapper.selectGateCount(siteKey);
         long totalGates = toLong(gateRow, "total_cnt");
         long openGates = toLong(gateRow, "open_cnt");
         vo.setTotalGateCount(totalGates);
@@ -43,7 +45,7 @@ public class DashboardServiceImpl implements DashboardService {
         vo.setOpenGatePercent(percent(openGates, totalGates));
 
         // ③ 未处理告警数：未关闭即未处理（#1# 未确认/#2# 已确认/#3# 处理中）
-        vo.setUnhandledAlarmCount(dashboardMapper.selectUnhandledAlarmCount());
+        vo.setUnhandledAlarmCount(dashboardMapper.selectUnhandledAlarmCount(siteKey));
         return vo;
     }
 

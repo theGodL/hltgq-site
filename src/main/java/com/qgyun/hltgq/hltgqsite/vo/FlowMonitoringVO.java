@@ -27,24 +27,24 @@ public class FlowMonitoringVO {
     /** 流量 (m³/s) */
     private BigDecimal q;
 
-    /** 累计流量 (万 m³) */
+    /** 累计流量 (万m³)，3 位小数截断（客户展示口径；设备上报/库中存储为 m³） */
     private BigDecimal tf;
 
-    /** 累计流量 (m³)：默认（无起始时间）= 末行年累计 ytf；指定起始时间 = ttf(末行) − ttf(起点前一行) */
+    /** 累计流量 (万m³，3 位小数截断)：默认（无起始时间）= 末行年累计 ytf；指定起始时间 = ttf(末行) − ttf(起点前一行) */
     private BigDecimal cumulativeFlow;
 
     /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
     private BigDecimal vol;
 
-    /** 年累计流量（内部计算用，不出 JSON） */
+    /** 年累计流量（m³ 原值，内部计算用，不出 JSON） */
     @JsonIgnore
     private BigDecimal ytf;
 
-    /** 总累计流量（内部计算用，不出 JSON） */
+    /** 总累计流量（m³ 原值，内部计算用，不出 JSON） */
     @JsonIgnore
     private BigDecimal ttf;
 
-    /** 起始时间前最近一条 ttf 非空行的总累计（内部计算用，不出 JSON） */
+    /** 起始时间前最近一条 ttf 非空行的总累计（m³ 原值，内部计算用，不出 JSON） */
     @JsonIgnore
     private BigDecimal prevTtf;
 }

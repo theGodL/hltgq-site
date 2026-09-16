@@ -179,7 +179,7 @@ tbody tr:hover td{background:#fafafa}
               <th>站点名称</th>
               <th>站点编号</th>
               <th>瞬时流量 (m³/s)</th>
-              <th>累计流量 (m³)</th>
+              <th>累计流量 (万m³)</th>
               <th>采集时间</th>
               <th>电压 (V)</th>
               <th>操作</th>
@@ -221,7 +221,7 @@ tbody tr:hover td{background:#fafafa}
               <th>站点名称</th>
               <th>站点编号</th>
               <th>瞬时流量 (m³/s)</th>
-              <th>累计流量 (m³)</th>
+              <th>累计流量 (万m³)</th>
               <th>采集时间</th>
               <th>电压 (V)</th>
               <th>操作</th>
@@ -283,7 +283,7 @@ tbody tr:hover td{background:#fafafa}
             <thead>
               <tr>
                 <th>瞬时流量 (m³/s)</th>
-                <th>累计流量 (m³)</th>
+                <th>累计流量 (万m³)</th>
                 <th>采集时间</th>
               </tr>
             </thead>
@@ -571,7 +571,7 @@ function renderTable() {
       <td>${fmtN(r.stnm)}</td>
       <td>${r.stcd ? fmtN(r.stcd) : '--'}</td>
       <td>${fmtN3(r.q)}</td>
-      <td>${fmtN2(r.cumulativeFlow)}</td>
+      <td>${fmtN3(r.cumulativeFlow)}</td>
       <td>${fmtTm(r.tm)}</td>
       <td>${fmtN2(r.vol)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
@@ -759,7 +759,7 @@ function renderHistory() {
   tbody.innerHTML = HIST.rows.map(r => `
     <tr>
       <td>${fmtN3(r.q)}</td>
-      <td>${fmtN2(r.tf)}</td>
+      <td>${fmtN3(r.tf)}</td>
       <td>${fmtTm(r.tm)}</td>
     </tr>
   `).join('');
