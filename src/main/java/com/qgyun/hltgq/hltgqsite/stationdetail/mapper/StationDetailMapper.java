@@ -40,14 +40,17 @@ public interface StationDetailMapper {
      * 站点档案行（按档案 id）：基础信息所需档案字段。
      * <p>列别名与 StationBasicVO 属性同名；bviiio_x/y 经纬度、zebpsu 运行状态、
      * waljdn 是否接通市电、bhsqxd 传输方法、mivbcz 站点位置、lhwhuc 负责人、
-     * cbitue 联系电话、viwmmc 站点简介；org 由 ahieto 自关联本表取管理单位名称
+     * cbitue 联系电话、viwmmc 站点介绍、badfhe 操作规程（两列均为平台富文本 JSON 包装，
+     * 由 Service 解包为 HTML）、nwbzla 闸门图片文件 id（Service 经文件服务换签名地址）；
+     * org 由 ahieto 自关联本表取管理单位名称
      * （ahieto 存管理单位 id，单位间有上下级；本实现取直接上级名称）；
      * canal 由 ywvyds 关联渠系管理表取渠系名称（ywvyds 存渠系记录 id）。
      */
     @Select("SELECT s.iofhpi AS code, s.zzkaec AS name, s.epjutj AS typeCodes, " +
             "s.bviiio_x AS lon, s.bviiio_y AS lat, s.zebpsu AS runStatusCode, " +
             "s.waljdn AS mainsPowerCode, s.bhsqxd AS comm, s.mivbcz AS loc, " +
-            "s.lhwhuc AS owner, s.cbitue AS phone, s.viwmmc AS intro, u.zzkaec AS org, " +
+            "s.lhwhuc AS owner, s.cbitue AS phone, s.viwmmc AS intro, " +
+            "s.badfhe AS operationRules, s.nwbzla AS gateImageId, u.zzkaec AS org, " +
             "c.gfaegg AS canal " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" u ON s.ahieto = u.id " +

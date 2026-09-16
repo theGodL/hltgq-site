@@ -35,14 +35,16 @@ public class StationDetailController {
     private StationDetailService stationDetailService;
 
     /**
-     * 基础信息聚合：站点档案 + 闸口数量 + 供电/网络（电压表、报文表最新）+ 视频通道，
+     * 基础信息聚合：站点档案 + 闸口数量 + 供电/网络（电压表、报文表最新）+ 视频通道
+     * + 站点介绍/操作规程（档案富文本解包为 HTML）+ 闸门图片（文件服务签名地址），
      * 一次请求渲染「基础信息」整页。
      *
      * @param stationId 站点键（档案 id 或站点编号 iofhpi），必填
+     * @param request   当前请求（取登录会话，供文件服务换取图片签名地址）
      */
     @GetMapping("/basic")
-    public StationBasicVO basic(@RequestParam String stationId) {
-        return stationDetailService.basic(stationId);
+    public StationBasicVO basic(@RequestParam String stationId, HttpServletRequest request) {
+        return stationDetailService.basic(stationId, request);
     }
 
     /**

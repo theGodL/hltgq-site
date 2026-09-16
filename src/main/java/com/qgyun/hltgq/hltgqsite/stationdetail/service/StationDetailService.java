@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.stationdetail.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qgyun.hltgq.hltgqsite.auth.SessionContextService;
 import com.qgyun.hltgq.hltgqsite.stationdetail.client.FileClient;
 import com.qgyun.hltgq.hltgqsite.stationdetail.mapper.StationDetailMapper;
@@ -118,15 +119,20 @@ public class StationDetailService {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     // ==================== 基础信息 ====================
 
     /**
-     * 基础信息聚合：档案字段 + 闸口数量 + 供电/通信（电压表 + 监测数据兜底）+ 丢包率（mq 到报统计）+ 视频通道。
+     * 基础信息聚合：档案字段 + 闸口数量 + 供电/通信（电压表 + 监测数据兜底）+ 丢包率（mq 到报统计）
+     * + 视频通道 + 站点介绍/操作规程（档案富文本解包）+ 闸门图片（文件服务签名地址）。
      * <p>无数据源项（电流/信号/通信延迟/额定电压等）恒 null，不补造数据。
      *
      * @param stationKey 站点键（档案 id 或站点编号 iofhpi 双键兼容）
+     * @param request    当前请求（取登录会话，供文件服务换取图片签名地址）
      */
-    public StationBasicVO basic(String stationKey) {
+    public StationBasicVO basic(String stationKey, HttpServletRequest request) {
         long beginMs = System.currentTimeMillis();
         StationKey key = resolveStation(stationKey);
         String siteId = key.getId();
@@ -149,6 +155,10 @@ public class StationDetailService {
         // 供电：waljdn 是否接通市电（#1# 已接通 / #2# 未接通，口径同现有页面）；bhsqxd 传输方法为文本直接展示
         vo.setPowerStatus(translatePowerStatus(vo.getMainsPowerCode()));
         vo.setPowerOk("#1#".equals(vo.getMainsPowerCode()));
+
+        // 富文本字段：viwmmc 站点介绍 / badfhe 操作规程（平台文本域存 JSON 包装，解包取 HTML 片段）
+        vo.setIntro(unwrapRichText(vo.getIntro()));
+        vo.setOperationRules(unwrapRichText(vo.getOperationRules()));
 
         // 经纬度文本
         if (vo.getLon() != null && vo.getLat() != null) {
@@ -193,9 +203,14 @@ public class StationDetailService {
         vo.setVideos(videos);
         long videosMs = System.currentTimeMillis() - videosBeginMs;
 
+        // 闸门图片：档案表 nwbzla 存文件 id，经文件服务换签名地址（增强信息，失败降级为 null 不阻断）
+        long imageBeginMs = System.currentTimeMillis();
+        vo.setGateImage(loadGateImage(vo.getGateImageId(), request));
+        long imageMs = System.currentTimeMillis() - imageBeginMs;
+
         // 分步耗时日志：慢请求定位用（外部调用另有 mq stats 带 cost 的日志）
-        log.info("station basic siteId={} total={}ms resolve={}ms archive={}ms gates={}ms vol={}ms reportTmFallback={}ms loss={}ms videos={}ms",
-                siteId, System.currentTimeMillis() - beginMs, resolveMs, archiveMs, gatesMs, volMs, reportTmMs, lossMs, videosMs);
+        log.info("station basic siteId={} total={}ms resolve={}ms archive={}ms gates={}ms vol={}ms reportTmFallback={}ms loss={}ms videos={}ms image={}ms",
+                siteId, System.currentTimeMillis() - beginMs, resolveMs, archiveMs, gatesMs, volMs, reportTmMs, lossMs, videosMs, imageMs);
         return vo;
     }
 
@@ -481,6 +496,51 @@ public class StationDetailService {
     }
 
     // ==================== 私有工具 ====================
+
+    /**
+     * 富文本字段解包：平台文本域存 JSON 包装 {"value":"<div…>…</div>"}，取 value 原文返回；
+     * 非包装（普通文本）或解析失败原样返回，空值保持 null（展示口径归前端）。
+     */
+    private String unwrapRichText(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return raw;
+        }
+        String trimmed = raw.trim();
+        if (!trimmed.startsWith("{")) {
+            return raw;
+        }
+        try {
+            JsonNode value = objectMapper.readTree(trimmed).path("value");
+            return value.isTextual() ? value.asText() : raw;
+        } catch (Exception e) {
+            log.debug("富文本字段解包失败，按原文返回: {}", e.getMessage());
+            return raw;
+        }
+    }
+
+    /**
+     * 闸门图片组装：档案表 nwbzla 存文件 id，经文件服务换签名地址（preview 原图 + thumb 缩略图，24h 有效）。
+     * <p>增强信息：无 fileId 返回 null；文件服务异常仅 warn 并返回 null，不阻断基础信息。
+     */
+    private StationBasicVO.GateImage loadGateImage(String fileId, HttpServletRequest request) {
+        if (fileId == null || fileId.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            FileClient.FileInfo info = fileClient.getFile(fileId.trim(),
+                    sessionContextService.extractSessionId(request));
+            StationBasicVO.GateImage image = new StationBasicVO.GateImage();
+            image.setFileId(info.fileId);
+            image.setName(info.name);
+            image.setUrl(info.url);
+            image.setThumb(info.thumb);
+            log.info("闸门图片组装完成 fileId={}, name={}", fileId, info.name);
+            return image;
+        } catch (Exception e) {
+            log.warn("闸门图片获取失败 fileId={}: {}", fileId, e.getMessage());
+            return null;
+        }
+    }
 
     /** 站点键解析：id 或 iofhpi 双键命中，无命中抛 400；返回档案主键 id + 站点编号 iofhpi */
     private StationKey resolveStation(String stationKey) {

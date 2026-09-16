@@ -36,7 +36,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .kv .v{flex:1;min-width:0;color:var(--text);word-break:break-all}
 .kv .v.ok{color:#52c41a}
 .kv .v.danger{color:#f5222d}
-.intro-text{font-size:13.5px;line-height:21px;color:var(--text);word-break:break-all}
+/* ===== 富文本（站点介绍 / 操作规程，平台录入 HTML；全局 * 已重置内外边距，需恢复列表缩进） ===== */
+.rich-text{font-size:13.5px;line-height:21px;color:var(--text);word-break:break-word}
+.rich-text .paragraph,.rich-text p{margin:0 0 8px}
+.rich-text ul,.rich-text ol{margin:0 0 8px;padding-left:20px}
+.rich-text ul{list-style:disc}
+.rich-text ol{list-style:decimal}
+.rich-text li{margin-bottom:4px}
+.rich-text li .paragraph,.rich-text li p{margin-bottom:0}
+.rich-text strong{font-weight:600}
+.gate-image{display:block;line-height:0;text-decoration:none}
+.gate-image img{display:block;width:100%;max-height:300px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#f5f7fa}
+.gate-image-name{margin-top:8px;color:var(--muted);font-size:12px;line-height:18px;word-break:break-all}
 
 /* ===== filter (collapsible) ===== */
 .filters{background:var(--card);border-radius:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(16,42,67,.06);overflow:hidden}
@@ -143,8 +154,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   </div>
 
   <div class="card">
-    <div class="sec-title">站点简介</div>
-    <div class="intro-text" id="f-intro">—</div>
+    <div class="sec-title">站点介绍</div>
+    <div class="rich-text" id="f-intro">—</div>
+  </div>
+
+  <div class="card">
+    <div class="sec-title">操作规程</div>
+    <div class="rich-text" id="f-rules">—</div>
+  </div>
+
+  <div class="card">
+    <div class="sec-title">图片</div>
+    <div id="f-gate-image">—</div>
   </div>
 
   <div class="card">
@@ -266,6 +287,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   }
   function dash(v) { return v == null || v === '' ? '—' : v; }
   function setText(id, text) { var el = $(id); if (el) el.textContent = dash(text); }
+  /* 富文本容器：站点介绍 / 操作规程存平台录入 HTML，直接内嵌渲染（无值显占位符） */
+  function setRichText(id, html) {
+    var el = $(id); if (!el) return;
+    if (html == null || html === '') { el.textContent = '—'; return; }
+    el.innerHTML = html;
+  }
+  /* 图片：图片满宽展示、点击新窗口看原图；地址为文件服务签名地址（24h 有效，每次请求实时换取） */
+  function renderGateImage(img) {
+    var box = $('f-gate-image'); if (!box) return;
+    var full = (img && img.url) || '';
+    var thumb = (img && img.thumb) || full;
+    if (!full && !thumb) { box.textContent = '—'; return; }
+    var name = (img && img.name) || '图片';
+    box.innerHTML =
+      '<a class="gate-image" href="' + esc(full || thumb) + '" target="_blank" rel="noopener">' +
+      '<img src="' + esc(thumb || full) + '" alt="' + esc(name) + '"></a>' +
+      '<div class="gate-image-name">' + esc(name) + '</div>';
+  }
   function setStatus(id, text, ok) {
     var el = $(id); if (!el) return;
     el.textContent = dash(text);
@@ -343,7 +382,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     setText('f-built', d.built);
     setText('f-online', d.online);
     setText('f-years', d.years);
-    setText('f-intro', d.intro);
+    setRichText('f-intro', d.intro);
+    setRichText('f-rules', d.operationRules);
     setText('f-volt', d.volt == null ? null : (d.volt + 'V'));
     setText('f-ratedVolt', d.ratedVolt == null ? null : (d.ratedVolt + 'V'));
     setText('f-voltDev', d.voltDev);
@@ -362,6 +402,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       return '<div class="item-line"><span class="lv">' + esc(v.channel) + '</span>' +
         '<span class="badge ' + (ok ? 'ok' : 'muted') + '">' + esc(dash(v.status)) + '</span></div>';
     }).join('') : emptyBox('暂无视频通道'));
+    renderGateImage(d.gateImage);
   }
 
   /* ---------- patrol ---------- */

@@ -13,6 +13,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
+
 /**
  * 企效文件服务客户端（fs.base-url，默认 http://10.68.18.9:8081/qx-api/qgyun-service-fs-manager）。
  * <p>GET /file/m/{fileId} 返回文件元数据与签名地址（preview 原图 / thumb 缩略图，24h 有效），
@@ -70,8 +72,8 @@ public class FileClient {
             JsonNode urlMap = data.path("qgImg").path("urlMap");
             info.url = textOrNull(urlMap.path("preview"));
             info.thumb = textOrNull(urlMap.path("thumb"));
-            log.info("file {} success, name={}, preview={}, thumb={}",
-                    fileId, info.name, info.url != null, info.thumb != null);
+            log.info("file {} success, name={}, preview={}, thumb={}, previewHost={}",
+                    fileId, info.name, info.url != null, info.thumb != null, hostOf(info.url));
             return info;
         } catch (FileCallException e) {
             log.warn("file {} call failed: {}", fileId, e.getMessage());
@@ -86,6 +88,23 @@ public class FileClient {
     private String textOrNull(JsonNode node) {
         String v = node == null ? null : node.asText(null);
         return v == null || v.isEmpty() ? null : v;
+    }
+
+    /**
+     * 签名地址的协议+主机（仅诊断用）。
+     * <p>签名 URL 由文件服务生成、浏览器直接加载，故其主机名必须浏览器可达；
+     * 本接口自身只要求后端可达，两者可不同。日志打出该主机名便于部署后一眼核对。
+     */
+    private String hostOf(String url) {
+        if (url == null) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(url);
+            return uri.getScheme() + "://" + uri.getAuthority();
+        } catch (Exception e) {
+            return "<非法URL>";
+        }
     }
 
     /**

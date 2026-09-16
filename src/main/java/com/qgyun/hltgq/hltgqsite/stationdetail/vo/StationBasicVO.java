@@ -77,8 +77,17 @@ public class StationBasicVO {
     /** 运行年限（档案表无建成时间，恒 null） */
     private String years;
 
-    /** 站点简介（档案表 viwmmc 文本，原样返回） */
+    /** 站点介绍（档案表 viwmmc 富文本；Service 解包平台 JSON 包装后返回 HTML 片段，无值为 null） */
     private String intro;
+
+    /** 操作规程（档案表 badfhe 富文本；Service 解包平台 JSON 包装后返回 HTML 片段，无值为 null） */
+    private String operationRules;
+
+    /** 闸门图片文件 id（档案表 nwbzla 原始值，同时组装为 gateImage；无图片为 null） */
+    private String gateImageId;
+
+    /** 闸门图片（档案表 nwbzla 文件 id 经文件服务换签名地址；无 fileId 或文件服务不可用为 null） */
+    private GateImage gateImage;
 
     /** 当前电压 V（电压表 vol_info 最新 vol） */
     private BigDecimal volt;
@@ -124,6 +133,25 @@ public class StationBasicVO {
 
     /** 视频通道列表（设备表 type 含 #5# 视频） */
     private List<VideoChannel> videos;
+
+    /**
+     * 闸门图片（档案表 nwbzla 文件 id 经文件服务换取）
+     */
+    @Data
+    public static class GateImage {
+
+        /** 文件 id（档案表 nwbzla） */
+        private String fileId;
+
+        /** 文件名（如「水闸-灌区节制闸.png」） */
+        private String name;
+
+        /** 原图签名地址（preview，24 小时有效） */
+        private String url;
+
+        /** 缩略图签名地址（thumb，24 小时有效） */
+        private String thumb;
+    }
 
     /**
      * 视频通道行（设备表行投影）

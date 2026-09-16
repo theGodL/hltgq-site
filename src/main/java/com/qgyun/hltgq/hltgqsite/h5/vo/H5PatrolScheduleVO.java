@@ -30,7 +30,7 @@ public class H5PatrolScheduleVO {
     /** 计划结束时间 */
     private LocalDateTime endTime;
 
-    /** 计划类型编码（xhonqv：#1# 年度计划 / #zjgg# 月度计划） */
+    /** 计划类型编码（xhonqv：#wavn#/#1# 年度计划、#zjgg# 月度计划） */
     private String planType;
 
     /** 计划类型名称（权威映射） */

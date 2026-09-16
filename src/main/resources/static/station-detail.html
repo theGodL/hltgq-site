@@ -35,7 +35,19 @@ body{display:flex;flex-direction:column;overflow:hidden}
 .kv .v{flex:1;min-width:0;color:#262626;font-size:14px;word-break:break-all}
 .kv .v.ok{color:#52c41a}
 .kv .v.danger{color:#f5222d}
-.intro-text{color:#262626;font-size:14px;line-height:22px}
+/* ===== 富文本（站点介绍 / 操作规程，平台录入 HTML；全局 * 已重置内外边距，需恢复列表缩进） ===== */
+.rich-text{color:#262626;font-size:14px;line-height:22px;word-break:break-word}
+.rich-text .paragraph,.rich-text p{margin:0 0 8px}
+.rich-text ul,.rich-text ol{margin:0 0 8px;padding-left:22px}
+.rich-text ul{list-style:disc}
+.rich-text ol{list-style:decimal}
+.rich-text li{margin-bottom:4px}
+.rich-text li .paragraph,.rich-text li p{margin-bottom:0}
+.rich-text strong{font-weight:600}
+.gate-image{display:inline-block;line-height:0;text-decoration:none}
+.gate-image img{display:block;max-width:100%;max-height:320px;border:1px solid #f0f0f0;border-radius:6px;background:#f5f7fa;transition:border-color .2s}
+.gate-image:hover img{border-color:#1677ff}
+.gate-image-name{margin-top:8px;color:#8c8c8c;font-size:13px;line-height:20px}
 
 /* ===== shared table ===== */
 .data-table{width:100%;border-collapse:collapse;font-size:14px}
@@ -182,8 +194,18 @@ a.photo-thumb:hover{border-color:#1677ff}
     </div>
 
     <div class="card full">
-      <div class="sec-title">站点简介</div>
-      <div class="intro-text" id="f-intro">—</div>
+      <div class="sec-title">站点介绍</div>
+      <div class="rich-text" id="f-intro">—</div>
+    </div>
+
+    <div class="card full">
+      <div class="sec-title">操作规程</div>
+      <div class="rich-text" id="f-rules">—</div>
+    </div>
+
+    <div class="card full">
+      <div class="sec-title">图片</div>
+      <div id="f-gate-image">—</div>
     </div>
 
     <div class="grid-2">
@@ -510,6 +532,26 @@ a.photo-thumb:hover{border-color:#1677ff}
     var el = document.getElementById(id);
     if (el) el.textContent = dash(text);
   }
+  /* 富文本容器：站点介绍 / 操作规程存平台录入 HTML，直接内嵌渲染（无值显占位符） */
+  function setRichText(id, html) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (html == null || html === '') { el.textContent = '—'; return; }
+    el.innerHTML = html;
+  }
+  /* 图片：缩略图展示、点击新窗口看原图；地址为文件服务签名地址（24h 有效，每次请求实时换取） */
+  function renderGateImage(img) {
+    var box = document.getElementById('f-gate-image');
+    if (!box) return;
+    var full = (img && img.url) || '';
+    var thumb = (img && img.thumb) || full;
+    if (!full && !thumb) { box.textContent = '—'; return; }
+    var name = (img && img.name) || '图片';
+    box.innerHTML =
+      '<a class="gate-image" href="' + esc(full || thumb) + '" target="_blank" rel="noopener" title="点击查看原图">' +
+      '<img src="' + esc(thumb || full) + '" alt="' + esc(name) + '"></a>' +
+      '<div class="gate-image-name">' + esc(name) + '</div>';
+  }
   function setStatus(id, text, ok) {
     var el = document.getElementById(id);
     if (!el) return;
@@ -571,7 +613,8 @@ a.photo-thumb:hover{border-color:#1677ff}
     setText('f-built', d.built);
     setText('f-online', d.online);
     setText('f-years', d.years);
-    setText('f-intro', d.intro);
+    setRichText('f-intro', d.intro);
+    setRichText('f-rules', d.operationRules);
     setText('f-volt', d.volt == null ? null : (d.volt + 'V'));
     setText('f-ratedVolt', d.ratedVolt == null ? null : (d.ratedVolt + 'V'));
     setText('f-voltDev', d.voltDev);
@@ -588,6 +631,7 @@ a.photo-thumb:hover{border-color:#1677ff}
       var ok = v.statusCode === '#1#' || v.status === '在线' || v.status === '正常';
       return '<tr><td>' + esc(v.channel) + '</td><td class="' + (ok ? 'status-ok' : '') + '">' + esc(dash(v.status)) + '</td></tr>';
     }).join('') || emptyRow(2, '暂无视频通道');
+    renderGateImage(d.gateImage);
   }
 
   function renderPatrol(list) {

@@ -26,13 +26,14 @@ public class H5PatrolScheduleService {
 
     /** 巡检计划状态编码 → 名称（status，仅列表可见的两档） */
     private static final Map<String, String> STATUS_LABELS = new LinkedHashMap<>();
-    /** 计划类型编码 → 名称（xhonqv，2 档） */
+    /** 计划类型编码 → 名称（xhonqv；#wavn# 为 2026-09 实网数据中的年度计划编码，平台字典待核对） */
     private static final Map<String, String> PLAN_TYPE_LABELS = new LinkedHashMap<>();
 
     static {
         STATUS_LABELS.put("#2#", "进行中");
         STATUS_LABELS.put("#3#", "已完成");
 
+        PLAN_TYPE_LABELS.put("#wavn#", "年度计划");
         PLAN_TYPE_LABELS.put("#1#", "年度计划");
         PLAN_TYPE_LABELS.put("#zjgg#", "月度计划");
     }

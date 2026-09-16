@@ -29,7 +29,8 @@ import java.util.stream.Collectors;
  * （未读 #1#，NOT EXISTS 幂等绝不重复），阅读后 UPDATE 已读 #2#；
  * 可见性规则：前三类按规则表（无规则全员可见，有规则任一命中即可见，#user# 匹配 login_name，
  * #org#/#position#/#role# 匹配用户所属编码，角色仅直接指派）；
- * 值班提醒（#4#）不走规则表，定向同步：带班领导 alidpq = 当前登录人 且 提醒状态未提醒 且 值班日期含今日及以后；
+ * 值班提醒（#4#）不走规则表，定向同步：带班领导（alidpq）= 当前登录人 或 值班人员多选列（cogxjx）命中当前登录人，
+ * 且排班已进入「值班中」（peuzwi=#cmiu#，即已点击开始值班）、提醒状态未提醒、值班日期不早于昨日；
  * 模型计算（#5#）不走规则表，定向同步：方案提交人 created_by = 当前登录人且已完成的方案
  * （系统预跑/恢复任务 created_by 为固定账号，天然不产生消息）。
  * <p>已读口径：接收记录 is_read=#2#；告警类再叠加业务状态过滤（已关闭告警不计未读）。
@@ -63,6 +64,11 @@ public class MessageService {
     /** 值班排班状态编码 → 权威名称（peuzwi，4 档） */
     private static final String[][] SCHEDULE_LABELS = {
             {"#1#", "未开始"}, {"#zzkl#", "待值班"}, {"#cmiu#", "值班中"}, {"#qavx#", "已完成"}
+    };
+
+    /** 值班角色编码 → 权威名称（本人在该班次中的身份） */
+    private static final String[][] DUTY_ROLE_LABELS = {
+            {"leader", "带班领导"}, {"staff", "值班人员"}
     };
 
     /** 模型计算模块编码 → 权威名称（消息行 module/moduleLabel） */
@@ -140,7 +146,10 @@ public class MessageService {
                 long total = queryMapper.countDuty(userId);
                 List<MessagePageVO.DutyMessage> rows =
                         queryMapper.selectDutyPage(userId, limit, offset);
-                rows.forEach(r -> r.setScheduleStatusLabel(label(r.getScheduleStatus(), SCHEDULE_LABELS)));
+                rows.forEach(r -> {
+                    r.setScheduleStatusLabel(label(r.getScheduleStatus(), SCHEDULE_LABELS));
+                    r.setDutyRoleLabel(label(r.getDutyRole(), DUTY_ROLE_LABELS));
+                });
                 vo.setTotal(total);
                 vo.setPages(pages(total, pageSize));
                 vo.setRecords(rows);
@@ -231,12 +240,20 @@ public class MessageService {
             int alertRows = alertVisible ? queryMapper.syncAlertReceives(userId) : 0;
             int complaintRows = complaintVisible ? queryMapper.syncComplaintReceives(userId) : 0;
             int suggestionRows = suggestionVisible ? queryMapper.syncSuggestionReceives(userId) : 0;
-            // 值班提醒定向到带班领导本人，不走规则表；值班日期过滤取今日及以后
-            int dutyRows = queryMapper.syncDutyReceives(userId, LocalDate.now().toString());
+            // 值班提醒不走规则表：带班领导（alidpq）与值班人员（cogxjx）两条定向；
+            // 仅排班已进入「值班中」（点击开始值班后）才提醒；日期下限取昨日，覆盖跨天夜班
+            String since = LocalDate.now().minusDays(1).toString();
+            int dutyRows = queryMapper.syncDutyReceives(userId, since);
+            // 值班人员侧两种可选存储形态（主表多选列 / 关系中间表），命中哪种由日志判别
+            int dutyStaffColRows = syncDutyStaffByColumn(userId, since);
+            int dutyStaffRelRows = syncDutyStaffByRel(userId, since);
+            if (dutyRows == 0 && dutyStaffColRows == 0 && dutyStaffRelRows == 0) {
+                logDutyDiag(userId);
+            }
             // 模型计算定向到方案提交人本人，不走规则表；仅已完成方案（系统预跑/恢复任务天然不匹配）
             int modelCalcRows = queryMapper.syncModelCalcReceives(userId);
-            log.info("h5 message sync done: userId={}, loginName={}, alertVisible={} rows={}, complaintVisible={} rows={}, suggestionVisible={} rows={}, duty rows={}, modelCalc rows={}",
-                    userId, loginName, alertVisible, alertRows, complaintVisible, complaintRows, suggestionVisible, suggestionRows, dutyRows, modelCalcRows);
+            log.info("h5 message sync done: userId={}, loginName={}, alertVisible={} rows={}, complaintVisible={} rows={}, suggestionVisible={} rows={}, duty leader={}, duty staffCol={}, duty staffRel={}, modelCalc={}",
+                    userId, loginName, alertVisible, alertRows, complaintVisible, complaintRows, suggestionVisible, suggestionRows, dutyRows, dutyStaffColRows, dutyStaffRelRows, modelCalcRows);
         } catch (Exception e) {
             log.error("h5 message sync failed: userId={}", userId, e);
             try {
@@ -244,6 +261,46 @@ public class MessageService {
             } catch (Exception ignored) {
                 // Redis 异常忽略，下次调用防抖过期后自动重试
             }
+        }
+    }
+
+    /**
+     * 值班人员侧补建·主表多选列形态（独立降级）：多选列 cogxjx 命中当前登录人时补建。
+     * <p>列不存在（关系字段不落主表）或形态不符时仅告警；姓名分支仅在取到姓名时参与，
+     * 避免 CONCAT 忽略 NULL 导致 LIKE '%%' 恒真。
+     */
+    private int syncDutyStaffByColumn(String userId, String since) {
+        try {
+            String userName = queryMapper.selectUserNameById(userId);
+            return queryMapper.syncDutyStaffReceives(userId, userName, since);
+        } catch (Exception e) {
+            log.warn("值班人员侧补建（主表多选列形态）不可用: userId={}, {}", userId, e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * 值班人员侧补建·关系中间表形态（独立降级）：关系表 rel_id = 当前登录人时补建。
+     * <p>表名按同型关系表命名规律推得，未经库实测；不存在时仅告警（不影响其它定向）。
+     */
+    private int syncDutyStaffByRel(String userId, String since) {
+        try {
+            return queryMapper.syncDutyStaffRelReceives(userId, since);
+        } catch (Exception e) {
+            log.warn("值班人员侧补建（关系表形态）不可用: userId={}, {}", userId, e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * 值班补建 0 条时的诊断日志：打印当前登录人作为带班领导的排班原值
+     * （提醒状态/排班状态/日期），便于核对字典与定向条件；异常仅告警，不影响主流程。
+     */
+    private void logDutyDiag(String userId) {
+        try {
+            log.info("duty diag: userId={}, schedulesAsLeader={}", userId, queryMapper.selectDutyDiag(userId));
+        } catch (Exception e) {
+            log.warn("duty diag failed: userId={}, {}", userId, e.getMessage());
         }
     }
 

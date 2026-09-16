@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * H5 消息中心：消息分页 JOIN 查询 + 按需同步补建接收记录 + 当前登录人维度编码解析（企效平台 UC 表只读查询）。
@@ -88,6 +89,11 @@ public interface MessageQueryMapper {
             "WHERE id = #{userId} AND corp_code = 'hltgq'")
     String selectLoginNameById(@Param("userId") String userId);
 
+    /** 当前登录人姓名（值班人员多选列的姓名形态匹配用） */
+    @Select("SELECT name FROM \"qixiao-apaas\".\"t_apaas_uc_user\" " +
+            "WHERE id = #{userId} AND corp_code = 'hltgq'")
+    String selectUserNameById(@Param("userId") String userId);
+
     /** 当前登录人所属部门编码集合（t_apaas_uc_user_org_rel.biz_id 即用户 id） */
     @Select("SELECT DISTINCT o.code " +
             "FROM \"qixiao-apaas\".\"t_apaas_uc_user_org_rel\" rel " +
@@ -158,6 +164,7 @@ public interface MessageQueryMapper {
     /** 值班提醒分页：按值班日期倒序，id 兜底分页稳定 */
     @Select("SELECT s.id AS messageId, s.owcvsv AS dutyDate, s.itxmyy AS shiftTime, " +
             "s.ihdflq AS dutyUnit, s.peuzwi AS scheduleStatus, " +
+            "CASE WHEN s.alidpq = #{userId} THEN 'leader' ELSE 'staff' END AS dutyRole, " +
             "CASE WHEN r.is_read = '#2#' THEN true ELSE false END AS isRead " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "JOIN \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s ON r.message_id = s.id " +
@@ -169,8 +176,10 @@ public interface MessageQueryMapper {
                                                    @Param("offset") int offset);
 
     /**
-     * 按需同步值班提醒接收记录：带班领导（alidpq 单选人员 ID）= 当前登录人，
-     * 提醒状态未提醒（hfxuuk=#1#）、值班日期含今日及以后；NOT EXISTS 幂等。
+     * 按需同步值班提醒接收记录（带班领导侧）：alidpq（单选人员列，存 UC 用户 id）= 当前登录人，
+     * 且排班已进入「值班中」（peuzwi='#cmiu#'，即已点击开始值班；待值班阶段不提醒）、
+     * 提醒状态未提醒（hfxuuk='#papu#'，2026-09 实网样例核对；早期按 '#1#' 假设导致补建 0 条）、
+     * 值班日期不早于昨日（覆盖跨天夜班，同时挡住陈旧的「值班中」残留记录）；NOT EXISTS 幂等。
      */
     @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
             "(id, user_id, message_type, message_id, is_read, corp_code, created_at, created_by) " +
@@ -178,13 +187,80 @@ public interface MessageQueryMapper {
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s " +
             "WHERE s.corp_code = 'hltgq' " +
             "AND s.alidpq = #{userId} " +
-            "AND s.hfxuuk = '#1#' " +
-            "AND s.owcvsv >= #{today} " +
+            "AND s.peuzwi = '#cmiu#' " +
+            "AND s.hfxuuk = '#papu#' " +
+            "AND s.owcvsv >= #{since} " +
             "AND NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
             ")")
-    int syncDutyReceives(@Param("userId") String userId, @Param("today") String today);
+    int syncDutyReceives(@Param("userId") String userId, @Param("since") String since);
+
+    /**
+     * 按需同步值班提醒接收记录（值班人员侧）：值班人员多选列 cogxjx 命中当前登录人。
+     * <p>多选列双路 LIKE（用户 id 与姓名，兼容内联文本存储形态）；姓名分支仅在取到姓名时参与，
+     * 避免平台 CONCAT 忽略 NULL 产生 LIKE '%%' 恒真（会误给全员补建）。
+     * <p>与领导侧同条件（排班已进入值班中 + 未提醒 + 值班日期不早于昨日）；两侧都命中时由 NOT EXISTS 天然去重（接收 id 一致）。
+     * <p>列形态若为平台关联中间表，本 SQL 静默 0 行（日志 duty staffCol=0 即该信号），调用方 try/catch 降级。
+     */
+    @Insert("<script>" +
+            "INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
+            "(id, user_id, message_type, message_id, is_read, corp_code, created_at, created_by) " +
+            "SELECT CONCAT(#{userId}, '_', s.id), #{userId}, '#4#', s.id, '#1#', 'hltgq', CURRENT_TIMESTAMP, #{userId} " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s " +
+            "WHERE s.corp_code = 'hltgq' " +
+            "AND s.peuzwi = '#cmiu#' " +
+            "AND s.hfxuuk = '#papu#' " +
+            "AND s.owcvsv >= #{since} " +
+            "AND (s.cogxjx LIKE CONCAT('%', #{userId}, '%') " +
+            "<if test='userName != null and userName != \"\"'>OR s.cogxjx LIKE CONCAT('%', #{userName}, '%') </if>" +
+            ") " +
+            "AND NOT EXISTS (" +
+            "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
+            "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
+            ")" +
+            "</script>")
+    int syncDutyStaffReceives(@Param("userId") String userId,
+                              @Param("userName") String userName,
+                              @Param("since") String since);
+
+    /**
+     * 按需同步值班提醒接收记录（值班人员侧·关系表形态）：平台多选关联字段落关系中间表
+     * （列 id/corp_code/created_at/created_by/updated_at/updated_by/biz_id/rel_id/nature_order，
+     * biz_id = 排班记录 id，rel_id = 用户 id）。
+     * <p>表名按已实测同型关系表规律推得（t_auto_<corp>_<appCode>_<主表code>_<关系名>_rel；
+     * 同型对照 t_auto_hltgq_knc3g_nlbdju_user_rel、t_auto_hltgq_yn8cm_igahxz_ahygpx_rel），
+     * 未经库实测；与主表列形态互为兼容，调用方 try/catch 独立降级。
+     * <p>与领导侧同条件（排班已进入值班中 + 未提醒 + 值班日期不早于昨日）。
+     */
+    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
+            "(id, user_id, message_type, message_id, is_read, corp_code, created_at, created_by) " +
+            "SELECT CONCAT(#{userId}, '_', s.id), #{userId}, '#4#', s.id, '#1#', 'hltgq', CURRENT_TIMESTAMP, #{userId} " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s " +
+            "WHERE s.corp_code = 'hltgq' " +
+            "AND s.peuzwi = '#cmiu#' " +
+            "AND s.hfxuuk = '#papu#' " +
+            "AND s.owcvsv >= #{since} " +
+            "AND EXISTS (" +
+            "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd_cogxjx_rel\" rel " +
+            "  WHERE rel.biz_id = s.id AND rel.rel_id = #{userId}" +
+            ")" +
+            "AND NOT EXISTS (" +
+            "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
+            "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
+            ")")
+    int syncDutyStaffRelReceives(@Param("userId") String userId, @Param("since") String since);
+
+    /**
+     * 值班诊断（补建 0 条时调用）：取当前登录人作为带班领导的排班原值，
+     * 用于核对 hfxuuk（提醒状态）/peuzwi（排班状态）字典与定向条件是否相符。
+     */
+    @Select("SELECT s.id AS id, s.owcvsv AS dutyDate, s.hfxuuk AS remindStatus, " +
+            "s.peuzwi AS scheduleStatus, s.alidpq AS leaderId " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s " +
+            "WHERE s.alidpq = #{userId} " +
+            "ORDER BY s.owcvsv DESC LIMIT 5")
+    List<Map<String, Object>> selectDutyDiag(@Param("userId") String userId);
 
     // ==================== 模型计算消息（#5#，提交人定向） ====================
 
