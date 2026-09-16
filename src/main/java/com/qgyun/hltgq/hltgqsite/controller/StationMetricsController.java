@@ -1,16 +1,13 @@
 package com.qgyun.hltgq.hltgqsite.controller;
 
-import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.entity.StRiverR;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
-import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
-import com.qgyun.hltgq.hltgqsite.mapper.IrrigationWaterLevelMapper;
-import com.qgyun.hltgq.hltgqsite.mapper.SoilMoistureMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
-import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
 import com.qgyun.hltgq.hltgqsite.service.StStinfoService;
+import com.qgyun.hltgq.hltgqsite.service.StationSiteService;
+import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.StationMetricsVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSitesVO;
@@ -47,81 +44,43 @@ public class StationMetricsController {
     private StPptnRMapper stPptnRMapper;
 
     @Autowired
-    private IrrigationWaterLevelMapper irrigationWaterLevelMapper;
+    private StationSiteService stationSiteService;
 
     @Autowired
-    private GateMonitorMapper gateMonitorMapper;
-
-    @Autowired
-    private WaterFlowMapper waterFlowMapper;
-
-    @Autowired
-    private SoilMoistureMapper soilMoistureMapper;
+    private StationSortService stationSortService;
 
     /**
      * 全量站点分类查询
      *
      * @param type 可选筛选：rainfall(雨量) / waterLevel(水位) / gate(闸门) / flow(流量)
-     *             / gq-rainfall(灌区雨量，排除水库13站)。
+     *             / gq-rainfall(灌区雨量，排除水库13站) / moisture(墒情)。
      *             不传则返回全部分类，按 JSON key 分组。
+     *             <p>展示顺序 = 「站点排序」配置（监测类型维度）优先：已配置站点按配置序号，
+     *             未配置站点保持该类型默认顺序并排在其后。
      */
     @GetMapping("/sites")
     public Object sites(@RequestParam(required = false) String type) {
         // 指定类型 → 返回单一列表
         if (type != null && !type.isEmpty()) {
-            switch (type) {
-                case "rainfall":
-                    List<String> rainfallStcds = stPptnRMapper.selectDistinctRainfallStcds();
-                    List<StationSiteVO> rainfall = new ArrayList<>();
-                    for (String stcd : rainfallStcds) {
-                        StStinfo info = stStinfoService.getById(stcd);
-                        StationSiteVO s = new StationSiteVO();
-                        s.setCode(stcd);
-                        s.setName(info != null ? info.getStnm() : stcd);
-                        rainfall.add(s);
-                    }
-                    return rainfall;
-                case "gq-rainfall":
-                    // 灌区雨量：排除水库 13 站（STCD + 名称双重排除，见 StPptnRServiceImpl.resolveGqStcds）
-                    return stPptnRService.gqRainfallSites();
-                case "waterLevel":
-                    return irrigationWaterLevelMapper.selectWaterLevelStations();
-                case "gate":
-                    List<GateMonitor> gateSites = gateMonitorMapper.selectGateSites();
-                    return gateSites.stream().map(g -> {
-                        StationSiteVO s = new StationSiteVO();
-                        s.setCode(g.getSite());
-                        s.setName(g.getSiteName());
-                        return s;
-                    }).collect(Collectors.toList());
-                case "flow":
-                    return waterFlowMapper.selectFlowStations();
-                case "moisture":
-                    return soilMoistureMapper.selectMoistureStations();
-                default:
-                    throw new IllegalArgumentException("无效的 type 值: " + type + "，可选: rainfall / gq-rainfall / waterLevel / gate / flow / moisture");
-            }
+            return applyOrder(type, stationSiteService.sitesOfType(type));
         }
 
         // 不传 type → 返回全量分组
-        StationSitesVO vo = new StationSitesVO();
-        vo.setRainfall(stPptnRMapper.selectDistinctRainfallStcds().stream().map(stcd -> {
-            StStinfo info = stStinfoService.getById(stcd);
-            StationSiteVO s = new StationSiteVO();
-            s.setCode(stcd);
-            s.setName(info != null ? info.getStnm() : stcd);
-            return s;
-        }).collect(Collectors.toList()));
-        vo.setWaterLevel(irrigationWaterLevelMapper.selectWaterLevelStations());
-        vo.setGate(gateMonitorMapper.selectGateSites().stream().map(g -> {
-            StationSiteVO s = new StationSiteVO();
-            s.setCode(g.getSite());
-            s.setName(g.getSiteName());
-            return s;
-        }).collect(Collectors.toList()));
-        vo.setFlow(waterFlowMapper.selectFlowStations());
-        vo.setMoisture(soilMoistureMapper.selectMoistureStations());
+        StationSitesVO vo = stationSiteService.allSites();
+        vo.setRainfall(applyOrder("rainfall", vo.getRainfall()));
+        vo.setWaterLevel(applyOrder("waterLevel", vo.getWaterLevel()));
+        vo.setGate(applyOrder("gate", vo.getGate()));
+        vo.setFlow(applyOrder("flow", vo.getFlow()));
+        vo.setMoisture(applyOrder("moisture", vo.getMoisture()));
         return vo;
+    }
+
+    /**
+     * 按「站点排序」配置调整展示顺序（站点标识 = 站点管理主键；该类型未配置过排序时保持默认顺序）
+     * <p>gq-rainfall（灌区雨量）与 rainfall（雨量）共用同一排序序列（灌区站是雨量站子集）。
+     */
+    private List<StationSiteVO> applyOrder(String metricType, List<StationSiteVO> sites) {
+        return stationSortService.applyOrder(metricType, sites, StationSiteVO::getSiteId);
     }
 
     @GetMapping

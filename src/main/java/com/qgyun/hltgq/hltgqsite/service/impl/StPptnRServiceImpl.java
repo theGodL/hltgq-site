@@ -10,6 +10,7 @@ import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
+import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.GqDailyRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.GqRainfallVO;
@@ -39,6 +40,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Autowired
     private StStinfoMapper stStinfoMapper;
+
+    @Autowired
+    private StationSortService stationSortService;
 
     // ======================== 灌区接口-水库站点排除 ========================
     // 13 个水库站点新 STCD 已全部确认
@@ -145,7 +149,32 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         });
         // 填充昨日雨量 dailyDyp（分页前一次批量查询，避免翻页重复计算）
         fillDailyDyp(vos);
-        return toPage(vos, page, size);
+        // 站点排序配置（雨量类型）：分页前排序，已配置站点按配置顺序，未配置站点保持默认顺序排在其后；
+        // 站点标识 = 站点管理主键（GqRainfallVO.id），档案缺失时该行保持默认位置
+        return toPage(stationSortService.applyOrder("rainfall", vos, GqRainfallVO::getId), page, size);
+    }
+
+    @Override
+    public List<GqRainfallVO> gqRainfallMonitoringAll() {
+        // drp 基线口径与实时列表（gqRainfallPage）一致：服务器当前水文日 8 点起点
+        String curLabel = getHydroDayLabel(LocalDateTime.now());
+        LocalDateTime hydroBase = LocalDateTime.parse(curLabel,
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).minusDays(1);
+        List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(null, null, null, hydroBase);
+        // 与 /gq-rainfall 不同：不排除水库站（站点集合由调用方的站点档案列表决定）
+        List<GqRainfallVO> vos = rows.stream().map(this::toGqRainfallVO).collect(Collectors.toList());
+        // 在线状态判定与 /gq-rainfall 一致：水库站取站点表 zebpsu，其余站按时间断联
+        Map<String, Boolean> reservoirOnline = loadReservoirOnlineStatus(rows);
+        vos.forEach(vo -> {
+            String key = vo.getStcd() == null ? null : vo.getStcd().trim();
+            if (key != null && reservoirOnline.containsKey(key)) {
+                vo.setIsOnline(reservoirOnline.get(key));
+            } else {
+                vo.setIsOnline(!isStale(vo.getTm(), vo.getStnm()));
+            }
+        });
+        fillDailyDyp(vos);
+        return vos;
     }
 
     @Override
@@ -525,7 +554,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Override
     public GqDailyRainfallVO gqDailyRainfall(LocalDate startDate, LocalDate endDate) {
-        // 1. 非水库雨量站点（STCD 匹配 + 名称匹配双重排除）
+        // 1. 非水库雨量站点（STCD 匹配 + 名称匹配双重排除，顺序已按「站点排序」配置重排）
         Map<String, StStinfo> resolved = resolveGqStcds();
         List<String> gqStcds = new ArrayList<>(resolved.keySet());
 
@@ -594,7 +623,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     /**
      * 非水库雨量站点集合：雨量表 distinct STCD → 排除水库 STCD → 关联站点表排除水库名称
      * → 仅保留监测类型含雨量（#2#）的站点（epjutj 多类型以 | 分隔，如 #1#|#2#）。
-     * 返回 LinkedHashMap 保证迭代顺序稳定。
+     * 返回 LinkedHashMap 保证迭代顺序稳定（默认按测站编码，存在「站点排序」配置时按配置顺序）。
      */
     private Map<String, StStinfo> resolveGqStcds() {
         List<String> allStcds = baseMapper.selectDistinctRainfallStcds();
@@ -609,7 +638,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             if (info.getEpjutj() == null || !info.getEpjutj().contains("#2#")) continue;
             map.put(s, info);
         }
-        return map;
+        return applyStationOrder(map);
     }
 
     /**
@@ -625,6 +654,25 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             sites.add(s);
         }
         return sites;
+    }
+
+    /**
+     * 按「站点排序」配置重排站点映射（雨量类型 #2#：水库站与灌区站共用同一序列）。
+     * <p>stations 快照与 days[].values 均按 resolved 迭代顺序输出，故重排 resolved 后展示顺序同时生效；
+     * 未配置排序时保持默认顺序（灌区=测站编码顺序，水库=上线顺序）；
+     * 站点标识为站点管理主键（站点档案表 id，随 StStinfo.id 携带）。
+     */
+    private Map<String, StStinfo> applyStationOrder(Map<String, StStinfo> resolved) {
+        if (resolved.size() < 2) {
+            return resolved;
+        }
+        List<StStinfo> ordered = stationSortService.applyOrder("rainfall",
+                new ArrayList<>(resolved.values()), StStinfo::getId);
+        Map<String, StStinfo> result = new LinkedHashMap<>();
+        for (StStinfo info : ordered) {
+            result.put(info.getStcd(), info);
+        }
+        return result;
     }
 
     /**
@@ -1185,7 +1233,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     /**
      * 通过水库雨量站点名称反查 station_info 表，获取真实 STCD 及站点信息。
-     * <p>站点集合为 12 个水库雨量站（不含水情站花凉亭坝下），按上线顺序排列（RESERVOIR_RAIN_STATION_ORDER）。
+     * <p>站点集合为 12 个水库雨量站（不含水情站花凉亭坝下），默认按上线顺序排列
+     * （RESERVOIR_RAIN_STATION_ORDER），存在「站点排序」配置时按配置顺序（雨量类型，与灌区雨量共用序列）。
      * 返回 LinkedHashMap 保证迭代顺序稳定（前端透视表列序依赖此顺序）。
      */
     private Map<String, StStinfo> resolveReservoirStcds() {
@@ -1205,7 +1254,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 map.put(s.getStcd(), s);
             }
         }
-        return map;
+        return applyStationOrder(map);
     }
 
     /** 提取公共站点信息组装 */

@@ -3,6 +3,7 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.mapper.SoilMoistureMapper;
 import com.qgyun.hltgq.hltgqsite.service.SoilMoistureService;
+import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.SoilMoistureTrendVO;
 import com.qgyun.hltgq.hltgqsite.vo.SoilMoistureVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
@@ -30,11 +31,17 @@ public class SoilMoistureServiceImpl implements SoilMoistureService {
     @Autowired
     private SoilMoistureMapper soilMoistureMapper;
 
+    @Autowired
+    private StationSortService stationSortService;
+
     @Override
     public List<SoilMoistureVO> monitoring(List<String> stcds, LocalDate date) {
         LocalDateTime startTime = date != null ? date.atStartOfDay() : null;
         LocalDateTime endTime = date != null ? date.plusDays(1).atStartOfDay() : null;
-        return soilMoistureMapper.selectLatestPerStation(stcds, startTime, endTime);
+        List<SoilMoistureVO> rows = soilMoistureMapper.selectLatestPerStation(stcds, startTime, endTime);
+        // 站点排序配置（墒情监测类型）：已配置站点按配置顺序，未配置站点保持 SQL 默认顺序排在其后；
+        // 站点标识 = 站点管理主键（档案缺失时为 null，该行保持默认位置）
+        return stationSortService.applyOrder("moisture", rows, SoilMoistureVO::getSiteId);
     }
 
     @Override

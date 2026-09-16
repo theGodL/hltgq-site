@@ -18,6 +18,9 @@ public class SoilMoistureVO {
     /** 站点标识（stcd 或 site UUID，无编号站点查询/筛选用，不用于展示） */
     private String site;
 
+    /** 站点管理主键（站点档案表 id，站点排序配置的匹配键；档案缺失时为 null） */
+    private String siteId;
+
     /** 站点名称 */
     private String stnm;
 

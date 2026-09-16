@@ -19,6 +19,14 @@ public interface StRiverRService extends IService<StRiverR> {
     List<StRiverR> latestPerStation();
 
     /**
+     * 水位站展示顺序（数据表测站编码序列）：已配置「水位」站点排序时返回配置顺序，
+     * 未配置或解析不出编码时返回空列表。
+     * <p>供顺序需进入 SQL / 分组排序的水情类查询使用（河道水库水情表、日时段水情表、水情简报、
+     * 多年同期水情等），空列表表示调用方保持自身既有默认顺序。
+     */
+    List<String> orderedWaterStcds();
+
+    /**
      * 河道水情数据（多站合并分页，时间倒序）
      *
      * @param stcds     站点编号列表（仅限 3206400001 周家河 / 320640000A 花凉亭坝下）

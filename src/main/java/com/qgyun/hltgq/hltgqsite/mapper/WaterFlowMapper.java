@@ -20,7 +20,8 @@ public interface WaterFlowMapper {
 
     /**
      * 各站点最新一条流量数据
-     * <p>站点标识 skey = COALESCE(stcd, site)：老站点用编号，MQTT 站点无 stcd（为 NULL）时回退到 site（UUID）。
+     * <p>站点标识 skey = COALESCE(stcd, site)：老站点用编号，MQTT 站点无 stcd（为 NULL）时回退到 site（UUID）；
+     * site_id 为站点管理主键（站点排序配置的匹配键）：优先取业务表 site 列，缺失时按测站编码回查站点档案表。
      * 输出 stcd 为原值（MQTT 站为 null，前端留空显示），另输出 site 字段承载站点标识供查询/筛选。
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，不能直接用 COALESCE 函数表达式
      * （PG 会报 "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"），
@@ -35,9 +36,11 @@ public interface WaterFlowMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.stnm, t.tm, t.q, t.tf, t.ytf, t.ttf, t.vol<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
+            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.tm, t.q, t.tf, t.ytf, t.ttf, t.vol<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
             "FROM ( " +
-            "  SELECT f.stcd, COALESCE(f.stcd, f.site) AS skey, COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf, f.ytf, f.ttf, fv.vol " +
+            "  SELECT f.stcd, COALESCE(f.stcd, f.site) AS skey, " +
+            "  COALESCE(f.site, (SELECT a.id FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" a WHERE a.iofhpi = f.stcd LIMIT 1)) AS site_id, " +
+            "  COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf, f.ytf, f.ttf, fv.vol " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
             "  LEFT JOIN ( " +
@@ -75,6 +78,7 @@ public interface WaterFlowMapper {
     @Results({
             @Result(column = "stcd", property = "stcd"),
             @Result(column = "site", property = "site"),
+            @Result(column = "site_id", property = "siteId"),
             @Result(column = "stnm", property = "stnm"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "q", property = "q"),

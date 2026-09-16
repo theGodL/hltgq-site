@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 三维系统对接接口（/external）响应 VO 集合。
@@ -102,5 +103,25 @@ public final class ExternalVO {
         private Long online;
         /** 离线数（total - online） */
         private Long offline;
+    }
+
+    /**
+     * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
+     * 每行 = 档案字段（保持 qx-api 原字段名）+ 该站实时监测值（平铺）+ data 子对象；
+     * 响应信封与 qx-api 一致（success/status/data/msg/errCode/time/errorCode/errorMsg），便于前端沿用原解析逻辑。
+     */
+    @Data
+    public static class StationMonitor {
+        /** 固定 true */
+        private boolean success = true;
+        /** 固定 SUCCESS */
+        private String status = "SUCCESS";
+        /** 站点行列表（档案字段 + 实时值平铺 + data 子对象 + hasData） */
+        private List<Map<String, Object>> data;
+        private String msg;
+        private String errCode;
+        private String time;
+        private String errorCode;
+        private String errorMsg;
     }
 }

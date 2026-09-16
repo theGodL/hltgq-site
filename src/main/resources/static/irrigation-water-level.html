@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>水位监测</title>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/station-sort.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -597,6 +598,12 @@ function setDefaultDates() {
   $('years-month').value = now.getMonth() + 1;
 }
 
+/** 当前主 Tab（reservoir 花凉亭水库 / irrigation 花凉亭灌区 / mth 麻塘湖灌区），站点排序按此切换排序对象 */
+function activeMainTab() {
+  const active = document.querySelector('.tab-item.active');
+  return active ? active.dataset.tab : '';
+}
+
 function bindTabs() {
   document.querySelectorAll('.tab-item').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -1100,6 +1107,23 @@ async function init() {
   initResCks();
   initYearsMonth();
   await loadResData();
+  // 站点排序（一个按钮、一个抽屉）：抽屉内分两组，水位站与闸站都在一起排
+  // 水位站组 = 水位序列（waterLevel：河道/水库水情表、日时段水情表、水情简报、多年同期水情共用），
+  // 闸站组 = 闸门序列（gate：与闸门监测页共用）；保存时按组分别落库
+  StationSort.mount({
+    type: ['waterLevel', 'gate'],
+    groupLabels: { waterLevel: '水位站（水情）', gate: '闸站（闸前/闸后水位）' },
+    api: API,
+    tip: '按住站点行拖动，或直接修改序号（两组序号各自从 1 起，拖拽限在组内）：保存后水位站顺序作用于河道/水库水情表、日时段水情表、水情简报、多年同期水情，闸站顺序与闸门监测页共用',
+    onSaved: async () => {
+      grSitesLoaded = false;   // 闸站下拉与列表下次进入灌区 Tab 时重载
+      await loadResData();     // 当前水情表按新顺序重载
+      if (activeMainTab() === 'irrigation') {
+        await ensureGrSites();
+        await loadGateLevels();
+      }
+    },
+  });
 }
 
 init();

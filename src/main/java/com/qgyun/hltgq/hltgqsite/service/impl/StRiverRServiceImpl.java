@@ -10,11 +10,14 @@ import com.qgyun.hltgq.hltgqsite.entity.WaterThreshold;
 import com.qgyun.hltgq.hltgqsite.mapper.StRiverRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterThresholdMapper;
+import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRegimeVO;
 import com.qgyun.hltgq.hltgqsite.vo.RiverRegimeVO;
 import com.qgyun.hltgq.hltgqsite.vo.WaterBriefVO;
 import com.qgyun.hltgq.hltgqsite.vo.YearsRegimeVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -23,10 +26,13 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> implements StRiverRService {
+
+    private static final Logger log = LoggerFactory.getLogger(StRiverRServiceImpl.class);
 
     @Autowired
     private StStinfoMapper stStinfoMapper;
@@ -34,13 +40,19 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
     @Autowired
     private WaterThresholdMapper waterThresholdMapper;
 
+    @Autowired
+    private StationSortService stationSortService;
+
     /** 河道水位站名称 */
     private static final Set<String> RIVER_STATION_NAMES = new HashSet<>(Arrays.asList("周家河", "花凉亭坝下"));
 
     /** 水库水位站名称 */
     private static final Set<String> RESERVOIR_STATION_NAMES = new HashSet<>(Collections.singletonList("花凉亭坝上"));
 
-    /** 水情简报/多年同期水情覆盖的水情站（周家河、花凉亭坝下、花凉亭坝上），顺序即展示顺序 */
+    /**
+     * 水情简报/多年同期水情覆盖的水情站（周家河、花凉亭坝下、花凉亭坝上），顺序为默认展示顺序，
+     * 已配置「水位」站点排序时由配置顺序覆盖（见 reorderWaterStations）
+     */
     private static final List<String> WATER_STATION_STCDS = Arrays.asList("3206400001", "320640000A", "3206400007");
 
     /**
@@ -49,6 +61,15 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
      */
     private static final String REGIME_ORDER_BY =
             "ORDER BY CASE \"STCD\" WHEN '3206400001' THEN 1 WHEN '3206400007' THEN 2 WHEN '320640000A' THEN 3 ELSE 4 END, \"TM\" DESC";
+
+    /** 水位监测类型（站点排序语义类型，对应站点档案监测类型枚举 #1#） */
+    private static final String WATER_LEVEL_TYPE = "waterLevel";
+
+    /** 水位站编码格式白名单（拼入 ORDER BY 前校验，避免非常规编码进入 SQL 文本） */
+    private static final Pattern STCD_PATTERN = Pattern.compile("[0-9A-Za-z]{1,32}");
+
+    /** 上次打印的水位顺序摘要（内容变化才打印，避免分页请求刷日志） */
+    private volatile String lastOrderSummary;
 
     /**
      * 旧 STCD → 新 STCD（过渡期兼容：客户端可能仍持有旧页面/旧缓存，收到旧编号时自动映射到新编号）
@@ -133,6 +154,107 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
                     .eq("TM", Timestamp.valueOf(entity.getTm())));
         }
         return save(entity);
+    }
+
+    // ======================== 水位站顺序（站点排序配置） ========================
+
+    /**
+     * 水位站展示顺序（数据表 STCD 序列）：站点排序配置（水位类型）→ 站点档案数据表编码。
+     * <p>未配置排序时返回空列表，各查询保持既有业主口径（周家河 > 花凉亭坝上 > 花凉亭坝下）；
+     * 配置过的站点按配置序号在前，未在配置内的站点由 SQL 兜底排在最后（不丢站、不阻断）。
+     * <p>映射链：排序配置落库的是站点管理主键，需按档案取回数据表编码；缺少编码的站点跳过，
+     * 顺序变化时打印日志便于联调核对。同时供日时段水情表等水情类查询复用。
+     */
+    @Override
+    public List<String> orderedWaterStcds() {
+        List<String> siteIds = stationSortService.configuredSiteIds(WATER_LEVEL_TYPE);
+        if (siteIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<String, String> stcdBySiteId = new HashMap<>();
+        for (StStinfo info : stStinfoMapper.selectBatchIds(siteIds)) {
+            String siteId = trim(info.getId());
+            String stcd = trim(info.getStcd());
+            if (siteId != null && stcd != null) {
+                stcdBySiteId.put(siteId, stcd);
+            }
+        }
+        List<String> stcds = new ArrayList<>();
+        int unresolved = 0;
+        for (String siteId : siteIds) {
+            String stcd = stcdBySiteId.get(siteId);
+            if (stcd == null || !STCD_PATTERN.matcher(stcd).matches()) {
+                unresolved++;
+                continue;
+            }
+            if (!stcds.contains(stcd)) {
+                stcds.add(stcd);
+            }
+        }
+        if (stcds.isEmpty()) {
+            log.warn("水位站顺序已配置但未解析出可用站点编码：配置 {} 站，siteIds={}", siteIds.size(), siteIds);
+            return Collections.emptyList();
+        }
+        String summary = String.join(",", stcds);
+        if (!summary.equals(lastOrderSummary)) {
+            lastOrderSummary = summary;
+            log.info("水位站展示顺序按站点排序配置生效：解析 {} 站（未解析 {}），SQL 顺序={}",
+                    stcds.size(), unresolved, stcds);
+        }
+        return stcds;
+    }
+
+    /**
+     * 河道/水库水情表 ORDER BY：已配置水位顺序时按配置顺序分组（未在配置内的站点按编码排在最后），
+     * 未配置时沿用既有业主口径。编码取自站点档案并已通过格式白名单校验，非外部输入。
+     */
+    private String regimeOrderBy(List<String> orderedStcds) {
+        if (orderedStcds == null || orderedStcds.isEmpty()) {
+            return REGIME_ORDER_BY;
+        }
+        StringBuilder orderBy = new StringBuilder("ORDER BY CASE \"STCD\"");
+        for (int i = 0; i < orderedStcds.size(); i++) {
+            orderBy.append(" WHEN '").append(orderedStcds.get(i)).append("' THEN ").append(i + 1);
+        }
+        orderBy.append(" ELSE ").append(orderedStcds.size() + 1).append(" END, \"STCD\", \"TM\" DESC");
+        return orderBy.toString();
+    }
+
+    /**
+     * 水情简报/多年同期水情站点顺序按水位排序配置重排：
+     * 配置内站点按配置序在前，其余站点保持既定顺序追加在后（仅调整顺序，不增删站点）。
+     */
+    private Map<String, StStinfo> reorderWaterStations(Map<String, StStinfo> stations) {
+        List<String> orderedStcds = orderedWaterStcds();
+        if (orderedStcds.isEmpty() || stations.size() < 2) {
+            return stations;
+        }
+        // 档案键与配置解析值可能存在空白差异，按 trim 值建立兜底索引
+        Map<String, String> keyByTrimmed = new HashMap<>();
+        for (String key : stations.keySet()) {
+            String trimmed = trim(key);
+            if (trimmed != null) {
+                keyByTrimmed.putIfAbsent(trimmed, key);
+            }
+        }
+        Map<String, StStinfo> ordered = new LinkedHashMap<>();
+        for (String stcd : orderedStcds) {
+            String key = stations.containsKey(stcd) ? stcd : keyByTrimmed.get(stcd);
+            if (key != null) {
+                ordered.put(key, stations.get(key));
+            }
+        }
+        for (Map.Entry<String, StStinfo> entry : stations.entrySet()) {
+            ordered.putIfAbsent(entry.getKey(), entry.getValue());
+        }
+        return ordered;
+    }
+
+    /** 站点标识归一：去首尾空白，空串按 null 处理 */
+    private static String trim(String value) {
+        if (value == null) return null;
+        String s = value.trim();
+        return s.isEmpty() ? null : s;
     }
 
     /**
@@ -222,7 +344,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         wrapper.in("STCD", new ArrayList<>(stations.keySet()));
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
-        wrapper.last(REGIME_ORDER_BY);
+        wrapper.last(regimeOrderBy(orderedWaterStcds()));
 
         Page<StRiverR> rawPage = (Page<StRiverR>) this.page(
                 new Page<StRiverR>(page, size), wrapper);
@@ -247,7 +369,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         wrapper.in("STCD", new ArrayList<>(stations.keySet()));
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
-        wrapper.last(REGIME_ORDER_BY);
+        wrapper.last(regimeOrderBy(orderedWaterStcds()));
         return this.list(wrapper).stream()
                 .map(r -> toRiverVO(r, stations, thresholds))
                 .collect(Collectors.toList());
@@ -279,7 +401,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         wrapper.in("STCD", new ArrayList<>(stations.keySet()));
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
-        wrapper.last(REGIME_ORDER_BY);
+        wrapper.last(regimeOrderBy(orderedWaterStcds()));
 
         Page<StRiverR> rawPage = (Page<StRiverR>) this.page(
                 new Page<StRiverR>(page, size), wrapper);
@@ -304,7 +426,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         wrapper.in("STCD", new ArrayList<>(stations.keySet()));
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
-        wrapper.last(REGIME_ORDER_BY);
+        wrapper.last(regimeOrderBy(orderedWaterStcds()));
         return this.list(wrapper).stream()
                 .map(r -> toReservoirVO(r, stations, thresholds))
                 .collect(Collectors.toList());
@@ -315,7 +437,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
     /**
      * 解析三个水情站（周家河、花凉亭坝下、花凉亭坝上）：
      * 先按 STCD 精确查询；查不到时按名称反查（站点表接入过渡期主键可能未对齐）。
-     * 返回 LinkedHashMap 保证顺序稳定。
+     * 返回 LinkedHashMap 保证顺序稳定（已配置水位排序时按配置顺序重排）。
      */
     private Map<String, StStinfo> resolveWaterStations() {
         Map<String, StStinfo> map = new LinkedHashMap<>();
@@ -334,7 +456,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
                 map.put(info.getStcd(), info);
             }
         }
-        return map;
+        return reorderWaterStations(map);
     }
 
     /** 水位值统一截断 2 位小数 */

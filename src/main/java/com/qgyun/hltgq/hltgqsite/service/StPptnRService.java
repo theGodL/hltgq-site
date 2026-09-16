@@ -42,6 +42,13 @@ public interface StPptnRService extends IService<StPptnR> {
     IPage<GqRainfallVO> gqRainfallPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime);
 
     /**
+     * 灌区雨量全量实时值：各雨量站（含水库雨量站）最新一条，含1h/3h/6h时段增量与昨日雨量。
+     * <p>供三维系统对接接口（/external/station-monitor）按站点档案列表输出实时值：
+     * 站点集合与展示顺序均由调用方按档案决定，故不排除水库站、不应用站点排序。
+     */
+    List<GqRainfallVO> gqRainfallMonitoringAll();
+
+    /**
      * 灌区雨量变化图表：单站点小时级增量+累计雨量
      */
     GqRainfallChartVO gqRainfallChart(String stcd, LocalDateTime startTime, LocalDateTime endTime);

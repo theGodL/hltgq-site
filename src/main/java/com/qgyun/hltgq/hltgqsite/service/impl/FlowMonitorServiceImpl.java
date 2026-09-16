@@ -7,6 +7,8 @@ import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.service.FlowMonitorService;
+import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
+import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowStationVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowTrendVO;
@@ -42,6 +44,12 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     @Autowired
     private StStinfoMapper stStinfoMapper;
 
+    @Autowired
+    private StationSortService stationSortService;
+
+    @Autowired
+    private StRiverRService stRiverRService;
+
     /**
      * 流量图表固定八站（按展示顺序）：渠首进水闸、双庙湖节制闸、南山寺节制闸、太怀干渠进水闸、
      * 毕岭节制闸、汪元渡槽、南干渠进水闸、北干渠进水闸；值为站点表主键 iofhpi（测站编码）
@@ -69,14 +77,29 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
 
     /**
-     * 水位水情站权威展示顺序（业主口径）：周家河 > 花凉亭坝上 > 花凉亭坝下。
-     * 日时段水情表按此顺序分组输出，不受前端传入 stcds 顺序影响。
+     * 水位水情站默认展示顺序（业主口径）：周家河 > 花凉亭坝上 > 花凉亭坝下。
+     * 日时段水情表默认按此顺序分组输出（不受前端传入 stcds 顺序影响）；
+     * 已配置「水位」站点排序时由配置顺序覆盖（见 periodRegime）。
      */
     private static final List<String> WATER_STATION_ORDER = Arrays.asList("周家河", "花凉亭坝上", "花凉亭坝下");
 
     private static int stationRank(String stnm) {
         int idx = WATER_STATION_ORDER.indexOf(stnm);
         return idx >= 0 ? idx : WATER_STATION_ORDER.size();
+    }
+
+    /** 站点在已配置顺序中的位次；未配置到的站点返回配置长度（排在其后） */
+    private static int orderedIndex(List<String> configuredStcds, String stcd) {
+        if (stcd != null) {
+            int idx = configuredStcds.indexOf(stcd);
+            if (idx < 0) {
+                idx = configuredStcds.indexOf(stcd.trim());
+            }
+            if (idx >= 0) {
+                return idx;
+            }
+        }
+        return configuredStcds.size();
     }
 
     private static BigDecimal nullIfMissing(BigDecimal v) {
@@ -154,7 +177,9 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             }
             r.setCumulativeFlow(toWanFlow(cumulativeFlow));
         });
-        return rows;
+        // 站点排序配置（流量监测类型）：已配置站点按配置顺序，未配置站点保持 SQL 默认顺序排在其后；
+        // 站点标识 = 站点管理主键（档案缺失时为 null，该行保持默认位置）
+        return stationSortService.applyOrder("flow", rows, FlowMonitoringVO::getSiteId);
     }
 
     @Override
@@ -392,13 +417,21 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
                 resolvedStcds, slotStart.minusHours(interval), slotEnd);
 
         // 4. 构建结果：N站 × M槽 = 完整 VO 列表
-        // 站点按权威顺序分组（周家河 > 花凉亭坝上 > 花凉亭坝下），同站数据连续不交错；
-        // 组内槽位按时间降序（最新在前）
+        // 站点按展示顺序分组，同站数据连续不交错；组内槽位按时间降序（最新在前）。
+        // 站点顺序：已配置「水位」站点排序时按配置顺序（未在配置内的站点排在其后），
+        // 未配置时沿用业主权威顺序（周家河 > 花凉亭坝上 > 花凉亭坝下）
         // 槽位匹配策略（业主口径）：记录 tm ∈ (prevSlot, slot] 左开右闭 → 归属 slot；
         // 同槽位多条取 tm 最大的（最新）。整点整点的记录归该整点槽位（如 11:00:00 归 11 点），
         // 整点之后归下一整点，保证前一时段数值在进入下一时段后固定不动
         List<Map.Entry<String, String>> orderedStations = new ArrayList<>(stcdToName.entrySet());
-        orderedStations.sort(Comparator.comparingInt(e -> stationRank(e.getValue())));
+        List<String> configuredStcds = stRiverRService.orderedWaterStcds();
+        if (configuredStcds.isEmpty()) {
+            orderedStations.sort(Comparator.comparingInt(e -> stationRank(e.getValue())));
+        } else {
+            orderedStations.sort(Comparator
+                    .comparingInt((Map.Entry<String, String> e) -> orderedIndex(configuredStcds, e.getKey()))
+                    .thenComparingInt(e -> stationRank(e.getValue())));
+        }
 
         List<PeriodRegimeVO> result = new ArrayList<>();
         for (Map.Entry<String, String> entry : orderedStations) {

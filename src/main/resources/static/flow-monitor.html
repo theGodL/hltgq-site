@@ -6,6 +6,7 @@
 <title>流量监测</title>
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
+<script src="./lib/station-sort.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -1230,6 +1231,15 @@ function init() {
   bindAsyncClick($('mth-reset-btn'), mthReset);
   $('tbl-body').addEventListener('click', onTableClick);
   renderMthEmpty();
+  // 站点排序（麻塘湖灌区右侧入口）：保存后按新顺序重载站点下拉与列表
+  StationSort.mount({
+    type: 'flow',
+    api: API,
+    onSaved: async () => {
+      await loadFlowSites();
+      await loadList();
+    },
+  });
   loadFlowSites().then(() => loadList());
 }
 

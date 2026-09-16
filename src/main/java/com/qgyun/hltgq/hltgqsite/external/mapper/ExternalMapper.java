@@ -46,6 +46,38 @@ public interface ExternalMapper {
     Map<String, Object> selectStationByKey(@Param("key") String key);
 
     /**
+     * 站点档案列表（按监测类型 + 可选站名模糊）：监测类型 epjutj 含 #{typeCode}（编码 #N#，多类型以 | 分隔）
+     * 的站点，name 非空时再按站名 zzkaec 模糊过滤，按站点编号 iofhpi 升序。
+     * <p>供监测站点列表接口按档案口径输出（与原 qx-api 列表同口径：含当前无数据的站点）；
+     * 关联名称列：管理单位 = ahieto 自关联本表 zzkaec、渠系 = ywvyds 关联渠系管理表 gfaegg、
+     * 创建/更新人 = created_by/updated_by 关联平台用户表 name。
+     */
+    @Select("<script>" +
+            "SELECT s.id AS id, s.iofhpi AS iofhpi, s.zzkaec AS zzkaec, " +
+            "s.devicecode AS devicecode, s.mivbcz AS mivbcz, s.epjutj AS epjutj, " +
+            "s.nxtggq AS nxtggq, s.bviiio_x AS bviiio_x, s.bviiio_y AS bviiio_y, " +
+            "s.bviiio_geohash AS bviiio_geohash, s.zebpsu AS zebpsu, " +
+            "s.ahieto AS ahieto, u.zzkaec AS ahieto_title, " +
+            "s.ywvyds AS ywvyds, c.gfaegg AS ywvyds_title, " +
+            "s.waljdn AS waljdn, s.bhsqxd AS bhsqxd, s.lhwhuc AS lhwhuc, " +
+            "s.cbitue AS cbitue, s.viwmmc AS viwmmc, s.discharge_type AS discharge_type, " +
+            "s.badfhe AS badfhe, s.nwbzla AS nwbzla, s.ccnhtm AS ccnhtm, s.ijzsby AS ijzsby, " +
+            "s.corp_code AS corp_code, s.created_at AS created_at, " +
+            "s.created_by AS created_by, cu.name AS created_by_title, " +
+            "s.updated_at AS updated_at, s.updated_by AS updated_by, uu.name AS updated_by_title " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" u ON s.ahieto = u.id " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON s.ywvyds = c.id " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" cu ON s.created_by = cu.id " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" uu ON s.updated_by = uu.id " +
+            "WHERE s.epjutj LIKE CONCAT('%', #{typeCode}, '%') " +
+            "<if test='name != null and name != \"\"'>AND s.zzkaec LIKE CONCAT('%', #{name}, '%') </if>" +
+            "ORDER BY s.iofhpi" +
+            "</script>")
+    List<Map<String, Object>> selectArchiveByType(@Param("typeCode") String typeCode,
+                                                  @Param("name") String name);
+
+    /**
      * 巡检汇总：累计巡检次数（已提交）/ 巡检计划总数 / 完成巡检数（计划已完成）。
      * 三条计数合并为一条 SQL（三张表同 schema，逐条 COUNT 子查询）。
      */

@@ -7,6 +7,7 @@
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/station-sort.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -1581,6 +1582,18 @@ async function init() {
 
   await loadIrrSites();
   loadIrrList();
+  // 站点排序（Tab 栏右侧入口）：雨量类型含灌区站与水库站，共用一条序列，保存后两处均按新顺序重载
+  StationSort.mount({
+    type: 'rainfall',
+    api: API,
+    onSaved: async () => {
+      await loadIrrSites();
+      if (IRR_RES.tab === 'realtime') await loadIrrList();
+      else await loadIrrDaily();
+      const active = document.querySelector('.tab-item.active');
+      if (active && active.dataset.tab === 'reservoir') await loadResData();
+    },
+  });
 }
 
 init();

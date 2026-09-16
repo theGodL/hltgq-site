@@ -8,6 +8,8 @@ import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
+import com.qgyun.hltgq.hltgqsite.service.StationSiteService;
+import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
@@ -109,10 +111,6 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             "南山寺节制闸", "渠首进水闸", "渠首电站防洪闸", "双庙湖节制闸"
     ));
 
-    /** 闸门监测列表置前展示的站点（固定顺序，其余站点按名称排序） */
-    private static final List<String> PRIORITY_STATIONS = Arrays.asList(
-            "渠首电站防洪闸", "渠首进水闸", "双庙湖节制闸", "南山寺节制闸");
-
     /** MQTT 站断联阈值：报文 10 分钟一次，30 分钟无更新判离线 */
     private static final long MQTT_STALE_MINUTES = 30;
     /** RabbitMQ 站断联阈值：报文 1 小时一次，70 分钟无更新判离线 */
@@ -157,6 +155,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     @Autowired
     private StStinfoMapper stStinfoMapper;
+
+    @Autowired
+    private StationSortService stationSortService;
 
     @Override
     public List<GateMonitoringVO> monitoring(String site, LocalDateTime startTime, LocalDateTime endTime) {
@@ -276,15 +277,19 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             result.add(vo);
         }
 
-        // 排序：指定站点按固定顺序置前展示（渠首电站防洪闸 → 渠首进水闸 → 双庙湖节制闸 → 南山寺节制闸），
-        // 其余按站点名称排序（与原先名称排序规则一致）
+        // 默认顺序：置前站点按固定顺序展示、其余站点按站点名称排序。置前清单与站点排序抽屉、
+        // 站点下拉共用同一份配置（StationSiteService.GATE_PRIORITY_STATIONS），
+        // 保证该类型未配置排序时列表与清单两处顺序一致
+        List<String> priorityStations = StationSiteService.GATE_PRIORITY_STATIONS;
         result.sort(Comparator
                 .comparing((GateMonitoringVO vo) -> {
-                    int idx = PRIORITY_STATIONS.indexOf(vo.getSiteName());
-                    return idx < 0 ? PRIORITY_STATIONS.size() : idx;
+                    int idx = priorityStations.indexOf(vo.getSiteName());
+                    return idx < 0 ? priorityStations.size() : idx;
                 })
                 .thenComparing(GateMonitoringVO::getSiteName, Comparator.nullsLast(String::compareTo)));
-        return result;
+        // 「站点排序」配置存在时按配置顺序覆盖（未配置站点保持上述默认顺序排在其后）；
+        // 闸门监测页与水位监测页「花凉亭灌区」面板共用该顺序（站点标识=站点 UUID）
+        return stationSortService.applyOrder("gate", result, GateMonitoringVO::getSiteId);
     }
 
     @Override

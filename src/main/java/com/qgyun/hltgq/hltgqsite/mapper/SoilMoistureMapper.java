@@ -21,7 +21,8 @@ public interface SoilMoistureMapper {
 
     /**
      * 各站点最新一条墒情数据（首页）
-     * <p>站点标识 skey = COALESCE(stcd, site)：老站点用编号，无 stcd 时回退到 site（UUID）。
+     * <p>站点标识 skey = COALESCE(stcd, site)：老站点用编号，无 stcd 时回退到 site（UUID）；
+     * site_id 为站点管理主键（站点排序配置的匹配键）：优先取业务表 site 列，缺失时按测站编码回查站点档案表。
      * 输出 stcd 为原值，另输出 site 字段承载站点标识供查询/筛选。
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，不能直接用 COALESCE 函数表达式
      * （PG 会报 "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"），
@@ -36,10 +37,12 @@ public interface SoilMoistureMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.stnm, t.tm, t.vol, " +
+            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.tm, t.vol, " +
             "t.mten, t.mtwenty, t.mthirty, t.mforty, t.mfifty, t.msixty, t.meighty, t.mhundred " +
             "FROM ( " +
-            "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, fv.vol, " +
+            "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, " +
+            "  COALESCE(n.site, (SELECT a.id FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" a WHERE a.iofhpi = n.stcd LIMIT 1)) AS site_id, " +
+            "  COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, fv.vol, " +
             "  CASE WHEN n.mten = -999 THEN NULL ELSE TRUNC(n.mten, 2) END AS mten, " +
             "  CASE WHEN n.mtwenty = -999 THEN NULL ELSE TRUNC(n.mtwenty, 2) END AS mtwenty, " +
             "  CASE WHEN n.mthirty = -999 THEN NULL ELSE TRUNC(n.mthirty, 2) END AS mthirty, " +
@@ -77,6 +80,7 @@ public interface SoilMoistureMapper {
     @Results({
             @Result(column = "stcd", property = "stcd"),
             @Result(column = "site", property = "site"),
+            @Result(column = "site_id", property = "siteId"),
             @Result(column = "stnm", property = "stnm"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "vol", property = "vol"),

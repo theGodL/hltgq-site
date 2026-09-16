@@ -76,4 +76,17 @@ public class ExternalController {
     public List<ExternalVO.VideoItem> videoSummary() {
         return externalService.videoSummary();
     }
+
+    /**
+     * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
+     * 每行 = 档案字段（原字段名）+ 该站实时监测值（平铺 + data 子对象）；站点顺序按「站点排序」配置输出。
+     * <p>type：1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 7 墒情 / 8 水质（兼容 #N# 编码与语义串）；非法值返回 400。
+     * name：可选，按站点名称模糊匹配（如「渠首」命中「渠首管理所」）；不传或空白表示不筛选。
+     * 响应信封与原 qx-api 一致（success/status/data/msg/...）。
+     */
+    @GetMapping("/station-monitor")
+    public ExternalVO.StationMonitor stationMonitor(@RequestParam String type,
+                                                    @RequestParam(required = false) String name) {
+        return externalService.stationMonitor(type, name);
+    }
 }
