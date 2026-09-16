@@ -3,6 +3,7 @@ package com.qgyun.hltgq.hltgqsite.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.service.FlowMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.FlowStationVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowTrendVO;
 import com.qgyun.hltgq.hltgqsite.vo.PeriodRegimeVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -81,6 +82,20 @@ public class FlowMonitorController {
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
         return flowMonitorService.history(stcd, startTime, endTime, page, size);
+    }
+
+    /**
+     * 流量图表-固定八站瞬时流量（按日期时间点查询）
+     * <p>返回固定顺序八站（渠首进水闸、双庙湖节制闸、南山寺节制闸、太怀干渠进水闸、
+     * 毕岭节制闸、汪元渡槽、南干渠进水闸、北干渠进水闸），每站取距选中时间点最近
+     * （±30 分钟内）的流量入库数据；半小时内无入库数据则该站流量为 null（该时间点无报文）。
+     *
+     * @param time 选中时间点，格式 yyyy-MM-dd HH:mm（半小时粒度，如 2026-09-16 17:30）
+     */
+    @GetMapping("/station-flow")
+    public List<FlowStationVO> stationFlow(
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm") LocalDateTime time) {
+        return flowMonitorService.stationFlow(time);
     }
 
     /**

@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.FlowStationVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowTrendVO;
 import com.qgyun.hltgq.hltgqsite.vo.PeriodRegimeVO;
 
@@ -42,6 +43,16 @@ public interface FlowMonitorService {
      * @param size      每页条数
      */
     Page<FlowMonitoringVO> history(String stcd, LocalDateTime startTime, LocalDateTime endTime, long page, long size);
+
+    /**
+     * 流量图表-固定八站瞬时流量（按日期时间点查询）
+     * <p>返回固定顺序八站（渠首进水闸、双庙湖节制闸、南山寺节制闸、太怀干渠进水闸、
+     * 毕岭节制闸、汪元渡槽、南干渠进水闸、北干渠进水闸），每站取距选中时间点最近
+     * （±30 分钟内）的流量入库数据；半小时内无入库数据则该站流量为 null（该时间点无报文）。
+     *
+     * @param time 选中时间点（半小时粒度）
+     */
+    List<FlowStationVO> stationFlow(LocalDateTime time);
 
     /**
      * 日时段水情表（水位站点多选，按日期+时段生成时间槽位，匹配实测数据）

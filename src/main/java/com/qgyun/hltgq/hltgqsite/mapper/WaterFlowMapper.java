@@ -150,6 +150,40 @@ public interface WaterFlowMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
+     * 流量图表：各站在选中时间点 ±30 分钟内距时间点最近的瞬时流量（每站一条）
+     * <p>站点标识 skey = COALESCE(stcd, site)：老站点用编号，MQTT 站点无 stcd（为 NULL）时回退到 site（UUID），
+     * 故候选标识（测站编码 + 站点 UUID）一并传入，任一命中即可取数；
+     * DISTINCT ON (skey) + ORDER BY 时间距离 保证每个标识取距 time 最近的一条；
+     * 无效流量（空、-999 设备不存在、-9991 设备异常）不参与，窗口内无有效记录则该标识不返回行。
+     *
+     * @param codes     候选站点标识列表（测站编码 + 站点 UUID）
+     * @param time      选中时间点（半小时粒度）
+     * @param startTime 命中窗口起点 = time - 30 分钟
+     * @param endTime   命中窗口终点 = time + 30 分钟
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT ON (t.skey) t.skey, t.q, t.tm " +
+            "FROM ( " +
+            "  SELECT COALESCE(f.stcd, f.site) AS skey, TRUNC(f.q, 3) AS q, f.tm " +
+            "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE (f.stcd IN " +
+            "  <foreach collection='codes' item='c' open='(' separator=',' close=')'>#{c}</foreach> " +
+            "   OR f.site IN " +
+            "  <foreach collection='codes' item='c' open='(' separator=',' close=')'>#{c}</foreach>) " +
+            "  AND f.tm &gt;= #{startTime} " +
+            "  AND f.tm &lt;= #{endTime} " +
+            "  AND f.q IS NOT NULL " +
+            "  AND f.q NOT IN (-999, -9991) " +
+            ") t " +
+            "ORDER BY t.skey, ABS(EXTRACT(EPOCH FROM CAST(t.tm AS TIMESTAMP)) - EXTRACT(EPOCH FROM #{time}::timestamp))" +
+            "</script>")
+    List<Map<String, Object>> selectClosestFlowBySites(
+            @Param("codes") List<String> codes,
+            @Param("time") LocalDateTime time,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
+
+    /**
      * 闸站监测同批次流量取数：取指定站点在 [windowStart, windowEnd] 窗口内的最新一条流量记录
      * <p>报文按批次入库，流量（t_auto_hltgq_water_wt_nfo）tm 应与闸门表最新时刻接近（±20 分钟）；
      * 窗口内取 tm 最新一条，窗口外无记录说明该批次无流量数据（由 Service 层置 null）。

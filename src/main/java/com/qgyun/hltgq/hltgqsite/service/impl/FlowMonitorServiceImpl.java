@@ -8,14 +8,18 @@ import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.service.FlowMonitorService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.FlowStationVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowTrendVO;
 import com.qgyun.hltgq.hltgqsite.vo.PeriodRegimeVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -30,11 +34,23 @@ import java.util.stream.Collectors;
 @Service
 public class FlowMonitorServiceImpl implements FlowMonitorService {
 
+    private static final Logger log = LoggerFactory.getLogger(FlowMonitorServiceImpl.class);
+
     @Autowired
     private WaterFlowMapper waterFlowMapper;
 
     @Autowired
     private StStinfoMapper stStinfoMapper;
+
+    /**
+     * 流量图表固定八站（按展示顺序）：渠首进水闸、双庙湖节制闸、南山寺节制闸、太怀干渠进水闸、
+     * 毕岭节制闸、汪元渡槽、南干渠进水闸、北干渠进水闸；值为站点表主键 iofhpi（测站编码）
+     */
+    private static final List<String> FLOW_STATION_STCDS = Arrays.asList(
+            "QSJSZ", "SMH", "NSS", "9000000004", "9000000005", "9000000027", "9000000002", "9000000001");
+
+    /** 流量图表取数窗口（分钟）：选中时间点前后各取该窗口内距时间点最近的一条流量 */
+    private static final long FLOW_WINDOW_MINUTES = 30;
 
     /**
      * 旧 STCD → 新 STCD（过渡期兼容：客户端可能仍持有旧页面/旧缓存，收到旧编号时自动映射到新编号）
@@ -259,6 +275,72 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     }
 
     @Override
+    public List<FlowStationVO> stationFlow(LocalDateTime time) {
+        // 1. 固定八站站点信息（站点表主键 iofhpi = 测站编码）
+        List<StStinfo> stations = stStinfoMapper.selectBatchIds(FLOW_STATION_STCDS);
+        Map<String, StStinfo> infoMap = stations.stream()
+                .collect(Collectors.toMap(StStinfo::getStcd, s -> s, (a, b) -> a));
+
+        // 2. 候选站点标识 = 测站编码 + 站点 UUID（流量表 skey = COALESCE(stcd, site)：
+        //    老站点用编号、MQTT 站点无 stcd 时回退到 site UUID，两种存储形态都试）
+        List<String> codes = new ArrayList<>();
+        for (String stcd : FLOW_STATION_STCDS) {
+            codes.add(stcd);
+            StStinfo info = infoMap.get(stcd);
+            if (info != null && info.getId() != null && !info.getId().isEmpty()) {
+                codes.add(info.getId());
+            }
+        }
+
+        // 3. 查询各标识在 [time−30min, time+30min] 内距时间点最近的一条瞬时流量
+        List<Map<String, Object>> rows = waterFlowMapper.selectClosestFlowBySites(
+                codes, time, time.minusMinutes(FLOW_WINDOW_MINUTES), time.plusMinutes(FLOW_WINDOW_MINUTES));
+
+        // 4. 标识 → 站点下标；同一站点多标识命中时（编号与站点 UUID 均落在窗口内）取距时间点最近的一条
+        Map<String, Integer> codeToIndex = new HashMap<>();
+        for (int i = 0; i < FLOW_STATION_STCDS.size(); i++) {
+            codeToIndex.put(FLOW_STATION_STCDS.get(i), i);
+            StStinfo info = infoMap.get(FLOW_STATION_STCDS.get(i));
+            if (info != null && info.getId() != null) {
+                codeToIndex.put(info.getId(), i);
+            }
+        }
+        FlowStationVO[] hitByIndex = new FlowStationVO[FLOW_STATION_STCDS.size()];
+        long[] hitDistance = new long[FLOW_STATION_STCDS.size()];
+        Arrays.fill(hitDistance, Long.MAX_VALUE);
+        for (Map<String, Object> row : rows) {
+            Integer idx = codeToIndex.get(String.valueOf(row.get("skey")));
+            BigDecimal q = toBigDecimal(row.get("q"));
+            if (idx == null || q == null) continue;
+            LocalDateTime tm = toLocalDateTime(row.get("tm"));
+            long distance = tm == null ? Long.MAX_VALUE : Math.abs(Duration.between(time, tm).toMillis());
+            if (hitByIndex[idx] != null && distance >= hitDistance[idx]) continue;
+            FlowStationVO vo = new FlowStationVO();
+            vo.setQ(q);
+            hitByIndex[idx] = vo;
+            hitDistance[idx] = distance;
+        }
+
+        // 5. 按固定顺序组装；半小时内无入库数据的站点流量为 null（该时间点无报文）
+        List<FlowStationVO> result = new ArrayList<>();
+        int hit = 0;
+        for (int i = 0; i < FLOW_STATION_STCDS.size(); i++) {
+            String stcd = FLOW_STATION_STCDS.get(i);
+            FlowStationVO vo = hitByIndex[i] != null ? hitByIndex[i] : new FlowStationVO();
+            StStinfo info = infoMap.get(stcd);
+            if (info != null) {
+                vo.setId(info.getId());
+                vo.setName(info.getStnm());
+            }
+            vo.setStcd(stcd);
+            if (hitByIndex[i] != null) hit++;
+            result.add(vo);
+        }
+        log.info("流量图表查询：time={}，窗口 ±{} 分钟，命中 {}/{} 站", time, FLOW_WINDOW_MINUTES, hit, FLOW_STATION_STCDS.size());
+        return result;
+    }
+
+    @Override
     public List<PeriodRegimeVO> periodRegime(LocalDate date, int interval, List<String> stcds) {
         // 防御：interval 非法（<=0）会导致槽位生成死循环
         if (interval <= 0) {
@@ -392,6 +474,13 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /** Map 值 → LocalDateTime（null 安全，兼容驱动返回 Timestamp / LocalDateTime 两种类型） */
+    private LocalDateTime toLocalDateTime(Object obj) {
+        if (obj instanceof Timestamp) return ((Timestamp) obj).toLocalDateTime();
+        if (obj instanceof LocalDateTime) return (LocalDateTime) obj;
+        return null;
     }
 
     /** 水势代码 → 中文 */
