@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.controller;
 
 import com.qgyun.hltgq.hltgqsite.archive.client.ArchiveClient;
 import com.qgyun.hltgq.hltgqsite.archive.service.ArchiveSyncService;
+import com.qgyun.hltgq.hltgqsite.auth.RolePermissionService;
 import com.qgyun.hltgq.hltgqsite.auth.SessionContextService;
 import com.qgyun.hltgq.hltgqsite.auth.ThreeDimensionalSsoService;
 import com.qgyun.hltgq.hltgqsite.auth.UserContext;
@@ -37,6 +38,9 @@ public class AuthController {
 
     @Autowired
     private ThreeDimensionalSsoService threeDimensionalSsoService;
+
+    @Autowired
+    private RolePermissionService rolePermissionService;
 
     @Autowired
     private ArchiveSyncService archiveSyncService;
@@ -103,6 +107,9 @@ public class AuthController {
     private CurrentUserVO buildCurrentUserVO(UserContext user) {
         CurrentUserVO vo = new CurrentUserVO();
         BeanUtils.copyProperties(user, vo);
+        // 管理员标记：超管或命中管理员角色（角色编码清单见 RolePermissionService），
+        // 与 @RequireAdmin 后端校验同一判定，避免"前端可编辑、后端 403"
+        vo.setAdmin(rolePermissionService.isAdmin(user));
         return vo;
     }
 }

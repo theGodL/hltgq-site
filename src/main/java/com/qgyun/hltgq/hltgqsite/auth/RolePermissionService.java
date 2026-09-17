@@ -9,7 +9,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -19,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>本地缓存 5 分钟（避免每请求访问 Redis/库）；</li>
  *   <li>Redis 角色缓存（平台维护，TTL 30m）：
  *       LRANGE qx.auth.hltgq.user.{userId} 取 roleId 列表，
- *       逐个 HGET qx.auth.hltgq.role.{roleId} 的 code 字段比对 hltgq_default_admin；</li>
+ *       逐个 HGET qx.auth.hltgq.role.{roleId} 的 code 字段比对管理员角色编码（ADMIN_ROLE_CODES）；</li>
  *   <li>Redis 未命中/异常 → 直连库查角色指派关系兜底（RoleMapper），保证判定正确性。</li>
  * </ol>
  * <p>角色缓存 key 前缀可配置（{@code auth.role-cache-key-prefix}），生产实测如带环境前缀（如 dev_）时调整；
@@ -30,8 +33,16 @@ public class RolePermissionService {
 
     private static final Logger log = LoggerFactory.getLogger(RolePermissionService.class);
 
-    /** 系统管理员角色编码：{corpCode}_default_admin（hltgq 场景） */
-    private static final String ADMIN_ROLE_CODE = "hltgq_default_admin";
+    /**
+     * 管理员角色编码（命中任一即为管理员；本类为单一维护点，Mapper 由本类传入，避免多处各写一份）：
+     * <ul>
+     *   <li>{@code hltgq_default_admin} —— 灌区企业默认管理员（{@code {corpCode}_default_admin}）；</li>
+     *   <li>{@code administra} —— 平台内置管理员角色（业主 2026-09-17 确认，同样需要写操作权限）。</li>
+     * </ul>
+     */
+    private static final Set<String> ADMIN_ROLE_CODES = new LinkedHashSet<>(Arrays.asList(
+            "hltgq_default_admin",
+            "administra"));
 
     /** 角色缓存中"无角色"占位值 */
     private static final String NO_ROLE_PLACEHOLDER = "0";
@@ -55,8 +66,8 @@ public class RolePermissionService {
     /**
      * 权限判定入口：平台超管直放行，否则走角色判定（isSystemAdmin）。
      * <p>平台超管（会话 superAdmin="true"/"1"）可能未绑定任何角色，仅查角色会误判非管理员，
-     * 必须直放行；同时前端编辑入口以同一 superAdmin 字段开关，两层判定口径统一，
-     * 避免"前端可编辑、后端 403"的不一致。
+     * 必须直放行；/auth/current-user 以本方法的判定结果输出 admin 标记供前端开关编辑入口，
+     * 两层口径统一，避免"前端可编辑、后端 403"的不一致。
      *
      * @param user 当前登录人上下文（拦截器已解析）
      * @return true = 可执行敏感操作
@@ -73,7 +84,7 @@ public class RolePermissionService {
     }
 
     /**
-     * 判定用户是否为系统管理员（拥有 hltgq_default_admin 角色）
+     * 判定用户是否为系统管理员（拥有 ADMIN_ROLE_CODES 中的任一角色）
      *
      * @param userId 用户主键（t_apaas_uc_user.id）
      * @return true = 系统管理员
@@ -110,16 +121,16 @@ public class RolePermissionService {
                         continue;
                     }
                     Object codeValue = redisTemplate.opsForHash().get(roleCacheKeyPrefix + "role." + roleId, "code");
-                    if (codeValue != null && ADMIN_ROLE_CODE.equals(stripQuotes(String.valueOf(codeValue)))) {
+                    if (codeValue != null && ADMIN_ROLE_CODES.contains(stripQuotes(String.valueOf(codeValue)))) {
                         return true;
                     }
                 }
             }
             // Redis 未明确命中 admin → 查库兜底（缓存陈旧/角色刚指派等场景查库才是准的）
-            return roleMapper.existsAdminRole(userId) > 0;
+            return roleMapper.existsAdminRole(userId, ADMIN_ROLE_CODES) > 0;
         } catch (Exception e) {
             log.warn("Redis 角色缓存不可用，降级查库判定 userId={}：{}", userId, e.getMessage());
-            return roleMapper.existsAdminRole(userId) > 0;
+            return roleMapper.existsAdminRole(userId, ADMIN_ROLE_CODES) > 0;
         }
     }
 

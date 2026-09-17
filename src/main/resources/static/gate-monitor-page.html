@@ -1602,17 +1602,18 @@ function onTableClick(e) {
 
 /* ===== 流量计算参数（南山寺节制闸、渠首进水闸、渠首电站防洪闸、双庙湖节制闸） ===== */
 const DISCHARGE_SITES = ['南山寺节制闸', '渠首进水闸', '渠首电站防洪闸', '双庙湖节制闸'];
-/* 编辑开关：默认只读，页面初始化时按登录人 superAdmin（/auth/current-user）开放编辑；
-   后端另做强制校验（@RequireAdmin，非系统管理员调保存接口返回 403） */
+/* 编辑开关：默认只读，页面初始化时按登录人管理员标记（/auth/current-user 的 admin）开放编辑；
+   后端另做强制校验（@RequireAdmin，非管理员调保存接口返回 403） */
 let DISCHARGE_EDITABLE = false;
 
-/** 按登录人权限决定流量参数是否可编辑（仅系统管理员） */
+/** 按登录人权限决定流量参数是否可编辑（平台超管或管理员角色：hltgq_default_admin / administra） */
 async function loadDischargeEditable() {
   try {
     const res = await fetch(`${API}/auth/current-user`);
     if (res.ok) {
       const u = await res.json();
-      DISCHARGE_EDITABLE = !!(u && String(u.superAdmin) === 'true');
+      // admin 由后端统一判定（含超管与管理员角色）；superAdmin 兼顾旧版后端响应
+      DISCHARGE_EDITABLE = !!(u && (u.admin === true || String(u.superAdmin) === 'true'));
     }
   } catch (e) {
     console.error(e); // 获取失败保持只读，安全优先

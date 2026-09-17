@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.wateruse.controller;
 
 import com.qgyun.hltgq.hltgqsite.wateruse.service.WaterUseSummaryService;
+import com.qgyun.hltgq.hltgqsite.wateruse.vo.WaterUseFeeCollectionVO;
 import com.qgyun.hltgq.hltgqsite.wateruse.vo.WaterUseReportRowVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -14,10 +15,12 @@ import java.util.List;
 
 /**
  * 用水总结接口（/water-use-summary）。
- * <p>页面：static/water-use-summary.html（月/灌季/年维度 → 用水量/灌溉水利用系数/应收水费）。
+ * <p>页面：static/water-use-summary.html（月/灌季/年维度 → 用水量/灌溉水利用系数/应收水费）、
+ * static/irrigation-water.html（灌区/县维度 → 需水量/实际供水量）。
  * <p>页面「天」维度对应本接口 dimension=month：数据为业主按月手录，前端需将日期区间控件
  * 改为月份区间（详见《用水总结接口.md》）。
  * <p>页面双维度组 A/B 由前端两次调用本接口实现，口径完全一致。
+ * <p>征收/收缴统计（{@code /fee-collection}）一次返回区域段 + 月度段，供两张柱状折线组合图使用。
  */
 @RestController
 @RequestMapping("/water-use-summary")
@@ -39,5 +42,16 @@ public class WaterUseSummaryController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startTime,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endTime) {
         return waterUseSummaryService.report(dimension, startTime, endTime);
+    }
+
+    /**
+     * 征收/收缴统计：一次返回「各区域征收情况」（x 轴 = 区域）与「月度收缴趋势」（x 轴 = 当年 12 个月）
+     * 两段数据，供两张柱状折线组合图共用（柱 = 应收/已收水费(万元)，折线 = 收缴率(%)）。
+     *
+     * @param year 统计年份（可选，缺省 = 当年；超出 2000 ~ 2100 返回 400）
+     */
+    @GetMapping("/fee-collection")
+    public WaterUseFeeCollectionVO feeCollection(@RequestParam(required = false) Integer year) {
+        return waterUseSummaryService.feeCollection(year);
     }
 }

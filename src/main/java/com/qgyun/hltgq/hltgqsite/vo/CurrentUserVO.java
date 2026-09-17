@@ -17,6 +17,12 @@ public class CurrentUserVO {
     /** 是否超级管理员 */
     private String superAdmin;
 
+    /**
+     * 是否管理员（平台超管 或 命中管理员角色，如 hltgq_default_admin / administra）：
+     * 由后端统一判定，供前端开放操作入口（与 @RequireAdmin 校验口径一致）。
+     */
+    private Boolean admin;
+
     /** 登录名（t_apaas_uc_user.login_name），三维 SSO 使用 */
     private String loginName;
 }

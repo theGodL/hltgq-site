@@ -218,7 +218,7 @@ public interface WaterFlowMapper {
     /**
      * 闸站累计流量取数（月累计 + 年累计，单站单行）
      * <p>year_flow = 最新非空 ytf（当年 1月1日 0点起累计）；
-     * total_flow = 最新非空 ttf（总累计）；
+     * total_flow = [monthStart, ∞) 内最新非空 ttf（月内最新累计；月内无 ttf 行为 null）；
      * month_prev_ttf = monthStart 前最近一条 ttf 非空行的 ttf，
      * 供 Service 层相减计算月累计（当月 1日 0点起累计）。
      * <p>主表为站点表，站点存在即返回一行（子查询全空时各值为 null）。
@@ -239,7 +239,8 @@ public interface WaterFlowMapper {
             ") fq ON fq.site = s.id " +
             "LEFT JOIN ( " +
             "  SELECT f.site, f.ttf FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
-            "  WHERE f.site = #{siteId} AND f.ttf IS NOT NULL ORDER BY f.tm DESC LIMIT 1 " +
+            "  WHERE f.site = #{siteId} AND f.ttf IS NOT NULL AND f.tm >= #{monthStart} " +
+            "  ORDER BY f.tm DESC LIMIT 1 " +
             ") fcur ON fcur.site = s.id " +
             "LEFT JOIN ( " +
             "  SELECT f.site, f.ttf FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
@@ -258,11 +259,13 @@ public interface WaterFlowMapper {
      * @param siteId          站点 UUID（必填）
      * @param firstMonthStart 最早月起点（最早月 1日 0点）
      * @param curMonthStart   当前月起点（当月 1日 0点）
-     * @return 每月一行：month_start（月起点）、end_ttf（月内最新 ttf）、start_ttf（月初前最近 ttf），按月升序
+     * @return 每月一行：month_start（月起点）、end_ttf（月内最新 ttf，限 gs ≤ tm < gs+1月）、
+     * start_ttf（月初前最近 ttf），按月升序；月内无 ttf 行的月份 end_ttf 为 null（不取上月值结转）
      */
     @Select("SELECT gs AS month_start, " +
             "(SELECT f.ttf FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
-            "  WHERE f.site = #{siteId} AND f.ttf IS NOT NULL AND f.tm < gs + INTERVAL '1 month' " +
+            "  WHERE f.site = #{siteId} AND f.ttf IS NOT NULL AND f.tm >= gs " +
+            "  AND f.tm < gs + INTERVAL '1 month' " +
             "  ORDER BY f.tm DESC LIMIT 1) AS end_ttf, " +
             "(SELECT f.ttf FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  WHERE f.site = #{siteId} AND f.ttf IS NOT NULL AND f.tm < gs " +
