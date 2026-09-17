@@ -11,8 +11,10 @@ import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
 import com.qgyun.hltgq.hltgqsite.service.StationSiteService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +26,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -463,6 +467,81 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * 累计流量 Map 值 → BigDecimal（库中 m³ 原值，null 安全）：
+     * -999（设备不存在）→ null；-9991（设备异常）保留原值透传（前端展示 '--'）
+     */
+    private BigDecimal rawFlowValue(Map<String, Object> row, String key) {
+        BigDecimal v = toBigDecimal(row != null ? row.get(key) : null);
+        return isMissing(v) ? null : v;
+    }
+
+    @Override
+    public GateCumulativeFlowVO cumulativeFlow(String siteId, LocalDateTime monthStart) {
+        // 月累计起点默认当月 1日 0点（与年累计口径对称：当年 1月1日 0点起）
+        if (monthStart == null) {
+            monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        }
+        Map<String, Object> row = waterFlowMapper.selectCumulativeFlow(siteId, monthStart);
+        GateCumulativeFlowVO vo = new GateCumulativeFlowVO();
+        vo.setSiteId(siteId);
+        if (row != null && row.get("site_name") != null) {
+            vo.setSiteName(String.valueOf(row.get("site_name")));
+        }
+        // 年累计 = ytf（当年 1月1日 0点起至最新数据时间）
+        vo.setYearCumulativeFlow(toWanFlow(rawFlowValue(row, "year_flow")));
+        // 月累计 = ttf(最新) − ttf(monthStart 前最近行)：先按 m³ 原值相减，最后一步再换算为万m³；
+        // -9991（设备异常）不参与相减（相减结果无意义）：末行为异常原值透传，起点前为异常按无基准 0 处理
+        BigDecimal totalFlow = rawFlowValue(row, "total_flow");
+        BigDecimal monthPrev = rawFlowValue(row, "month_prev_ttf");
+        BigDecimal monthFlow = totalFlow == null || totalFlow.compareTo(DEVICE_ERROR) == 0
+                ? totalFlow
+                : totalFlow.subtract(monthPrev != null && monthPrev.compareTo(DEVICE_ERROR) != 0
+                        ? monthPrev : BigDecimal.ZERO);
+        vo.setMonthCumulativeFlow(toWanFlow(monthFlow));
+        return vo;
+    }
+
+    @Override
+    public List<GateMonthCumulativeFlowVO> monthlyCumulativeFlow(String siteId, int months) {
+        // 月份数防御：非法值抛参数异常，超上限截断
+        if (months <= 0) {
+            throw new IllegalArgumentException("月份数必须为正整数");
+        }
+        if (months > 24) {
+            months = 24;
+        }
+        // 近 months 个月：当前月为最后一个月（当月累计截至最新数据时间），最早月起点 = 当前月 − (months−1)
+        LocalDate now = LocalDate.now();
+        LocalDateTime curMonthStart = now.withDayOfMonth(1).atStartOfDay();
+        LocalDateTime firstMonthStart = curMonthStart.minusMonths(months - 1L);
+
+        List<Map<String, Object>> rows = waterFlowMapper.selectMonthlyCumulativeFlow(
+                siteId, firstMonthStart, curMonthStart);
+
+        DateTimeFormatter monthFmt = DateTimeFormatter.ofPattern("yyyy-MM");
+        List<GateMonthCumulativeFlowVO> result = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            GateMonthCumulativeFlowVO vo = new GateMonthCumulativeFlowVO();
+            Object ms = row.get("month_start");
+            LocalDateTime msLdt = ms instanceof Timestamp
+                    ? ((Timestamp) ms).toLocalDateTime()
+                    : ms instanceof LocalDateTime ? (LocalDateTime) ms : null;
+            vo.setMonth(msLdt != null ? msLdt.format(monthFmt) : null);
+            // 月累计 = ttf(月内最新) − ttf(月初前最近)，与 cumulativeFlow 接口月累计口径一致；
+            // 月初前无积分行（最早月无历史数据）基准按 0；月内无 ttf 数据 → null；先按 m³ 原值相减再换算
+            BigDecimal endTtf = rawFlowValue(row, "end_ttf");
+            BigDecimal startTtf = rawFlowValue(row, "start_ttf");
+            BigDecimal monthFlow = endTtf == null || endTtf.compareTo(DEVICE_ERROR) == 0
+                    ? endTtf
+                    : endTtf.subtract(startTtf != null && startTtf.compareTo(DEVICE_ERROR) != 0
+                            ? startTtf : BigDecimal.ZERO);
+            vo.setCumulativeFlow(toWanFlow(monthFlow));
+            result.add(vo);
+        }
+        return result;
     }
 
     @Override

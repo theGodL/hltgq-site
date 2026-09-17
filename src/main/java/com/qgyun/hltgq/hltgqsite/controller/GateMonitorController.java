@@ -4,8 +4,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
+import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateDeviceVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,6 +136,38 @@ public class GateMonitorController {
     public List<GateStationWaterLevelVO> stationWaterLevel(
             @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm") LocalDateTime time) {
         return gateMonitorService.stationWaterLevel(time);
+    }
+
+    /**
+     * 闸站累计流量（月累计 + 年累计）
+     * <p>月累计 = 当月 1日 0点起至最新数据时间 = ttf(最新) − ttf(monthStart 前最近行)；
+     * 年累计 = 当年 1月1日 0点起至最新数据时间（流量表 ytf）。
+     * 两个值单位均为万m³（3 位小数截断，= 库中 m³ 原值 ÷ 10000 不四舍五入）。
+     *
+     * @param siteId     站点 UUID（必填），如渠首进水闸 CAYQ739MiBWMg9gQvyi
+     * @param monthStart 月累计起点（可选，默认当月 1日 0点），格式 yyyy-MM-dd HH:mm:ss
+     */
+    @GetMapping("/cumulative-flow")
+    public GateCumulativeFlowVO cumulativeFlow(
+            @RequestParam String siteId,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime monthStart) {
+        return gateMonitorService.cumulativeFlow(siteId, monthStart);
+    }
+
+    /**
+     * 闸站月度累计取水量趋势（近 months 个月，含当月，供月度趋势图表）
+     * <p>月累计口径同 cumulativeFlow：当月 1日 0点 ≤ tm < 下月 1日 0点
+     * = ttf(月内最新) − ttf(月初前最近)，当月累计截至最新数据时间；单位万m³（3 位小数截断）。
+     *
+     * @param siteId 站点 UUID（必填），如渠首进水闸 CAYQ739MiBWMg9gQvyi
+     * @param months 月数（默认 12，上限 24），当前月为最后一个月
+     * @return 每月一个数据点（时间升序，最早在前），月内无 ttf 数据时累计为 null
+     */
+    @GetMapping("/monthly-cumulative-flow")
+    public List<GateMonthCumulativeFlowVO> monthlyCumulativeFlow(
+            @RequestParam String siteId,
+            @RequestParam(defaultValue = "12") int months) {
+        return gateMonitorService.monthlyCumulativeFlow(siteId, months);
     }
 
     /**
