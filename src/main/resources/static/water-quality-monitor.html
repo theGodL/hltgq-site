@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>水质监测</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
@@ -196,6 +198,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
       </div>
       <button type="button" class="btn btn-primary" id="btn-query">查询</button>
       <button type="button" class="btn btn-default" id="btn-reset">重置</button>
+      <button type="button" class="btn btn-default" id="btn-export">导出</button>
     </div>
   </div>
 
@@ -261,6 +264,10 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
       </div>
 
       <div class="modal-pane" id="pane-hist">
+        <div class="modal-filter">
+          <span style="color:#999;font-size:12px">导出取数区间与「水质历史趋势」的日期筛选一致</span>
+          <button type="button" class="btn btn-default" id="hist-export-btn" style="margin-left:auto">导出</button>
+        </div>
         <div class="hist-table-wrap">
           <table class="data-table">
             <thead>
@@ -773,6 +780,88 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     }
   }
 
+  /* ===== 导出（列表：当前筛选全量站点；详情：按勾选字段导出该站点历史数据） ===== */
+  const WQ_EXPORT_FIELDS = [
+    { key: 'stnm', label: '站点名称' },
+    { key: 'stcd', label: '站点编号' },
+    { key: 'tm', label: '监测时间' },
+    { key: 'nh3n', label: '氨氮 (mg/L)' },
+    { key: 'codcr', label: 'COD (mg/L)' },
+    { key: 'bod5', label: 'BOD (mg/L)' },
+    { key: 'tp', label: 'TP (mg/L)' },
+    { key: 'tn', label: 'TN (mg/L)' },
+    { key: 'dox', label: '溶解氧 (mg/L)' },
+  ];
+
+  /** 导出取值：-9991/-999 交给 MonitorExport 统一转换（'--' / 空白），其余保留数值便于 Excel 计算 */
+  function exportNum(v) {
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v);
+    return Number.isFinite(n) ? n : v;
+  }
+
+  function exportTm(v) {
+    const tm = parseTm(v);
+    if (tm.date === '--') return '';
+    return tm.time ? `${tm.date} ${tm.time}` : tm.date;
+  }
+
+  function wqExportRow(r) {
+    return {
+      stnm: r.stnm || r.stcd || '', stcd: r.stcd, tm: exportTm(r.tm),
+      nh3n: exportNum(r.nh3n), codcr: exportNum(r.codcr), bod5: exportNum(r.bod5),
+      tp: exportNum(r.tp), tn: exportNum(r.tn), dox: exportNum(r.dox),
+    };
+  }
+
+  /** 列表导出：导出当前筛选条件下的全部站点 */
+  function exportWqList() {
+    MonitorExport.download({
+      fields: WQ_EXPORT_FIELDS,
+      rows: state.rows.map(wqExportRow),
+      filename: () => `水质监测_${todayStr()}`,
+      sheetName: '水质监测',
+    });
+  }
+
+  /** 详情历史全量取数：接口分页，循环拉完（上限 40 页，避免超长区间卡死浏览器） */
+  async function fetchAllWqHistory() {
+    const rows = [];
+    const size = 500;
+    const stcd = state.current.stcd || state.current.site;
+    const s = $('m-start').value;
+    const e = $('m-end').value;
+    for (let page = 1; page <= 40; page++) {
+      const p = new URLSearchParams();
+      p.set('stcd', stcd);
+      p.set('page', String(page));
+      p.set('size', String(size));
+      if (s) p.set('startTime', s + ' 00:00:00');
+      if (e) p.set('endTime', e + ' 23:59:59');
+      const data = await fetchApi('/water-quality/history?' + p);
+      const recs = Array.isArray(data.records) ? data.records : [];
+      rows.push(...recs);
+      if (!recs.length || rows.length >= (Number(data.total) || 0) || recs.length < size) break;
+    }
+    return rows;
+  }
+
+  /** 详情导出：弹窗勾选字段，表头只带勾选字段 */
+  function exportWqHistory() {
+    if (!state.current) { toast('请先打开站点详情'); return; }
+    const name = state.current.stnm || state.current.stcd || '站点';
+    const s = $('m-start').value || '';
+    const e = $('m-end').value || '';
+    MonitorExport.open({
+      title: `${name} · 导出历史数据`,
+      tip: '勾选需要的字段（氨氮 / COD / 溶解氧等），导出表头只包含勾选字段；取数区间与「水质历史趋势」日期一致',
+      fields: WQ_EXPORT_FIELDS.map(f => f.key === 'stnm' ? { ...f, checked: false } : f),
+      fetchRows: async () => (await fetchAllWqHistory()).map(wqExportRow),
+      filename: () => `${name}_水质历史${s && e ? `_${s}~${e}` : ''}`,
+      sheetName: '历史数据',
+    });
+  }
+
   function resetFilters() {
     state.selected.clear();
     $('site-kw').value = '';
@@ -809,6 +898,8 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
 
   $('btn-query').addEventListener('click', loadMonitoring);
   $('btn-reset').addEventListener('click', resetFilters);
+  $('btn-export').addEventListener('click', exportWqList);
+  $('hist-export-btn').addEventListener('click', exportWqHistory);
   $('tbody').addEventListener('click', e => {
     const btn = e.target.closest('.detail-btn');
     if (!btn) return;

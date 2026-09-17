@@ -7,6 +7,8 @@
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/station-sort.js"></script>
+<script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -231,6 +233,7 @@ tbody tr:hover td{background:#fafafa}
     <div class="card result-card">
       <div class="result-toolbar">
         <button type="button" class="btn btn-primary" id="main-gate-stats-btn">主要闸站水位统计图</button>
+        <button type="button" class="btn btn-default" id="gate-export-btn">导出</button>
       </div>
       <div class="tbl-wrap" id="list-tbl-wrap">
         <table>
@@ -241,7 +244,7 @@ tbody tr:hover td{background:#fafafa}
               <th>闸前水位 (m)</th>
               <th>闸后水位 (m)</th>
               <th>瞬时流量 (m³/s)</th>
-              <th>累计流量 (万m³)</th>
+              <th>累计水量 (万m³)</th>
               <th>采集时间</th>
               <th class="col-vol">电压 (V)</th>
               <th>操作</th>
@@ -378,6 +381,7 @@ tbody tr:hover td{background:#fafafa}
             <span style="white-space:nowrap">
               <button class="btn btn-primary" id="hist-query-btn">查询</button>
               <button class="btn btn-default" id="hist-reset-btn">重置</button>
+              <button class="btn btn-default" id="hist-export-btn">导出</button>
             </span>
         </div>
         <div class="tbl-wrap" id="hist-tbl-wrap">
@@ -1224,7 +1228,7 @@ function renderHistHead() {
     thead.innerHTML = `<tr>
       <th>监测日期</th>
       <th>瞬时流量 (m³/s)</th>
-      <th>累计流量 (万m³)</th>
+      <th>累计水量 (万m³)</th>
     </tr>`;
   } else {
     thead.innerHTML = `<tr>
@@ -1398,6 +1402,127 @@ async function reloadDetail() {
   }
 }
 
+/* ===== 导出（列表：当前筛选全量闸站；详情：勾选开度/水位/流量字段导出该站历史数据） ===== */
+const GATE_EXPORT_FIELDS = [
+  { key: 'siteName', label: '名称' },
+  { key: 'opening', label: '闸门开度 (m)' },
+  { key: 'upZ', label: '闸前水位 (m)' },
+  { key: 'downZ', label: '闸后水位 (m)' },
+  { key: 'q', label: '瞬时流量 (m³/s)' },
+  { key: 'tf', label: '累计水量 (万m³)' },
+  { key: 'tm', label: '采集时间' },
+  { key: 'vol', label: '电压 (V)' },
+];
+
+/** 列表导出：导出当前筛选条件下的全部闸站（非当前页） */
+function exportGateList() {
+  const list = (S.allRows && S.allRows.length) ? S.allRows : S.rows;
+  MonitorExport.download({
+    fields: GATE_EXPORT_FIELDS,
+    rows: list.map(r => ({
+      siteName: r.siteName, opening: fmtHolesOpen(r.holes),
+      upZ: fmtN2(r.upZ), downZ: fmtN2(r.downZ), q: fmtN3(r.q), tf: fmtN3(r.cumulativeFlow),
+      tm: fmtTm(r.tm), vol: fmtN2(r.vol),
+    })),
+    filename: () => `闸门监测_${fmtDate(new Date())}`,
+    sheetName: '闸门监测',
+  });
+}
+
+/** 详情历史全量取数：接口分页，循环拉完（上限 40 页，避免超长区间卡死浏览器） */
+async function fetchAllGateHistory(type) {
+  const rows = [];
+  const size = 500;
+  const s = dateToStart($('hist-start').value);
+  const e = dateToEnd($('hist-end').value);
+  for (let page = 1; page <= 40; page++) {
+    const p = new URLSearchParams();
+    p.set('siteId', S.current.siteId);
+    p.set('type', type);
+    p.set('page', String(page));
+    p.set('size', String(size));
+    if (s) p.set('startTime', s);
+    if (e) p.set('endTime', e);
+    const res = await fetch(`${API}/gate-monitor/history?${p}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const recs = Array.isArray(data?.records) ? data.records : [];
+    rows.push(...recs);
+    if (!recs.length || rows.length >= (data?.total || 0) || recs.length < size) break;
+  }
+  return rows;
+}
+
+/**
+ * 多类型按监测时间合并为一张宽表：时间点取并集，未勾选或该时刻无值的列为空；
+ * 与页面上「类型」下拉的单类型视图不同，导出允许一次带上多类字段
+ */
+function mergeGateHistoryRows(byType, checked) {
+  const keys = new Set(checked.map(f => f.key));
+  const openKeys = [...keys].filter(k => /^open\d+$/.test(k));
+  const map = new Map();
+  const slot = tm => {
+    const key = String(tm);
+    if (!map.has(key)) map.set(key, { tm: fmtTm(tm) });
+    return map.get(key);
+  };
+  if (keys.has('upZ') || keys.has('downZ')) {
+    (byType.waterLevel || []).forEach(r => {
+      const o = slot(r.tm);
+      o.upZ = fmtN2(r.upZ);
+      o.downZ = fmtN2(r.downZ);
+    });
+  }
+  if (openKeys.length) {
+    (byType.opening || []).forEach(r => {
+      const o = slot(r.tm);
+      openKeys.forEach(k => {
+        if (r[k] !== undefined) o[k] = fmtOpen(r[k]);
+      });
+    });
+  }
+  if (keys.has('q') || keys.has('tf')) {
+    (byType.flow || []).forEach(r => {
+      const o = slot(r.tm);
+      o.q = fmtN3(r.q);
+      o.tf = fmtN3(r.tf);
+    });
+  }
+  return [...map.values()].sort((a, b) => String(a.tm).localeCompare(String(b.tm)));
+}
+
+/** 详情导出：弹窗勾选开度/水位/流量字段，只拉取勾选字段所属类型的数据 */
+function exportGateHistory() {
+  if (!S.current || !S.current.siteId) return;
+  const cols = (HIST.openCols && HIST.openCols.length) ? HIST.openCols : collectOpenColsFromHoles(S.current.holes);
+  const fields = [{ key: 'tm', label: '监测时间' }];
+  cols.forEach(n => fields.push({ key: 'open' + n, label: `开度${n} (m)` }));
+  fields.push({ key: 'upZ', label: '闸前水位 (m)' });
+  fields.push({ key: 'downZ', label: '闸后水位 (m)' });
+  fields.push({ key: 'q', label: '瞬时流量 (m³/s)' });
+  fields.push({ key: 'tf', label: '累计水量 (万m³)' });
+
+  const siteName = S.current.siteName || '站点';
+  const s = $('hist-start').value || '';
+  const e = $('hist-end').value || '';
+  MonitorExport.open({
+    title: `${siteName} · 导出历史数据`,
+    tip: '勾选需要的字段（开度 / 水位 / 流量），导出表头只包含勾选字段；多类型按监测时间合并',
+    fields,
+    fetchRows: async (checked) => {
+      const keys = new Set(checked.map(f => f.key));
+      const openKeys = [...keys].filter(k => /^open\d+$/.test(k));
+      const byType = {};
+      if (keys.has('upZ') || keys.has('downZ')) byType.waterLevel = await fetchAllGateHistory('waterLevel');
+      if (openKeys.length) byType.opening = await fetchAllGateHistory('opening');
+      if (keys.has('q') || keys.has('tf')) byType.flow = await fetchAllGateHistory('flow');
+      return mergeGateHistoryRows(byType, checked);
+    },
+    filename: () => `${siteName}_闸门历史${s && e ? `_${s}~${e}` : ''}`,
+    sheetName: '历史数据',
+  });
+}
+
 function bindModal() {
   document.querySelectorAll('[data-close]').forEach(btn =>
     btn.addEventListener('click', () => closeModal(btn.dataset.close)));
@@ -1435,6 +1560,8 @@ function bindModal() {
   });
 
   bindHistTypeSelect();
+  bindAsyncClick($('gate-export-btn'), async () => { exportGateList(); }, { wait: 600, loadingText: '导出中...' });
+  bindAsyncClick($('hist-export-btn'), async () => { exportGateHistory(); }, { wait: 600, loadingText: '准备导出...' });
   bindAsyncClick($('chart-query-btn'), reloadDetail);
   bindAsyncClick($('hist-query-btn'), async () => {
     HIST.page = 1;

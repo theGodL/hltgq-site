@@ -57,8 +57,11 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     private static final List<String> FLOW_STATION_STCDS = Arrays.asList(
             "QSJSZ", "SMH", "NSS", "9000000004", "9000000005", "9000000027", "9000000002", "9000000001");
 
-    /** 流量图表取数窗口（分钟）：选中时间点前后各取该窗口内距时间点最近的一条流量 */
-    private static final long FLOW_WINDOW_MINUTES = 30;
+    /**
+     * 流量图表取数窗口（分钟）：选中时间点前后各取该窗口内距时间点最近的一条流量。
+     * 与页面时间点粒度（20 分钟）一致：窗口 ≤ 半粒度，避免相邻时间点重复命中同一条数据。
+     */
+    private static final long FLOW_WINDOW_MINUTES = 20;
 
     /**
      * 旧 STCD → 新 STCD（过渡期兼容：客户端可能仍持有旧页面/旧缓存，收到旧编号时自动映射到新编号）
@@ -317,7 +320,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             }
         }
 
-        // 3. 查询各标识在 [time−30min, time+30min] 内距时间点最近的一条瞬时流量
+        // 3. 查询各标识在 [time−20min, time+20min] 内距时间点最近的一条瞬时流量
         List<Map<String, Object>> rows = waterFlowMapper.selectClosestFlowBySites(
                 codes, time, time.minusMinutes(FLOW_WINDOW_MINUTES), time.plusMinutes(FLOW_WINDOW_MINUTES));
 
@@ -346,7 +349,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             hitDistance[idx] = distance;
         }
 
-        // 5. 按固定顺序组装；半小时内无入库数据的站点流量为 null（该时间点无报文）
+        // 5. 按固定顺序组装；20 分钟内无入库数据的站点流量为 null（该时间点无报文）
         List<FlowStationVO> result = new ArrayList<>();
         int hit = 0;
         for (int i = 0; i < FLOW_STATION_STCDS.size(); i++) {

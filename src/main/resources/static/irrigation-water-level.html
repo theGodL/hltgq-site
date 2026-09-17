@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>水位监测</title>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
 <script src="./lib/station-sort.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -134,6 +135,32 @@ tbody tr:hover td{background:#fafafa}
 .cell-stack .sub{color:#999;font-size:12px}
 .result-card.res-result{padding-top:0}
 
+/* ---- 列表操作列（详情） ---- */
+.act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s}
+.act-btn:hover{opacity:.7}
+
+/* ---- 灌区水位详情弹窗（历史水位，样式对齐闸门监测详情） ---- */
+.overlay{display:none;position:fixed;inset:0;background:transparent;z-index:1000;align-items:center;justify-content:center;padding:20px}
+.overlay.show{display:flex}
+.modal{background:#fff;border-radius:10px;width:1100px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;border:1px solid #e8e8e8;box-shadow:0 8px 28px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06)}
+/* 详情弹窗固定尺寸，不随数据多少伸缩 */
+#gr-hist-overlay .modal{width:1000px;height:min(720px,90vh)}
+.modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#fff}
+.modal-hd span{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
+.modal-actions{display:inline-flex;align-items:center;gap:2px}
+.modal-max,.modal-close{background:none;border:none;cursor:pointer;color:#8c8c8c;font-size:18px;line-height:1;width:28px;height:28px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:color .2s,background .2s}
+.modal-max:hover,.modal-close:hover{color:#262626;background:#f5f5f5}
+.modal-max svg{display:block}
+.modal-max .icon-restore{display:none}
+.modal.is-max .modal-max .icon-max{display:none}
+.modal.is-max .modal-max .icon-restore{display:block}
+.modal.is-max{width:calc(100vw - 40px)!important;height:calc(100vh - 40px)!important;max-width:none!important;max-height:none!important}
+.modal-bd{padding:0 20px 20px;overflow-y:auto;flex:1;min-height:0;background:#fff}
+.modal-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px;padding-top:16px}
+.modal-filter input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
+.modal-filter input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.modal-filter input[type=date]{width:140px}
+
 </style>
 </head>
 <body>
@@ -147,13 +174,13 @@ tbody tr:hover td{background:#fafafa}
   -->
 
   <div class="tab-bar">
-    <div class="tab-item active" data-tab="reservoir">花凉亭水库</div>
-    <div class="tab-item" data-tab="irrigation">花凉亭灌区</div>
+    <div class="tab-item active" data-tab="irrigation">花凉亭灌区</div>
+    <div class="tab-item" data-tab="reservoir">花凉亭水库</div>
     <div class="tab-item" data-tab="mth">麻塘湖灌区</div>
   </div>
 
   <!-- 花凉亭灌区：闸门监测闸前/闸后水位（/gate-monitor/monitoring），仅展示名称/闸前水位/闸后水位/采集时间 -->
-  <div class="panel" id="panel-irrigation">
+  <div class="panel active" id="panel-irrigation">
     <div class="card filter-card">
       <div class="filter-bar">
         <div class="filter-item">
@@ -169,6 +196,7 @@ tbody tr:hover td{background:#fafafa}
         <div class="filter-actions">
           <button class="btn btn-primary" id="gr-query-btn">查询</button>
           <button class="btn btn-default" id="gr-reset-btn">重置</button>
+          <button class="btn btn-default" id="gr-export-btn">导出</button>
         </div>
       </div>
     </div>
@@ -182,6 +210,7 @@ tbody tr:hover td{background:#fafafa}
               <th>闸前水位 (m)</th>
               <th>闸后水位 (m)</th>
               <th>采集时间</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody id="gr-tbl-body"></tbody>
@@ -190,7 +219,7 @@ tbody tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <div class="panel active" id="panel-reservoir">
+  <div class="panel" id="panel-reservoir">
     <div class="card filter-card">
       <div class="filter-bar" id="res-filter-bar">
         <div class="filter-item" id="range-date-wrap">
@@ -329,6 +358,48 @@ tbody tr:hover td{background:#fafafa}
   </div>
 </div>
 
+<!-- 灌区水位详情：历史水位（/gate-monitor/history?type=waterLevel），仅水位，无趋势图 -->
+<div class="overlay" id="gr-hist-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span id="gr-hist-title">水位历史数据</span>
+      <div class="modal-actions">
+        <button type="button" class="modal-max" title="最大化" aria-label="最大化">
+          <svg class="icon-max" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.5V2h3.5M11.5 2H15v3.5M15 11.5V15h-3.5M5.5 15H2v-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="icon-restore" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 5h9v9H5V5z" stroke="currentColor" stroke-width="1.4"/><path d="M2 11V2h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="modal-close" data-close="gr-hist-overlay">×</button>
+      </div>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-filter">
+        <label style="color:#666;white-space:nowrap">日期</label>
+        <input type="date" id="gr-hist-start">
+        <span class="date-sep">—</span>
+        <input type="date" id="gr-hist-end">
+        <span style="white-space:nowrap">
+          <button class="btn btn-primary" id="gr-hist-query-btn">查询</button>
+          <button class="btn btn-default" id="gr-hist-reset-btn">重置</button>
+          <button class="btn btn-default" id="gr-hist-export-btn">导出</button>
+        </span>
+      </div>
+      <div class="tbl-wrap" id="gr-hist-tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>监测日期</th>
+              <th>闸前水位 (m)</th>
+              <th>闸后水位 (m)</th>
+            </tr>
+          </thead>
+          <tbody id="gr-hist-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="gr-hist-pg"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -338,6 +409,12 @@ const isErr = v => v !== null && v !== undefined && v !== '' && +v === -9991;
 const isMissing = v => v !== null && v !== undefined && v !== '' && +v === -999;
 const fmtN = v => (v === null || v === undefined || v === '') ? '-' : (isMissing(v) ? '' : (isErr(v) ? '--' : v));
 const fmtN2 = v => (v === null || v === undefined || v === '') ? '-' : (isMissing(v) ? '' : (isErr(v) ? '--' : (+v).toFixed(2)));
+/** 导出取值：正常值保留数值（便于 Excel 计算），-9991/-999 交给 MonitorExport 统一转换 */
+const exportNum = v => {
+  if (v === null || v === undefined || v === '') return '';
+  const n = +v;
+  return Number.isFinite(n) ? +n.toFixed(2) : v;
+};
 const fmtCmp = v => {
   if (v === null || v === undefined || v === '') return '-';
   if (isMissing(v)) return '';
@@ -385,6 +462,10 @@ function bindAsyncClick(el, asyncFn, opts = {}) {
   });
 }
 const S = { resTab: 'river',
+  // resLoaded：水库水情表是否已取过数（默认 Tab 为花凉亭灌区，水库数据首次切入该 Tab 时加载）
+  resLoaded: false,
+  // grRows：花凉亭灌区（闸站）水位列表当前数据，供导出使用
+  grRows: [],
   resRows: { river: [], reservoir: [], brief: [] },
   resRiverStcds: ['3206400001', '320640000A'], resReservoirStcds: ['3206400007'],
   resYearsRows: [], resYearsStations: [],
@@ -515,10 +596,12 @@ async function loadGateLevels() {
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    renderGateLevels(Array.isArray(data) ? data : []);
+    S.grRows = Array.isArray(data) ? data : [];
+    renderGateLevels(S.grRows);
   } catch (e) {
     console.error('闸门水位加载失败', e);
-    tbody.innerHTML = '<tr><td colspan="4" class="empty">数据加载失败，请重试</td></tr>';
+    S.grRows = [];
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">数据加载失败，请重试</td></tr>';
   } finally {
     setLoading(wrap, false);
   }
@@ -537,15 +620,16 @@ async function grReset() {
 function renderGateLevels(rows) {
   const tbody = $('gr-tbl-body');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="4" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
     return;
   }
-  tbody.innerHTML = rows.map(r => `
+  tbody.innerHTML = rows.map((r, i) => `
     <tr>
       <td>${esc(fmtN(r.siteName))}</td>
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
       <td>${fmtTm(r.tm)}</td>
+      <td>${r.siteId ? `<button class="act-btn" data-action="detail" data-idx="${i}">详情</button>` : ''}</td>
     </tr>
   `).join('');
 }
@@ -613,6 +697,8 @@ function bindTabs() {
       const panel = $('panel-' + tab.dataset.tab);
       if (panel) panel.classList.add('active');
       if (tab.dataset.tab === 'irrigation') { ensureGrSites(); loadGateLevels(); }
+      // 默认 Tab 为花凉亭灌区，水库水情表首次切入该 Tab 时再取数（避免进页多一次无用查询）
+      if (tab.dataset.tab === 'reservoir' && !S.resLoaded) { S.resLoaded = true; loadResData(); }
       if (tab.dataset.tab === 'mth') renderMthEmpty();
     });
   });
@@ -1036,6 +1122,235 @@ function initYearsMonth() {
     `<option value="${i + 1}">${pad(i + 1)}</option>`).join('');
 }
 
+const GR_EXPORT_FIELDS = [
+  { key: 'siteName', label: '名称' },
+  { key: 'upZ', label: '闸前水位 (m)' },
+  { key: 'downZ', label: '闸后水位 (m)' },
+  { key: 'tm', label: '采集时间' },
+];
+
+/** 花凉亭灌区（闸站）水位导出：导出当前筛选条件下的全部站点 */
+function exportGrExcel() {
+  MonitorExport.download({
+    fields: GR_EXPORT_FIELDS,
+    rows: S.grRows.map(r => ({
+      siteName: r.siteName, upZ: exportNum(r.upZ), downZ: exportNum(r.downZ), tm: fmtTm(r.tm),
+    })),
+    filename: () => `花凉亭灌区水位_${fmtDate(new Date())}`,
+    sheetName: '闸站水位',
+  });
+}
+
+/* ===== 灌区水位详情：历史水位（闸门监测历史接口 type=waterLevel，仅闸前/闸后水位） ===== */
+const GR_HIST = { row: null, page: 1, size: 20, total: 0, rows: [] };
+const dateToStart = v => v ? `${v} 00:00:00` : null;
+const dateToEnd = v => v ? `${v} 23:59:59` : null;
+
+/** 弹窗日期默认近 7 天（与闸门监测详情一致） */
+function setGrHistDefaultDates() {
+  const now = new Date();
+  $('gr-hist-start').value = fmtDate(new Date(now - 7 * 24 * 3600e3));
+  $('gr-hist-end').value = fmtDate(now);
+}
+
+function openModal(id) {
+  const el = $(id);
+  if (el) el.classList.add('show');
+}
+
+function closeModal(id) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.remove('show');
+  const modal = el.querySelector('.modal');
+  if (!modal) return;
+  modal.classList.remove('is-max');
+  const btn = modal.querySelector('.modal-max');
+  if (btn) { btn.title = '最大化'; btn.setAttribute('aria-label', '最大化'); }
+}
+
+/** 列表「详情」：弹窗展示该站历史水位（仅水位，无趋势图） */
+function openGrHist(row) {
+  GR_HIST.row = row;
+  $('gr-hist-title').textContent = `${row.siteName || '站点'} · 水位历史数据`;
+  setGrHistDefaultDates();
+  GR_HIST.page = 1;
+  GR_HIST.total = 0;
+  openModal('gr-hist-overlay');
+  loadGrHist();
+}
+
+/** 历史水位查询参数（type 固定 waterLevel；日期区间转 [start 00:00:00, end 23:59:59]） */
+function buildGrHistParams(page, size) {
+  const p = new URLSearchParams();
+  p.set('siteId', GR_HIST.row.siteId);
+  p.set('type', 'waterLevel');
+  p.set('page', String(page));
+  p.set('size', String(size));
+  const s = dateToStart($('gr-hist-start').value);
+  const e = dateToEnd($('gr-hist-end').value);
+  if (s) p.set('startTime', s);
+  if (e) p.set('endTime', e);
+  return p;
+}
+
+async function loadGrHist() {
+  if (!GR_HIST.row || !GR_HIST.row.siteId) return;
+  const wrap = $('gr-hist-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    const res = await fetch(`${API}/gate-monitor/history?${buildGrHistParams(GR_HIST.page, GR_HIST.size)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    GR_HIST.rows = Array.isArray(data.records) ? data.records : [];
+    GR_HIST.total = data.total || 0;
+    GR_HIST.page = data.current || GR_HIST.page;
+    GR_HIST.size = data.size || GR_HIST.size;
+    renderGrHistRows();
+  } catch (e) {
+    console.error('历史水位加载失败', e);
+    GR_HIST.rows = [];
+    GR_HIST.total = 0;
+    $('gr-hist-body').innerHTML = '<tr><td colspan="3" class="empty">数据加载失败，请重试</td></tr>';
+  } finally {
+    setLoading(wrap, false);
+    renderGrHistPager();
+  }
+}
+
+/** 水位列口径同列表：2 位小数；-9991 异常→'--'、-999 不存在→空白 */
+function renderGrHistRows() {
+  const tbody = $('gr-hist-body');
+  if (!GR_HIST.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = GR_HIST.rows.map(r => `
+    <tr>
+      <td>${fmtTm(r.tm)}</td>
+      <td>${fmtN2(r.upZ)}</td>
+      <td>${fmtN2(r.downZ)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderGrHistPager() {
+  const bar = $('gr-hist-pg');
+  if (!bar) return;
+  const pages = Math.max(1, Math.ceil(GR_HIST.total / GR_HIST.size) || 1);
+  if (GR_HIST.page > pages) GR_HIST.page = pages;
+
+  let html = `<span class="pg-info">共 ${GR_HIST.total} 条</span>`;
+  html += `<select class="pg-size" id="gr-hist-pg-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === GR_HIST.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${GR_HIST.page - 1}" ${GR_HIST.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+  const maxShow = 5;
+  let from = Math.max(1, GR_HIST.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === GR_HIST.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${GR_HIST.page + 1}" ${GR_HIST.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === GR_HIST.page || p < 1 || p > pages) return;
+      GR_HIST.page = p;
+      loadGrHist();
+    });
+  });
+  const sizeSel = $('gr-hist-pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      GR_HIST.size = +sizeSel.value;
+      GR_HIST.page = 1;
+      loadGrHist();
+    });
+  }
+}
+
+/* ---- 详情导出（勾选字段，公共模块 monitor-export） ---- */
+const GR_HIST_EXPORT_FIELDS = [
+  { key: 'tm', label: '监测日期' },
+  { key: 'upZ', label: '闸前水位 (m)' },
+  { key: 'downZ', label: '闸后水位 (m)' },
+];
+
+/** 详情导出全量取数：接口分页，循环拉完（上限 40 页，避免超长区间卡死浏览器） */
+async function fetchAllGrHist() {
+  const size = 500;
+  const rows = [];
+  for (let page = 1; page <= 40; page++) {
+    const res = await fetch(`${API}/gate-monitor/history?${buildGrHistParams(page, size)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const recs = Array.isArray(data.records) ? data.records : [];
+    rows.push(...recs);
+    if (!recs.length || rows.length >= (data.total || 0) || recs.length < size) break;
+  }
+  return rows;
+}
+
+/** 详情导出：弹窗勾选字段（监测日期/闸前水位/闸后水位），表头只含勾选字段 */
+function exportGrHistData() {
+  const siteName = (GR_HIST.row && GR_HIST.row.siteName) || '站点';
+  const s = $('gr-hist-start').value || '';
+  const e = $('gr-hist-end').value || '';
+  MonitorExport.open({
+    title: `${siteName} · 导出历史水位`,
+    tip: '勾选需要的字段，导出表头只包含勾选字段；取数区间与弹窗日期筛选一致',
+    fields: GR_HIST_EXPORT_FIELDS,
+    fetchRows: async () => (await fetchAllGrHist()).map(r => ({
+      tm: fmtTm(r.tm),
+      upZ: exportNum(r.upZ),
+      downZ: exportNum(r.downZ),
+    })),
+    filename: () => `${siteName}_水位历史${s && e ? `_${s}~${e}` : ''}`,
+    sheetName: '水位历史',
+  });
+}
+
+/** 弹窗交互：关闭按钮/遮罩关闭/Escape/最大化，及弹窗内查询、重置、导出 */
+function bindGrHistModal() {
+  document.querySelectorAll('[data-close]').forEach(btn =>
+    btn.addEventListener('click', () => closeModal(btn.dataset.close)));
+  document.querySelectorAll('.overlay').forEach(el =>
+    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); }));
+  document.querySelectorAll('.modal-max').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const modal = btn.closest('.modal');
+      if (!modal) return;
+      modal.classList.toggle('is-max');
+      const maxed = modal.classList.contains('is-max');
+      btn.title = maxed ? '还原' : '最大化';
+      btn.setAttribute('aria-label', btn.title);
+    });
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const open = document.querySelector('.overlay.show');
+    if (open) closeModal(open.id);
+  });
+
+  bindAsyncClick($('gr-hist-query-btn'), async () => {
+    GR_HIST.page = 1;
+    await loadGrHist();
+  });
+  bindAsyncClick($('gr-hist-reset-btn'), async () => {
+    setGrHistDefaultDates();
+    GR_HIST.page = 1;
+    await loadGrHist();
+  }, { loadingText: '重置中...' });
+  bindAsyncClick($('gr-hist-export-btn'), async () => { exportGrHistData(); }, { wait: 800, loadingText: '准备导出...' });
+}
+
 async function exportResExcel() {
   const meta = RES_META[S.resTab];
   const headers = getResHeaders();
@@ -1100,13 +1415,24 @@ async function init() {
   bindAsyncClick($('period-query-btn'), queryRes);
   bindAsyncClick($('period-reset-btn'), resetRes, { loadingText: '重置中...' });
   bindAsyncClick($('res-export-btn'), async () => { exportResExcel(); }, { wait: 1000, loadingText: '导出中...' });
+  bindAsyncClick($('gr-export-btn'), async () => { exportGrExcel(); }, { wait: 800, loadingText: '导出中...' });
+  bindGrHistModal();
+  // 列表「详情」：事件委托，取当前数据行（含 siteId）弹窗查历史水位
+  $('gr-tbl-body').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="detail"]');
+    if (!btn) return;
+    const row = S.grRows[+btn.dataset.idx];
+    if (row) openGrHist(row);
+  });
   bindAsyncClick($('mth-query-btn'), mthQuery);
   bindAsyncClick($('mth-reset-btn'), mthReset);
   renderMthEmpty();
   initPeriodCks();
   initResCks();
   initYearsMonth();
-  await loadResData();
+  // 默认 Tab = 花凉亭灌区（闸前/闸后水位）；水库水情表在首次切入「花凉亭水库」Tab 时加载
+  await ensureGrSites();
+  await loadGateLevels();
   // 站点排序（一个按钮、一个抽屉）：抽屉内分两组，水位站与闸站都在一起排
   // 水位站组 = 水位序列（waterLevel：河道/水库水情表、日时段水情表、水情简报、多年同期水情共用），
   // 闸站组 = 闸门序列（gate：与闸门监测页共用）；保存时按组分别落库

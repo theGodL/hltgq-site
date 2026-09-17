@@ -7,6 +7,8 @@
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/station-sort.js"></script>
+<script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -180,6 +182,7 @@ tbody tr:hover td{background:#fafafa}
     <div class="card result-card">
       <div class="result-toolbar">
         <button type="button" class="btn btn-primary" id="flow-line-btn">流量过程线</button>
+        <button type="button" class="btn btn-default" id="flow-export-btn">导出</button>
       </div>
       <div class="tbl-wrap" id="list-tbl-wrap">
         <table>
@@ -188,7 +191,7 @@ tbody tr:hover td{background:#fafafa}
               <th>站点名称</th>
               <th>站点编号</th>
               <th>瞬时流量 (m³/s)</th>
-              <th>累计流量 (万m³)</th>
+              <th>累计水量 (万m³)</th>
               <th>采集时间</th>
               <th class="col-vol">电压 (V)</th>
               <th>操作</th>
@@ -230,7 +233,7 @@ tbody tr:hover td{background:#fafafa}
               <th>站点名称</th>
               <th>站点编号</th>
               <th>瞬时流量 (m³/s)</th>
-              <th>累计流量 (万m³)</th>
+              <th>累计水量 (万m³)</th>
               <th>采集时间</th>
               <th class="col-vol">电压 (V)</th>
               <th>操作</th>
@@ -286,13 +289,14 @@ tbody tr:hover td{background:#fafafa}
           <input type="date" id="hist-end">
           <button class="btn btn-primary" id="hist-query-btn">查询</button>
           <button class="btn btn-default" id="hist-reset-btn">重置</button>
+          <button class="btn btn-default" id="hist-export-btn">导出</button>
         </div>
         <div class="tbl-wrap" id="hist-tbl-wrap">
           <table>
             <thead>
               <tr>
                 <th>瞬时流量 (m³/s)</th>
-                <th>累计流量 (万m³)</th>
+                <th>累计水量 (万m³)</th>
                 <th>采集时间</th>
               </tr>
             </thead>
@@ -872,6 +876,72 @@ async function reloadHistory() {
   }
 }
 
+/* ===== 导出（列表：当前筛选全量站点；详情：按勾选字段导出该站点历史数据） ===== */
+const FLOW_EXPORT_FIELDS = [
+  { key: 'stnm', label: '站点名称' },
+  { key: 'stcd', label: '站点编号' },
+  { key: 'q', label: '瞬时流量 (m³/s)' },
+  { key: 'tf', label: '累计水量 (万m³)' },
+  { key: 'tm', label: '采集时间' },
+  { key: 'vol', label: '电压 (V)' },
+];
+
+/** 列表导出：导出当前筛选条件下的全部站点（非当前页） */
+function exportFlowList() {
+  const list = (S.allRows && S.allRows.length) ? S.allRows : S.rows;
+  MonitorExport.download({
+    fields: FLOW_EXPORT_FIELDS,
+    rows: list.map(r => ({
+      stnm: r.stnm, stcd: r.stcd, q: fmtN3(r.q), tf: fmtN3(r.cumulativeFlow),
+      tm: fmtTm(r.tm), vol: fmtN2(r.vol),
+    })),
+    filename: () => `流量监测_${fmtDate(new Date())}`,
+    sheetName: '流量监测',
+  });
+}
+
+/** 详情历史全量取数：接口分页，循环拉完（上限 40 页，避免超长区间卡死浏览器） */
+async function fetchAllFlowHistory() {
+  const rows = [];
+  const size = 500;
+  const s = dateToStart($('hist-start').value);
+  const e = dateToEnd($('hist-end').value);
+  for (let page = 1; page <= 40; page++) {
+    const p = new URLSearchParams();
+    p.set('stcd', S.current.site || S.current.stcd);
+    p.set('page', String(page));
+    p.set('size', String(size));
+    if (s) p.set('startTime', s);
+    if (e) p.set('endTime', e);
+    const data = await fetchJson(`${API}/flow-monitor/history?${p}`);
+    const recs = Array.isArray(data?.records) ? data.records : [];
+    rows.push(...recs);
+    if (!recs.length || rows.length >= (data?.total || 0) || recs.length < size) break;
+  }
+  return rows;
+}
+
+/** 详情导出：弹窗勾选字段，表头只带勾选字段 */
+function exportFlowHistory() {
+  const name = S.current ? (S.current.stnm || S.current.stcd || '站点') : '站点';
+  const s = $('hist-start').value || '';
+  const e = $('hist-end').value || '';
+  MonitorExport.open({
+    title: `${name} · 导出历史数据`,
+    tip: '勾选需要的字段，导出表头只包含勾选字段',
+    fields: [
+      { key: 'tm', label: '采集时间' },
+      { key: 'q', label: '瞬时流量 (m³/s)' },
+      { key: 'tf', label: '累计水量 (万m³)' },
+    ],
+    fetchRows: async () => (await fetchAllFlowHistory()).map(r => ({
+      tm: fmtTm(r.tm), q: fmtN3(r.q), tf: fmtN3(r.tf),
+    })),
+    filename: () => `${name}_流量历史${s && e ? `_${s}~${e}` : ''}`,
+    sheetName: '历史数据',
+  });
+}
+
 function bindModal() {
   document.querySelectorAll('[data-close]').forEach(btn =>
     btn.addEventListener('click', () => closeModal(btn.dataset.close)));
@@ -902,6 +972,8 @@ function bindModal() {
   });
 
   bindAsyncClick($('chart-query-btn'), reloadChart);
+  bindAsyncClick($('flow-export-btn'), async () => { exportFlowList(); }, { wait: 600, loadingText: '导出中...' });
+  bindAsyncClick($('hist-export-btn'), async () => { exportFlowHistory(); }, { wait: 600, loadingText: '准备导出...' });
   bindAsyncClick($('hist-query-btn'), async () => {
     HIST.page = 1;
     await reloadHistory();
@@ -970,13 +1042,13 @@ function normalizeStationFlow(list) {
   });
 }
 
-/** 时间点下拉：一天 48 个半小时点位（与闸门页水位统计图一致） */
-function buildFlowStatsHalfHourOptions() {
+/** 时间点下拉：一天 72 个 20 分钟点位（与数据上送频率匹配，取数窗口见后端 /flow-monitor/station-flow） */
+function buildFlowStatsTimeOptions() {
   const sel = $('flow-stats-time');
   if (!sel) return;
   let html = '';
   for (let h = 0; h < 24; h++) {
-    for (const m of [0, 30]) {
+    for (const m of [0, 20, 40]) {
       const val = `${pad(h)}:${pad(m)}`;
       html += `<option value="${val}">${val}</option>`;
     }
@@ -984,10 +1056,11 @@ function buildFlowStatsHalfHourOptions() {
   sel.innerHTML = html;
 }
 
+/** 默认时间点：最近的 20 分钟整点（如 18:27 → 18:20） */
 function setFlowStatsDefaultFilters() {
   const now = new Date();
   $('flow-stats-date').value = fmtDate(now);
-  $('flow-stats-time').value = `${pad(now.getHours())}:${now.getMinutes() < 30 ? '00' : '30'}`;
+  $('flow-stats-time').value = `${pad(now.getHours())}:${pad(Math.floor(now.getMinutes() / 20) * 20)}`;
 }
 
 async function fetchStationFlow() {
@@ -1110,7 +1183,7 @@ function openFlowStatsModal() {
 }
 
 function bindFlowStatsModal() {
-  buildFlowStatsHalfHourOptions();
+  buildFlowStatsTimeOptions();
   $('flow-line-btn')?.addEventListener('click', openFlowStatsModal);
   bindAsyncClick($('flow-stats-query-btn'), reloadFlowStatsChart);
   bindAsyncClick($('flow-stats-reset-btn'), async () => {
