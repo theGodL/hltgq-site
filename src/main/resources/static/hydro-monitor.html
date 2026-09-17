@@ -260,6 +260,13 @@ async function queryPptn() {
   } catch(err) { setPivotState('pptn', 'error'); console.error(err); }
 }
 
+/** 进行中水文日的桶标签：水文日 8:00 切分、按区间右端点标注，今日 08:00 起至此刻的水文日标签为「明日 08:00」 */
+function inProgressHydroLabel() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${fmtDate(d)} 08:00:00`;
+}
+
 function generatePptnBuckets(startDate, endDate) {
   const buckets = [];
   const d = new Date(startDate + 'T00:00:00');
@@ -268,6 +275,12 @@ function generatePptnBuckets(startDate, endDate) {
     buckets.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} 08:00:00`);
     d.setDate(d.getDate() + 1);
   }
+  // 实时雨情须含「进行中水文日」（今日 08:00 起至此刻）：其标签为明日 08:00，
+  // 上面序列止于 endDate 标签（区间右端点为 endDate 08:00，属已完成水文日，
+  // 末行实为「前一日 08:00 ~ endDate 08:00」），不补这一行则刚下的雨看不到
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (end >= today) buckets.push(inProgressHydroLabel());
   return buckets;
 }
 
@@ -509,6 +522,9 @@ function renderPivotPage(type, data, isDaily) {
   const pageBuckets = buckets.slice(start, start + size);
   const fmt1 = v => v > 0 ? v.toFixed(1) : '';
   const fmt2 = v => v > 0 ? v.toFixed(2) : '';
+  // 进行中水文日单独标注，避免与「前一完整水文日」的行混看
+  const ipLabel = inProgressHydroLabel();
+  const fmtBucket = b => b === ipLabel ? `${fmtDate(new Date())} 08:00 ~ 现在` : b;
 
   let thead = '<tr><th>时间</th>';
   stations.forEach(s => { thead += `<th>${s.stnm || (s.stcd||'').trim()}</th>`; });
@@ -531,7 +547,7 @@ function renderPivotPage(type, data, isDaily) {
   pageBuckets.forEach(bucket => {
     const m = bucketMap.get(bucket) || new Map();
     let rowSum = 0;
-    html += `<tr><td>${bucket}</td>`;
+    html += `<tr><td>${fmtBucket(bucket)}</td>`;
     stations.forEach((s, i) => {
       const val = m.get((s.stcd || '').trim()) || 0;
       html += `<td>${fmt1(val)}</td>`;
@@ -616,6 +632,8 @@ function exportPivot(type) {
   const { stations, buckets, bucketMap } = data;
   const fmt1 = v => v > 0 ? +v.toFixed(1) : '';
   const fmt2 = v => v > 0 ? +v.toFixed(2) : '';
+  const ipLabel = inProgressHydroLabel();
+  const fmtBucket = b => b === ipLabel ? `${fmtDate(new Date())} 08:00 ~ 现在` : b;
 
   const header = ['时间', ...stations.map(s => s.stnm || (s.stcd||'').trim())];
   if (isDaily) header.push('合计(mm)', '平均(mm)');
@@ -626,7 +644,7 @@ function exportPivot(type) {
   buckets.forEach(bucket => {
     const m = bucketMap.get(bucket) || new Map();
     let rowSum = 0;
-    const row = [bucket];
+    const row = [fmtBucket(bucket)];
     stations.forEach((s, i) => {
       const val = m.get((s.stcd || '').trim()) || 0;
       row.push(fmt1(val));

@@ -120,6 +120,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
 
 /* 水库结果卡头部：子 Tab + 导出 */
 .res-toolbar{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f0f0f0;margin:0 -20px 12px;padding:0 20px}
+.tbl-note{font-size:12px;color:#999;margin:-4px 0 8px}
 .res-tabs{display:flex;gap:0;flex-wrap:wrap}
 .res-tab{padding:12px 14px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none;white-space:nowrap}
 .res-tab:hover{color:#1677ff}
@@ -295,6 +296,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
           导出
         </button>
       </div>
+      <div class="tbl-note" id="res-note" style="display:none">各站数值 = “今日 08:00 起至最新观测”的累计降雨量（水文日 8 时切分，与灌区“当前降雨量”同口径）；“-”表示该站无观测数据。</div>
       <div class="tbl-wrap" id="res-tbl-wrap">
         <table>
           <thead id="res-thead"></thead>
@@ -598,6 +600,9 @@ function setModalDefaultDates() {
 function updateResFilterUI() {
   const tab = RES.tab;
   const filterCard = $('res-filter-card');
+  // 实时雨情口径说明：仅实时雨情显示（各站数值 = 今日 8:00 起累计）
+  const note = $('res-note');
+  if (note) note.style.display = tab === 'realtime' ? '' : 'none';
   // 实时雨情：无日期、无查询/重置，进入即拉最新
   if (tab === 'realtime') {
     filterCard.style.display = 'none';
@@ -1025,10 +1030,11 @@ function stationVals(stations, values) {
 }
 
 function buildPivotAoa(stations, rows, opts) {
-  const { timeKey, withSum, withTotal, showEmpty } = opts;
+  const { timeKey, withSum, withTotal, showEmpty, timeLabel } = opts;
+  const firstCol = timeLabel || '监测日期';
   const headers = withSum
-    ? ['监测日期', ...stations.map(s => s.stnm), '合计 (mm)', '平均值 (mm)']
-    : ['监测日期', ...stations.map(s => s.stnm), '平均值 (mm)'];
+    ? [firstCol, ...stations.map(s => s.stnm), '合计 (mm)', '平均值 (mm)']
+    : [firstCol, ...stations.map(s => s.stnm), '平均值 (mm)'];
   const aoa = [headers];
   const colSums = stations.map(() => 0);
   let sumTotal = 0;
@@ -1104,16 +1110,16 @@ async function loadResData() {
 
     if (RES.tab === 'realtime') {
       // stations 横向：监测日期 + 各站列；不传日期，取实时最新
-      // 使用 days[0] 的 DYP 增量聚合值（与日雨情一致），而非 latestDrp 瞬时值
+      // 数值取 stations[].latestDrp = 当前水文日（今日 8:00 起至今）的 DYP 正向累计增量，
+      // 与灌区实时雨情「当前雨量」（gq-rainfall.drp）、/station-metrics 的 drp 三处同源；
+      // 不能用 days[0]：默认单日返回的是「最近完整水文日」(昨日 8:00~今日 8:00)，刚下的雨不在其中
       const data = await fetchJson(`${API}/st-pptn-r/reservoir-rainfall`);
       const stations = data.stations || [];
-      const days = data.days || [];
-      const dayValues = days.length ? (days[0].values || {}) : {};
       const values = {};
       let latestTm = null;
       stations.forEach(s => {
-        const dayVal = dayValues[s.stcd];
-        values[s.stcd] = (dayVal == null || dayVal === '') ? null : +dayVal;
+        const drp = s.latestDrp;
+        values[s.stcd] = (drp == null || drp === '') ? null : +drp;
         if (s.latestTm) {
           const t = String(s.latestTm);
           if (!latestTm || t > latestTm) latestTm = t;
@@ -1121,13 +1127,14 @@ async function loadResData() {
       });
       const nums = stations.map(s => values[s.stcd]).filter(v => v != null && Number.isFinite(v));
       const sum = nums.reduce((a, b) => a + b, 0);
-      const avg = days.length ? (+(days[0].avg) || 0) : (nums.length ? sum / nums.length : 0);
+      const avg = stations.length ? sum / stations.length : 0;
       const built = buildPivotAoa(stations, [{
         day: latestTm || '实时',
         values,
         avg,
       }], {
         timeKey: 'day',
+        timeLabel: '最新观测时间',
         withSum: true,
         withTotal: false, // 实时雨情仅一行数据，总计行冗余无意义，不显示
         showEmpty: true,
