@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * 征收/收缴统计 VO：一次返回「各区域征收情况」与「月度收缴趋势」两段数据（供两张柱状折线组合图使用）。
  *
- * <p>两段数据共用同一套指标与单位：
+ * <p>两段数据共用同一套指标与单位（表单入库即展示单位，业主 2026-09-17 确认合计口径为万元）：
  * <ul>
  *   <li>柱 = 应收水费 / 已收水费（万元，2 位截断）</li>
  *   <li>折线 = 水费收缴率（%，1 位截断，为 null 时折线断点）</li>
@@ -41,10 +41,10 @@ public class WaterUseFeeCollectionVO {
         /** 区域（用水户名称，如望江县） */
         private String region;
 
-        /** 应收水费(万元)：该区域 hsfvdh 求和（元 → 万元，2 位截断）；无应收数据为 null */
+        /** 应收水费(万元)：该区域 hsfvdh 求和（表单单位即万元，2 位截断）；无应收数据为 null */
         private BigDecimal receivable;
 
-        /** 已收水费(万元)：该区域 vdhlhm 求和（元 → 万元，2 位截断）；无已收数据为 null */
+        /** 已收水费(万元)：该区域 vdhlhm 求和（表单单位即万元，2 位截断）；无已收数据为 null */
         private BigDecimal received;
 
         /** 水费收缴率(%)：已收合计 ÷ 应收合计 × 100（1 位截断）；应收缺失或 ≤0 为 null */
@@ -58,10 +58,10 @@ public class WaterUseFeeCollectionVO {
         /** 月份（yyyy-MM） */
         private String month;
 
-        /** 应收水费(万元)：当月 hsfvdh 求和（元 → 万元，2 位截断）；当月无应收数据为 null */
+        /** 应收水费(万元)：当月 hsfvdh 求和（表单单位即万元，2 位截断）；当月无应收数据为 null */
         private BigDecimal receivable;
 
-        /** 已收水费(万元)：当月 vdhlhm 求和（元 → 万元，2 位截断）；当月无已收数据为 null */
+        /** 已收水费(万元)：当月 vdhlhm 求和（表单单位即万元，2 位截断）；当月无已收数据为 null */
         private BigDecimal received;
 
         /** 水费收缴率(%)：当月已收 ÷ 当月应收 × 100（1 位截断）；应收缺失或 ≤0 为 null */

@@ -13,7 +13,8 @@ import java.util.List;
  * 用水总结取数 Mapper（水费计算表单 t_auto_hltgq_yn8cm_gfiidm）。
  * <p>业主手动录入；统计周期为区间字段 xxmefs（物理列 xxmefs_min / xxmefs_max）。
  * <p>字段口径：ztmhwx 水费编号 / fbnomc 用水单位 / xxmefs 统计周期（区间）/
- * mlljya 计划供水量(m³) / lgwutj 执行水价(元/m³) / hsfvdh 应收水费(元)。
+ * mlljya 计划供水量(万m³) / lgwutj 执行水价(元/m³) / hsfvdh 应收水费(万元) / vdhlhm 已收水费(万元)
+ * ——均入库即展示单位（业主 2026-09-17 确认），后端只按展示精度截断、不做换算。
  * <p>归桶锚点 = 统计周期区间终点 xxmefs_max（跨桶按终点，终点缺失回退起点，业主 2026-09-11 确认）；
  * 用水量直取 mlljya，不做推算；后端按「周期锚点归桶」（月/灌季/年）聚合，不在库侧做日期截断。
  * <p>征收/收缴统计另经用水户外键 xqaoxx 左连用水户表 t_auto_hltgq_yn8cm_kooivg 取区域名 iiatzj。
@@ -26,7 +27,7 @@ public interface WaterUseSummaryMapper {
      *
      * @param startTime 窗口起点（桶范围外扩后的整桶边界，必填）
      * @param endTime   窗口终点（必填）
-     * @return 水费计算记录（归桶与单位换算在服务层处理）
+     * @return 水费计算记录（归桶与展示精度截断在服务层处理）
      */
     @Select("SELECT ztmhwx AS \"feeNo\", fbnomc AS \"unitName\", " +
             "xxmefs_min::timestamp AS \"periodStartTime\", xxmefs_max::timestamp AS \"periodEndTime\", " +
