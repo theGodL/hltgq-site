@@ -72,12 +72,12 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     ));
 
     /**
-     * 水库雨量站点（按上线顺序排列）。
+     * 水库雨量站点（业主指定展示顺序：极值雨情等报表自上而下顺序）。
      * <p>花凉亭坝下为水情站、非雨量站，不参与雨情页面展示，故不在此列（13 水情/雨量站 - 坝下 = 12 雨量站）。
      */
     private static final List<String> RESERVOIR_RAIN_STATION_ORDER = Arrays.asList(
-            "周家河", "姜家寨", "九田", "牛镇", "马嘶铺", "花凉亭坝上",
-            "寺前", "河图铺", "下前河", "鲤鱼墩", "弥陀", "白帽"
+            "周家河", "鲤鱼墩", "马嘶铺", "白帽", "下前河", "九田",
+            "弥陀", "姜家寨", "河图铺", "花凉亭坝上", "寺前", "牛镇"
     );
 
     /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
@@ -1045,8 +1045,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         Map<String, StStinfo> resolved = resolveReservoirStcds();
         List<String> reservoirStcds = new ArrayList<>(resolved.keySet());
 
-        // 扩展查询范围（水文日边界：前扩 9 天覆盖 max7d 窗口及其基线，后扩 1 天覆盖 endDate 08:00 整点记录）
-        LocalDateTime queryStart = startDate.atTime(8, 0).minusDays(9);
+        // 扩展查询范围（水文日边界：前扩 2 天覆盖小时级 24h 窗口与增量基线，后扩 1 天覆盖 endDate 08:00 整点记录）
+        LocalDateTime queryStart = startDate.atTime(8, 0).minusDays(2);
         LocalDateTime queryEnd = endDate.plusDays(1).atTime(7, 59, 59);
 
         List<StPptnR> records = reservoirStcds.isEmpty()
@@ -1090,23 +1090,29 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             List<Map.Entry<String, BigDecimal>> hourList = new ArrayList<>(hourlyInc.entrySet());
             hourList.sort(Map.Entry.comparingByKey());
 
-            // 裁剪滑动统计范围：窗口终点须落在筛选区间 [startDate 08:00, endDate 08:00] 内
-            // （区间截止后的尾巴数据不参与；窗口允许跨起日向前取数，覆盖"区间内任一点的向前最大过程"，
-            // 查询窗前扩 9 天即为此取数留出数据）
+            // 裁剪滑动统计范围：窗口终点须落在筛选区间内（终点标注、左开右闭）
+            // 区间查询对齐老系统口径——区间内起算：首日 08:00 桶含前一水文日的尾巴，一并剔除
+            // （区间首日 08:00 前的雨不计入，与老系统极值雨情一致）；
+            // 单日查询保持“当日水文日”语义（保留当日 08:00 终点桶，(D-1 08:00, D 08:00] 的雨）
             DateTimeFormatter hourFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
             String hourStartKey = startDate.atTime(8, 0).format(hourFmt);
             String hourEndKey = endDate.atTime(8, 0).format(hourFmt);
-            hourList.removeIf(e -> e.getKey().compareTo(hourStartKey) < 0 || e.getKey().compareTo(hourEndKey) > 0);
+            if (startDate.isBefore(endDate)) {
+                hourList.removeIf(e -> e.getKey().compareTo(hourStartKey) <= 0 || e.getKey().compareTo(hourEndKey) > 0);
+            } else {
+                hourList.removeIf(e -> e.getKey().compareTo(hourStartKey) < 0 || e.getKey().compareTo(hourEndKey) > 0);
+            }
 
-            // 滑动窗口求极值（小时桶已水文日对齐，max24h 与水文日日雨量口径一致）
+            // 滑动窗口求极值（小时桶按终点标注水文日对齐）
             BigDecimal max3h = slidingMax(hourList, 3);
             BigDecimal max6h = slidingMax(hourList, 6);
             BigDecimal max24h = slidingMax(hourList, 24);
 
-            // 日雨量序列（水文日标签排序，同样裁剪到 [startDate, endDate] 08:00 标签）
+            // 日雨量序列（水文日标签排序；区间查询对齐老系统口径——区间内起算，首日 08:00 标签
+            // 含前一水文日全天，一并剔除，从首日次日标签起；单日查询保持当日标签）
             List<Map.Entry<String, BigDecimal>> dayList = new ArrayList<>(dailyInc.entrySet());
             dayList.sort(Map.Entry.comparingByKey());
-            String dayStartKey = startDate + " 08:00:00";
+            String dayStartKey = (startDate.isBefore(endDate) ? startDate.plusDays(1) : startDate) + " 08:00:00";
             String dayEndKey = endDate + " 08:00:00";
             dayList.removeIf(e -> e.getKey().compareTo(dayStartKey) < 0 || e.getKey().compareTo(dayEndKey) > 0);
 

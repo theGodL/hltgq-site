@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 /**
  * 用水总结 · 水费表单原始记录（内部使用，不出 JSON）。
  * <p>来源表单：t_auto_hltgq_yn8cm_gfiidm（业主手动录入，统计周期为区间字段 xxmefs）。
- * <p>各数值直取表单现成值、不做推算；单位为表单实际录入口径（业主 2026-09-17 确认）：
- * 计划供水量 万m³、执行水价 元/m³、应收水费 万元。
+ * <p>各数值直取表单现成值、不做推算；单位按表单实际录入口径（2026-09-17 线上数据复核）：
+ * 计划供水量 万m³、执行水价 元/m³、应收水费 元（表单标签即「应收水费（元）」，出参由服务层换算为万元）。
  */
 @Data
 public class WaterUseFeeRecordVO {
@@ -32,6 +32,6 @@ public class WaterUseFeeRecordVO {
     /** 执行水价 lgwutj（元/m³，随日志输出核对） */
     private BigDecimal priceRaw;
 
-    /** 应收水费 hsfvdh（原始值，单位 万元） */
+    /** 应收水费 hsfvdh（原始值，单位 元；出参由服务层 ÷10^4 换算为万元） */
     private BigDecimal feeRaw;
 }
