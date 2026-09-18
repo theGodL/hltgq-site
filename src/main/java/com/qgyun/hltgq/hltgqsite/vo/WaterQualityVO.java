@@ -28,6 +28,12 @@ public class WaterQualityVO {
     /** 站点名称 */
     private String stnm;
 
+    /** 站点经度（站点表 bviiio_x），档案缺失为 null */
+    private BigDecimal lon;
+
+    /** 站点纬度（站点表 bviiio_y），档案缺失为 null */
+    private BigDecimal lat;
+
     /** 监测时间 */
     private LocalDateTime tm;
 

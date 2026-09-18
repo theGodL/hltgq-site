@@ -12,10 +12,38 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
-.page-wrap{min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:12px}
+/* 左右布局：左侧渠系树侧边栏 + 右侧页面内容 */
+.layout{display:flex;gap:12px;padding:16px;align-items:flex-start;min-height:100vh}
+.page-wrap{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
 .breadcrumb{color:#999;font-size:13px}
 .breadcrumb .sep{margin:0 6px}
 .breadcrumb .cur{color:#333}
+
+/* ===== 渠系树侧边栏 ===== */
+.side-card{width:248px;flex-shrink:0;position:sticky;top:16px;height:calc(100vh - 32px);background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.side-hd{padding:14px 16px 0;font-size:14px;font-weight:600;color:#1f1f1f}
+.side-search{padding:10px 12px}
+.side-search input{width:100%;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;transition:border-color .2s}
+.side-search input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.side-tree{flex:1;overflow:auto;padding:0 8px 12px;min-height:120px}
+.side-state{padding:24px 12px;color:#bbb;text-align:center;font-size:13px;line-height:1.8}
+.side-retry{color:#1677ff;cursor:pointer}
+.side-retry:hover{opacity:.75}
+.tree-row{display:flex;align-items:center;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:13px;color:#333;user-select:none}
+.tree-row:hover{background:#f5f8ff}
+.tree-row.active{background:#e6f4ff;color:#1677ff;font-weight:500}
+.tree-arrow{width:18px;height:18px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;color:#999;transition:transform .15s}
+.tree-arrow.open{transform:rotate(90deg)}
+.tree-arrow.leaf{visibility:hidden}
+.tree-arrow svg{display:block}
+.tree-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree-children{display:none}
+.tree-children.open{display:block}
+@media (max-width:900px){
+  .layout{flex-direction:column}
+  .side-card{width:100%;position:static;height:auto;max-height:none}
+  .side-tree{max-height:240px}
+}
 
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 
@@ -144,7 +172,17 @@ tbody tr:hover td{background:#fafafa}
 </style>
 </head>
 <body>
-<div class="page-wrap">
+<div class="layout">
+  <!-- 渠系树侧边栏：平台渠系关系接口，支持关键字搜索、展开/折叠、选中高亮 -->
+  <aside class="side-card">
+    <div class="side-hd">渠系结构</div>
+    <div class="side-search">
+      <input type="text" id="canal-kw" placeholder="搜索渠系名称" autocomplete="off">
+    </div>
+    <div class="side-tree" id="canal-tree"><div class="side-state">加载中...</div></div>
+  </aside>
+
+  <div class="page-wrap">
     <!-- 面包屑暂隐藏，后续可能不需要
 <div class="breadcrumb">
     <span>业务中心</span><span class="sep">/</span>
@@ -245,6 +283,7 @@ tbody tr:hover td{background:#fafafa}
       <div class="pg-bar" id="mth-tbl-pg"></div>
     </div>
   </div>
+</div>
 </div>
 
 <!-- 详情弹窗 -->
@@ -393,6 +432,195 @@ const dateToStart = v => v ? `${v} 00:00:00` : null;
 const dateToEnd = v => v ? `${v} 23:59:59` : null;
 const API = '/hltgq-site';
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+/* ===== 渠系树侧边栏（平台渠系关系接口；本地经 dev-proxy 转发，线上同源直连） ===== */
+const CANAL_API = '/qx-api/qx-apaas-run/ar/ZzrirqCf7oZ4cudrUOY/qxlkaRelLevelRelQuery';
+const TREE_ARROW_SVG = '<svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M2.5 0.5l3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+/** 数据查询接口的渠系参数名：选中渠系后随各查询透传，由后端按渠系过滤 */
+const CANAL_PARAM = 'canalId';
+/** 当前选中的渠系节点 {id, name}；null = 未选中（查询全部数据） */
+let selectedCanal = null;
+/** 渠系树全量数据缓存：接口只加载一次，关键字搜索在前端过滤 */
+let canalTreeData = [];
+let canalKwTimer = null;
+
+/** 选中渠系时把渠系 id 加进查询参数（取消选中后等同于不传） */
+function applyCanalParam(p) {
+  if (selectedCanal) p.set(CANAL_PARAM, selectedCanal.id);
+  return p;
+}
+
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[-[\]\/{}()*+?.\\^$|]/g, '\\$&') + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+/** 会话值来源：URL 参数 → iframe 父页面 → 常见 cookie（与导出弹窗页一致） */
+function pickCanalRuntime(names, cookies) {
+  for (const n of names) {
+    const v = new URLSearchParams(location.search).get(n);
+    if (v) return v;
+  }
+  try {
+    const p = window.parent && window.parent !== window ? window.parent : null;
+    for (const ctx of [window, p]) {
+      if (!ctx) continue;
+      for (const n of names) {
+        if (typeof ctx[n] === 'string' && ctx[n]) return ctx[n];
+      }
+      const ax = ctx.axios && ctx.axios.defaults && ctx.axios.defaults.headers;
+      if (ax) {
+        for (const n of names) {
+          const hv = (ax.common && ax.common[n]) || ax[n];
+          if (typeof hv === 'string' && hv) return hv;
+        }
+      }
+    }
+  } catch (e) { /* 跨域读不到父页，忽略 */ }
+  for (const c of cookies) {
+    const v = getCookie(c);
+    if (v) return v;
+  }
+  return '';
+}
+
+function canalHeaders() {
+  const headers = {
+    'Accept': 'application/json, text/plain, */*',
+    'Content-Type': 'application/json;charset=UTF-8',
+  };
+  const auth = pickCanalRuntime(['Authorization', 'authorization'], ['TOKEN', 'QIXIAO_TOKEN', 'sessionid', 'qixiao_hltgq_session']);
+  if (auth) headers.Authorization = auth;
+  return headers;
+}
+
+/** 渠系树数据：接口 data 为嵌套数组（dataTitle 为名称，_children 为下属渠系） */
+async function fetchCanalTree(keyword) {
+  const p = new URLSearchParams({ keyword: keyword || '' });
+  const res = await fetch(`${CANAL_API}?${p}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: canalHeaders(),
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const text = await res.text();
+  if (!text || text.indexOf('need login') >= 0) throw new Error('need login');
+  const json = JSON.parse(text);
+  return Array.isArray(json && json.data) ? json.data : [];
+}
+
+/** 节点 → HTML（默认全展开；叶子无箭头占位保持对齐） */
+function canalNodeHtml(node, depth) {
+  const name = String(node.dataTitle || node.gfaegg || node.id || '');
+  const kids = Array.isArray(node._children) ? node._children : [];
+  const arrow = kids.length
+    ? `<span class="tree-arrow open" data-arrow>${TREE_ARROW_SVG}</span>`
+    : '<span class="tree-arrow leaf"></span>';
+  const children = kids.length
+    ? `<div class="tree-children open">${kids.map(c => canalNodeHtml(c, depth + 1)).join('')}</div>`
+    : '';
+  return `<div class="tree-node">
+      <div class="tree-row" data-id="${esc(node.id)}" data-name="${esc(name)}" style="padding-left:${6 + depth * 14}px">
+        ${arrow}<span class="tree-label" title="${esc(name)}">${esc(name)}</span>
+      </div>${children}
+    </div>`;
+}
+
+function renderCanalTree(nodes, keyword) {
+  const box = $('canal-tree');
+  box.innerHTML = nodes.length
+    ? nodes.map(n => canalNodeHtml(n, 0)).join('')
+    : `<div class="side-state">${keyword ? '无匹配的渠系' : '暂无渠系数据'}</div>`;
+  // 重新渲染后恢复选中高亮（搜索过滤会重建节点）
+  if (selectedCanal && selectedCanal.id) {
+    box.querySelectorAll('.tree-row').forEach(row => {
+      if (row.dataset.id === selectedCanal.id) row.classList.add('active');
+    });
+  }
+}
+
+/** 渠系选中变化：记录所选渠系并重查当前 Tab（渠系 id 随查询参数传给后端过滤） */
+function onCanalSelect(node) {
+  selectedCanal = node;
+  refreshByCanal();
+}
+
+/** 渠系选择变化后重查当前主 Tab 数据（麻塘湖接口暂空，无需重查） */
+function refreshByCanal() {
+  const activeTabEl = document.querySelector('.tab-item.active');
+  if (!activeTabEl || activeTabEl.dataset.tab === 'hlt') {
+    S.page = 1;
+    loadList();
+  }
+}
+
+/** 关键字前端过滤：命中的节点保留整棵子树，其余仅在子孙有命中时保留（维持层级） */
+function filterCanalNodes(nodes, kw) {
+  const k = String(kw || '').trim();
+  if (!k) return nodes;
+  const out = [];
+  for (const n of nodes) {
+    const name = String(n.dataTitle || n.gfaegg || n.id || '');
+    if (fuzzyMatch(name, k)) {
+      out.push(n);
+      continue;
+    }
+    const kids = filterCanalNodes(Array.isArray(n._children) ? n._children : [], k);
+    if (kids.length) out.push({ ...n, _children: kids });
+  }
+  return out;
+}
+
+async function loadCanalTree() {
+  const box = $('canal-tree');
+  box.innerHTML = '<div class="side-state">加载中...</div>';
+  try {
+    canalTreeData = await fetchCanalTree();
+    const kw = $('canal-kw').value.trim();
+    renderCanalTree(filterCanalNodes(canalTreeData, kw), kw);
+  } catch (e) {
+    console.warn('渠系树加载失败', e);
+    box.innerHTML = '<div class="side-state">渠系数据加载失败<br><span class="side-retry" data-retry>点击重试</span></div>';
+    const retry = box.querySelector('[data-retry]');
+    if (retry) retry.addEventListener('click', () => loadCanalTree());
+  }
+}
+
+function bindCanalTree() {
+  const box = $('canal-tree');
+
+  box.addEventListener('click', e => {
+    // 箭头：展开/折叠，不改变选中
+    const arrow = e.target.closest('[data-arrow]');
+    if (arrow) {
+      arrow.classList.toggle('open');
+      const children = arrow.closest('.tree-node').querySelector('.tree-children');
+      if (children) children.classList.toggle('open');
+      return;
+    }
+    // 行：选中高亮（重复点击取消）
+    const row = e.target.closest('.tree-row');
+    if (!row) return;
+    const wasActive = row.classList.contains('active');
+    box.querySelectorAll('.tree-row.active').forEach(r => r.classList.remove('active'));
+    if (wasActive) {
+      onCanalSelect(null);
+    } else {
+      row.classList.add('active');
+      onCanalSelect({ id: row.dataset.id, name: row.dataset.name });
+    }
+  });
+
+  // 关键字搜索：防抖 200ms，前端过滤已加载的渠系树（不再请求接口）
+  $('canal-kw').addEventListener('input', () => {
+    clearTimeout(canalKwTimer);
+    canalKwTimer = setTimeout(() => {
+      if (!canalTreeData.length) return;
+      const kw = $('canal-kw').value.trim();
+      renderCanalTree(filterCanalNodes(canalTreeData, kw), kw);
+    }, 200);
+  });
+}
 
 function setLoading(el, on) {
   if (!el) return;
@@ -546,7 +774,7 @@ function buildListParams() {
   const p = new URLSearchParams();
   const stcd = ($('st-code').value || '').trim();
   if (stcd) p.set('stcds', stcd);
-  return p;
+  return applyCanalParam(p);
 }
 
 function applySiteFilter(list) {
@@ -1296,6 +1524,7 @@ function init() {
   bindSiteSelect();
   bindMthSiteSelect();
   bindDistrictTabs();
+  bindCanalTree();
   bindModal();
   bindFlowStatsModal();
   bindAsyncClick($('query-btn'), query);
@@ -1313,6 +1542,8 @@ function init() {
       await loadList();
     },
   });
+  // 渠系树侧边栏：与主数据并行加载，失败不阻塞正文
+  loadCanalTree();
   loadFlowSites().then(() => loadList());
 }
 

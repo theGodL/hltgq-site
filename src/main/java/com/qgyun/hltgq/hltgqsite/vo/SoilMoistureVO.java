@@ -30,6 +30,12 @@ public class SoilMoistureVO {
     /** 站点所属渠系名称（渠系管理表 gfaegg） */
     private String canalName;
 
+    /** 站点经度（站点表 bviiio_x），档案缺失为 null */
+    private BigDecimal lon;
+
+    /** 站点纬度（站点表 bviiio_y），档案缺失为 null */
+    private BigDecimal lat;
+
     /** 监测时间 */
     private LocalDateTime tm;
 

@@ -30,8 +30,9 @@ public interface SoilMoistureMapper {
      * <p>-999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'。
      * <p>电压 vol 关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID = n.site），
      * 取筛选时间范围内最新一条，无数据为 null。
-     * <p>渠系信息：站点表 s 按 n.site = s.id 匹配，s2 按编号补位（老站 n.site 为空时
-     * 用 s2.iofhpi = n.stcd 匹配档案），canal_id = COALESCE(s.ywvyds, s2.ywvyds)；
+     * <p>渠系/经纬度信息：站点表 s 按 n.site = s.id 匹配，s2 按编号补位（老站 n.site 为空时
+     * 用 s2.iofhpi = n.stcd 匹配档案），canal_id = COALESCE(s.ywvyds, s2.ywvyds)，
+     * 经纬度取 COALESCE(s.bviiio_x, s2.bviiio_x) / COALESCE(s.bviiio_y, s2.bviiio_y)；
      * canalIds 非空时按渠系树过滤（canalId 及其所有子孙渠系 id，由 CanalService 收集）。
      *
      * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部（仅返回监测类型含墒情 #7# 的站点）
@@ -41,12 +42,14 @@ public interface SoilMoistureMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.tm, t.vol, t.canal_id, t.canal_name, " +
+            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.lon, t.lat, t.tm, t.vol, t.canal_id, t.canal_name, " +
             "t.mten, t.mtwenty, t.mthirty, t.mforty, t.mfifty, t.msixty, t.meighty, t.mhundred " +
             "FROM ( " +
             "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, " +
             "  COALESCE(n.site, (SELECT a.id FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" a WHERE a.iofhpi = n.stcd LIMIT 1)) AS site_id, " +
-            "  COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, fv.vol, " +
+            "  COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, " +
+            "  COALESCE(s.bviiio_x, s2.bviiio_x) AS lon, COALESCE(s.bviiio_y, s2.bviiio_y) AS lat, " +
+            "  n.tm, fv.vol, " +
             "  COALESCE(s.ywvyds, s2.ywvyds) AS canal_id, c.gfaegg AS canal_name, " +
             "  CASE WHEN n.mten = -999 THEN NULL ELSE TRUNC(n.mten, 2) END AS mten, " +
             "  CASE WHEN n.mtwenty = -999 THEN NULL ELSE TRUNC(n.mtwenty, 2) END AS mtwenty, " +
@@ -95,6 +98,8 @@ public interface SoilMoistureMapper {
             @Result(column = "stnm", property = "stnm"),
             @Result(column = "canal_id", property = "canalId"),
             @Result(column = "canal_name", property = "canalName"),
+            @Result(column = "lon", property = "lon"),
+            @Result(column = "lat", property = "lat"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "vol", property = "vol"),
             @Result(column = "mten", property = "mten"),

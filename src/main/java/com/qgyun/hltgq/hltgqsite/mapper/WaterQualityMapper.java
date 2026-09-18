@@ -26,6 +26,8 @@ public interface WaterQualityMapper {
      * 各站点最新一条水质数据（首页）
      * <p>站点标识 skey = COALESCE(stcd, site)：老站点用编号，无 stcd 时回退到 site（UUID）。
      * site 字段输出 skey 供查询/筛选；siteId 输出站点档案真实主键（n.site，阈值行关联用）。
+     * <p>经纬度：站点表 s 按 n.site = s.id 匹配，s2 按编号补位（老站 n.site 为空时
+     * 用 s2.iofhpi = n.stcd 匹配档案），取 COALESCE(s.bviiio_x, s2.bviiio_x) / COALESCE(s.bviiio_y, s2.bviiio_y)。
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，不能直接用 COALESCE 函数表达式
      * （PG 会报 "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"），
      * 故先在子查询中物化出 skey，外层按 skey 去重排序。
@@ -36,11 +38,13 @@ public interface WaterQualityMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.tm, " +
+            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.lon, t.lat, t.tm, " +
             "t.nh3n, t.codcr, t.bod5, t.tp, t.tn, t.dox " +
             "FROM ( " +
             "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, n.site AS site_id, " +
-            "  COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, " +
+            "  COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, " +
+            "  COALESCE(s.bviiio_x, s2.bviiio_x) AS lon, COALESCE(s.bviiio_y, s2.bviiio_y) AS lat, " +
+            "  n.tm, " +
             "  CASE WHEN n.nh3n = -999 THEN NULL ELSE TRUNC(n.nh3n, 3) END AS nh3n, " +
             "  CASE WHEN n.codcr = -999 THEN NULL ELSE TRUNC(n.codcr, 3) END AS codcr, " +
             "  CASE WHEN n.bod5 = -999 THEN NULL ELSE TRUNC(n.bod5, 3) END AS bod5, " +
@@ -49,6 +53,7 @@ public interface WaterQualityMapper {
             "  CASE WHEN n.dox = -999 THEN NULL ELSE TRUNC(n.dox, 3) END AS dox " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
+            "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s2 ON s.id IS NULL AND s2.iofhpi = n.stcd " +
             "  WHERE 1=1 " +
             "  <if test='stcds == null or stcds.size() == 0'>" +
             "  AND s.epjutj LIKE '%#8#%' " +
@@ -70,6 +75,8 @@ public interface WaterQualityMapper {
             @Result(column = "site", property = "site"),
             @Result(column = "site_id", property = "siteId"),
             @Result(column = "stnm", property = "stnm"),
+            @Result(column = "lon", property = "lon"),
+            @Result(column = "lat", property = "lat"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "nh3n", property = "nh3n"),
             @Result(column = "codcr", property = "codcr"),
