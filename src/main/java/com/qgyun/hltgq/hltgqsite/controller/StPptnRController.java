@@ -135,18 +135,22 @@ public class StPptnRController {
 
     /**
      * 灌区雨量监测：每站点最新一条，含1h/3h/6h时段降雨增量
-     * 支持按站点编号、监测日期范围筛选，自定义分页
+     * 支持按站点编号、渠系、监测日期范围筛选，自定义分页
      * 站点口径：未传 stcd 时返回灌区站点（排除水库 13 站）；
      *          显式传 stcd 时返回该站数据（含水库站点，支持单独查询库上站点）
+     *
+     * @param canalId 渠系 id（可选，站点表 ywvyds → 渠系管理表 id；传入时按渠系树过滤，
+     *                返回该渠系及其所有子孙渠系下的站点）
      */
     @GetMapping("/gq-rainfall")
     public IPage<GqRainfallVO> gqRainfall(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size,
             @RequestParam(required = false) String stcd,
+            @RequestParam(required = false) String canalId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
-        return stPptnRService.gqRainfallPage(page, size, stcd, startTime, endTime);
+        return stPptnRService.gqRainfallPage(page, size, stcd, canalId, startTime, endTime);
     }
 
     /**

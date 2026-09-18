@@ -62,10 +62,13 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
      * 未带时间筛选（实时列表）→ 服务器当前水文日 8 点起点（hydroBase），
      * "当前雨量"始终表示当前水文日累计，最新报文停留在上一水文日时不会与"昨日雨量"重合；
      * 带时间筛选（历史视图）→ 该行记录所属水文日 8 点起点，保证每行 drp 自洽。
+     * <p>canalIds 非空时按渠系树过滤：仅返回站点表 ywvyds 落在渠系集合内的站点
+     * （canalId 及其所有子孙渠系 id，由 CanalService 收集）。
      */
     @Select("<script>"
             + "SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, t.DYP AS dyp, "
             + "  s.zzkaec AS stnm, s.id AS id, s.bviiio_x AS lon, s.bviiio_y AS lat, "
+            + "  s.ywvyds AS canal_id, c.gfaegg AS canal_name, "
             + "  fv.vol AS vol, "
             + "  COALESCE((SELECT DYP FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info "
             + "            WHERE STCD = t.STCD AND TM &lt;= GREATEST(t.TM - INTERVAL '1 hour', ((t.TM - INTERVAL '8 hours' - INTERVAL '1 second')::date + INTERVAL '8 hours')) + INTERVAL '1 second' "
@@ -95,14 +98,20 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
             + "  ORDER BY STCD, TM DESC "
             + ") t "
             + "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON s.iofhpi = t.STCD "
+            + "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON c.id = s.ywvyds "
             + "LEFT JOIN ( "
             + "  SELECT DISTINCT ON (v.site) v.site, v.vol "
             + "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v "
             + "  ORDER BY v.site, v.tm DESC "
             + ") fv ON fv.site = s.id "
+            + "<if test=\"canalIds != null and canalIds.size() > 0\">"
+            + "WHERE s.ywvyds IN "
+            + "<foreach collection=\"canalIds\" item=\"cid\" open=\"(\" separator=\",\" close=\")\">#{cid}</foreach> "
+            + "</if>"
             + "ORDER BY t.STCD"
             + "</script>")
     List<Map<String, Object>> selectGqRainfallList(@Param("stcd") String stcd,
+                                                    @Param("canalIds") List<String> canalIds,
                                                     @Param("startTime") LocalDateTime startTime,
                                                     @Param("endTime") LocalDateTime endTime,
                                                     @Param("hydroBase") LocalDateTime hydroBase);

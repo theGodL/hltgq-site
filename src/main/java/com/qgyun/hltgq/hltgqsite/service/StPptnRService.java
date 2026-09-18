@@ -38,8 +38,12 @@ public interface StPptnRService extends IService<StPptnR> {
 
     /**
      * 灌区雨量分页查询：每站点最新一条，含1h/3h/6h时段增量
+     *
+     * @param canalId 渠系 id（可选，站点表 ywvyds → 渠系管理表 id；传入时按渠系树过滤：
+     *                返回该渠系及其所有子孙渠系下的站点，每条记录携带 canalId/canalName）
      */
-    IPage<GqRainfallVO> gqRainfallPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime);
+    IPage<GqRainfallVO> gqRainfallPage(long page, long size, String stcd, String canalId,
+                                       LocalDateTime startTime, LocalDateTime endTime);
 
     /**
      * 灌区雨量全量实时值：各雨量站（含水库雨量站）最新一条，含1h/3h/6h时段增量与昨日雨量。

@@ -354,13 +354,13 @@ public class ExternalService {
                 rows = stPptnRService.gqRainfallMonitoringAll();
                 break;
             case "#3#":
-                rows = flowMonitorService.monitoring(null, null, null);
+                rows = flowMonitorService.monitoring(null, null, null, null);
                 break;
             case "#4#":
-                rows = gateMonitorService.monitoring(null, null, null);
+                rows = gateMonitorService.monitoring(null, null, null, null);
                 break;
             case "#7#":
-                rows = soilMoistureService.monitoring(null, null);
+                rows = soilMoistureService.monitoring(null, null, null);
                 break;
             default:
                 rows = waterQualityService.monitoring(null, null, null);

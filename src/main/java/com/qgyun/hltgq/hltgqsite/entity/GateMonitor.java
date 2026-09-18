@@ -72,6 +72,14 @@ public class GateMonitor {
     @TableField(exist = false)
     private BigDecimal lat;
 
+    /** 站点所属渠系 id（站点表 ywvyds → 渠系管理表 id，非本表字段） */
+    @TableField(exist = false)
+    private String canalId;
+
+    /** 站点所属渠系名称（渠系管理表 gfaegg，非本表字段） */
+    @TableField(exist = false)
+    private String canalName;
+
     @TableField("\"status\"")
     private String status;
 
@@ -154,6 +162,12 @@ public class GateMonitor {
 
     public BigDecimal getLat() { return lat; }
     public void setLat(BigDecimal lat) { this.lat = lat; }
+
+    public String getCanalId() { return canalId; }
+    public void setCanalId(String canalId) { this.canalId = canalId; }
+
+    public String getCanalName() { return canalName; }
+    public void setCanalName(String canalName) { this.canalName = canalName; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }

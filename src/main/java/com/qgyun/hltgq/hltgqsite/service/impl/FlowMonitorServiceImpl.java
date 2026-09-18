@@ -6,6 +6,7 @@ import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
+import com.qgyun.hltgq.hltgqsite.service.CanalService;
 import com.qgyun.hltgq.hltgqsite.service.FlowMonitorService;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
@@ -49,6 +50,9 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
     @Autowired
     private StRiverRService stRiverRService;
+
+    @Autowired
+    private CanalService canalService;
 
     /**
      * 流量图表固定八站（按展示顺序）：渠首进水闸、双庙湖节制闸、南山寺节制闸、太怀干渠进水闸、
@@ -158,8 +162,11 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     }
 
     @Override
-    public List<FlowMonitoringVO> monitoring(List<String> stcds, LocalDateTime startTime, LocalDateTime endTime) {
-        List<FlowMonitoringVO> rows = waterFlowMapper.selectLatestPerStation(stcds, startTime, endTime);
+    public List<FlowMonitoringVO> monitoring(List<String> stcds, String canalId,
+                                             LocalDateTime startTime, LocalDateTime endTime) {
+        // 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
+        List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
+        List<FlowMonitoringVO> rows = waterFlowMapper.selectLatestPerStation(stcds, canalIds, startTime, endTime);
         // -999 = 设备不存在：转 null 返回（-9991 设备异常保留，透传由前端展示 '--'）
         rows.forEach(r -> {
             r.setQ(nullIfMissing(r.getQ()));
@@ -199,7 +206,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         // 2. 获取站点名称
         String stnm = stcd;
         List<FlowMonitoringVO> stationInfo = waterFlowMapper.selectLatestPerStation(
-                Collections.singletonList(stcd), null, null);
+                Collections.singletonList(stcd), null, null, null);
         if (!stationInfo.isEmpty()) {
             stnm = stationInfo.get(0).getStnm();
         }

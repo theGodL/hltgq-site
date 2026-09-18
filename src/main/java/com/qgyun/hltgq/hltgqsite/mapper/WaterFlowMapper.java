@@ -29,20 +29,28 @@ public interface WaterFlowMapper {
      * <p>累计流量取数（与闸门监测同口径）：内层直接取末行 ytf/ttf；
      * fq_prev（仅指定起始时间时拼接）返回起始时间前最近一条 ttf 非空行的 ttf，
      * 供 Service 层相减计算时间框范围累计流量。
+     * <p>渠系信息：站点表 s 按 f.site = s.id 匹配，s2 按编号补位（老站 f.site 为空时
+     * 用 s2.iofhpi = f.stcd 匹配档案），canal_id = COALESCE(s.ywvyds, s2.ywvyds)；
+     * canalIds 非空时按渠系树过滤（canalId 及其所有子孙渠系 id，由 CanalService 收集）。
      *
      * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部（仅返回监测类型含流量 #3# 的站点）
+     * @param canalIds  渠系 id 集合（可选，渠系树过滤；null/空 = 不过滤）
      * @param startTime 起始时间（可选）
      * @param endTime   截止时间（可选）
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.tm, t.q, t.tf, t.ytf, t.ttf, t.vol<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
+            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.tm, t.q, t.tf, t.ytf, t.ttf, t.vol, t.canal_id, t.canal_name" +
+            "<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
             "FROM ( " +
             "  SELECT f.stcd, COALESCE(f.stcd, f.site) AS skey, " +
             "  COALESCE(f.site, (SELECT a.id FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" a WHERE a.iofhpi = f.stcd LIMIT 1)) AS site_id, " +
-            "  COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf, f.ytf, f.ttf, fv.vol " +
+            "  COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf, f.ytf, f.ttf, fv.vol, " +
+            "  COALESCE(s.ywvyds, s2.ywvyds) AS canal_id, c.gfaegg AS canal_name " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
+            "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s2 ON s.id IS NULL AND s2.iofhpi = f.stcd " +
+            "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON c.id = COALESCE(s.ywvyds, s2.ywvyds) " +
             "  LEFT JOIN ( " +
             "    SELECT DISTINCT ON (v.site) v.site, v.vol " +
             "    FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
@@ -58,6 +66,10 @@ public interface WaterFlowMapper {
             "   OR f.site IN " +
             "  <foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
             "  ) " +
+            "  </if>" +
+            "  <if test='canalIds != null and canalIds.size() > 0'>" +
+            "  AND COALESCE(s.ywvyds, s2.ywvyds) IN " +
+            "  <foreach collection='canalIds' item='cid' open='(' separator=',' close=')'>#{cid}</foreach>" +
             "  </if>" +
             "  <if test='startTime != null'>AND f.tm &gt;= #{startTime} </if>" +
             "  <if test='endTime != null'>AND f.tm &lt;= #{endTime} </if>" +
@@ -80,6 +92,8 @@ public interface WaterFlowMapper {
             @Result(column = "site", property = "site"),
             @Result(column = "site_id", property = "siteId"),
             @Result(column = "stnm", property = "stnm"),
+            @Result(column = "canal_id", property = "canalId"),
+            @Result(column = "canal_name", property = "canalName"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "q", property = "q"),
             @Result(column = "tf", property = "tf"),
@@ -90,6 +104,7 @@ public interface WaterFlowMapper {
     })
     List<FlowMonitoringVO> selectLatestPerStation(
             @Param("stcds") List<String> stcds,
+            @Param("canalIds") List<String> canalIds,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime);
 

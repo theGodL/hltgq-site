@@ -9,6 +9,7 @@ import com.qgyun.hltgq.hltgqsite.entity.StPptnR;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
+import com.qgyun.hltgq.hltgqsite.service.CanalService;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.GqDailyRainfallVO;
@@ -43,6 +44,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Autowired
     private StationSortService stationSortService;
+
+    @Autowired
+    private CanalService canalService;
 
     // ======================== 灌区接口-水库站点排除 ========================
     // 13 个水库站点新 STCD 已全部确认
@@ -125,13 +129,16 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     @Override
-    public IPage<GqRainfallVO> gqRainfallPage(long page, long size, String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+    public IPage<GqRainfallVO> gqRainfallPage(long page, long size, String stcd, String canalId,
+                                              LocalDateTime startTime, LocalDateTime endTime) {
         // drp 基线 = 服务器当前所属水文日的 8 点起点（与 dailyDyp 同用 LocalDateTime.now() 时钟口径）：
         // "当前雨量"始终表示当前水文日累计，最新报文停留在上一水文日（如 8 点整点报文）时不会与"昨日雨量"重合
         String curLabel = getHydroDayLabel(LocalDateTime.now());
         LocalDateTime hydroBase = LocalDateTime.parse(curLabel,
                 DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).minusDays(1);
-        List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(stcd, startTime, endTime, hydroBase);
+        // 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
+        List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
+        List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(stcd, canalIds, startTime, endTime, hydroBase);
         // 未指定 stcd 时按灌区口径排除水库 13 站；显式指定 stcd 时放行该站（含水库站）
         List<GqRainfallVO> vos = rows.stream()
                 .filter(row -> gqStationVisible(row, stcd))
@@ -160,7 +167,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         String curLabel = getHydroDayLabel(LocalDateTime.now());
         LocalDateTime hydroBase = LocalDateTime.parse(curLabel,
                 DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).minusDays(1);
-        List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(null, null, null, hydroBase);
+        List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(null, null, null, null, hydroBase);
         // 与 /gq-rainfall 不同：不排除水库站（站点集合由调用方的站点档案列表决定）
         List<GqRainfallVO> vos = rows.stream().map(this::toGqRainfallVO).collect(Collectors.toList());
         // 在线状态判定与 /gq-rainfall 一致：水库站取站点表 zebpsu，其余站按时间断联
@@ -204,6 +211,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         vo.setStcd((String) row.get("stcd"));
         vo.setId((String) row.get("id"));
         vo.setStnm((String) row.get("stnm"));
+        vo.setCanalId((String) row.get("canal_id"));
+        vo.setCanalName((String) row.get("canal_name"));
         vo.setLon(toBigDecimal(row.get("lon")));
         vo.setLat(toBigDecimal(row.get("lat")));
         Object tmObj = row.get("tm");

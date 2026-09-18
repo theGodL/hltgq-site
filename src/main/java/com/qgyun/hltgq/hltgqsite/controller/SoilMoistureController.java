@@ -32,16 +32,19 @@ public class SoilMoistureController {
     /**
      * 墒情监测-首页（每站点最新一条）
      * <p>包含站点名称、站点编号、时间、10/20/30/40/50/60/80/100 厘米含水量。
-     * 支持根据站点（多选，逗号分隔）和监测日期筛选。
+     * 支持根据站点（多选，逗号分隔）、渠系和监测日期筛选。
      *
-     * @param stcds 站点编号列表，逗号分隔（可选，不传=全部）
-     * @param date  监测日期，格式 yyyy-MM-dd（可选）
+     * @param stcds   站点编号列表，逗号分隔（可选，不传=全部）
+     * @param canalId 渠系 id（可选，站点表 ywvyds → 渠系管理表 t_auto_hltgq_knc3g_egvnhw.id；
+     *                传入时按渠系树过滤，返回该渠系及其所有子孙渠系下的站点）
+     * @param date    监测日期，格式 yyyy-MM-dd（可选）
      */
     @GetMapping("/monitoring")
     public List<SoilMoistureVO> monitoring(
             @RequestParam(required = false) String stcds,
+            @RequestParam(required = false) String canalId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date) {
-        return soilMoistureService.monitoring(parseStcds(stcds), date);
+        return soilMoistureService.monitoring(parseStcds(stcds), canalId, date);
     }
 
     /**

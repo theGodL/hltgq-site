@@ -7,6 +7,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
+import com.qgyun.hltgq.hltgqsite.service.CanalService;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
 import com.qgyun.hltgq.hltgqsite.service.StationSiteService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
@@ -163,10 +164,16 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     @Autowired
     private StationSortService stationSortService;
 
+    @Autowired
+    private CanalService canalService;
+
     @Override
-    public List<GateMonitoringVO> monitoring(String site, LocalDateTime startTime, LocalDateTime endTime) {
+    public List<GateMonitoringVO> monitoring(String site, String canalId, LocalDateTime startTime, LocalDateTime endTime) {
+        // 0. 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
+        List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
+
         // 1. 查询各闸孔最新一条数据
-        List<GateMonitor> rows = gateMonitorMapper.selectLatestPerHole(site, startTime, endTime);
+        List<GateMonitor> rows = gateMonitorMapper.selectLatestPerHole(site, canalIds, startTime, endTime);
 
         if (rows == null || rows.isEmpty()) {
             return Collections.emptyList();
@@ -244,6 +251,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             GateMonitoringVO vo = new GateMonitoringVO();
             vo.setSiteId(siteId);
             vo.setSiteName(siteName);
+            // 渠系信息（站点级数据，各孔子查询结果相同，取第一条）
+            vo.setCanalId(holes.get(0).getCanalId());
+            vo.setCanalName(holes.get(0).getCanalName());
             vo.setTm(latestTm);
             vo.setUpZ(latestUpZ != null ? latestUpZ.getUpZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setDownZ(latestDownZ != null ? latestDownZ.getDownZ().setScale(2, java.math.RoundingMode.DOWN) : null);

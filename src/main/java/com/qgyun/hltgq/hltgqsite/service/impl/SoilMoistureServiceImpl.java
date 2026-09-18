@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.mapper.SoilMoistureMapper;
+import com.qgyun.hltgq.hltgqsite.service.CanalService;
 import com.qgyun.hltgq.hltgqsite.service.SoilMoistureService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.SoilMoistureTrendVO;
@@ -34,11 +35,16 @@ public class SoilMoistureServiceImpl implements SoilMoistureService {
     @Autowired
     private StationSortService stationSortService;
 
+    @Autowired
+    private CanalService canalService;
+
     @Override
-    public List<SoilMoistureVO> monitoring(List<String> stcds, LocalDate date) {
+    public List<SoilMoistureVO> monitoring(List<String> stcds, String canalId, LocalDate date) {
         LocalDateTime startTime = date != null ? date.atStartOfDay() : null;
         LocalDateTime endTime = date != null ? date.plusDays(1).atStartOfDay() : null;
-        List<SoilMoistureVO> rows = soilMoistureMapper.selectLatestPerStation(stcds, startTime, endTime);
+        // 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
+        List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
+        List<SoilMoistureVO> rows = soilMoistureMapper.selectLatestPerStation(stcds, canalIds, startTime, endTime);
         // 站点排序配置（墒情监测类型）：已配置站点按配置顺序，未配置站点保持 SQL 默认顺序排在其后；
         // 站点标识 = 站点管理主键（档案缺失时为 null，该行保持默认位置）
         return stationSortService.applyOrder("moisture", rows, SoilMoistureVO::getSiteId);
@@ -58,7 +64,7 @@ public class SoilMoistureServiceImpl implements SoilMoistureService {
         // 2. 获取站点名称
         String stnm = stcd;
         List<SoilMoistureVO> stationInfo = soilMoistureMapper.selectLatestPerStation(
-                Collections.singletonList(stcd), null, null);
+                Collections.singletonList(stcd), null, null, null);
         if (!stationInfo.isEmpty() && stationInfo.get(0).getStnm() != null) {
             stnm = stationInfo.get(0).getStnm();
         }

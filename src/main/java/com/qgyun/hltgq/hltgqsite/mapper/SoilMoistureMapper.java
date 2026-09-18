@@ -30,19 +30,24 @@ public interface SoilMoistureMapper {
      * <p>-999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'。
      * <p>电压 vol 关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID = n.site），
      * 取筛选时间范围内最新一条，无数据为 null。
+     * <p>渠系信息：站点表 s 按 n.site = s.id 匹配，s2 按编号补位（老站 n.site 为空时
+     * 用 s2.iofhpi = n.stcd 匹配档案），canal_id = COALESCE(s.ywvyds, s2.ywvyds)；
+     * canalIds 非空时按渠系树过滤（canalId 及其所有子孙渠系 id，由 CanalService 收集）。
      *
      * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部（仅返回监测类型含墒情 #7# 的站点）
+     * @param canalIds  渠系 id 集合（可选，渠系树过滤；null/空 = 不过滤）
      * @param startTime 起始时间（含，可选）
      * @param endTime   截止时间（不含，可选）
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.tm, t.vol, " +
+            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.tm, t.vol, t.canal_id, t.canal_name, " +
             "t.mten, t.mtwenty, t.mthirty, t.mforty, t.mfifty, t.msixty, t.meighty, t.mhundred " +
             "FROM ( " +
             "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, " +
             "  COALESCE(n.site, (SELECT a.id FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" a WHERE a.iofhpi = n.stcd LIMIT 1)) AS site_id, " +
             "  COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, fv.vol, " +
+            "  COALESCE(s.ywvyds, s2.ywvyds) AS canal_id, c.gfaegg AS canal_name, " +
             "  CASE WHEN n.mten = -999 THEN NULL ELSE TRUNC(n.mten, 2) END AS mten, " +
             "  CASE WHEN n.mtwenty = -999 THEN NULL ELSE TRUNC(n.mtwenty, 2) END AS mtwenty, " +
             "  CASE WHEN n.mthirty = -999 THEN NULL ELSE TRUNC(n.mthirty, 2) END AS mthirty, " +
@@ -53,6 +58,8 @@ public interface SoilMoistureMapper {
             "  CASE WHEN n.mhundred = -999 THEN NULL ELSE TRUNC(n.mhundred, 2) END AS mhundred " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_soil_data n " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
+            "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s2 ON s.id IS NULL AND s2.iofhpi = n.stcd " +
+            "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON c.id = COALESCE(s.ywvyds, s2.ywvyds) " +
             "  LEFT JOIN ( " +
             "    SELECT DISTINCT ON (v.site) v.site, v.vol " +
             "    FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
@@ -72,6 +79,10 @@ public interface SoilMoistureMapper {
             "  <foreach collection='stcds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
             "  ) " +
             "  </if>" +
+            "  <if test='canalIds != null and canalIds.size() > 0'>" +
+            "  AND COALESCE(s.ywvyds, s2.ywvyds) IN " +
+            "  <foreach collection='canalIds' item='cid' open='(' separator=',' close=')'>#{cid}</foreach>" +
+            "  </if>" +
             "  <if test='startTime != null'>AND n.tm &gt;= #{startTime} </if>" +
             "  <if test='endTime != null'>AND n.tm &lt; #{endTime} </if>" +
             ") t " +
@@ -82,6 +93,8 @@ public interface SoilMoistureMapper {
             @Result(column = "site", property = "site"),
             @Result(column = "site_id", property = "siteId"),
             @Result(column = "stnm", property = "stnm"),
+            @Result(column = "canal_id", property = "canalId"),
+            @Result(column = "canal_name", property = "canalName"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "vol", property = "vol"),
             @Result(column = "mten", property = "mten"),
@@ -95,6 +108,7 @@ public interface SoilMoistureMapper {
     })
     List<SoilMoistureVO> selectLatestPerStation(
             @Param("stcds") List<String> stcds,
+            @Param("canalIds") List<String> canalIds,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime);
 

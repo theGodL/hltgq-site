@@ -19,10 +19,13 @@ public interface FlowMonitorService {
      * 流量监测-最新数据（每个站点一条）
      *
      * @param stcds     站点编号列表（可选，多选）
+     * @param canalId   渠系 id（可选，站点表 ywvyds → 渠系管理表 id；传入时按渠系树过滤：
+     *                  返回该渠系及其所有子孙渠系下的站点，每条记录携带 canalId/canalName）
      * @param startTime 起始时间（可选）
      * @param endTime   截止时间（可选）
      */
-    List<FlowMonitoringVO> monitoring(List<String> stcds, LocalDateTime startTime, LocalDateTime endTime);
+    List<FlowMonitoringVO> monitoring(List<String> stcds, String canalId,
+                                      LocalDateTime startTime, LocalDateTime endTime);
 
     /**
      * 流量趋势图表（小时级，默认近 7 天）

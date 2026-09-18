@@ -33,19 +33,22 @@ public class FlowMonitorController {
     /**
      * 流量监测-最新数据
      * <p>每个站点返回一条最新记录，包含站点名称、监测时间、流量。
-     * 支持根据站点编号（多选，逗号分隔）和日期区间筛选。
+     * 支持根据站点编号（多选，逗号分隔）、渠系和日期区间筛选。
      *
      * @param stcds     站点编号列表，逗号分隔（可选，不传=全部）
+     * @param canalId   渠系 id（可选，站点表 ywvyds → 渠系管理表 t_auto_hltgq_knc3g_egvnhw.id；
+     *                  传入时按渠系树过滤，返回该渠系及其所有子孙渠系下的站点）
      * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      */
     @GetMapping("/monitoring")
     public List<FlowMonitoringVO> monitoring(
             @RequestParam(required = false) String stcds,
+            @RequestParam(required = false) String canalId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
         List<String> stcdList = parseStcds(stcds);
-        return flowMonitorService.monitoring(stcdList, startTime, endTime);
+        return flowMonitorService.monitoring(stcdList, canalId, startTime, endTime);
     }
 
     /**

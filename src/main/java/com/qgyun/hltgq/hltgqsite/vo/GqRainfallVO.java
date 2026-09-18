@@ -22,6 +22,12 @@ public class GqRainfallVO {
     /** 站点名称 */
     private String stnm;
 
+    /** 站点所属渠系 id（站点表 ywvyds → 渠系管理表 t_auto_hltgq_knc3g_egvnhw.id） */
+    private String canalId;
+
+    /** 站点所属渠系名称（渠系管理表 gfaegg） */
+    private String canalName;
+
     /** 站点经度（站点表 bviiio_x） */
     private BigDecimal lon;
 

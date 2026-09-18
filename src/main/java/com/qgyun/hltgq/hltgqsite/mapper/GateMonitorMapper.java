@@ -124,15 +124,17 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     @Select("<script>" +
             "SELECT DISTINCT ON (t.site, t.gate_no) " +
             "t.site, t.site_name, t.lon, t.lat, t.gate_no, t.tm, " +
-            "t.open_degree, t.up_z, t.down_z, t.status, t.vol" +
+            "t.open_degree, t.up_z, t.down_z, t.status, t.vol, t.canal_id, t.canal_name" +
             "<if test='startTime != null'>, t.prev_ttf</if> " +
             "FROM ( " +
             "  SELECT g.site, s.zzkaec AS site_name, s.bviiio_x AS lon, s.bviiio_y AS lat, " +
             "  CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, g.tm, " +
             "  TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status, " +
-            "  fv.vol<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
+            "  fv.vol, s.ywvyds AS canal_id, c.gfaegg AS canal_name" +
+            "<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "  INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
+            "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON s.ywvyds = c.id " +
             "  LEFT JOIN ( " +
             "    SELECT DISTINCT ON (v.site) v.site, v.vol " +
             "    FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
@@ -153,6 +155,10 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "  AND NOT (g.gate_no = '0' AND g.open_degree IS NULL) " +
             "  <if test='site == null or site == \"\"'>AND s.epjutj LIKE '%#4#%' </if>" +
             "  <if test='site != null and site != \"\"'>AND g.site = #{site} </if>" +
+            "  <if test='canalIds != null and canalIds.size() > 0'>" +
+            "AND s.ywvyds IN " +
+            "<foreach collection='canalIds' item='cid' open='(' separator=',' close=')'>#{cid}</foreach>" +
+            "  </if>" +
             "  <if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
             "  <if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
             ") t " +
@@ -170,9 +176,12 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             @Result(column = "down_z", property = "downZ"),
             @Result(column = "status", property = "status"),
             @Result(column = "vol", property = "vol"),
+            @Result(column = "canal_id", property = "canalId"),
+            @Result(column = "canal_name", property = "canalName"),
             @Result(column = "prev_ttf", property = "prevTtf")
     })
     List<GateMonitor> selectLatestPerHole(@Param("site") String site,
+                                           @Param("canalIds") List<String> canalIds,
                                            @Param("startTime") LocalDateTime startTime,
                                            @Param("endTime") LocalDateTime endTime);
 
