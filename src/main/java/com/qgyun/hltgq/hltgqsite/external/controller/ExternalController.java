@@ -25,7 +25,7 @@ public class ExternalController {
     private ExternalService externalService;
 
     /**
-     * 闸门类型数量：节制闸/分水口/退水闸/倒虹吸，count 暂恒 0（分类数据待三方收集补录）。
+     * 闸门类型数量：节制闸 27 / 分水口 36 / 退水闸 10 / 渡槽 6（三方收集台账实数，非实时统计）。
      */
     @GetMapping("/gate-type-count")
     public ExternalVO.GateTypeCount gateTypeCount() {

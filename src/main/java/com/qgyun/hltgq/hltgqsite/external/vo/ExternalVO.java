@@ -16,7 +16,7 @@ public final class ExternalVO {
     private ExternalVO() {
     }
 
-    /** 闸门类型数量：固定 4 类，count 暂恒 0（类型分类数据待三方收集补录） */
+    /** 闸门类型数量：固定 4 类（节制闸/分水口/退水闸/渡槽），数量为三方收集台账实数（2026-09-18 定稿） */
     @Data
     public static class GateTypeCount {
         private List<GateTypeItem> items;
@@ -24,7 +24,7 @@ public final class ExternalVO {
 
     @Data
     public static class GateTypeItem {
-        /** 类型名：节制闸/分水口/退水闸/倒虹吸 */
+        /** 类型名：节制闸/分水口/退水闸/渡槽 */
         private String type;
         /** 数量 */
         private Integer count;

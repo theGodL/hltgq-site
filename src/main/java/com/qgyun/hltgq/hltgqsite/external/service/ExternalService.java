@@ -92,22 +92,22 @@ public class ExternalService {
     @Value("${external.intake-gate-unit:花凉亭灌区}")
     private String intakeGateUnit;
 
-    /** 闸门类型数量：固定 4 类，count 暂恒 0（分类数据待三方收集补录后改真实统计） */
+    /** 闸门类型数量：固定 4 类（节制闸/分水口/退水闸/渡槽），数量为三方收集台账实数（2026-09-18 定稿） */
     public ExternalVO.GateTypeCount gateTypeCount() {
         ExternalVO.GateTypeCount vo = new ExternalVO.GateTypeCount();
         List<ExternalVO.GateTypeItem> items = new ArrayList<>(4);
-        items.add(item("节制闸"));
-        items.add(item("分水口"));
-        items.add(item("退水闸"));
-        items.add(item("倒虹吸"));
+        items.add(item("节制闸", 27));
+        items.add(item("分水口", 36));
+        items.add(item("退水闸", 10));
+        items.add(item("渡槽", 6));
         vo.setItems(items);
         return vo;
     }
 
-    private ExternalVO.GateTypeItem item(String type) {
+    private ExternalVO.GateTypeItem item(String type, int count) {
         ExternalVO.GateTypeItem item = new ExternalVO.GateTypeItem();
         item.setType(type);
-        item.setCount(0);
+        item.setCount(count);
         return item;
     }
 
