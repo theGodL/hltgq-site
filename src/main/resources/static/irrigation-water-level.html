@@ -11,8 +11,8 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
 /* 左右布局：左侧渠系树侧边栏 + 右侧页面内容 */
-.layout{display:flex;gap:12px;padding:16px;align-items:flex-start;min-height:100vh}
-.page-wrap{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.layout{display:flex;gap:12px;padding:16px;align-items:stretch;height:100vh;overflow:hidden}
+.page-wrap{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;min-height:0}
 .breadcrumb{color:#999;font-size:13px}
 .breadcrumb .sep{margin:0 6px}
 .breadcrumb .cur{color:#333}
@@ -46,12 +46,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 
 /* 花凉亭灌区 / 花凉亭水库 / 麻塘湖灌区 */
-.tab-bar{display:flex;gap:10px;align-items:center}
+.tab-bar{display:flex;gap:10px;align-items:center;flex-shrink:0}
 .tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 108px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent}
 .tab-item:hover{color:#1677ff}
 .tab-item.active{color:#1677ff;font-weight:500;border-color:#1677ff;box-shadow:0 1px 4px rgba(22,119,255,.12)}
 
-.filter-card{padding:16px 20px}
+.filter-card{padding:16px 20px;flex-shrink:0}
 .filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
 .filter-item{display:flex;align-items:center;gap:8px}
 .filter-item label{color:#666;font-size:14px;white-space:nowrap}
@@ -116,8 +116,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   border-top-color:#1677ff;
 }
 
-.result-card{padding:16px 20px 12px;flex:1;display:flex;flex-direction:column;min-height:360px}
-.tbl-wrap{overflow-x:auto;position:relative;flex:none}
+.result-card{padding:16px 20px 12px;flex:1;display:flex;flex-direction:column;min-height:0}
+.tbl-wrap{overflow:auto;position:relative;flex:1;min-height:0}
 .tbl-wrap.is-loading{pointer-events:none}
 .tbl-wrap.is-loading::before{
   content:'';
@@ -151,10 +151,10 @@ tbody tr:hover td{background:#fafafa}
 .pg-size{height:28px;border:1px solid #d9d9d9;border-radius:4px;padding:0 6px;font-size:13px;outline:none;background:#fff;margin-right:4px;cursor:pointer}
 
 .panel{display:none}
-.panel.active{display:flex;flex-direction:column;gap:12px;flex:1}
+.panel.active{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
 
 /* 水库结果卡头部：子 Tab + 导出 */
-.res-toolbar{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f0f0f0;margin:0 -20px 12px;padding:0 20px}
+.res-toolbar{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f0f0f0;margin:0 -20px 12px;padding:0 20px;flex-shrink:0}
 .res-tabs{display:flex;gap:0;flex-wrap:wrap}
 .res-tab{padding:12px 14px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none;white-space:nowrap}
 .res-tab:hover{color:#1677ff}
@@ -188,6 +188,17 @@ tbody tr:hover td{background:#fafafa}
 .modal-filter input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
 .modal-filter input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 .modal-filter input[type=date]{width:140px}
+
+/* ===== 视口高度锁定：页头（Tab 行 / 查询器）与卡片工具条固定，仅表格区内部滚动 ===== */
+.tbl-wrap thead th{position:sticky;top:0;z-index:2;background:#fafafa;box-shadow:0 1px 0 0 #e8e8e8}
+.tc{text-align:center}
+/* 小屏 / 矮屏回退：恢复整页滚动，避免表格区被压得不可用 */
+@media (max-width:900px),(max-height:600px){
+  .layout{height:auto;min-height:100vh;overflow:visible}
+  .page-wrap{min-height:auto}
+  .result-card{min-height:360px}
+  .tbl-wrap{flex:none}
+}
 
 </style>
 </head>
@@ -479,6 +490,8 @@ const API = '/hltgq-site';
 function setLoading(el, on) {
   if (!el) return;
   el.classList.toggle('is-loading', !!on);
+  // 表格区为独立滚动容器：进入加载态先回到顶部，否则遮罩只覆盖内容顶部
+  if (on && el.scrollTop) el.scrollTop = 0;
 }
 function bindAsyncClick(el, asyncFn, opts = {}) {
   if (!el) return;
@@ -871,6 +884,8 @@ const RES_META = {
     // 对齐 /st-river-r/regime；水位列紧跟时间（第 3 列）；警戒/保证水位不展示
     headers: ['站点名称', '时间', '水位m'],
     rowToArr: r => [r.stnm, fmtTm(r.tm), r.z],
+    // 居中列（表头与表体同步）：站点名称 / 时间
+    centerCols: [0, 1],
   },
   reservoir: {
     name: '水库水情表',
@@ -883,6 +898,8 @@ const RES_META = {
     // 水势/流量/测流/测积/测速方法无真实数值不展示
     headers: ['站点名称', '时间', '水位m'],
     rowToArr: r => [r.stnm, fmtTm(r.tm), r.z],
+    // 居中列（表头与表体同步）：站点名称 / 时间
+    centerCols: [0, 1],
   },
   brief: {
     name: '水情简报',
@@ -1185,7 +1202,7 @@ async function loadResData() {
     if (S.resTab === 'brief') S.resRows.brief = [];
     if (S.resTab === 'years') { S.resYearsRows = []; S.resYearsStations = []; }
     const headers = getResHeaders();
-    $('res-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+    $('res-thead').innerHTML = `<tr>${headers.map((h, i) => `<th${resColAttr(i)}>${h}</th>`).join('')}</tr>`;
     $('res-tbody').innerHTML = `<tr><td colspan="${headers.length}" class="empty">数据加载失败，请重试</td></tr>`;
   } finally {
     setLoading(wrap, false);
@@ -1193,12 +1210,18 @@ async function loadResData() {
   }
 }
 
+/** 当前子 Tab 需居中的列索引（RES_META[tab].centerCols）；表头与表体共用同一份配置，避免两者不一致 */
+function resColAttr(i) {
+  const meta = RES_META[S.resTab] || {};
+  return (meta.centerCols || []).indexOf(i) >= 0 ? ' class="tc"' : '';
+}
+
 function renderResTable() {
   const headers = getResHeaders();
   const rows = getResRows();
   const meta = RES_META[S.resTab];
   const paginated = S.resTab === 'river' || S.resTab === 'reservoir';
-  $('res-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+  $('res-thead').innerHTML = `<tr>${headers.map((h, i) => `<th${resColAttr(i)}>${h}</th>`).join('')}</tr>`;
 
   // 分页栏：river/reservoir 始终显示（含无数据时），其余 Tab 不显示
   $('res-pg-bar').innerHTML = paginated ? buildResPagerHtml() : '';
@@ -1225,7 +1248,7 @@ function renderResTable() {
 
   $('res-tbody').innerHTML = rows.map(r => {
     const arr = meta.rowToArr(r);
-    return `<tr>${arr.map(v => `<td>${fmtAuto(v)}</td>`).join('')}</tr>`;
+    return `<tr>${arr.map((v, i) => `<td${resColAttr(i)}>${fmtAuto(v)}</td>`).join('')}</tr>`;
   }).join('');
   if (paginated) bindResPagerEvents();
 }

@@ -13,8 +13,8 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
 /* 左右布局：左侧渠系树侧边栏 + 右侧页面内容 */
-.layout{display:flex;gap:12px;padding:16px;align-items:flex-start;min-height:100vh}
-.page-wrap{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.layout{display:flex;gap:12px;padding:16px;align-items:stretch;height:100vh;overflow:hidden}
+.page-wrap{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;min-height:0}
 .breadcrumb{color:#999;font-size:13px}
 .breadcrumb .sep{margin:0 6px}
 .breadcrumb .cur{color:#333}
@@ -48,14 +48,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 
 /* 花凉亭灌区 / 麻塘湖灌区：参考雨量监测灌区/水库 Tab */
-.tab-bar{display:flex;gap:10px;align-items:center}
+.tab-bar{display:flex;gap:10px;align-items:center;flex-shrink:0}
 .tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 108px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent}
 .tab-item:hover{color:#1677ff}
 .tab-item.active{color:#1677ff;font-weight:500;border-color:#1677ff;box-shadow:0 1px 4px rgba(22,119,255,.12)}
 .panel{display:none}
-.panel.active{display:flex;flex-direction:column;gap:12px;flex:1}
+.panel.active{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
 
-.filter-card{padding:16px 20px}
+.filter-card{padding:16px 20px;flex-shrink:0}
 .filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
 .filter-item{display:flex;align-items:center;gap:8px}
 .filter-item label{color:#666;font-size:14px;white-space:nowrap}
@@ -100,8 +100,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   border-top-color:#1677ff;
 }
 
-.result-card{padding:16px 20px 12px;flex:1;display:flex;flex-direction:column;min-height:360px}
-.tbl-wrap{overflow-x:auto;position:relative;flex:none}
+.result-card{padding:16px 20px 12px;flex:1;display:flex;flex-direction:column;min-height:0}
+.tbl-wrap{overflow:auto;position:relative;flex:1;min-height:0}
 .tbl-wrap.is-loading,.chart-box.is-loading{pointer-events:none}
 .tbl-wrap.is-loading::before,.chart-box.is-loading::before{
   content:'';
@@ -169,6 +169,16 @@ tbody tr:hover td{background:#fafafa}
 .result-toolbar{display:flex;align-items:center;gap:12px;padding:0 0 12px;flex-shrink:0}
 /* 电压列（业主要求隐藏）；恢复：删除本规则，并把各表空数据行的 colspan 加回 1 */
 .col-vol{display:none}
+
+/* ===== 视口高度锁定：页头（Tab 行 / 查询器）与卡片工具条固定，仅表格区内部滚动 ===== */
+.tbl-wrap thead th{position:sticky;top:0;z-index:2;background:#fafafa;box-shadow:0 1px 0 0 #e8e8e8}
+/* 小屏 / 矮屏回退：恢复整页滚动，避免表格区被压得不可用 */
+@media (max-width:900px),(max-height:600px){
+  .layout{height:auto;min-height:100vh;overflow:visible}
+  .page-wrap{min-height:auto}
+  .result-card{min-height:360px}
+  .tbl-wrap{flex:none}
+}
 </style>
 </head>
 <body>
@@ -625,6 +635,8 @@ function bindCanalTree() {
 function setLoading(el, on) {
   if (!el) return;
   el.classList.toggle('is-loading', !!on);
+  // 表格区为独立滚动容器：进入加载态先回到顶部，否则遮罩只覆盖内容顶部
+  if (on && el.scrollTop) el.scrollTop = 0;
 }
 function bindAsyncClick(el, asyncFn, opts = {}) {
   if (!el) return;
