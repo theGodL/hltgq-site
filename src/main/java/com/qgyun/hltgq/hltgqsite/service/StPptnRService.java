@@ -31,8 +31,9 @@ public interface StPptnRService extends IService<StPptnR> {
     List<StPptnR> todaySumPerStation(LocalDateTime start, LocalDateTime end);
 
     /**
-     * 各雨量站最新观测所在水文日的累计降雨量（DYP 正向增量之和，mm）
-     * <p>花凉亭雨量报文 DRP 恒为 0，仅 DYP 有值；灌区站 DRP 每日 8:00 归零亦不可靠，统一用 DYP 增量。
+     * 各雨量站「本水文日累计雨量」：当前水文日 08:00 起至今的 DYP 正向增量（mm），每早 8 点清零
+     * <p>全系统统一水文日口径 [D 08:00:00, D+1 07:59:59]（8 点整归新的一天，最后一个 8 点即次日 7:59:59）；
+     * 花凉亭雨量报文 DRP 恒为 0，灌区站 DRP 每日归零亦不可靠，统一用 DYP 增量。本水文日无上报的站返回 0。
      */
     Map<String, BigDecimal> currentHydroDayRainfall();
 

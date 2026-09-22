@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -100,18 +101,12 @@ public class StationMetricsController {
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toSet());
 
-        // 当前水文日边界：标签 D 的水文日区间为 (D-1日 08:00:00, D日 08:00:00]（左开右闭）
-        // 8 点整归当日标签（与 getHydroDayLabel 的 tm-1s 规则一致）
+        // 水文日口径：08:00 左闭，8 点整归新的一天（水文日区间 [D 08:00:00, D+1 07:59:59]）
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime t0 = now.minusSeconds(1);
-        LocalDateTime hydroStart;
-        if (t0.getHour() >= 8) {
-            hydroStart = t0.toLocalDate().atTime(8, 0, 0);
-        } else {
-            hydroStart = t0.toLocalDate().minusDays(1).atTime(8, 0, 0);
-        }
+        // 雨量所属水文日日期：08:00 及以后为当日，之前为前一日
+        LocalDate hydroDate = now.getHour() >= 8 ? now.toLocalDate() : now.toLocalDate().minusDays(1);
 
-        // 当前水文日各站累计降雨量（DYP 正向增量，花凉亭 DRP 恒 0 亦能正确反映）
+        // 本水文日各站累计降雨量（DYP 正向增量，花凉亭 DRP 恒 0 亦能正确反映）
         Map<String, BigDecimal> todayRainMap = stPptnRService.currentHydroDayRainfall();
 
         return stations.stream()
@@ -130,8 +125,10 @@ public class StationMetricsController {
 
             if (pptnStcds.contains(stcd)) {
                 BigDecimal rain = todayRainMap.get(stcd);
+                // 雨量不可能为负：哨兵值（-9991 设备异常 / -999 设备不存在）与缺失一律按 0 展示
+                if (rain != null && rain.signum() < 0) rain = null;
                 vo.setDrp(rain != null ? rain.setScale(1, RoundingMode.HALF_UP) : BigDecimal.ZERO.setScale(1));
-                vo.setPptnTm(hydroStart.toLocalDate());
+                vo.setPptnTm(hydroDate);
             }
 
             if (river != null && pptnStcds.contains(stcd)) vo.setType("all");

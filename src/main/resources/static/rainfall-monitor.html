@@ -1356,9 +1356,9 @@ async function loadResData() {
 
     if (RES.tab === 'realtime') {
       // stations 横向：监测日期 + 各站列；不传日期，取实时最新
-      // 数值取 stations[].latestDrp = 当前水文日（今日 8:00 起至今）的 DYP 正向累计增量，
-      // 与灌区实时雨情「当前雨量」（gq-rainfall.drp）、/station-metrics 的 drp 三处同源；
-      // 不能用 days[0]：默认单日返回的是「最近完整水文日」(昨日 8:00~今日 8:00)，刚下的雨不在其中
+      // 数值取 stations[].latestDrp = 本水文日累计雨量（当前水文日 08:00 起至今，早 8 点清零）的 DYP 正向增量，
+      // 与 /station-metrics 的 drp 同源，与灌区实时雨情 gq-rainfall.drp 同为水文日（8:00 切分）口径；
+      // 不能用 days[0]：默认单日返回的是「最近完整水文日」(昨日 8:00~今日 8:00)，当天的雨不在其中
       const rq = applyCanalParam(new URLSearchParams()).toString();
       const data = await fetchJson(`${API}/st-pptn-r/reservoir-rainfall${rq ? `?${rq}` : ''}`);
       const stations = data.stations || [];

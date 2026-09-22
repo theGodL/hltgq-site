@@ -133,9 +133,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                                               LocalDateTime startTime, LocalDateTime endTime) {
         // drp 基线 = 服务器当前所属水文日的 8 点起点（与 dailyDyp 同用 LocalDateTime.now() 时钟口径）：
         // "当前雨量"始终表示当前水文日累计，最新报文停留在上一水文日（如 8 点整点报文）时不会与"昨日雨量"重合
-        String curLabel = getHydroDayLabel(LocalDateTime.now());
-        LocalDateTime hydroBase = LocalDateTime.parse(curLabel,
-                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).minusDays(1);
+        LocalDateTime hydroBase = hydroDayStart(LocalDateTime.now());
         // 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
         List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
         List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(stcd, canalIds, startTime, endTime, hydroBase);
@@ -163,10 +161,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Override
     public List<GqRainfallVO> gqRainfallMonitoringAll() {
-        // drp 基线口径与实时列表（gqRainfallPage）一致：服务器当前水文日 8 点起点
-        String curLabel = getHydroDayLabel(LocalDateTime.now());
-        LocalDateTime hydroBase = LocalDateTime.parse(curLabel,
-                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).minusDays(1);
+        // 灌区站 drp 基线口径与实时列表（gqRainfallPage）一致：服务器当前水文日 8 点起点
+        LocalDateTime hydroBase = hydroDayStart(LocalDateTime.now());
         List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(null, null, null, null, hydroBase);
         // 与 /gq-rainfall 不同：不排除水库站（站点集合由调用方的站点档案列表决定）
         List<GqRainfallVO> vos = rows.stream().map(this::toGqRainfallVO).collect(Collectors.toList());
@@ -344,6 +340,25 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     /**
+     * 取「不晚于 instant 的最后一条记录」的 DYP 原始读数（含哨兵值，不向前回溯）：
+     * instant 恰有一条记录即取该条（该条的增量产生于 instant 之前，归上一区间，如水文日起点 08:00 行归前一水文日）；
+     * instant 无记录时即取之前最后一条。
+     * <p>**不跳过哨兵值**：若跳过 -9991/-999 继续向前找有效读数，基线会跨过设备异常期，
+     * 把属于前一水文日的雨量并进本水文日（与「昨日雨量」重叠，破坏首尾相接），
+     * 故与 SQL 侧 dyp_day 子查询口径保持一致，交由 subtractOrNull 统一判定（透传/缺失）。
+     */
+    private BigDecimal dypAtOrBefore(List<StPptnR> rows, LocalDateTime instant) {
+        BigDecimal value = null;
+        for (StPptnR r : rows) {
+            LocalDateTime tm = r.getTm();
+            if (tm == null) continue;
+            if (tm.isAfter(instant)) break;
+            value = r.getDyp();
+        }
+        return value;
+    }
+
+    /**
      * 灌区雨情接口站点可见性：
      * 未指定 stcd（全量查询）时排除水库 13 站，保持灌区口径；
      * 显式指定 stcd 时放行该站（含水库站），支持按站点编号单独查询库上站点数据。
@@ -454,7 +469,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         // 5. 生成完整的水文日序列（桶 = 水文日 (D-1日 08:00, D日 08:00]，标签 D 08:00:00）
         //    区间筛选 [startDate, endDate] 的窗口为 (startDate 08:00, endDate 08:00]：
         //    首个完整水文日标签是 startDate+1（输出 startDate 标签会带出 startDate-1 日的尾巴，故排除）；
-        //    单日/默认（startDate == endDate）保留当日单标签（最近完整水文日，实时雨情视角依赖）
+        //    单日/默认（startDate == endDate）保留当日单标签（最近完整水文日）
         List<String> allBuckets = new ArrayList<>();
         DateTimeFormatter bucketFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate d = startDate.isBefore(endDate) ? startDate.plusDays(1) : startDate;
@@ -463,9 +478,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             d = d.plusDays(1);
         }
 
-        // 6. 组装站点信息（实时雨情视角：当前降雨量 = 最新观测所在水文日的 DYP 累计增量）
+        // 6. 组装站点信息（实时雨情视角：当前降雨量 = 本水文日累计雨量，08:00 起）
         List<ReservoirRainfallVO.StationInfo> stations = new ArrayList<>();
-        Map<String, BigDecimal> latestRain = latestHydroDayRain(resolved.keySet(), records);
+        Map<String, BigDecimal> latestRain = calcCurrentHydroDayRain(resolved.keySet());
         Map<String, StPptnR> latestPerStcd = new HashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
@@ -725,10 +740,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     private Map<String, BigDecimal> yesterdayHydroDayRain(List<String> stcds) {
         Map<String, BigDecimal> result = new HashMap<>();
         if (stcds == null || stcds.isEmpty()) return result;
-        DateTimeFormatter labelFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-        // 昨日水文日区间右端点（标签时刻）：当前所属水文日标签 - 1 天
-        String curLabel = getHydroDayLabel(LocalDateTime.now());
-        LocalDateTime yEnd = LocalDateTime.parse(curLabel, labelFmt).minusDays(1);
+        // 昨日水文日区间右端点（标签时刻）= 当前水文日起点（左闭 08:00）：
+        // 标签 D 的水文日区间为 (D-1 08:00, D 08:00]，故当前水文日起点即「最近一个完整水文日」的右端点
+        LocalDateTime yEnd = hydroDayStart(LocalDateTime.now());
         String yLabel = getHydroDayLabel(yEnd);
         // 查询范围前后各扩 1 天，确保首条记录有基线可对比
         List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(
@@ -764,37 +778,54 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     /**
-     * 各站点最新观测所在水文日的累计降雨量（DYP 正向增量之和）
-     * <p>花凉亭雨量报文 DRP 恒为 0，仅 DYP 有值且持续累加，“当前降雨量”必须用 DYP 增量表示。
+     * 指定时刻所属**水文日**的起点（08:00，左闭）：08:00 及以后为当日 08:00，之前为前一日 08:00。
+     * <p>水文日区间为 [D 08:00:00, D+1 07:59:59]，即「早 8 点到次日 7 点 59 分 59 秒」，8 点整归新的一天
+     * ——08:00:00 这一刻即属新水文日，故本方法对「当前时刻」取左闭语义。
+     * <p>注意与 {@link #getHydroDayLabel(LocalDateTime)} 的区别，两者不可互相推导：本方法用于
+     * 「当前时刻 → 当前水文日起点」（左闭，08:00:00 整算当日）；getHydroDayLabel 用于
+     * 「记录时刻 → 所属水文日标签」（右闭，(D-1 08:00, D 08:00]，08:00:00 整那一行的增量归前一水文日）。
      */
-    private Map<String, BigDecimal> latestHydroDayRain(Set<String> validStcds, List<StPptnR> records) {
+    private LocalDateTime hydroDayStart(LocalDateTime t) {
+        LocalDateTime start = t.toLocalDate().atTime(8, 0);
+        return start.isAfter(t) ? start.minusDays(1) : start;
+    }
+
+    /**
+     * 各站点「本水文日累计雨量」：当前水文日 08:00 起至今的 DYP 正向增量（mm），每早 8 点清零。
+     * <p>全系统统一口径：水文日 [D 08:00:00, D+1 07:59:59]（不再对齐老系统的自然日 00:00 日切）；
+     * 花凉亭雨量报文 DRP 恒为 0，故「当前雨量」用 DYP 增量表示。
+     * <p>实现：每站以最新一条记录为终点；基线取「不晚于水文日起点的最后一条记录读数」
+     * ——08:00 那一行的增量产生于 08:00 之前、归前一水文日，故不计入本水文日（无 08:00 行时即取 08:00 前最后一条）；
+     * 取两者 DYP 之差（负差归 0；哨兵值 -9991 透传由前端展示 '--'、-999 转缺失，与 SQL 侧 subtractOrNull 规则一致）。
+     * 最新报文停留在水文日起点之前的站，基线与终点同为该行读数、差值为 0（语义「08:00 起无降雨增量」）。
+     */
+    private Map<String, BigDecimal> calcCurrentHydroDayRain(Collection<String> stcds) {
         Map<String, BigDecimal> result = new HashMap<>();
+        List<String> valid = new ArrayList<>();
+        Set<String> validSet = new HashSet<>();
+        for (String s : stcds) {
+            if (s == null) continue;
+            String t = s.trim();
+            if (!t.isEmpty() && validSet.add(t)) valid.add(t);
+        }
+        if (valid.isEmpty()) return result;
+        // 查询范围：水文日起点前 3 天 ~ 此刻（确保各站「水文日起点之前的最后一条」基线记录在范围内）
+        LocalDateTime hydroStart = hydroDayStart(LocalDateTime.now());
+        List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(valid, hydroStart.minusDays(3), LocalDateTime.now());
         Map<String, List<StPptnR>> byStation = new LinkedHashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
-            if (!validStcds.contains(key)) continue;
+            if (!validSet.contains(key)) continue;
             byStation.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
         for (Map.Entry<String, List<StPptnR>> entry : byStation.entrySet()) {
             List<StPptnR> rows = entry.getValue();
             rows.sort(Comparator.comparing(StPptnR::getTm));
             StPptnR latest = rows.get(rows.size() - 1);
-            String label = getHydroDayLabel(latest.getTm());
-            BigDecimal sum = null;
-            for (int i = 0; i < rows.size(); i++) {
-                StPptnR cur = rows.get(i);
-                if (!label.equals(getHydroDayLabel(cur.getTm()))) continue;
-                BigDecimal inc = BigDecimal.ZERO;
-                if (i > 0) {
-                    BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
-                    BigDecimal prevDyp = rows.get(i - 1).getDyp() != null ? rows.get(i - 1).getDyp() : BigDecimal.ZERO;
-                    inc = safeDypIncrement(curDyp, prevDyp);
-                }
-                sum = (sum == null ? BigDecimal.ZERO : sum).add(inc);
-            }
-            if (sum != null) {
-                result.put(entry.getKey(), sum);
-            }
+            // 终点 = 该站最新一条记录读数，基线 = 不晚于水文日起点的最后一条记录读数；
+            // 本水文日无上报时基线即最新行本身（差值 0），哨兵与负差统一由 subtractOrNull 处理
+            result.put(entry.getKey(),
+                    subtractOrNull(latest.getDyp(), dypAtOrBefore(rows, hydroStart)));
         }
         return result;
     }
@@ -803,16 +834,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     public Map<String, BigDecimal> currentHydroDayRainfall() {
         List<String> stcds = baseMapper.selectDistinctRainfallStcds();
         if (stcds == null || stcds.isEmpty()) return Collections.emptyMap();
-        Set<String> valid = new HashSet<>();
-        for (String s : stcds) {
-            if (s != null) valid.add(s.trim());
-        }
-        if (valid.isEmpty()) return Collections.emptyMap();
-        // 查近 4 天数据，覆盖各站最新观测所在水文日的完整增量（含基线记录）
-        LocalDateTime now = LocalDateTime.now();
-        List<StPptnR> records = baseMapper.selectByStcdsAndTimeRange(
-                new ArrayList<>(valid), now.minusDays(4), now);
-        return latestHydroDayRain(valid, records);
+        return calcCurrentHydroDayRain(stcds);
     }
 
     @Override
@@ -878,9 +900,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             t = t.plusMinutes(intervalMinutes);
         }
 
-        // 6. 组装站点信息（当前降雨量 = 最新观测所在水文日的 DYP 累计增量）
+        // 6. 组装站点信息（当前降雨量 = 本水文日累计雨量，08:00 起，与实时雨情口径一致）
         List<ReservoirRainfallVO.StationInfo> stations = new ArrayList<>();
-        Map<String, BigDecimal> latestRain = latestHydroDayRain(resolved.keySet(), records);
+        Map<String, BigDecimal> latestRain = calcCurrentHydroDayRain(resolved.keySet());
         Map<String, StPptnR> latestPerStcd = new HashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
@@ -1275,7 +1297,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     /** 提取公共站点信息组装 */
     private List<ReservoirRainfallVO.StationInfo> buildStationInfos(Map<String, StStinfo> resolved, List<StPptnR> records) {
         List<ReservoirRainfallVO.StationInfo> stations = new ArrayList<>();
-        Map<String, BigDecimal> latestRain = latestHydroDayRain(resolved.keySet(), records);
+        // 当前降雨量 = 本水文日累计雨量（08:00 起），与实时雨情口径一致
+        Map<String, BigDecimal> latestRain = calcCurrentHydroDayRain(resolved.keySet());
         Map<String, StPptnR> latestPerStcd = new HashMap<>();
         for (StPptnR r : records) {
             String key = (r.getStcd() != null) ? r.getStcd().trim() : "";
