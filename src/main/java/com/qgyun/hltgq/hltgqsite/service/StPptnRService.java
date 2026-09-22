@@ -69,6 +69,13 @@ public interface StPptnRService extends IService<StPptnR> {
     List<StationSiteVO> gqRainfallSites();
 
     /**
+     * 是否花凉亭水库站点：测站编码或站名命中水库 13 站名单（与灌区雨量排除口径同源）。
+     * <p>供「站点排序」按页面主 Tab 拆分展示范围使用：水库范围 = 本方法为 true 的站点，
+     * 灌区范围 = 其余站点（水位站、水库雨量站均属水库范围）。
+     */
+    boolean isReservoirSite(String stcd, String stnm);
+
+    /**
      * 灌区日雨情：非水库站点（排除水库 13 站），按水文日（8:00 切分）聚合逐日雨量透视表
      */
     GqDailyRainfallVO gqDailyRainfall(LocalDate startDate, LocalDate endDate);

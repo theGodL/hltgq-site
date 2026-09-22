@@ -681,6 +681,19 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     /**
+     * 是否花凉亭水库站点：测站编码或站名命中水库 13 站名单（与灌区雨量排除口径同源，双重判定）
+     */
+    @Override
+    public boolean isReservoirSite(String stcd, String stnm) {
+        String code = stcd == null ? null : stcd.trim();
+        if (code != null && !code.isEmpty() && RESERVOIR_STCD_NEW.contains(code)) {
+            return true;
+        }
+        String name = stnm == null ? null : stnm.trim();
+        return name != null && !name.isEmpty() && RESERVOIR_STATION_NAMES.contains(name);
+    }
+
+    /**
      * 按「站点排序」配置重排站点映射（雨量类型 #2#：水库站与灌区站共用同一序列）。
      * <p>stations 快照与 days[].values 均按 resolved 迭代顺序输出，故重排 resolved 后展示顺序同时生效；
      * 未配置排序时保持默认顺序（灌区=测站编码顺序，水库=上线顺序）；
@@ -1117,21 +1130,24 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 dailyInc.merge(getHydroDayLabel(cur.getTm()), inc, BigDecimal::add);
             }
 
-            // 生成完整小时序列
-            List<Map.Entry<String, BigDecimal>> hourList = new ArrayList<>(hourlyInc.entrySet());
-            hourList.sort(Map.Entry.comparingByKey());
-
-            // 裁剪滑动统计范围：窗口终点须落在筛选区间内（终点标注、左开右闭）
+            // 滑动统计区间（小时桶为时段终点标注、左开右闭）：
             // 区间查询对齐老系统口径——区间内起算：首日 08:00 桶含前一水文日的尾巴，一并剔除
-            // （区间首日 08:00 前的雨不计入，与老系统极值雨情一致）；
-            // 单日查询保持“当日水文日”语义（保留当日 08:00 终点桶，(D-1 08:00, D 08:00] 的雨）
+            // （区间首日 08:00 前的雨不计入，与老系统极值雨情一致），统计窗为 (startDate 08:00, endDate 08:00]；
+            // 单日查询保持“当日水文日”语义：统计窗为 [startDate 08:00, endDate 08:00]，保留当日 08:00 终点桶
             DateTimeFormatter hourFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-            String hourStartKey = startDate.atTime(8, 0).format(hourFmt);
-            String hourEndKey = endDate.atTime(8, 0).format(hourFmt);
-            if (startDate.isBefore(endDate)) {
-                hourList.removeIf(e -> e.getKey().compareTo(hourStartKey) <= 0 || e.getKey().compareTo(hourEndKey) > 0);
-            } else {
-                hourList.removeIf(e -> e.getKey().compareTo(hourStartKey) < 0 || e.getKey().compareTo(hourEndKey) > 0);
+            LocalDateTime hourGridStart = startDate.isBefore(endDate)
+                    ? startDate.atTime(8, 0).plusHours(1)
+                    : startDate.atTime(8, 0);
+            LocalDateTime hourGridEnd = endDate.atTime(8, 0);
+
+            // 补全为**完整小时网格**（无记录的小时桶补 0）后再滑动取极值：
+            // 接口口径是「任意连续 3/6/24 小时最大雨量」（见接口文档），而本站报文间隔普遍 1~4 小时，
+            // 若直接在“有记录的小时桶”上滑动，会把时间上并不连续、总跨度超过 24 小时的多个时段并成一个窗口，
+            // 导致 max24h 大于该水文日全天雨量（例：9.5 > 9.0），故必须按时间网格推进
+            List<Map.Entry<String, BigDecimal>> hourList = new ArrayList<>();
+            for (LocalDateTime t = hourGridStart; !t.isAfter(hourGridEnd); t = t.plusHours(1)) {
+                String key = t.format(hourFmt);
+                hourList.add(new AbstractMap.SimpleImmutableEntry<>(key, hourlyInc.getOrDefault(key, BigDecimal.ZERO)));
             }
 
             // 滑动窗口求极值（小时桶按终点标注水文日对齐）
@@ -1139,13 +1155,15 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             BigDecimal max6h = slidingMax(hourList, 6);
             BigDecimal max24h = slidingMax(hourList, 24);
 
-            // 日雨量序列（水文日标签排序；区间查询对齐老系统口径——区间内起算，首日 08:00 标签
-            // 含前一水文日全天，一并剔除，从首日次日标签起；单日查询保持当日标签）
-            List<Map.Entry<String, BigDecimal>> dayList = new ArrayList<>(dailyInc.entrySet());
-            dayList.sort(Map.Entry.comparingByKey());
-            String dayStartKey = (startDate.isBefore(endDate) ? startDate.plusDays(1) : startDate) + " 08:00:00";
-            String dayEndKey = endDate + " 08:00:00";
-            dayList.removeIf(e -> e.getKey().compareTo(dayStartKey) < 0 || e.getKey().compareTo(dayEndKey) > 0);
+            // 日雨量序列同样补全为完整水文日网格（断联缺日补 0，避免“N 天窗口”跨成多于 N 天）：
+            // 区间查询对齐老系统口径——区间内起算，首日 08:00 标签含前一水文日全天，一并剔除，从首日次日标签起；
+            // 单日查询保持当日标签
+            LocalDate dayGridStart = startDate.isBefore(endDate) ? startDate.plusDays(1) : startDate;
+            List<Map.Entry<String, BigDecimal>> dayList = new ArrayList<>();
+            for (LocalDate d = dayGridStart; !d.isAfter(endDate); d = d.plusDays(1)) {
+                String key = d + " 08:00:00";
+                dayList.add(new AbstractMap.SimpleImmutableEntry<>(key, dailyInc.getOrDefault(key, BigDecimal.ZERO)));
+            }
 
             BigDecimal max2d = slidingMax(dayList, 2);
             BigDecimal max3d = slidingMax(dayList, 3);

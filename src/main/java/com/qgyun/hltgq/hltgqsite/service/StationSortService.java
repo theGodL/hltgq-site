@@ -13,19 +13,24 @@ import java.util.function.Function;
 public interface StationSortService {
 
     /**
-     * 排序窗口数据：该类型全部站点 + 当前展示顺序
+     * 排序窗口数据：该类型站点 + 当前展示顺序
      * （sortNo 为合成后的当前位次，configured 标记该站是否已保存过配置，
      * sortable=false 表示站点档案中无该站点、无法落库排序）
+     *
+     * @param scope 站点范围（可选）：reservoir 只列花凉亭水库站点，gq 只列灌区站点；
+     *              空值或 all 列出该类型全部站点
      */
-    List<StationSortVO> list(String metricType);
+    List<StationSortVO> list(String metricType, String scope);
 
     /**
-     * 保存该类型排序（整表覆盖，事务）：siteIds 按展示顺序提交；
-     * 不属于该类型或不可排序的标识忽略，未提交的站点按默认顺序追加在后，保证配置覆盖该类型全量站点。
+     * 保存该类型排序（事务）：siteIds 按展示顺序提交；
+     * 不属于该类型或不可排序的标识忽略，未提交的站点按当前顺序追加在后，保证配置覆盖该类型全量站点。
+     * <p>范围（scope）指定时只重排该范围所在分块，另一范围保持当前顺序；
+     * 落库整体恒为「水库块在前、灌区块在后」（地图上水库位于上游，共用序列时水库站点在灌区站点上面）。
      *
      * @return 实际落库的站点数
      */
-    int save(String metricType, List<String> siteIds);
+    int save(String metricType, List<String> siteIds, String scope);
 
     /**
      * 按配置顺序重排（通用适配，siteIdGetter 取每行的站点管理主键，随行数据缺失时该行保持默认位置）

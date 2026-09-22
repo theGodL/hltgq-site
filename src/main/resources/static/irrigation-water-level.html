@@ -17,7 +17,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .breadcrumb .sep{margin:0 6px}
 .breadcrumb .cur{color:#333}
 
-/* ===== 渠系树侧边栏 ===== */
+/* ===== 渠系树侧边栏（仅花凉亭灌区 Tab 展示：花凉亭水库为上游、无渠系，麻塘湖灌区仅一条无站点干渠） ===== */
+.side-card.is-hidden{display:none}
 .side-card{width:248px;flex-shrink:0;position:sticky;top:16px;height:calc(100vh - 32px);background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .side-hd{padding:14px 16px 0;font-size:14px;font-weight:600;color:#1f1f1f}
 .side-search{padding:10px 12px}
@@ -535,9 +536,9 @@ let selectedCanal = null;
 let canalTreeData = [];
 let canalKwTimer = null;
 
-/** 选中渠系时把渠系 id 加进查询参数（取消选中后等同于不传） */
+/** 选中渠系时把渠系 id 加进查询参数（取消选中后等同于不传）；仅花凉亭灌区 Tab 生效（水库无渠系、麻塘湖暂无站点） */
 function applyCanalParam(p) {
-  if (selectedCanal) p.set(CANAL_PARAM, selectedCanal.id);
+  if (selectedCanal && isCanalTab()) p.set(CANAL_PARAM, selectedCanal.id);
   return p;
 }
 
@@ -636,14 +637,21 @@ function onCanalSelect(node) {
   refreshByCanal();
 }
 
-/** 渠系选择变化后重查当前主 Tab 数据（麻塘湖接口暂空，无需重查） */
+/** 渠系结构仅花凉亭灌区 Tab 有效：花凉亭水库为上游来水、无渠系，麻塘湖灌区仅一条太怀干渠且暂无站点 */
+function isCanalTab() {
+  return activeMainTab() === 'irrigation';
+}
+
+/** 主 Tab 切换时同步渠系侧边栏显隐：非花凉亭灌区 Tab 隐藏，页面正文占满宽度 */
+function syncCanalSide() {
+  const side = document.querySelector('.side-card');
+  if (side) side.classList.toggle('is-hidden', !isCanalTab());
+}
+
+/** 渠系选择变化后重查花凉亭灌区数据（水库 / 麻塘湖无渠系，不重查） */
 function refreshByCanal() {
-  const tab = activeMainTab();
-  if (tab === 'irrigation') {
-    loadGateLevels();
-  } else if (tab === 'reservoir') {
-    loadResData();
-  }
+  if (!isCanalTab()) return;
+  loadGateLevels();
 }
 
 /** 关键字前端过滤：命中的节点保留整棵子树，其余仅在子孙有命中时保留（维持层级） */
@@ -946,6 +954,7 @@ function bindTabs() {
       // 默认 Tab 为花凉亭灌区，水库水情表首次切入该 Tab 时再取数（避免进页多一次无用查询）
       if (tab.dataset.tab === 'reservoir' && !S.resLoaded) { S.resLoaded = true; loadResData(); }
       if (tab.dataset.tab === 'mth') renderMthEmpty();
+      syncCanalSide(); // 渠系结构仅花凉亭灌区 Tab 展示
     });
   });
 }
@@ -1689,19 +1698,25 @@ async function init() {
   initPeriodCks();
   initResCks();
   initYearsMonth();
-  // 渠系树侧边栏：与主数据并行加载，失败不阻塞正文
+  // 渠系树侧边栏：与主数据并行加载，失败不阻塞正文（仅花凉亭灌区 Tab 展示）
   loadCanalTree();
+  syncCanalSide();
   // 默认 Tab = 花凉亭灌区（闸前/闸后水位）；水库水情表在首次切入「花凉亭水库」Tab 时加载
   await ensureGrSites();
   await loadGateLevels();
-  // 站点排序（一个按钮、一个抽屉）：抽屉内分两组，水位站与闸站都在一起排
-  // 水位站组 = 水位序列（waterLevel：河道/水库水情表、日时段水情表、水情简报、多年同期水情共用），
-  // 闸站组 = 闸门序列（gate：与闸门监测页共用）；保存时按组分别落库
+  // 站点排序（一个按钮、一个抽屉）：范围随主 Tab 切换，抽屉只列本范围站点 ——
+  // 花凉亭水库 = 水位站组（waterLevel：河道/水库水情表、日时段水情表、水情简报、多年同期水情共用），
+  // 花凉亭灌区 = 闸站组（gate：与闸门监测页共用）；因水库位于上游，水位站组（水库）恒在闸站组（灌区）上面。
+  // 保存时按组分别落库，且只重排本范围所在分块，另一范围顺序不受影响；麻塘湖灌区数据未接入，该 Tab 下不显示排序入口
   StationSort.mount({
     type: ['waterLevel', 'gate'],
     groupLabels: { waterLevel: '水位站（水情）', gate: '闸站（闸前/闸后水位）' },
+    scope: () => (activeMainTab() === 'reservoir' ? 'reservoir' : 'gq'),
+    visible: () => activeMainTab() !== 'mth',
     api: API,
-    tip: '按住站点行拖动，或直接修改序号（两组序号各自从 1 起，拖拽限在组内）：保存后水位站顺序作用于河道/水库水情表、日时段水情表、水情简报、多年同期水情，闸站顺序与闸门监测页共用',
+    tip: () => (activeMainTab() === 'reservoir'
+      ? '按住站点行拖动，或直接修改序号：保存后作用于河道/水库水情表、日时段水情表、水情简报、多年同期水情'
+      : '按住站点行拖动，或直接修改序号：闸站顺序与闸门监测页共用，保存后本页闸前/闸后水位表同步生效'),
     onSaved: async () => {
       grSitesLoaded = false;   // 闸站下拉与列表下次进入灌区 Tab 时重载
       await loadResData();     // 当前水情表按新顺序重载

@@ -103,6 +103,31 @@ public class StationSiteServiceImpl implements StationSiteService {
     }
 
     /**
+     * 按站点范围过滤清单：reservoir 只留花凉亭水库站点（水库水位站 / 水库雨量站），
+     * gq 只留灌区站点（非水库站点）；范围为空时不限制。
+     */
+    @Override
+    public List<StationSiteVO> filterByScope(List<StationSiteVO> sites, String scope) {
+        String normalized = normalizeScope(scope);
+        if (sites == null || sites.isEmpty() || normalized == null) {
+            return sites;
+        }
+        boolean reservoir = SCOPE_RESERVOIR.equals(normalized);
+        List<StationSiteVO> result = new ArrayList<>();
+        for (StationSiteVO site : sites) {
+            if (isReservoirSite(site) == reservoir) {
+                result.add(site);
+            }
+        }
+        return result;
+    }
+
+    /** 是否花凉亭水库站点：判定口径与灌区雨量排除规则同源（测站编码 / 站名双重判定） */
+    private boolean isReservoirSite(StationSiteVO site) {
+        return site != null && stPptnRService.isReservoirSite(site.getCode(), site.getName());
+    }
+
+    /**
      * 雨量站清单（全部雨量站，含花凉亭水库站点）：
      * 一次批量查站点档案表取站名与站点管理主键（排序配置的站点标识），避免逐站查询。
      */

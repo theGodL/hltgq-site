@@ -31,27 +31,32 @@ public class StationSortController {
     private StationSortService stationSortService;
 
     /**
-     * 排序窗口数据：该监测类型下全部站点 + 当前展示顺序
+     * 排序窗口数据：该监测类型下站点 + 当前展示顺序
      *
-     * @param type 监测类型：waterLevel(水位) / rainfall(雨量，含水库站点) /
-     *             flow(流量) / gate(闸门监测页、水位监测页灌区面板) / moisture(墒情)
+     * @param type  监测类型：waterLevel(水位) / rainfall(雨量，含水库站点) /
+     *              flow(流量) / gate(闸门监测页、水位监测页灌区面板) / moisture(墒情)
+     * @param scope 站点范围（可选）：reservoir 只列花凉亭水库站点，gq 只列灌区站点；
+     *              空值或 all 列出该类型全部站点（页面按主 Tab 传入，抽屉只展示本范围站点）
      */
     @GetMapping
-    public List<StationSortVO> list(@RequestParam String type) {
-        return stationSortService.list(type);
+    public List<StationSortVO> list(@RequestParam String type,
+                                    @RequestParam(required = false) String scope) {
+        return stationSortService.list(type, scope);
     }
 
     /**
-     * 保存站点排序（整表覆盖）：siteIds 按拖拽/序号调整后的展示顺序提交
-     * <p>不属于该类型的站点标识忽略；未提交的站点按默认顺序追加在后（新接入站点自动排末尾）。
+     * 保存站点排序：siteIds 按拖拽/序号调整后的展示顺序提交
+     * <p>不属于该类型的站点标识忽略；未提交的站点按当前顺序追加在后（新接入站点自动排末尾）。
+     * <p>scope 指定范围时只重排该范围所在分块，另一范围保持原顺序，整表恒为「水库块在前、灌区块在后」。
      *
      * @return success + count（落库站点数）
      */
     @PostMapping
     public Map<String, Object> save(@RequestBody StationSortSaveVO body) {
-        log.info("收到站点排序保存请求：type={}，提交站点数={}",
-                body.getType(), body.getSiteIds() == null ? 0 : body.getSiteIds().size());
-        int count = stationSortService.save(body.getType(), body.getSiteIds());
+        log.info("收到站点排序保存请求：type={}，scope={}，提交站点数={}",
+                body.getType(), body.getScope(),
+                body.getSiteIds() == null ? 0 : body.getSiteIds().size());
+        int count = stationSortService.save(body.getType(), body.getSiteIds(), body.getScope());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", true);
         result.put("count", count);

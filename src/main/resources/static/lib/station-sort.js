@@ -6,6 +6,11 @@
  *     type: 'flow',                  // 监测类型（与 /station-sort?type= 值域一致）；
  *                                    // 可传数组（如 ['waterLevel', 'gate']）在一个抽屉里分两组列出、保存时按组分别落库；
  *                                    // 也可传函数（每次打开抽屉时求值）按上下文动态返回
+ *     scope: 'gq',                   // 站点范围（可选，与 /station-sort?scope= 值域一致）：
+ *                                    // reservoir 花凉亭水库站点 / gq 灌区站点（非水库站点）/ 省略 = 该类型全部站点；
+ *                                    // 同样支持函数（每次打开抽屉时求值），页面据此按主 Tab 只展示本范围站点
+ *     visible: false,                // 是否显示排序入口（可选，默认显示）；函数形式在主 Tab 切换时重新求值，
+ *                                    // 用于主 Tab 数据未接入时不提供排序入口（如麻塘湖灌区 Tab）
  *     groupLabels: { waterLevel: '水位站' },   // 分组标题（可选，仅多类型抽屉需要，未配置时显示类型名）
  *     api: API,                      // 接口前缀（默认空）
  *     tip: '…',                      // 抽屉提示文案（可选，支持函数按当前类型返回不同说明）
@@ -13,8 +18,9 @@
  *   });
  *
  * 行为：
- *   1. 在 .tab-bar（Tab 同行）最右侧追加「站点排序」按钮（用独立类名，不参与页面 Tab 切换；样式与页面 Tab 一致）；
- *   2. 点击从右侧滑出抽屉，列出该监测类型下全部站点（序号 + 站点名称）；
+ *   1. 在 .tab-bar（Tab 同行）最右侧追加「站点排序」按钮（用独立类名，不参与页面 Tab 切换；样式与页面 Tab 一致），
+ *      配置 visible 为 false 时按钮隐藏（如麻塘湖灌区 Tab 数据未接入）；
+ *   2. 点击从右侧滑出抽屉，列出该监测类型下（配置了 scope 时为该范围内）的站点（序号 + 站点名称）；
  *   3. 支持鼠标拖拽（按住站点行实时换位）与序号输入两种方式设置展示顺序；
  *      多类型抽屉按组呈现，各组顺序互相独立（拖拽与序号输入均限在组内，组内序号各自从 1 起）；
  *   4. 保存后对该类型的所有接口与页面生效（站点下拉、监测列表、图表站点轴等）。
@@ -123,6 +129,24 @@
       return Array.isArray(t) ? t.slice() : [t];
     }
 
+    /**
+     * 当前站点范围（可选）：reservoir 花凉亭水库站点 / gq 灌区站点（非水库站点）；
+     * 未配置或为空时列出该类型全部站点。函数形式每次打开抽屉时求值。
+     */
+    function currentScope() {
+      var s = typeof opt.scope === 'function' ? opt.scope() : opt.scope;
+      return s == null ? '' : String(s).trim();
+    }
+
+    /**
+     * 排序入口是否显示（可选，默认显示）：仅显式配置为 false 时隐藏；
+     * 函数形式在挂载时与每次点击后重新求值（页面切换主 Tab 由其自身点击监听同步处理，冒泡到 document 时已生效）。
+     */
+    function currentVisible() {
+      var v = typeof opt.visible === 'function' ? opt.visible() : opt.visible;
+      return v !== false;
+    }
+
     /** 分组标题：opt.groupLabels[type] 优先，未配置时回退为类型名本身 */
     function groupLabel(type) {
       var labels = opt.groupLabels || {};
@@ -135,8 +159,9 @@
       return tip || '按住站点行拖动，或直接修改序号，保存后对该类型的所有接口与页面生效';
     }
 
-    /** 本次抽屉列表对应的类型（打开时求值并锁定，保存时提交同一批类型，避免清单与类型错配） */
+    /** 本次抽屉列表对应的类型与范围（打开时求值并锁定，保存时提交同一批，避免清单与范围错配） */
     var loadedTypes = [];
+    var loadedScope = '';
 
     injectStyle();
 
@@ -221,13 +246,14 @@
         + '</div>';
     }
 
-    /** groups: [{ type, items }]；单类型抽屉不显示分组标题，多类型抽屉按组显示 */
-    function render(groups) {
-      var multi = groups.length > 1;
+    /** groups: [{ type, items }]；单类型抽屉不显示分组标题，多类型抽屉按组显示；空组（本范围内无站点）不渲染 */
+    function render(groups, scope) {
+      var visible = groups.filter(function (group) { return (group.items || []).length > 0; });
+      var multi = visible.length > 1;
       var html = '';
       var sortableTotal = 0;
       var rowTotal = 0;
-      groups.forEach(function (group) {
+      visible.forEach(function (group) {
         var items = group.items || [];
         rowTotal += items.length;
         // 可排序站点按接口返回顺序在前，档案缺失站点置灰排在组末（不占序号）
@@ -246,7 +272,8 @@
         }).join('');
       });
       if (!rowTotal) {
-        listEl.innerHTML = '<div class="stsort-hint">该监测类型下暂无站点</div>';
+        listEl.innerHTML = '<div class="stsort-hint">'
+          + (scope ? '当前范围下暂无站点' : '该监测类型下暂无站点') + '</div>';
         saveBtn.disabled = true;
         return;
       }
@@ -258,14 +285,17 @@
     /** 逐个类型拉清单（串行，保证分组标题与页面配置的顺序一致） */
     function load() {
       loadedTypes = currentTypes();
+      loadedScope = currentScope();
       listEl.innerHTML = '<div class="stsort-hint">加载中…</div>';
       saveBtn.disabled = true;
       var groups = [];
       var chain = Promise.resolve();
+      // 范围随页面主 Tab 传入：后端只返回该范围站点（保存也只重排该范围，另一范围顺序不受影响）
+      var scopeQuery = loadedScope ? '&scope=' + encodeURIComponent(loadedScope) : '';
       loadedTypes.forEach(function (type) {
         chain = chain
           .then(function () {
-            return fetch(api + '/station-sort?type=' + encodeURIComponent(type), { credentials: 'include' });
+            return fetch(api + '/station-sort?type=' + encodeURIComponent(type) + scopeQuery, { credentials: 'include' });
           })
           .then(function (res) {
             if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -276,7 +306,7 @@
           });
       });
       chain
-        .then(function () { render(groups); })
+        .then(function () { render(groups, loadedScope); })
         .catch(function (err) {
           listEl.innerHTML = '<div class="stsort-hint is-error">站点列表加载失败：'
             + esc(err.message || err) + '</div>';
@@ -365,9 +395,10 @@
       if (input) commitSeq(input);
     });
 
-    /** 保存：按组收集站点标识，逐个类型提交（后端按类型整表覆盖，互不影响） */
+    /** 保存：按组收集站点标识，逐个类型提交（后端按类型落库；scope 指定时只重排本范围所在分块） */
     function save() {
       var types = loadedTypes.length ? loadedTypes : currentTypes();
+      var scope = loadedScope;
       var submissions = [];
       types.forEach(function (type) {
         var siteIds = sortableRows(type).map(function (r) { return r.dataset.siteId; })
@@ -385,15 +416,18 @@
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: item.type, siteIds: item.siteIds }),
+            body: JSON.stringify(scope
+              ? { type: item.type, siteIds: item.siteIds, scope: scope }
+              : { type: item.type, siteIds: item.siteIds }),
           });
         })
           .then(function (res) {
             if (!res.ok) throw new Error('HTTP ' + res.status);
             return res.json().catch(function () { return {}; });
           })
-          .then(function (data) {
-            saved += (data && data.count ? data.count : item.siteIds.length);
+          .then(function () {
+            // 提示用提交数（本范围用户实际调整的站点数）；后端返回的 count 为该序列落库总数（含后端自动追加），以日志核对
+            saved += item.siteIds.length;
           });
       });
       chain
@@ -412,6 +446,7 @@
     }
 
     function open() {
+      if (!currentVisible()) return;
       root.classList.add('open');
       document.body.classList.add('stsort-body-lock');
       tipEl.textContent = currentTip();
@@ -423,6 +458,16 @@
       document.body.classList.remove('stsort-body-lock');
     }
 
+    /** 入口显隐（仅在状态变化时改写样式）：隐藏入口时关闭抽屉，避免抽屉停留在已失效的范围上 */
+    var shownVisible = null;
+    function syncVisible() {
+      var visible = currentVisible();
+      if (visible === shownVisible) return;
+      shownVisible = visible;
+      btn.style.display = visible ? '' : 'none';
+      if (!visible) close();
+    }
+
     btn.addEventListener('click', open);
     mask.addEventListener('click', close);
     root.querySelector('.stsort-x').addEventListener('click', close);
@@ -431,8 +476,10 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && root.classList.contains('open')) close();
     });
+    document.addEventListener('click', syncVisible);
+    syncVisible();
 
-    return { open: open, close: close };
+    return { open: open, close: close, syncVisible: syncVisible };
   }
 
   global.StationSort = { mount: mount };

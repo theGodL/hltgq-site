@@ -72,10 +72,13 @@ public class StationSortServiceImpl implements StationSortService {
     private StationSiteService stationSiteService;
 
     @Override
-    public List<StationSortVO> list(String metricType) {
+    public List<StationSortVO> list(String metricType, String scope) {
         requireMetricCode(metricType);
-        // 站点清单与站点下拉同源（StationSiteService），保证抽屉里列出的就是该类型页面能看到的站点
-        List<StationSiteVO> sites = stationSiteService.sitesOfType(metricType);
+        String scopeNorm = stationSiteService.normalizeScope(scope);
+        // 站点清单与站点下拉同源（StationSiteService），保证抽屉里列出的就是该类型页面能看到的站点；
+        // scope 按页面主 Tab 限定范围（花凉亭水库 / 花凉亭灌区），为空时列出该类型全部站点
+        List<StationSiteVO> sites = stationSiteService.filterByScope(
+                stationSiteService.sitesOfType(metricType), scopeNorm);
         Map<String, Integer> order = orderOf(metricType);
         // 已配置站点按配置序号在前，未配置站点按默认顺序排在后面（无站点主键的站点一并排在其后）
         List<StationSiteVO> ordered = applyOrder(metricType, sites, StationSiteVO::getSiteId);
@@ -97,8 +100,9 @@ public class StationSortServiceImpl implements StationSortService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int save(String metricType, List<String> siteIds) {
+    public int save(String metricType, List<String> siteIds, String scope) {
         String metricCode = requireMetricCode(metricType);
+        String scopeNorm = stationSiteService.normalizeScope(scope);
         List<StationSiteVO> sites = stationSiteService.sitesOfType(metricType);
         // 可排序白名单：站点管理主键 → 站名（站名仅用于日志核对，不落库，避免名称变更后失真）
         Map<String, String> nameBySiteId = new LinkedHashMap<>();
@@ -114,21 +118,47 @@ public class StationSortServiceImpl implements StationSortService {
 
         // 提交顺序：去重 + 剔除不属于该类型或不可排序的标识（前端传错或历史脏数据不落库）
         int submitted = siteIds == null ? 0 : siteIds.size();
-        List<String> ordered = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
+        List<String> submittedOrder = new ArrayList<>();
+        Set<String> seenSubmitted = new HashSet<>();
         if (siteIds != null) {
             for (String raw : siteIds) {
                 String siteId = trim(raw);
                 if (siteId == null || !nameBySiteId.containsKey(siteId)) continue;
-                if (seen.add(siteId)) ordered.add(siteId);
+                if (seenSubmitted.add(siteId)) submittedOrder.add(siteId);
             }
         }
-        // 未提交的站点（新接入站点或前端漏传）按默认顺序追加在后，保证一次保存即固化该类型全量顺序
-        for (String siteId : nameBySiteId.keySet()) {
-            if (seen.add(siteId)) ordered.add(siteId);
-        }
 
-        // 整表覆盖：先清该类型旧配置，再按提交顺序写入
+        // 站点按归属分块：水库块（花凉亭水库站点）在前、灌区块（灌区站点）在后
+        // —— 地图上水库位于上游，两个范围共用同一序列时水库站点须整体排在灌区站点上面
+        Set<String> reservoirIds = new HashSet<>();
+        for (StationSiteVO site : stationSiteService.filterByScope(sites, StationSiteService.SCOPE_RESERVOIR)) {
+            String siteId = trim(site.getSiteId());
+            if (siteId != null) {
+                reservoirIds.add(siteId);
+            }
+        }
+        Set<String> gqIds = new HashSet<>(nameBySiteId.keySet());
+        gqIds.removeAll(reservoirIds);
+        // 当前顺序（配置序号优先，未配置站点按默认顺序在后），按归属拆成两块
+        List<String> reservoirCurrent = new ArrayList<>();
+        List<String> gqCurrent = new ArrayList<>();
+        for (StationSiteVO site : applyOrder(metricType, sites, StationSiteVO::getSiteId)) {
+            String siteId = trim(site.getSiteId());
+            if (siteId == null) continue;
+            (reservoirIds.contains(siteId) ? reservoirCurrent : gqCurrent).add(siteId);
+        }
+        // 重排范围：scope 指定时只重排该范围所在块，另一块保持当前顺序（抽屉按主 Tab 只展示本范围站点）；
+        // 未指定范围（全量）时两块均按提交顺序重排，块序仍为「水库块在前、灌区块在后」
+        boolean submitReservoir = scopeNorm == null || StationSiteService.SCOPE_RESERVOIR.equals(scopeNorm);
+        boolean submitGq = scopeNorm == null || StationSiteService.SCOPE_GQ.equals(scopeNorm);
+        List<String> reservoirBlock = submitReservoir
+                ? blockOrder(submittedOrder, reservoirIds, reservoirCurrent) : reservoirCurrent;
+        List<String> gqBlock = submitGq
+                ? blockOrder(submittedOrder, gqIds, gqCurrent) : gqCurrent;
+        List<String> ordered = new ArrayList<>(reservoirBlock);
+        ordered.addAll(gqBlock);
+
+        // 整表覆盖：先清该类型旧配置，再按合并后的顺序写入
         stationSortMapper.delete(new QueryWrapper<StationSort>().eq("\"metric_type\"", metricCode));
 
         UserContext user = UserContextHolder.currentUser();
@@ -149,9 +179,34 @@ public class StationSortServiceImpl implements StationSortService {
             stationSortMapper.insert(entity);
         }
         orderCache.remove(metricCode);
-        log.info("站点排序保存：type={}（metric_type={}），落库 {} 站（提交 {} 个标识，类型内可排序站点 {} 个）",
-                metricType, metricCode, seq, submitted, nameBySiteId.size());
+        log.info("站点排序保存：type={}（metric_type={}），scope={}，落库 {} 站"
+                        + "（水库块 {} + 灌区块 {}；提交 {} 个标识，类型内可排序站点 {} 个）",
+                metricType, metricCode, scopeNorm == null ? "all" : scopeNorm, seq,
+                reservoirBlock.size(), gqBlock.size(), submitted, nameBySiteId.size());
         return seq;
+    }
+
+    /**
+     * 块内新顺序：提交清单中属于本块的标识按提交顺序在前，块内未提交的站点按当前顺序追加在后
+     * （新接入站点或前端漏传不会丢失顺序）。
+     * <p>提交清单中混入另一块（或不属于该类型）的标识一律忽略，避免跨块重排破坏
+     * 「水库块在前、灌区块在后」的块序。
+     */
+    private static List<String> blockOrder(List<String> submittedOrder, Set<String> blockIds,
+                                           List<String> currentBlock) {
+        List<String> block = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (String siteId : submittedOrder) {
+            if (blockIds.contains(siteId) && seen.add(siteId)) {
+                block.add(siteId);
+            }
+        }
+        for (String siteId : currentBlock) {
+            if (seen.add(siteId)) {
+                block.add(siteId);
+            }
+        }
+        return block;
     }
 
     @Override
