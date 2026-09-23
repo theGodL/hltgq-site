@@ -11,8 +11,8 @@ import java.util.List;
 public interface DashboardService {
 
     /**
-     * 设备状态概览：设备总数/在线数/在线百分比（按站点状态）、
-     * 闸门总数/开启数/开启百分比（按最新开度）、未处理告警数（未关闭）
+     * 设备状态概览：设备总数/在线数/在线百分比（设备 status 优先、空回退站点 zebpsu）、
+     * 闸门设备总数/开启数/开启百分比（设备台账 type 含 #4#，开启 = 最新开度 > 0）、未处理告警数（未关闭）
      *
      * @param site 站点主键 ID（可选；null/空 = 全部站点，与 activeAlerts 的 site 同口径）
      */

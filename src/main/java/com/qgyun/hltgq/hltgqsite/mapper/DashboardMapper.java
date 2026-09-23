@@ -13,7 +13,11 @@ import java.util.Map;
 public interface DashboardMapper {
 
     /**
-     * 设备总数与在线设备数：完全按站点状态字段 zebpsu（#1# 在线、#2# 离线，由报文入库项目维护）
+     * 设备总数与在线设备数：统计对象是「设备」（设备台账，一台算一台），与「站点」（站点档案）是两个概念。
+     * <p>在线口径必须与 /network-device/summary 完全一致（同一批设备、同一个判定），
+     * 否则大屏与网络资源设备监控页会出现两个设备在线数：设备表 status 有值时以自身为准
+     * （mq 报文入库时维护全部设备状态：#1# 在线 / #2# 离线），为空时回退所属站点档案
+     * zebpsu（同样 #1# 在线 / #2# 离线，由报文入库项目维护），两处均无值或未知编码按离线。
      * <p>COUNT(d.id) 而非 COUNT(*)：LEFT JOIN 下关联不到站点的设备不误计。
      * <p>注意：本查询为 &lt;script&gt; 动态 SQL，SQL 内所有尖括号均需 XML 转义（如 &amp;lt;、&amp;gt;）。
      *
@@ -21,7 +25,7 @@ public interface DashboardMapper {
      */
     @Select("<script>" +
             "SELECT COUNT(d.id) AS total_cnt, " +
-            "COUNT(d.id) FILTER (WHERE s.zebpsu = '#1#') AS online_cnt " +
+            "COUNT(d.id) FILTER (WHERE COALESCE(NULLIF(d.status, ''), s.zebpsu) IN ('#1#', '#1', '1')) AS online_cnt " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON d.site = s.id " +
             "<if test='site != null and site != \"\"'>WHERE d.site = #{site} </if>" +
@@ -29,26 +33,30 @@ public interface DashboardMapper {
     Map<String, Object> selectDeviceCount(@Param("site") String site);
 
     /**
-     * 闸门总数与开启数：每个闸孔取最新一条（DISTINCT ON 模式）按开度判定，
-     * 开启 = open_degree &gt; 0；排除站级行（gate_no='0'）与哨兵开度（-999 无信号/-9991 设备异常/null）；
-     * 限定近 24h 有上报（长期无上报闸孔不计入当前开关率，且走 (device, tm) 索引）。
+     * 闸门设备总数与开启数：统计对象是「闸门设备/闸孔」（设备台账 type 含 #4#，一台算一台），
+     * 与 /network-device/summary 的「闸门」分类同一对象（实测 45 台，无多类型叠加，两种写法等价）。
+     * <p>总数 = 闸门设备数（不限定是否有上报）；开启 = 该设备存在「最新开度 &gt; 0」的闸门记录：
+     * 每闸孔取最新一条（DISTINCT ON 模式），排除站级行（gate_no='0'）与哨兵/空开度
+     * （-999 无信号 / -9991 设备异常 / null），限定近 24h 有上报（避免陈旧开度把已关闸算成开启）。
+     * <p>COUNT(d.id) 而非 COUNT(*)：LEFT JOIN 下近 24h 无闸门记录的设备仍计入总数。
      * <p>注意：本查询为 &lt;script&gt; 动态 SQL，SQL 内所有尖括号均需 XML 转义（如 &amp;lt;、&amp;gt;）。
      *
-     * @param site 站点主键 ID（= 闸门表 site 列值），null/空 = 全部站点
+     * @param site 站点主键 ID（= 设备表 site 列值），null/空 = 全部闸门设备
      */
     @Select("<script>" +
-            "SELECT COUNT(*) AS total_cnt, " +
-            "COUNT(*) FILTER (WHERE t.open_degree &gt; 0) AS open_cnt " +
-            "FROM ( " +
+            "SELECT COUNT(d.id) AS total_cnt, " +
+            "COUNT(d.id) FILTER (WHERE o.open_degree &gt; 0) AS open_cnt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
+            "LEFT JOIN ( " +
             "  SELECT DISTINCT ON (t.device) t.device, t.open_degree " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" t " +
             "  WHERE t.gate_no &lt;&gt; '0' " +
             "    AND t.tm &gt;= now() - INTERVAL '24 hours' " +
             "    AND t.open_degree IS NOT NULL " +
-            "    AND t.open_degree &gt;= 0 " +
-            "<if test='site != null and site != \"\"'>    AND t.site = #{site} </if>" +
             "  ORDER BY t.device, t.tm DESC " +
-            ") t" +
+            ") o ON o.device = d.id " +
+            "WHERE d.type LIKE '%#4#%' " +
+            "<if test='site != null and site != \"\"'>AND d.site = #{site} </if>" +
             "</script>")
     Map<String, Object> selectGateCount(@Param("site") String site);
 

@@ -28,7 +28,8 @@ public class DashboardServiceImpl implements DashboardService {
         String siteKey = (site == null || site.trim().isEmpty()) ? null : site.trim();
         DashboardOverviewVO vo = new DashboardOverviewVO();
 
-        // ① 设备总数/在线数：完全按站点状态字段 zebpsu（#1# 在线、#2# 离线，由报文入库项目维护）
+        // ① 设备总数/在线数：设备台账口径，与 /network-device/summary 同一判定
+        //（设备 status 优先、空回退所属站点 zebpsu）；统计对象是设备，不是站点
         Map<String, Object> deviceRow = dashboardMapper.selectDeviceCount(siteKey);
         long totalDevices = toLong(deviceRow, "total_cnt");
         long onlineDevices = toLong(deviceRow, "online_cnt");
@@ -36,7 +37,8 @@ public class DashboardServiceImpl implements DashboardService {
         vo.setOnlineDeviceCount(onlineDevices);
         vo.setOnlineDevicePercent(percent(onlineDevices, totalDevices));
 
-        // ② 闸门总数/开启数：各闸孔最新开度 > 0 判定开启（排除站级行与无信号/异常闸孔，近 24h 窗口）
+        // ② 闸门总数/开启数：统计对象是闸门设备（闸孔）（设备台账 type 含 #4#，与 /network-device/summary
+        // 闸门分类同一对象）；开启 = 该设备近 24h 最新开度 > 0（排除站级行与无信号/异常哨兵值）
         Map<String, Object> gateRow = dashboardMapper.selectGateCount(siteKey);
         long totalGates = toLong(gateRow, "total_cnt");
         long openGates = toLong(gateRow, "open_cnt");
@@ -56,14 +58,14 @@ public class DashboardServiceImpl implements DashboardService {
         return alerts != null ? alerts : Collections.emptyList();
     }
 
-    /** 百分比 = 分子 ÷ 分母 × 100，1 位小数 HALF_UP；分母 0 → null（防除零，不误导为 0%） */
+    /** 百分比 = 分子 ÷ 分母 × 100，2 位小数 HALF_UP；分母 0 → null（防除零，不误导为 0%） */
     private BigDecimal percent(long part, long total) {
         if (total == 0) {
             return null;
         }
         return BigDecimal.valueOf(part)
                 .multiply(BigDecimal.valueOf(100))
-                .divide(BigDecimal.valueOf(total), 1, RoundingMode.HALF_UP);
+                .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
     }
 
     /** Map 值 → long（null 安全） */
