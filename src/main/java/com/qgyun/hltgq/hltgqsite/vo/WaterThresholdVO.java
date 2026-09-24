@@ -5,8 +5,9 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 /**
- * 水质阈值行 VO（t_auto_hltgq_water_threshold 中 type 含 #8# 的记录，供前端画预警线）
+ * 水质阈值行 VO（t_auto_hltgq_water_threshold 中类型含 #8# 的记录，供前端画预警线）
  * <p>字段语义与阈值表一致：threshold=警戒值、guarantee=保证值、num=阈值（预警比对值）。
+ * 类型读自 zvieyb（历史列 type 兜底，见 WaterQualityMapper#selectThresholdsBySites）。
  * 设备级配置可能存在多行（不同 device/指标），前端按 remark/device 自行区分。
  */
 @Data

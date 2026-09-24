@@ -208,16 +208,19 @@ public interface WaterQualityMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 按站点批量查询水质阈值行（type 含 #8#；设备级配置可能多行，前端按 remark/device 区分）
+     * 按站点批量查询水质阈值行（类型含 #8#；设备级配置可能多行，前端按 remark/device 区分）
+     * <p>类型列口径：阈值设置写入 {@code zvieyb}（历史列 {@code type} 仅存量兜底），
+     * 读取与过滤统一按 {@code COALESCE(NULLIF(zvieyb,''), type)}，输出到 type 字段供前端复用。
      *
      * @param siteIds 站点档案主键 UUID 列表（n.site）
      */
     @Select("<script>" +
-            "SELECT id, site, device, \"type\", remark, threshold, guarantee, num " +
+            "SELECT id, site, device, COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') AS \"type\", " +
+            "remark, threshold, guarantee, num " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_threshold " +
             "WHERE site IN " +
             "<foreach collection='siteIds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
-            " AND \"type\" LIKE '%#8#%'" +
+            " AND COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') LIKE '%#8#%'" +
             "</script>")
     @Results({
             @Result(column = "id", property = "id"),

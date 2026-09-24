@@ -124,6 +124,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
 
     /**
      * 查询水位阈值（字段语义两用：河道站=警戒水位/保证水位，水库站=汛限水位/正常蓄水位，同存阈值表 threshold/guarantee）
+     * <p>类型列口径：阈值设置写入 {@code zvieyb}（历史列 {@code type} 仅存量兜底），
+     * 故按 {@code COALESCE(NULLIF(zvieyb,''), type)} 匹配水位类型 #1#，否则阈值设置页配置的值不会在此生效。
+     *
      * @param siteId 站点 UUID（station_info.id）
      * @return [threshold, guarantee]，无记录时均为 null
      */
@@ -131,7 +134,7 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         if (siteId == null) return new BigDecimal[]{null, null};
         QueryWrapper<WaterThreshold> wrapper = new QueryWrapper<>();
         wrapper.eq("site", siteId);
-        wrapper.like("type", "#1#");  // 水位类型
+        wrapper.apply("COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') LIKE {0}", "%#1#%");  // 水位类型
         wrapper.last("LIMIT 1");
         WaterThreshold t = waterThresholdMapper.selectOne(wrapper);
         if (t == null) return new BigDecimal[]{null, null};
