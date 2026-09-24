@@ -212,7 +212,6 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
             <th style="width:12%">监测时间</th>
             <th>氨氮 (mg/L)</th>
             <th>CODMn (mg/L)<div class="th-sub">高锰酸盐指数</div></th>
-            <th>COD (mg/L)<div class="th-sub">化学需氧量</div></th>
             <th>BOD (mg/L)<div class="th-sub">五日生化需氧量</div></th>
             <th>TP (mg/L)<div class="th-sub">总磷</div></th>
             <th>TN (mg/L)<div class="th-sub">总氮</div></th>
@@ -281,8 +280,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
               <tr>
                 <th>监测时间</th>
                 <th>氨氮 (mg/L)</th>
-                <th>高锰酸盐指数 (mg/L)</th>
-                <th>COD (mg/L)<div class="th-sub">化学需氧量</div></th>
+                <th>CODMn (mg/L)<div class="th-sub">高锰酸盐指数</div></th>
                 <th>BOD (mg/L)<div class="th-sub">五日生化需氧量</div></th>
                 <th>TP (mg/L)<div class="th-sub">总磷</div></th>
                 <th>TN (mg/L)<div class="th-sub">总氮</div></th>
@@ -315,8 +313,6 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     { keys: ['溶解氧', 'DO', 'dox'], metric: 'dox', lowerBetter: true },
     { keys: ['氨氮', 'NH'], metric: 'nh3n', lowerBetter: false },
     { keys: ['高锰酸盐指数', 'CODMN', '锰酸盐'], metric: 'codmn', lowerBetter: false },
-    // COD 必须排除高锰酸盐指数行：remark「CODMn」同样含 'COD' 子串，仅凭 keys 会被 codcr 误命中
-    { keys: ['COD'], exclude: ['CODMN', '锰酸盐'], metric: 'codcr', lowerBetter: false },
     { keys: ['BOD'], metric: 'bod5', lowerBetter: false },
     { keys: ['总磷', 'TP'], metric: 'tp', lowerBetter: false },
     { keys: ['总氮', 'TN'], metric: 'tn', lowerBetter: false },
@@ -395,10 +391,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     if (!conf) return null;
     const matched = list.filter(t => {
       const r = String(t.remark || '').toUpperCase();
-      const hit = conf.keys.some(k => r.includes(String(k).toUpperCase()));
-      // exclude：短关键字（如 COD）会命中更长指标名（CODMn），按指标排除避免取错限值
-      const blocked = (conf.exclude || []).some(k => r.includes(String(k).toUpperCase()));
-      return hit && !blocked;
+      return conf.keys.some(k => r.includes(String(k).toUpperCase()));
     });
     if (!matched.length) return null;
     matched.sort((a, b) => {
@@ -483,7 +476,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   function renderTable(rows) {
     const tbody = $('tbody');
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td class="empty" colspan="11">暂无数据</td></tr>';
+      tbody.innerHTML = '<tr><td class="empty" colspan="10">暂无数据</td></tr>';
       return;
     }
     tbody.innerHTML = rows.map((r, idx) => {
@@ -498,7 +491,6 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
         </td>
         <td>${cellHtml(r.nh3n, 'nh3n', r.thresholds)}</td>
         <td>${cellHtml(r.codmn, 'codmn', r.thresholds)}</td>
-        <td>${cellHtml(r.codcr, 'codcr', r.thresholds)}</td>
         <td>${cellHtml(r.bod5, 'bod5', r.thresholds)}</td>
         <td>${cellHtml(r.tp, 'tp', r.thresholds)}</td>
         <td>${cellHtml(r.tn, 'tn', r.thresholds)}</td>
@@ -529,7 +521,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   function organicOption(points) {
     const x = points.map(p => String(p.hour || '').slice(5, 16));
     return {
-      color: ['#13c2c2', '#f5a623', '#3b82f6'],
+      color: ['#13c2c2', '#3b82f6'],
       tooltip: { trigger: 'axis' },
       legend: { top: 4, left: 'center', itemWidth: 10, itemHeight: 10, textStyle: { color: '#666', fontSize: 12 } },
       grid: { left: 48, right: 24, top: 40, bottom: 28 },
@@ -549,14 +541,6 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
           data: points.map(p => isEmptyVal(p.codmn) ? null : Number(p.codmn)),
           areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: 'rgba(19,194,194,.2)' }, { offset: 1, color: 'rgba(19,194,194,.02)' },
-          ]) },
-          lineStyle: { width: 2 },
-        },
-        {
-          name: '化学需氧量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, connectNulls: false,
-          data: points.map(p => isEmptyVal(p.codcr) ? null : Number(p.codcr)),
-          areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(245,166,35,.22)' }, { offset: 1, color: 'rgba(245,166,35,.02)' },
           ]) },
           lineStyle: { width: 2 },
         },
@@ -767,19 +751,18 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
           <td>${esc(tm.date)} ${esc(tm.time)}</td>
           <td>${cellHtml(r.nh3n, 'nh3n', th)}</td>
           <td>${cellHtml(r.codmn, 'codmn', th)}</td>
-          <td>${cellHtml(r.codcr, 'codcr', th)}</td>
           <td>${cellHtml(r.bod5, 'bod5', th)}</td>
           <td>${cellHtml(r.tp, 'tp', th)}</td>
           <td>${cellHtml(r.tn, 'tn', th)}</td>
           <td>${cellHtml(r.dox, 'dox', th)}</td>
           <td>${cellHtml(r.wt, 'wt', th)}</td>
         </tr>`;
-      }).join('') || '<tr><td class="empty" colspan="9">暂无数据</td></tr>';
+      }).join('') || '<tr><td class="empty" colspan="8">暂无数据</td></tr>';
       renderHistPager();
     } catch (err) {
       console.error(err);
       toast((err && err.message) || '历史数据加载失败');
-      $('hist-tbody').innerHTML = '<tr><td class="empty" colspan="9">加载失败</td></tr>';
+      $('hist-tbody').innerHTML = '<tr><td class="empty" colspan="8">加载失败</td></tr>';
     }
   }
 
@@ -825,7 +808,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   async function loadMonitoring() {
     const btn = $('btn-query');
     btn.disabled = true;
-    $('tbody').innerHTML = '<tr><td class="empty" colspan="11">加载中...</td></tr>';
+    $('tbody').innerHTML = '<tr><td class="empty" colspan="10">加载中...</td></tr>';
     try {
       const p = new URLSearchParams();
       const codes = [...state.selected];
@@ -837,7 +820,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     } catch (err) {
       console.error(err);
       state.rows = [];
-      $('tbody').innerHTML = '<tr><td class="empty" colspan="11">加载失败，请重试</td></tr>';
+      $('tbody').innerHTML = '<tr><td class="empty" colspan="10">加载失败，请重试</td></tr>';
       toast((err && err.message) || '数据加载失败');
     } finally {
       btn.disabled = false;
@@ -851,7 +834,6 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     { key: 'tm', label: '监测时间' },
     { key: 'nh3n', label: '氨氮 (mg/L)' },
     { key: 'codmn', label: '高锰酸盐指数 (mg/L)' },
-    { key: 'codcr', label: '化学需氧量 (mg/L)' },
     { key: 'bod5', label: '五日生化需氧量 (mg/L)' },
     { key: 'tp', label: '总磷 (mg/L)' },
     { key: 'tn', label: '总氮 (mg/L)' },
@@ -875,7 +857,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   function wqExportRow(r) {
     return {
       stnm: r.stnm || r.stcd || '', stcd: r.stcd, tm: exportTm(r.tm),
-      nh3n: exportNum(r.nh3n), codmn: exportNum(r.codmn), codcr: exportNum(r.codcr), bod5: exportNum(r.bod5),
+      nh3n: exportNum(r.nh3n), codmn: exportNum(r.codmn), bod5: exportNum(r.bod5),
       tp: exportNum(r.tp), tn: exportNum(r.tn), dox: exportNum(r.dox), wt: exportNum(r.wt),
     };
   }
@@ -920,7 +902,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     const e = $('m-end').value || '';
     MonitorExport.open({
       title: `${name} · 导出历史数据`,
-      tip: '勾选需要的字段（氨氮 / 高锰酸盐指数 / 化学需氧量 / 溶解氧 / 水温等），导出表头只包含勾选字段；取数区间与「水质历史趋势」日期一致',
+      tip: '勾选需要的字段（氨氮 / 高锰酸盐指数 / 五日生化需氧量 / 溶解氧 / 水温等），导出表头只包含勾选字段；取数区间与「水质历史趋势」日期一致',
       fields: WQ_EXPORT_FIELDS.map(f => f.key === 'stnm' ? { ...f, checked: false } : f),
       fetchRows: async () => (await fetchAllWqHistory()).map(wqExportRow),
       filename: () => `${name}_水质历史${s && e ? `_${s}~${e}` : ''}`,
