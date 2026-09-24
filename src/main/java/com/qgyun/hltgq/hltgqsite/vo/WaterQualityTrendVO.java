@@ -7,9 +7,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 水质历史趋势 VO（三图共用一份 2 小时级数据点）
- * <p>有机污染曲线用 codcr/bod5；营养盐相对限值占比与 DO 24h 趋势用 nh3n/tn/tp/dox
- * 配合预警值（该站阈值行）由前端计算占比/画线。
+ * 水质历史趋势 VO（三图共用一份 2 小时级数据点，七项指标）
+ * <p>有机污染曲线用 codcr/codmn/bod5；营养盐相对限值占比与 DO 24h 趋势用 nh3n/tn/tp/dox
+ * 配合预警值（该站阈值行）由前端计算占比/画线；水温 wt 联查 pcp_info。
  * <p>2h 桶聚合对偶数小时（00:00/02:00/...），跨天连续；无数据桶各项为 null（前端断线）。
  */
 @Data
@@ -39,7 +39,9 @@ public class WaterQualityTrendVO {
         private String hour;
         /** 桶内氨氮均值 (mg/L)。无数据时为 null */
         private BigDecimal nh3n;
-        /** 桶内 COD 均值 (mg/L)。无数据时为 null */
+        /** 桶内 CODMN 高锰酸盐指数均值 (mg/L)。无数据时为 null */
+        private BigDecimal codmn;
+        /** 桶内 CODCR 化学需氧量均值 (mg/L)。无数据时为 null */
         private BigDecimal codcr;
         /** 桶内 BOD 均值 (mg/L)。无数据时为 null */
         private BigDecimal bod5;
@@ -49,5 +51,7 @@ public class WaterQualityTrendVO {
         private BigDecimal tn;
         /** 桶内 DO 均值 (mg/L)。无数据时为 null */
         private BigDecimal dox;
+        /** 桶内水温均值 (℃)。无数据时为 null */
+        private BigDecimal wt;
     }
 }

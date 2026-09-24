@@ -17,6 +17,7 @@ import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
+import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -172,8 +173,11 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         // 0. 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
         List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
 
+        // 站点筛选归一：站点编号（档案 iofhpi，如 QSJSZ）与站点 UUID（档案 id = 闸门表 site）都支持
+        String siteKey = resolveGateSiteKey(site);
+
         // 1. 查询各闸孔最新一条数据
-        List<GateMonitor> rows = gateMonitorMapper.selectLatestPerHole(site, canalIds, startTime, endTime);
+        List<GateMonitor> rows = gateMonitorMapper.selectLatestPerHole(siteKey, canalIds, startTime, endTime);
 
         if (rows == null || rows.isEmpty()) {
             return Collections.emptyList();
@@ -182,6 +186,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         // 2. 按站点 (site) 分组
         Map<String, List<GateMonitor>> siteGroup = rows.stream()
                 .collect(Collectors.groupingBy(GateMonitor::getSite, LinkedHashMap::new, Collectors.toList()));
+
+        // 站点编号（档案 iofhpi）：闸门业务表只存站点主键（UUID），编号一次批量从档案解析
+        Map<String, String> codeBySiteId = resolveGateSiteCodes(siteGroup.keySet());
 
         // 3. 每个站点构建一个 GateMonitoringVO
         List<GateMonitoringVO> result = new ArrayList<>();
@@ -250,6 +257,7 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
             GateMonitoringVO vo = new GateMonitoringVO();
             vo.setSiteId(siteId);
+            vo.setStcd(codeBySiteId.get(siteId));
             vo.setSiteName(siteName);
             // 渠系信息（站点级数据，各孔子查询结果相同，取第一条）
             vo.setCanalId(holes.get(0).getCanalId());
@@ -304,6 +312,63 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         // 「站点排序」配置存在时按配置顺序覆盖（未配置站点保持上述默认顺序排在其后）；
         // 闸门监测页与水位监测页「花凉亭灌区」面板共用该顺序（站点标识=站点 UUID）
         return stationSortService.applyOrder("gate", result, GateMonitoringVO::getSiteId);
+    }
+
+    /**
+     * 站点筛选参数归一：站点编号（站点档案 iofhpi，如 QSJSZ / 9000000001）→ 站点 UUID
+     * （档案 id = 闸门表 site）；已是站点 UUID 或档案中无该编号时按原值交给 SQL（未命中返回空列表）。
+     * 空白值归一为 null（= 全部站点）。
+     */
+    private String resolveGateSiteKey(String site) {
+        if (site == null) {
+            return null;
+        }
+        String key = site.trim();
+        if (key.isEmpty()) {
+            return null;
+        }
+        for (StationSiteVO archive : stStinfoMapper.selectArchiveSites(Collections.singletonList(key))) {
+            String archiveStcd = trimToNull(archive.getStcd());
+            String archiveId = trimToNull(archive.getSiteId());
+            if (key.equals(archiveStcd) && archiveId != null) {
+                return archiveId;
+            }
+        }
+        return key;
+    }
+
+    /**
+     * 站点编号（站点档案 iofhpi）按站点 UUID 批量解析：闸门业务表只存站点主键（UUID），
+     * 站点编号存于站点档案（闸门表自身 stcd 列仅部分站点有值），故统一取档案编号；
+     * 一次批量查询，无逐站 N+1；档案无编号的站点不入结果（stcd 输出 null）。
+     */
+    private Map<String, String> resolveGateSiteCodes(Collection<String> siteIds) {
+        Map<String, String> codeBySiteId = new HashMap<>();
+        if (siteIds == null || siteIds.isEmpty()) {
+            return codeBySiteId;
+        }
+        List<String> keys = siteIds.stream().map(GateMonitorServiceImpl::trimToNull)
+                .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        if (keys.isEmpty()) {
+            return codeBySiteId;
+        }
+        for (StationSiteVO archive : stStinfoMapper.selectArchiveSites(keys)) {
+            String archiveId = trimToNull(archive.getSiteId());
+            String archiveStcd = trimToNull(archive.getStcd());
+            if (archiveId != null && archiveStcd != null) {
+                codeBySiteId.putIfAbsent(archiveId, archiveStcd);
+            }
+        }
+        return codeBySiteId;
+    }
+
+    /** 站点标识归一：去首尾空白，空串按 null 处理 */
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String s = value.trim();
+        return s.isEmpty() ? null : s;
     }
 
     @Override

@@ -47,8 +47,9 @@ public class WaterQualityController {
     }
 
     /**
-     * 水质历史趋势（2 小时级六指标 + 预警阈值，三张图共用）
-     * <p>有机污染指标用 codcr/bod5，营养盐占比用 nh3n/tn/tp（阈值换算），溶解氧用 dox。
+     * 水质历史趋势（2 小时级七项指标 + 水温 + 预警阈值，三张图共用）
+     * <p>有机污染指标用 codcr/codmn/bod5，营养盐占比用 nh3n/tn/tp（阈值换算），溶解氧用 dox；
+     * 水温 wt 取自水温表 pcp_info（时间列 spt 与 nmisp_info.tm 同组对齐）。
      * x 轴小时 00:00/02:00/... 对齐偶数小时跨天连续；支持日期区间查询。
      *
      * @param stcd      站点编号或 site UUID（必填）

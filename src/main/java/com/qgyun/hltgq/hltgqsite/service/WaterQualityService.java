@@ -24,7 +24,7 @@ public interface WaterQualityService {
     List<WaterQualityVO> monitoring(List<String> stcds, LocalDate startDate, LocalDate endDate);
 
     /**
-     * 水质趋势：2 小时级六指标曲线（COD/BOD、氨氮/总氮/总磷、溶解氧三图共用），
+     * 水质趋势：2 小时级七项指标 + 水温曲线（COD/高锰酸盐指数/BOD、氨氮/总氮/总磷、溶解氧三图共用），
      * 桶起点对齐偶数小时 00:00/02:00/...，跨天连续；附该站水质阈值行供预警线。
      *
      * @param stcd      站点编号或 site UUID（必填）

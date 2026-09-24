@@ -35,7 +35,8 @@ public class FlowMonitorController {
      * <p>每个站点返回一条最新记录，包含站点名称、监测时间、流量。
      * 支持根据站点编号（多选，逗号分隔）、渠系和日期区间筛选。
      *
-     * @param stcds     站点编号列表，逗号分隔（可选，不传=全部）
+     * @param stcds     站点标识列表，逗号分隔（可选，不传=全部）：站点编号，或站点管理主键
+     *                  （站点档案表 id，MQTT 站无站点编号时取其档案主键），任一命中即可取数
      * @param canalId   渠系 id（可选，站点表 ywvyds → 渠系管理表 t_auto_hltgq_knc3g_egvnhw.id；
      *                  传入时按渠系树过滤，返回该渠系及其所有子孙渠系下的站点）
      * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选

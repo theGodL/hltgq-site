@@ -17,16 +17,23 @@ import java.util.Map;
 public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
 
     /**
-     * 有闸门数据的站点列表（关联站点表获取名称，仅保留监测类型含闸门 #4# 的站点）
+     * 有闸门数据的站点列表（关联站点表获取名称、站点编号与经纬度，仅保留监测类型含闸门 #4# 的站点）
+     * <p>站点编号取站点档案 iofhpi（闸门表自身 stcd 列仅部分站点有值，不作为站码来源）；
+     * 经纬度取站点档案 bviiio_x / bviiio_y（坐标与站名、编号同为站点级字段，
+     * 不参与 DISTINCT 去重，不改变返回行数）。
      */
-    @Select("SELECT DISTINCT g.site, s.zzkaec AS site_name " +
+    @Select("SELECT DISTINCT g.site, s.zzkaec AS site_name, s.iofhpi AS stcd, " +
+            "s.bviiio_x AS lon, s.bviiio_y AS lat " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
             "INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
             "WHERE s.epjutj LIKE '%#4#%' " +
             "ORDER BY s.zzkaec")
     @Results({
             @Result(column = "site", property = "site"),
-            @Result(column = "site_name", property = "siteName")
+            @Result(column = "site_name", property = "siteName"),
+            @Result(column = "stcd", property = "stcd"),
+            @Result(column = "lon", property = "lon"),
+            @Result(column = "lat", property = "lat")
     })
     List<GateMonitor> selectGateSites();
 

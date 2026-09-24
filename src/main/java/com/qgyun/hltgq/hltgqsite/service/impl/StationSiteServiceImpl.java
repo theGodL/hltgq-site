@@ -1,7 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.service.impl;
 
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
-import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.IrrigationWaterLevelMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.SoilMoistureMapper;
@@ -9,7 +8,6 @@ import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
-import com.qgyun.hltgq.hltgqsite.service.StStinfoService;
 import com.qgyun.hltgq.hltgqsite.service.StationSiteService;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSitesVO;
@@ -20,16 +18,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * 监测类型站点集合实现：各类型的站点清单来源保持与既有接口完全一致
  * （雨量=雨量表 distinct STCD、灌区雨量=排除水库 13 站、水位=河道水文站点、
  * 闸门=闸门表站点、流量=流量表 COALESCE(stcd, site)、墒情=墒情表 COALESCE(stcd, site)）。
+ * <p>输出字段口径：code 保持各业务表原值（沿用既有契约，未做变更）；在此之上补充
+ * stcd=站点编号（站点档案 iofhpi）、siteId=站点管理主键（档案 id）、lon/lat=经纬度，
+ * 业务表标识为站点管理主键的类型（闸门/流量/墒情 MQTT 站）由档案反查编号，见 {@link #attachArchiveInfo}。
  */
 @Service
 public class StationSiteServiceImpl implements StationSiteService {
@@ -37,9 +36,6 @@ public class StationSiteServiceImpl implements StationSiteService {
     /** 支持的监测类型（与 /station-metrics/sites?type= 值域一致） */
     private static final List<String> SUPPORTED_TYPES = Arrays.asList(
             "rainfall", "gq-rainfall", "waterLevel", "gate", "flow", "moisture");
-
-    @Autowired
-    private StStinfoService stStinfoService;
 
     @Autowired
     private StPptnRMapper stPptnRMapper;
@@ -77,12 +73,14 @@ public class StationSiteServiceImpl implements StationSiteService {
                 return rainfallSites();
             case "gq-rainfall":
                 // 灌区雨量：排除水库 13 站（STCD + 名称双重排除，见 StPptnRServiceImpl.resolveGqStcds）
-                return attachSiteIds(stPptnRService.gqRainfallSites());
+                return attachArchiveInfo(stPptnRService.gqRainfallSites(), true);
             case "waterLevel":
-                return attachSiteIds(irrigationWaterLevelMapper.selectWaterLevelStations());
+                return attachArchiveInfo(irrigationWaterLevelMapper.selectWaterLevelStations(), true);
             case "gate":
+                // 闸门业务表 site 列存站点管理主键（非站点编号）：先置该主键作为档案解析键，
+                // 再由档案解析出站点编号与经纬度（闸门站清单 INNER JOIN 档案，必有档案行）
                 List<GateMonitor> gateSites = gateMonitorMapper.selectGateSites();
-                List<StationSiteVO> gateList = attachSiteIds(gateSites.stream().map(g -> {
+                List<StationSiteVO> gateList = attachArchiveInfo(gateSites.stream().map(g -> {
                     StationSiteVO s = new StationSiteVO();
                     s.setCode(g.getSite());
                     s.setName(g.getSiteName());
@@ -93,9 +91,9 @@ public class StationSiteServiceImpl implements StationSiteService {
                 gateList.sort(Comparator.comparingInt((StationSiteVO s) -> gatePriorityIndex(s.getName())));
                 return gateList;
             case "flow":
-                return attachSiteIds(waterFlowMapper.selectFlowStations());
+                return attachArchiveInfo(waterFlowMapper.selectFlowStations());
             case "moisture":
-                return attachSiteIds(soilMoistureMapper.selectMoistureStations());
+                return attachArchiveInfo(soilMoistureMapper.selectMoistureStations());
             default:
                 throw new IllegalArgumentException("无效的 type 值: " + metricType
                         + "，可选: " + String.join(" / ", SUPPORTED_TYPES));
@@ -128,8 +126,8 @@ public class StationSiteServiceImpl implements StationSiteService {
     }
 
     /**
-     * 雨量站清单（全部雨量站，含花凉亭水库站点）：
-     * 一次批量查站点档案表取站名与站点管理主键（排序配置的站点标识），避免逐站查询。
+     * 雨量站清单（全部雨量站，含花凉亭水库站点）：站点编号取雨量表 distinct STCD，
+     * 站名 / 站点管理主键 / 经纬度由站点档案一次批量补齐（避免逐站查询）。
      */
     private List<StationSiteVO> rainfallSites() {
         List<String> stcds = stPptnRMapper.selectDistinctRainfallStcds().stream()
@@ -137,57 +135,78 @@ public class StationSiteServiceImpl implements StationSiteService {
                 .filter(s -> s != null)
                 .distinct()
                 .collect(Collectors.toList());
-        Map<String, StStinfo> infoMap = new HashMap<>();
-        if (!stcds.isEmpty()) {
-            for (StStinfo info : stStinfoService.listByIds(stcds)) {
-                String stcd = info != null ? trim(info.getStcd()) : null;
-                if (stcd != null) {
-                    infoMap.putIfAbsent(stcd, info);
-                }
-            }
-        }
         List<StationSiteVO> result = new ArrayList<>();
         for (String stcd : stcds) {
-            StStinfo info = infoMap.get(stcd);
             StationSiteVO s = new StationSiteVO();
             s.setCode(stcd);
-            s.setName(info != null && info.getStnm() != null ? info.getStnm() : stcd);
-            s.setSiteId(info != null ? trim(info.getId()) : null);
+            // 档案无该站时站名兜底为编号（档案命中后由 attachArchiveInfo 覆盖为档案站名）
+            s.setName(stcd);
             result.add(s);
         }
-        return result;
+        return attachArchiveInfo(result, true);
+    }
+
+    private List<StationSiteVO> attachArchiveInfo(List<StationSiteVO> sites) {
+        return attachArchiveInfo(sites, false);
     }
 
     /**
-     * 补齐站点管理主键（siteId）：站点排序配置以站点管理主键为站点标识。
-     * <p>标识可能是测站编码（雨量/水位），也可能是站点管理主键本身（闸门/流量/墒情业务表 site 列），
-     * 统一由档案表一次批量解析；档案中无对应记录的站点 siteId 为空，不参与排序。
+     * 补齐站点编号（stcd）、站点管理主键（siteId）与经纬度：站点清单派生自各业务表，
+     * 其站点标识可能是站点编号（雨量/水位表 STCD），也可能是站点管理主键
+     * （闸门/流量/墒情业务表的 site 列存站点管理主键），统一由站点档案表一次批量解析。
+     * <p>解析规则：标识命中档案「站点编号 iofhpi」→ 直接补 stcd / siteId / 经纬度；
+     * 命中档案「站点管理主键 id」→ 由该条档案反查站点编号（闸门站、无编号的流量/墒情 MQTT 站）；
+     * 档案中无对应记录的站点 stcd / siteId 为空、经纬度为 null。
+     * <p>code（业务表原值）不做改写，保证既有调用方行为不变。
+     *
+     * @param codeIsStcd 该来源的 code 本身即站点编号（雨量 / 水位表 STCD）时为 true：
+     *                   档案缺失（或档案未填编号）时编号仍取 code 原值，避免误报空
      */
-    private List<StationSiteVO> attachSiteIds(List<StationSiteVO> sites) {
+    private List<StationSiteVO> attachArchiveInfo(List<StationSiteVO> sites, boolean codeIsStcd) {
         if (sites == null || sites.isEmpty()) {
             return sites;
         }
-        List<String> codes = sites.stream().map(s -> trim(s.getCode()))
+        List<String> keys = sites.stream().map(s -> trim(s.getCode()))
                 .filter(s -> s != null).distinct().collect(Collectors.toList());
-        if (codes.isEmpty()) {
+        if (keys.isEmpty()) {
             return sites;
         }
-        Map<String, String> idByStcd = new HashMap<>();
-        Set<String> archiveIds = new HashSet<>();
-        for (Map<String, String> row : stStinfoMapper.selectIdByCodes(codes)) {
-            String stcd = trim(row.get("iofhpi"));
-            String id = trim(row.get("id"));
-            if (id == null) continue;
-            archiveIds.add(id);
-            if (stcd != null) {
-                idByStcd.putIfAbsent(stcd, id);
+        Map<String, StationSiteVO> archiveByStcd = new HashMap<>();
+        Map<String, StationSiteVO> archiveById = new HashMap<>();
+        for (StationSiteVO archive : stStinfoMapper.selectArchiveSites(keys)) {
+            String archiveStcd = trim(archive.getStcd());
+            String archiveId = trim(archive.getSiteId());
+            if (archiveStcd != null) {
+                archiveByStcd.putIfAbsent(archiveStcd, archive);
+            }
+            if (archiveId != null) {
+                archiveById.putIfAbsent(archiveId, archive);
             }
         }
         for (StationSiteVO site : sites) {
-            String code = trim(site.getCode());
-            if (code == null) continue;
-            String id = idByStcd.get(code);
-            site.setSiteId(id != null ? id : (archiveIds.contains(code) ? code : null));
+            String key = trim(site.getCode());
+            if (key == null) {
+                continue;
+            }
+            StationSiteVO archive = archiveByStcd.get(key);
+            if (archive == null) {
+                archive = archiveById.get(key);
+            }
+            if (archive == null) {
+                if (codeIsStcd) {
+                    site.setStcd(key);
+                }
+                continue;
+            }
+            String name = trim(site.getName());
+            if (archive.getName() != null && (name == null || name.equals(key))) {
+                site.setName(trim(archive.getName()));
+            }
+            String archiveStcd = trim(archive.getStcd());
+            site.setStcd(archiveStcd != null ? archiveStcd : (codeIsStcd ? key : null));
+            site.setSiteId(archive.getSiteId());
+            site.setLon(archive.getLon());
+            site.setLat(archive.getLat());
         }
         return sites;
     }

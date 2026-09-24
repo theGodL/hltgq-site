@@ -14,8 +14,11 @@ import java.util.List;
 @Data
 public class GateMonitoringVO {
 
-    /** 站点 UUID（对应 t_auto_hltgq_water_gate.site） */
+    /** 站点 UUID（对应 t_auto_hltgq_water_gate.site，站点档案表 id） */
     private String siteId;
+
+    /** 站点编号（站点档案表 iofhpi，如 9000000001 / QSJSZ / NSS），档案无编号时为 null */
+    private String stcd;
 
     /** 站点名称 */
     private String siteName;

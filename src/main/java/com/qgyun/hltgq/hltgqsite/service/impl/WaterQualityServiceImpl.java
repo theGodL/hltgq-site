@@ -97,11 +97,13 @@ public class WaterQualityServiceImpl implements WaterQualityService {
             point.setHour(key);
             if (row != null) {
                 point.setNh3n(toBigDecimal(row.get("nh3n")));
+                point.setCodmn(toBigDecimal(row.get("codmn")));
                 point.setCodcr(toBigDecimal(row.get("codcr")));
                 point.setBod5(toBigDecimal(row.get("bod5")));
                 point.setTp(toBigDecimal(row.get("tp")));
                 point.setTn(toBigDecimal(row.get("tn")));
                 point.setDox(toBigDecimal(row.get("dox")));
+                point.setWt(toBigDecimal(row.get("wt")));
             }
             points.add(point);
             hour = hour.plusHours(2);

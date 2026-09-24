@@ -72,10 +72,10 @@ public interface StationDetailMapper {
     Map<String, Object> selectLatestVol(@Param("site") String site, @Param("stcd") String stcd);
 
     /**
-     * 站点最近一次上报时间（网络情况「最近通信时间」兜底）：各监测表最新 tm 的最大值。
+     * 站点最近一次上报时间（网络情况「最近通信时间」兜底）：各监测表最新时间的最大值。
      * <p>键口径与设备实时数据一致——水位/雨量按 STCD（=iofhpi）、流量/闸门按 site（档案 id）、
-     * 墒情/水质双键；只按站点键过滤（任何一条上报都算通信），无监测数据的站点返回 null；
-     * pcp_info 无 tm 列（历史结构）不参与。
+     * 墒情/水质/水温双键；只按站点键过滤（任何一条上报都算通信），无监测数据的站点返回 null；
+     * 水温表 pcp_info 时间列为 spt（表内无 tm 列），按 spt 参与（与水质报文同组对齐）。
      */
     @Select("SELECT MAX(t) AS tm FROM (" +
             "SELECT MAX(\"TM\") AS t FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info " +
@@ -94,6 +94,9 @@ public interface StationDetailMapper {
             "WHERE (stcd = #{stcd} OR site = #{site}) " +
             "UNION ALL " +
             "SELECT MAX(tm) FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info " +
+            "WHERE (stcd = #{stcd} OR site = #{site}) " +
+            "UNION ALL " +
+            "SELECT MAX(spt) FROM \"qixiao-apaas\".t_auto_hltgq_water_pcp_info " +
             "WHERE (stcd = #{stcd} OR site = #{site}) " +
             ") t")
     Map<String, Object> selectLatestReportTm(@Param("site") String site, @Param("stcd") String stcd);

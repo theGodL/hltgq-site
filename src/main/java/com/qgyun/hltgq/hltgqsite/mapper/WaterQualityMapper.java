@@ -14,10 +14,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 水质监测数据 Mapper（t_auto_hltgq_water_nmisp_info，2026-09 起为纯水质表：原墒情/水质共表拆分为
- * nmisp_info 水质 + soil_data 墒情；本表仅 mq 报文 nmIspInfo 写入。档案 epjutj 含 #8# 视为水质站）
+ * 水质监测数据 Mapper（t_auto_hltgq_water_nmisp_info 七项 + t_auto_hltgq_water_pcp_info 水温，
+ * 2026-09 起为纯水质表：原墒情/水质共表拆分为 nmisp_info 水质 + soil_data 墒情；
+ * 本表仅 mq 报文 nmIspInfo 写入。档案 epjutj 含 #8# 视为水质站）
  * <p>数值哨兵约定：-999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'。
- * <p>BOD5 恒为 null（实验室指标设备不上报）直通；CODCR=0.0 按低于检出限直通（0 合法）。
+ * <p>联表键唯一性（2026-09-24 实测）：pcp_info 按 (stcd, spt) 唯一（678 行 = 678 去重键、无重复组），
+ * nmisp_info 按 (stcd, tm) 唯一（679 = 679），故水温 LEFT JOIN 不放大行数——history 的 records 与 total
+ * 同口径、trend 的桶均值不被重复行加权；若上游去重策略变化需复核（否则须先按键聚合再 JOIN）。
+ * <p>指标口径（2026-09-24 实测）：CODMN 高锰酸盐指数为报文连续指标（661/661 有值）；
+ * CODCR 化学需氧量多数为 0（低于检出限，属合法值照实返回，实测 621/661 行 =0）；
+ * BOD5 间歇上报（85/661 行有值，其余 null 直通）；水温 wt 取自 pcp_info（时间列 spt，
+ * 与 nmisp_info.tm 同组对齐，660/660 有值）；pH / 电导率为探头未采集（恒 null，不返回）。
  */
 @Mapper
 public interface WaterQualityMapper {
@@ -39,21 +46,24 @@ public interface WaterQualityMapper {
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
             "t.stcd, t.skey AS site, t.site_id, t.stnm, t.lon, t.lat, t.tm, " +
-            "t.nh3n, t.codcr, t.bod5, t.tp, t.tn, t.dox " +
+            "t.nh3n, t.codmn, t.codcr, t.bod5, t.tp, t.tn, t.dox, t.wt " +
             "FROM ( " +
             "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, n.site AS site_id, " +
             "  COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, " +
             "  COALESCE(s.bviiio_x, s2.bviiio_x) AS lon, COALESCE(s.bviiio_y, s2.bviiio_y) AS lat, " +
             "  n.tm, " +
             "  CASE WHEN n.nh3n = -999 THEN NULL ELSE TRUNC(n.nh3n, 3) END AS nh3n, " +
+            "  CASE WHEN n.codmn = -999 THEN NULL ELSE TRUNC(n.codmn, 3) END AS codmn, " +
             "  CASE WHEN n.codcr = -999 THEN NULL ELSE TRUNC(n.codcr, 3) END AS codcr, " +
             "  CASE WHEN n.bod5 = -999 THEN NULL ELSE TRUNC(n.bod5, 3) END AS bod5, " +
             "  CASE WHEN n.tp = -999 THEN NULL ELSE TRUNC(n.tp, 3) END AS tp, " +
             "  CASE WHEN n.tn = -999 THEN NULL ELSE TRUNC(n.tn, 3) END AS tn, " +
-            "  CASE WHEN n.dox = -999 THEN NULL ELSE TRUNC(n.dox, 3) END AS dox " +
+            "  CASE WHEN n.dox = -999 THEN NULL ELSE TRUNC(n.dox, 3) END AS dox, " +
+            "  CASE WHEN p.wt = -999 THEN NULL ELSE TRUNC(p.wt, 3) END AS wt " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s2 ON s.id IS NULL AND s2.iofhpi = n.stcd " +
+            "  LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_water_pcp_info p ON p.stcd = n.stcd AND p.spt = n.tm " +
             "  WHERE 1=1 " +
             "  <if test='stcds == null or stcds.size() == 0'>" +
             "  AND s.epjutj LIKE '%#8#%' " +
@@ -79,11 +89,13 @@ public interface WaterQualityMapper {
             @Result(column = "lat", property = "lat"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "nh3n", property = "nh3n"),
+            @Result(column = "codmn", property = "codmn"),
             @Result(column = "codcr", property = "codcr"),
             @Result(column = "bod5", property = "bod5"),
             @Result(column = "tp", property = "tp"),
             @Result(column = "tn", property = "tn"),
-            @Result(column = "dox", property = "dox")
+            @Result(column = "dox", property = "dox"),
+            @Result(column = "wt", property = "wt")
     })
     List<WaterQualityVO> selectLatestPerStation(
             @Param("stcds") List<String> stcds,
@@ -91,8 +103,9 @@ public interface WaterQualityMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 2 小时级水质趋势聚合（6 指标取 2h 桶均值，桶起点对齐偶数小时 00:00/02:00/...；
-     * -9991 设备异常/-999 设备不存在不参与聚合；BOD5 未上报为 null 自然跳过）
+     * 2 小时级水质趋势聚合（7 项指标取 2h 桶均值，桶起点对齐偶数小时 00:00/02:00/...；
+     * -9991 设备异常/-999 设备不存在不参与聚合；BOD5 未上报为 null 自然跳过；
+     * 水温 wt 联查 pcp_info（时间列 spt 与 nmisp tm 同组对齐））
      * <p>桶对齐实现：date_trunc('hour', tm) 后，若原小时为奇数则回退 1 小时到偶数桶起点。
      *
      * @param stcd      站点编号或 site UUID（必填）
@@ -102,17 +115,20 @@ public interface WaterQualityMapper {
     @Select("<script>" +
             "SELECT b.tm, " +
             "TRUNC(AVG(b.nh3n) FILTER (WHERE b.nh3n NOT IN (-999, -9991)), 3) AS nh3n, " +
+            "TRUNC(AVG(b.codmn) FILTER (WHERE b.codmn NOT IN (-999, -9991)), 3) AS codmn, " +
             "TRUNC(AVG(b.codcr) FILTER (WHERE b.codcr NOT IN (-999, -9991)), 3) AS codcr, " +
             "TRUNC(AVG(b.bod5) FILTER (WHERE b.bod5 NOT IN (-999, -9991)), 3) AS bod5, " +
             "TRUNC(AVG(b.tp) FILTER (WHERE b.tp NOT IN (-999, -9991)), 3) AS tp, " +
             "TRUNC(AVG(b.tn) FILTER (WHERE b.tn NOT IN (-999, -9991)), 3) AS tn, " +
-            "TRUNC(AVG(b.dox) FILTER (WHERE b.dox NOT IN (-999, -9991)), 3) AS dox " +
+            "TRUNC(AVG(b.dox) FILTER (WHERE b.dox NOT IN (-999, -9991)), 3) AS dox, " +
+            "TRUNC(AVG(b.wt) FILTER (WHERE b.wt NOT IN (-999, -9991)), 3) AS wt " +
             "FROM ( " +
-            "  SELECT n.nh3n, n.codcr, n.bod5, n.tp, n.tn, n.dox, " +
+            "  SELECT n.nh3n, n.codmn, n.codcr, n.bod5, n.tp, n.tn, n.dox, p.wt, " +
             "  date_trunc('hour', n.tm) - " +
             "  CASE WHEN EXTRACT(HOUR FROM n.tm)::int % 2 = 1 " +
             "       THEN INTERVAL '1 hour' ELSE INTERVAL '0 second' END AS tm " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
+            "  LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_water_pcp_info p ON p.stcd = n.stcd AND p.spt = n.tm " +
             "  WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +
             "  AND n.tm &gt;= #{startTime} " +
             "  AND n.tm &lt; #{endTime} " +
@@ -127,7 +143,8 @@ public interface WaterQualityMapper {
 
     /**
      * 历史水质数据分页查询（按监测时间倒序）
-     * <p>-999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'。
+     * <p>-999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'；
+     * 水温 wt 联查 pcp_info（时间列 spt 与 nmisp tm 同组对齐，缺对标为 null）。
      *
      * @param stcd      站点编号或 site UUID（必填）
      * @param startTime 起始时间（含，可选）
@@ -137,13 +154,16 @@ public interface WaterQualityMapper {
             "SELECT n.stcd AS stcd, COALESCE(n.stcd, n.site) AS site, n.site AS site_id, " +
             "COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, n.tm, " +
             "CASE WHEN n.nh3n = -999 THEN NULL ELSE TRUNC(n.nh3n, 3) END AS nh3n, " +
+            "CASE WHEN n.codmn = -999 THEN NULL ELSE TRUNC(n.codmn, 3) END AS codmn, " +
             "CASE WHEN n.codcr = -999 THEN NULL ELSE TRUNC(n.codcr, 3) END AS codcr, " +
             "CASE WHEN n.bod5 = -999 THEN NULL ELSE TRUNC(n.bod5, 3) END AS bod5, " +
             "CASE WHEN n.tp = -999 THEN NULL ELSE TRUNC(n.tp, 3) END AS tp, " +
             "CASE WHEN n.tn = -999 THEN NULL ELSE TRUNC(n.tn, 3) END AS tn, " +
-            "CASE WHEN n.dox = -999 THEN NULL ELSE TRUNC(n.dox, 3) END AS dox " +
+            "CASE WHEN n.dox = -999 THEN NULL ELSE TRUNC(n.dox, 3) END AS dox, " +
+            "CASE WHEN p.wt = -999 THEN NULL ELSE TRUNC(p.wt, 3) END AS wt " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
+            "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_water_pcp_info p ON p.stcd = n.stcd AND p.spt = n.tm " +
             "WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +
             "<if test='startTime != null'>AND n.tm &gt;= #{startTime} </if>" +
             "<if test='endTime != null'>AND n.tm &lt;= #{endTime} </if>" +
@@ -157,11 +177,13 @@ public interface WaterQualityMapper {
             @Result(column = "stnm", property = "stnm"),
             @Result(column = "tm", property = "tm"),
             @Result(column = "nh3n", property = "nh3n"),
+            @Result(column = "codmn", property = "codmn"),
             @Result(column = "codcr", property = "codcr"),
             @Result(column = "bod5", property = "bod5"),
             @Result(column = "tp", property = "tp"),
             @Result(column = "tn", property = "tn"),
-            @Result(column = "dox", property = "dox")
+            @Result(column = "dox", property = "dox"),
+            @Result(column = "wt", property = "wt")
     })
     List<WaterQualityVO> selectHistoryPage(
             @Param("stcd") String stcd,
