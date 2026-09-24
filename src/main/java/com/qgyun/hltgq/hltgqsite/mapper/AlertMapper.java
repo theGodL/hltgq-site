@@ -17,6 +17,7 @@ public interface AlertMapper {
      * IN 白名单防御 status 为 null/未知编码的脏行。
      * <p>type 筛选（逻辑分类，二选一或都不传）：typeOverlimit=true 仅阈值超限（a.type='#1#'）；
      * typeOther=true 仅非超限（type IS NULL 或 &lt;&gt;'#1#'，即异常告警）；都不传 = 全部。
+     * <p>siteId 为站点键精确筛选（档案主键 id 或站点编号 iofhpi 双键 OR 命中，供大屏站点弹出按站查告警）；null/空 = 不筛选。
      * <p>siteTypeFilter 为站点类型编码（如 '#4#' 闸门），LIKE 匹配支持多类型站点（如 '#1#|#4#'）；null = 不筛选。
      * <p>LEFT JOIN 站点表/设备表：站点或设备被删时告警行不丢（名称列返回 null），
      * LEFT JOIN 不改变 COUNT(*) 结果；名称筛选条件依赖关联表，故 COUNT 同样 JOIN。
@@ -27,6 +28,7 @@ public interface AlertMapper {
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON a.site = s.id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d ON a.device = d.id " +
             "WHERE a.status IN ('#1#', '#2#', '#3#') " +
+            "<if test='siteId != null and siteId != \"\"'>AND (a.site = #{siteId} OR s.iofhpi = #{siteId}) </if>" +
             "<if test='siteName != null and siteName != \"\"'>AND s.zzkaec LIKE CONCAT('%', #{siteName}, '%') </if>" +
             "<if test='deviceName != null and deviceName != \"\"'>AND d.name LIKE CONCAT('%', #{deviceName}, '%') </if>" +
             "<if test='typeOverlimit != null and typeOverlimit'>AND a.type = '#1#' </if>" +
@@ -35,7 +37,8 @@ public interface AlertMapper {
             "<if test='startTime != null'>AND a.time &gt;= #{startTime} </if>" +
             "<if test='endTime != null'>AND a.time &lt;= #{endTime} </if>" +
             "</script>")
-    long selectAlertCount(@Param("siteName") String siteName,
+    long selectAlertCount(@Param("siteId") String siteId,
+                          @Param("siteName") String siteName,
                           @Param("deviceName") String deviceName,
                           @Param("typeOverlimit") Boolean typeOverlimit,
                           @Param("typeOther") Boolean typeOther,
@@ -59,6 +62,7 @@ public interface AlertMapper {
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON a.site = s.id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d ON a.device = d.id " +
             "WHERE a.status IN ('#1#', '#2#', '#3#') " +
+            "<if test='siteId != null and siteId != \"\"'>AND (a.site = #{siteId} OR s.iofhpi = #{siteId}) </if>" +
             "<if test='siteName != null and siteName != \"\"'>AND s.zzkaec LIKE CONCAT('%', #{siteName}, '%') </if>" +
             "<if test='deviceName != null and deviceName != \"\"'>AND d.name LIKE CONCAT('%', #{deviceName}, '%') </if>" +
             "<if test='typeOverlimit != null and typeOverlimit'>AND a.type = '#1#' </if>" +
@@ -69,7 +73,8 @@ public interface AlertMapper {
             "ORDER BY a.time DESC, a.id DESC " +
             "LIMIT #{limit} OFFSET #{offset}" +
             "</script>")
-    List<AlertPageVO> selectAlertPage(@Param("siteName") String siteName,
+    List<AlertPageVO> selectAlertPage(@Param("siteId") String siteId,
+                                      @Param("siteName") String siteName,
                                       @Param("deviceName") String deviceName,
                                       @Param("typeOverlimit") Boolean typeOverlimit,
                                       @Param("typeOther") Boolean typeOther,

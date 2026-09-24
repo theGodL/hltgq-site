@@ -31,6 +31,9 @@ public class DeviceVO {
     /** 所属闸口（由设备名解析：站点名前缀去除后剩余部分去 #，如「1」；无闸孔信息为 null） */
     private String gate;
 
+    /** 设备安装位置（设备表 wlcvig，如「渠首管理所-东面」；台账现状仅视频设备有值，其余为 null） */
+    private String location;
+
     /** 设备状态（status 翻译：#1# 在线、#2# 离线） */
     private String status;
 

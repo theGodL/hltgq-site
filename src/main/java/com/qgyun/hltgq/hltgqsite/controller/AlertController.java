@@ -23,10 +23,11 @@ public class AlertController {
     private AlertService alertService;
 
     /**
-     * 未关闭告警分页列表（全局，不分站点；#4# 已关闭不计）
+     * 未关闭告警分页列表（全局；#4# 已关闭不计，可按站点键精确筛选）
      * <p>按发生时间倒序（最新在前，第一页第一条 = 全库最新未关闭告警），
      * 支持站点名称/设备名称模糊筛选、告警类型筛选、告警时间区间筛选。
      *
+     * @param siteId     站点键精确筛选：站点档案主键 id 或站点编号（档案表 iofhpi），可选；与 siteName 可叠加
      * @param siteName   站点名称，模糊匹配，可选
      * @param deviceName 设备名称，模糊匹配，可选
      * @param type       告警类型（逻辑分类），可选：overlimit=阈值超限、other=非超限（异常告警）；不传=全部
@@ -38,6 +39,7 @@ public class AlertController {
      */
     @GetMapping("/page")
     public Page<AlertPageVO> page(
+            @RequestParam(required = false) String siteId,
             @RequestParam(required = false) String siteName,
             @RequestParam(required = false) String deviceName,
             @RequestParam(required = false) String type,
@@ -46,6 +48,6 @@ public class AlertController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
-        return alertService.alertPage(siteName, deviceName, type, siteType, startTime, endTime, page, size);
+        return alertService.alertPage(siteId, siteName, deviceName, type, siteType, startTime, endTime, page, size);
     }
 }

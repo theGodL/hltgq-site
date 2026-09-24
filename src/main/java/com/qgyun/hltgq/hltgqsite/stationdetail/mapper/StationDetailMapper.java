@@ -330,7 +330,7 @@ public interface StationDetailMapper {
      * 设备分页：按名称升序（编码兜底）；实时数据与所属闸口由 Service 组装。
      */
     @Select("<script>" +
-            "SELECT d.id, d.code, d.name, d.type AS typeCodes, d.status AS statusCode " +
+            "SELECT d.id, d.code, d.name, d.type AS typeCodes, d.status AS statusCode, d.wlcvig AS location " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
             "WHERE d.site = #{site} " +
             "<if test='code != null and code != \"\"'>AND d.code LIKE CONCAT('%', #{code}, '%') </if>" +

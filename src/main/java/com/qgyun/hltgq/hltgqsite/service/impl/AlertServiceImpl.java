@@ -21,7 +21,7 @@ public class AlertServiceImpl implements AlertService {
     private AlertMapper alertMapper;
 
     @Override
-    public Page<AlertPageVO> alertPage(String siteName, String deviceName, String type, String siteType,
+    public Page<AlertPageVO> alertPage(String siteId, String siteName, String deviceName, String type, String siteType,
                                        LocalDateTime startTime, LocalDateTime endTime,
                                        long page, long size) {
         // 防御非法分页参数：page/size 非正或偏移越界会触发数据库错误（如 OFFSET must not be negative），统一转 400
@@ -40,7 +40,7 @@ public class AlertServiceImpl implements AlertService {
 
         // 查询总数
         long total = alertMapper.selectAlertCount(
-                siteName, deviceName, typeOverlimit, typeOther, siteTypeFilter, startTime, endTime);
+                siteId, siteName, deviceName, typeOverlimit, typeOther, siteTypeFilter, startTime, endTime);
 
         Page<AlertPageVO> result = new Page<>(page, size);
         result.setTotal(total);
@@ -54,7 +54,7 @@ public class AlertServiceImpl implements AlertService {
         int offset = (int) ((page - 1) * size);
         int limit = (int) size;
         List<AlertPageVO> records = alertMapper.selectAlertPage(
-                siteName, deviceName, typeOverlimit, typeOther, siteTypeFilter, startTime, endTime, limit, offset);
+                siteId, siteName, deviceName, typeOverlimit, typeOther, siteTypeFilter, startTime, endTime, limit, offset);
         result.setRecords(records);
 
         return result;

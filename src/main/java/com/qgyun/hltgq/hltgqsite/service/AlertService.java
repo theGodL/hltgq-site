@@ -13,6 +13,7 @@ public interface AlertService {
     /**
      * 未关闭告警分页查询（#4# 已关闭不计），按发生时间倒序（最新在前）
      *
+     * @param siteId     站点键精确筛选：站点档案主键 id 或站点编号 iofhpi，可选；与 siteName 可叠加（不传=不筛）
      * @param siteName   站点名称，模糊匹配，可选
      * @param deviceName 设备名称，模糊匹配，可选
      * @param type       告警类型（逻辑分类），可选：overlimit=阈值超限、other=非超限（异常告警）；不传=全部
@@ -22,7 +23,7 @@ public interface AlertService {
      * @param page       页码，默认 1
      * @param size       每页条数，默认 10
      */
-    Page<AlertPageVO> alertPage(String siteName, String deviceName, String type, String siteType,
+    Page<AlertPageVO> alertPage(String siteId, String siteName, String deviceName, String type, String siteType,
                                 LocalDateTime startTime, LocalDateTime endTime,
                                 long page, long size);
 }
