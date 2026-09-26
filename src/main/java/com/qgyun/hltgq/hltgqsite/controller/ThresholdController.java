@@ -1,6 +1,5 @@
 package com.qgyun.hltgq.hltgqsite.controller;
 
-import com.qgyun.hltgq.hltgqsite.auth.RequireAdmin;
 import com.qgyun.hltgq.hltgqsite.service.ThresholdService;
 import com.qgyun.hltgq.hltgqsite.vo.ThresholdMetaVO;
 import com.qgyun.hltgq.hltgqsite.vo.ThresholdSaveVO;
@@ -24,12 +23,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 阈值设置：对监测站点按「站点 + 阈值类型」维护单级警戒值（表 t_auto_hltgq_water_threshold）。
- * <p>字段口径：阈值类型写 zvieyb（历史列 type 仅读取兜底）、告警方向写 alarmdir、
- * 警戒值写 threshold、描述写 remark；保证值/设计值本期预留，接口不返回也不改写。
- * <p>写保护：删除仅系统管理员可操作（@RequireAdmin，拦截器校验角色，非管理员返回 403）；
- * 新增/编辑为非管理员可用的日常配置操作，查询不限权限。前端按 /auth/current-user 的
- * admin 标记隐藏删除入口，与本注解同一判定口径。
+ * 阈值设置：对监测站点按「站点 + 阈值类型（+ 监测指标）」维护单级警戒值（表 t_auto_hltgq_water_threshold）。
+ * <p>字段口径：阈值类型写 zvieyb（历史列 type 仅读取兜底）、监测指标写 zb（多指标类型：水质/墒情）、
+ * 告警方向写 alarmdir、警戒值写 threshold、描述写 remark；保证值/设计值本期预留，接口不返回也不改写。
+ * <p>权限：查询与增删改对所有登录用户开放（本期不做权限细分，删除不再限管理员）。
  * <p>保存即时生效：告警引擎每次比对实时读库，无需刷新缓存或重启服务。
  */
 @RestController
@@ -41,7 +38,7 @@ public class ThresholdController {
     @Autowired
     private ThresholdService thresholdService;
 
-    /** 字典：阈值类型（编码/名称/单位/默认方向/适用站点）+ 告警方向 */
+    /** 字典：阈值类型（编码/名称/单位/默认方向/适用站点/监测指标清单）+ 告警方向 */
     @GetMapping("/meta")
     public ThresholdMetaVO meta() {
         return thresholdService.meta();
@@ -50,13 +47,15 @@ public class ThresholdController {
     /**
      * 阈值类型下的站点候选
      *
-     * @param type    阈值类型编码（必填）：#1# 水位 / #2# 雨量 / #3# 流量 / #4# 开度 / #7# 墒情
-     * @param keyword 站点名称/编号关键字（可选）
+     * @param type      阈值类型编码（必填）：#1# 水位 / #2# 雨量 / #3# 流量 / #4# 开度 / #7# 墒情 / #8# 水质
+     * @param keyword   站点名称/编号关键字（可选）
+     * @param indicator 监测指标编码（可选）：传值时「已配置」标记按「类型 + 指标」判定
      */
     @GetMapping("/sites")
     public List<ThresholdSiteVO> sites(@RequestParam String type,
-                                       @RequestParam(required = false) String keyword) {
-        return thresholdService.sites(type, keyword);
+                                       @RequestParam(required = false) String keyword,
+                                       @RequestParam(required = false) String indicator) {
+        return thresholdService.sites(type, keyword, indicator);
     }
 
     /**
@@ -94,20 +93,21 @@ public class ThresholdController {
     }
 
     /**
-     * 新增阈值：站点必须支持该类型；同站点同类型唯一（重复时提示去编辑）。
+     * 新增阈值：站点必须支持该类型；多指标类型必选指标；同站点同类型同指标唯一（重复时提示去编辑）。
      *
      * @return 保存后的记录（字典翻译后的完整字段）
      */
     @PostMapping
     public ThresholdVO create(@RequestBody ThresholdSaveVO body) {
-        log.info("收到阈值新增请求：site={}，type={}，alarmDir={}，threshold={}",
+        log.info("收到阈值新增请求：site={}，type={}，indicator={}，alarmDir={}，threshold={}",
                 body == null ? null : body.getSite(), body == null ? null : body.getType(),
-                body == null ? null : body.getAlarmDir(), body == null ? null : body.getThreshold());
+                body == null ? null : body.getIndicator(), body == null ? null : body.getAlarmDir(),
+                body == null ? null : body.getThreshold());
         return thresholdService.create(body);
     }
 
     /**
-     * 编辑阈值：仅可改告警方向 / 警戒值 / 描述（站点与类型锁定，换类型=删除后新增）。
+     * 编辑阈值：仅可改告警方向 / 警戒值 / 描述（站点、类型与指标锁定，换指标=删除后新增）。
      *
      * @return 保存后的记录
      */
@@ -119,9 +119,8 @@ public class ThresholdController {
     }
 
     /**
-     * 删除阈值（仅管理员）：删除后该站点该类型不再告警。
+     * 删除阈值：删除后该站点该类型（该指标）不再告警。
      */
-    @RequireAdmin
     @DeleteMapping("/{id}")
     public Map<String, Object> delete(@PathVariable String id) {
         log.info("收到阈值删除请求：id={}", id);

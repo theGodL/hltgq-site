@@ -6,6 +6,7 @@ import com.qgyun.hltgq.hltgqsite.auth.UnauthorizedException;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelCallException;
 import com.qgyun.hltgq.hltgqsite.stats.client.DeviceStatsCallException;
 import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsCallException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -21,7 +22,8 @@ import java.util.Map;
  * ModelCallException → 502（上游模型服务返回错误码或不可达）；
  * DeviceStatsCallException → 502（上游 hltgq-device 视频统计服务返回错误或不可达）；
  * UnauthorizedException → 401（未登录/会话过期）；
- * SessionUnavailableException → 503（会话服务不可用）。
+ * SessionUnavailableException → 503（会话服务不可用）；
+ * DataIntegrityViolationException → 409（唯一约束冲突，如阈值表 uniq_hltgq_threshold_site_type_zb）。
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -94,6 +96,25 @@ public class GlobalExceptionHandler {
         Map<String, Object> result = new HashMap<>();
         result.put("code", 503);
         result.put("message", e.getMessage() == null ? "会话服务不可用" : e.getMessage());
+        return result;
+    }
+
+    /**
+     * 唯一约束冲突 → 409 且带引导文案。
+     * <p>阈值表已建唯一索引 {@code uniq_hltgq_threshold_site_type_zb}（site + 类型归一 + 指标归一）。
+     * 页面判重（LIKE 子串语义）与入库之间存在并发窗口：两个请求同时新增同一「站点+类型+指标」时，
+     * 前者通过判重、后者被索引拒绝。此处把 DB 约束冲突翻译为与页面判重一致的提示，
+     * 避免前端因无 message 回退为「请求失败（HTTP 500）」。
+     * <p>捕获父类是为了兼容不同驱动对 SQLState 23505 的翻译（DuplicateKeyException 为子类，同样命中）。
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, Object> handleDataIntegrity(DataIntegrityViolationException e) {
+        String detail = e.getMessage() == null ? "" : e.getMessage();
+        Map<String, Object> result = new HashMap<>();
+        result.put("message", detail.contains("uniq_hltgq_threshold_site_type_zb")
+                ? "该站点已配置该类型（指标）阈值，请刷新列表后直接编辑"
+                : "数据已存在或不满足约束，请刷新后重试");
         return result;
     }
 }

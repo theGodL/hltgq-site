@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 
 /**
  * 阈值设置列表/详情视图（新增、编辑保存后同样返回本结构）。
- * <p>阈值类型与告警方向除编码外一并给出中文名与单位，前端不写死字典。
+ * <p>阈值类型、监测指标与告警方向除编码外一并给出中文名与单位，前端不写死字典。
  */
 @Data
 public class ThresholdVO {
@@ -24,13 +24,19 @@ public class ThresholdVO {
     /** 站点编号（站点档案 iofhpi） */
     private String siteCode;
 
-    /** 阈值类型编码：#1# 水位 / #2# 雨量 / #3# 流量 / #4# 开度 / #7# 墒情 */
+    /** 阈值类型编码：#1# 水位 / #2# 雨量 / #3# 流量 / #4# 开度 / #7# 墒情 / #8# 水质 */
     private String thresholdType;
 
     /** 阈值类型名称（水位 / 雨量 / ...） */
     private String typeName;
 
-    /** 类型单位（m / mm / m³/s / %） */
+    /** 监测指标编码（多指标类型才有值，如 nh3n / mten；单指标类型为空） */
+    private String indicator;
+
+    /** 监测指标名称（氨氮 / 10cm含水量 …；单指标类型或字典外编码为空） */
+    private String indicatorName;
+
+    /** 警戒值单位（多指标类型按指标单位，其余按类型单位） */
     private String unit;
 
     /** 告警方向编码：#1# 高于警戒值触发 / #2# 低于警戒值触发 */

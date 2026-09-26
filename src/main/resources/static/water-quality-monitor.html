@@ -97,7 +97,8 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
 .tm-cell{display:inline-flex;flex-direction:column;align-items:center;line-height:1.35;gap:2px}
 .tm-date{color:#333}
 .tm-time{color:#8c8c8c;font-size:12px}
-.val-warn{color:#f5222d;font-weight:500}
+/* 站报文中断：最新采集时间滞后超过阈值时红色标识（与雨量/墒情页同口径） */
+.tm-cell.tm-stale,.tm-cell.tm-stale .tm-date,.tm-cell.tm-stale .tm-time{color:#ff4d4f;font-weight:600}
 .th-sub{font-size:11px;font-weight:400;color:#999;margin-top:2px;line-height:1.3;white-space:normal}
 
 .detail-btn{
@@ -308,15 +309,15 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-  /** remark 关键字 → 指标 */
+  /** 指标兜底字典：remark 关键字 → 指标（仅 zb 为空的历史行做兜底匹配用；指标方向不在这里定义） */
   const REMARK_MAP = [
-    { keys: ['溶解氧', 'DO', 'dox'], metric: 'dox', lowerBetter: true },
-    { keys: ['氨氮', 'NH'], metric: 'nh3n', lowerBetter: false },
-    { keys: ['高锰酸盐指数', 'CODMN', '锰酸盐'], metric: 'codmn', lowerBetter: false },
-    { keys: ['BOD'], metric: 'bod5', lowerBetter: false },
-    { keys: ['总磷', 'TP'], metric: 'tp', lowerBetter: false },
-    { keys: ['总氮', 'TN'], metric: 'tn', lowerBetter: false },
-    { keys: ['水温', 'WT'], metric: 'wt', lowerBetter: false },
+    { keys: ['溶解氧', 'DO', 'dox'], metric: 'dox' },
+    { keys: ['氨氮', 'NH'], metric: 'nh3n' },
+    { keys: ['高锰酸盐指数', 'CODMN', '锰酸盐'], metric: 'codmn' },
+    { keys: ['BOD'], metric: 'bod5' },
+    { keys: ['总磷', 'TP'], metric: 'tp' },
+    { keys: ['总氮', 'TN'], metric: 'tn' },
+    { keys: ['水温', 'WT'], metric: 'wt' },
   ];
 
   const state = {
@@ -384,12 +385,27 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     return { date, time };
   }
 
-  /** 取指标限值：优先 num，其次 guarantee，再 threshold；站级 device 空优先 */
-  function pickLimit(thresholds, metric) {
+  /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：MQTT 报文 10 分钟一次、30 分钟无更新判中断；RabbitMQ 1 小时一次、70 分钟判中断 */
+  const MQTT_SITES = ['南山寺节制闸', '渠首进水闸', '渠首电站防洪闸', '双庙湖节制闸'];
+  const MQTT_STALE_MS = 30 * 60 * 1000;
+  const RBT_STALE_MS = 70 * 60 * 1000;
+
+  /** 最新采集时间是否中断：MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判中断；无时间值返回 false（'--' 不标红） */
+  function isStaleTm(tm, siteName) {
+    if (!tm) return false;
+    const d = new Date(String(tm).replace(' ', 'T').replace(/\.\d+$/, ''));
+    if (isNaN(d.getTime())) return false;
+    const staleMs = MQTT_SITES.includes(String(siteName || '')) ? MQTT_STALE_MS : RBT_STALE_MS;
+    return Date.now() - d.getTime() > staleMs;
+  }
+
+  /** 取指标阈值行：优先 zb 精确匹配（= 监测数据表列名），zb 为空的旧行回退 remark 关键字匹配；站级 device 空优先 */
+  function pickRow(thresholds, metric) {
     const list = Array.isArray(thresholds) ? thresholds.filter(t => String(t.type || '').includes('#8#')) : [];
     const conf = REMARK_MAP.find(r => r.metric === metric);
     if (!conf) return null;
-    const matched = list.filter(t => {
+    const byZb = list.filter(t => String(t.zb || '') === metric);
+    const matched = byZb.length ? byZb : list.filter(t => {
       const r = String(t.remark || '').toUpperCase();
       return conf.keys.some(k => r.includes(String(k).toUpperCase()));
     });
@@ -399,31 +415,27 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
       const be = !b.device || b.device === '' ? 0 : 1;
       return ae - be;
     });
-    const row = matched[0];
-    const cand = [row.num, row.guarantee, row.threshold].map(Number).find(n => Number.isFinite(n));
-    return cand == null ? null : cand;
+    return matched[0];
   }
 
-  function isWarn(v, metric, thresholds) {
-    if (isEmptyVal(v)) return false;
-    const n = Number(v);
-    if (!Number.isFinite(n)) return false;
-    const limit = pickLimit(thresholds, metric);
-    if (limit == null) return false;
-    const conf = REMARK_MAP.find(r => r.metric === metric);
-    if (conf && conf.lowerBetter) return n < limit;
-    return n > limit;
+  /** 行的警戒值：本期阈值设置只启用 threshold 列（num/guarantee 为历史预留列，不参与取数） */
+  function limitOf(row) {
+    const n = Number(row.threshold);
+    return Number.isFinite(n) ? n : null;
   }
 
-  function cellHtml(v, metric, thresholds) {
+  /** 取指标警戒值（趋势图参考线用） */
+  function pickLimit(thresholds, metric) {
+    const row = pickRow(thresholds, metric);
+    return row ? limitOf(row) : null;
+  }
+
+  /** 指标单元格：只做空值与异常值兜底；数值超限标红已下线——页面标红口径与雨量/墒情页一致，只标采集时间中断 */
+  function cellHtml(v) {
     if (isEmptyVal(v)) return '--';
     const n = Number(v);
     if (!Number.isFinite(n)) return '--';
-    const warn = isWarn(n, metric, thresholds);
-    let cls = '';
-    if (warn) cls = 'val-warn';
-    const text = fmtNum(n);
-    return cls ? `<span class="${cls}">${text}</span>` : text;
+    return fmtNum(n);
   }
 
   function setMsOpen(open) {
@@ -484,18 +496,18 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
       return `<tr>
         <td class="left">${esc(r.stnm || r.stcd || '-')}</td>
         <td>
-          <span class="tm-cell">
+          <span class="tm-cell${isStaleTm(r.tm, r.stnm) ? ' tm-stale' : ''}">
             <span class="tm-date">${esc(tm.date)}</span>
             <span class="tm-time">${esc(tm.time)}</span>
           </span>
         </td>
-        <td>${cellHtml(r.nh3n, 'nh3n', r.thresholds)}</td>
-        <td>${cellHtml(r.codmn, 'codmn', r.thresholds)}</td>
-        <td>${cellHtml(r.bod5, 'bod5', r.thresholds)}</td>
-        <td>${cellHtml(r.tp, 'tp', r.thresholds)}</td>
-        <td>${cellHtml(r.tn, 'tn', r.thresholds)}</td>
-        <td>${cellHtml(r.dox, 'dox', r.thresholds)}</td>
-        <td>${cellHtml(r.wt, 'wt', r.thresholds)}</td>
+        <td>${cellHtml(r.nh3n)}</td>
+        <td>${cellHtml(r.codmn)}</td>
+        <td>${cellHtml(r.bod5)}</td>
+        <td>${cellHtml(r.tp)}</td>
+        <td>${cellHtml(r.tn)}</td>
+        <td>${cellHtml(r.dox)}</td>
+        <td>${cellHtml(r.wt)}</td>
         <td>
           <button type="button" class="detail-btn" data-idx="${idx}">
             详情
@@ -595,7 +607,10 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
 
   function doOption(points, thresholds) {
     const x = points.map(p => String(p.hour || '').slice(5, 16));
-    const lim = pickLimit(thresholds, 'dox');
+    const row = pickRow(thresholds, 'dox');
+    const lim = row ? limitOf(row) : null;
+    // 参考线文案随阈值行的告警方向：高于=上限线、低于=下限线
+    const limText = (String(row && row.alarmDir || '') === '#1#' ? '上限 ' : '下限 ') + lim;
     const series = {
       name: '溶解氧', type: 'line', smooth: true, symbol: 'none', connectNulls: false,
       data: points.map(p => isEmptyVal(p.dox) ? null : Number(p.dox)),
@@ -610,7 +625,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     if (lim != null) {
       series.markLine = {
         silent: true, symbol: 'none',
-        label: { formatter: '下限 ' + lim, position: 'end', color: '#f5222d', fontSize: 11 },
+        label: { formatter: limText, position: 'end', color: '#f5222d', fontSize: 11 },
         lineStyle: { type: 'dashed', color: '#f5222d', width: 1.5 },
         data: [{ yAxis: lim }],
       };
@@ -633,7 +648,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     };
   }
 
-  /** 水温趋势：单位 ℃，阈值表无水温项故不画预警线 */
+  /** 水温趋势：单位 ℃，本图不画参考线（阈值字典虽含 wt 项，页面暂不展示） */
   function wtOption(points) {
     const x = points.map(p => String(p.hour || '').slice(5, 16));
     return {
@@ -744,18 +759,17 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
       state.hist.total = Number(data.total) || 0;
       state.hist.pages = Number(data.pages) || 1;
       state.hist.records = Array.isArray(data.records) ? data.records : [];
-      const th = state.current.thresholds || [];
       $('hist-tbody').innerHTML = state.hist.records.map(r => {
         const tm = parseTm(r.tm);
         return `<tr>
           <td>${esc(tm.date)} ${esc(tm.time)}</td>
-          <td>${cellHtml(r.nh3n, 'nh3n', th)}</td>
-          <td>${cellHtml(r.codmn, 'codmn', th)}</td>
-          <td>${cellHtml(r.bod5, 'bod5', th)}</td>
-          <td>${cellHtml(r.tp, 'tp', th)}</td>
-          <td>${cellHtml(r.tn, 'tn', th)}</td>
-          <td>${cellHtml(r.dox, 'dox', th)}</td>
-          <td>${cellHtml(r.wt, 'wt', th)}</td>
+          <td>${cellHtml(r.nh3n)}</td>
+          <td>${cellHtml(r.codmn)}</td>
+          <td>${cellHtml(r.bod5)}</td>
+          <td>${cellHtml(r.tp)}</td>
+          <td>${cellHtml(r.tn)}</td>
+          <td>${cellHtml(r.dox)}</td>
+          <td>${cellHtml(r.wt)}</td>
         </tr>`;
       }).join('') || '<tr><td class="empty" colspan="8">暂无数据</td></tr>';
       renderHistPager();

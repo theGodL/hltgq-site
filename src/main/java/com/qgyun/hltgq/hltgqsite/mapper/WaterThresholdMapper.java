@@ -22,6 +22,8 @@ import java.util.List;
  * <p>模糊匹配必须写 {@code LIKE CONCAT('%', #{x}, '%')}：实测 KingbaseES 下
  * {@code LIKE '%' || #{x} || '%'} 的绑定参数会静默失效（退化为匹配全部，2026-09-24 只读核对），
  * 全库既有 SQL 亦统一使用 CONCAT 写法。
+ * <p>监测指标列 {@code zb}：多指标类型（水质 #8# / 墒情 #7#）一个类型下含多个指标，
+ * 列表如实输出该列，站点候选的「已配置」标记在传入指标时按「类型 + 指标」判定。
  */
 @Mapper
 public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
@@ -34,7 +36,7 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
      * @param keyword  站点名称/编号关键字过滤（可选）
      */
     @Select("<script>" +
-            "SELECT t.id, t.site, " +
+            "SELECT t.id, t.site, t.\"zb\" AS indicator, " +
             "COALESCE(NULLIF(t.\"zvieyb\", ''), t.\"type\", '') AS threshold_type, " +
             "t.\"alarmdir\" AS alarm_dir, t.threshold, t.remark AS description, t.updated_at, " +
             "COALESCE(s.zzkaec, t.site) AS site_name, s.iofhpi AS site_code " +
@@ -54,6 +56,7 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
     @Results({
             @Result(column = "id", property = "id"),
             @Result(column = "site", property = "site"),
+            @Result(column = "indicator", property = "indicator"),
             @Result(column = "threshold_type", property = "thresholdType"),
             @Result(column = "alarm_dir", property = "alarmDir"),
             @Result(column = "threshold", property = "threshold"),
@@ -71,8 +74,11 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
      * 阈值类型下的站点候选：站点档案中监测类型（epjutj）含该编码的站点，
      * 并标记该站点在该类型下是否已配置阈值（界面提示"已配置，请直接编辑"）。
      *
-     * @param typeCode 阈值类型编码（必填，如 #1#）
-     * @param keyword  站点名称/编号关键字过滤（可选）
+     * @param typeCode  阈值类型编码（必填，如 #1#）
+     * @param keyword   站点名称/编号关键字过滤（可选）
+     * @param indicator 监测指标编码（可选）：传值时「已配置」标记按「类型 + 指标」判定
+     *                  （多指标类型如水质/墒情必须传，否则一个类型下的多个指标会互相误标）；
+     *                  不传时按类型判定（单指标类型与改造前口径一致）
      */
     @Select("<script>" +
             "SELECT s.id AS site_id, s.zzkaec AS name, s.iofhpi AS site_code, " +
@@ -81,6 +87,7 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
             "LEFT JOIN ( " +
             "  SELECT DISTINCT \"site\" FROM \"qixiao-apaas\".t_auto_hltgq_water_threshold " +
             "  WHERE COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') LIKE CONCAT('%', #{typeCode}, '%') " +
+            "  <if test='indicator != null'>AND \"zb\" = #{indicator} </if>" +
             ") x ON x.\"site\" = s.id " +
             "WHERE s.epjutj LIKE CONCAT('%', #{typeCode}, '%') " +
             "<if test='keyword != null'>" +
@@ -96,7 +103,8 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
             @Result(column = "configured", property = "configured")
     })
     List<ThresholdSiteVO> selectCandidateSites(@Param("typeCode") String typeCode,
-                                              @Param("keyword") String keyword);
+                                              @Param("keyword") String keyword,
+                                              @Param("indicator") String indicator);
 
     /**
      * 已配置阈值的站点清单（列表筛选下拉用）：阈值表中出现过的站点去重，

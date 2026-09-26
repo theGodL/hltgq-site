@@ -208,15 +208,18 @@ public interface WaterQualityMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
-     * 按站点批量查询水质阈值行（类型含 #8#；设备级配置可能多行，前端按 remark/device 区分）
+     * 按站点批量查询水质阈值行（类型含 #8#；设备级配置可能多行，前端按 zb/device 区分）
      * <p>类型列口径：阈值设置写入 {@code zvieyb}（历史列 {@code type} 仅存量兜底），
      * 读取与过滤统一按 {@code COALESCE(NULLIF(zvieyb,''), type)}，输出到 type 字段供前端复用。
+     * <p>指标列：输出 {@code zb}（指标编码 = 监测数据表字段名）与 {@code alarmdir}（告警方向），
+     * 前端按 {@code zb} 精确取行画趋势参考线（{@code alarmdir} 决定文案为上限/下限）；
+     * 存量未落指标的行回退 {@code remark} 关键字匹配。页面不做数值超限标红（标红口径为采集时间中断，与其他监测页一致）。
      *
      * @param siteIds 站点档案主键 UUID 列表（n.site）
      */
     @Select("<script>" +
-            "SELECT id, site, device, COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') AS \"type\", " +
-            "remark, threshold, guarantee, num " +
+            "SELECT id, site, device, \"zb\", COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') AS \"type\", " +
+            "alarmdir, remark, threshold, guarantee, num " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_threshold " +
             "WHERE site IN " +
             "<foreach collection='siteIds' item='s' open='(' separator=',' close=')'>#{s}</foreach>" +
@@ -226,6 +229,8 @@ public interface WaterQualityMapper {
             @Result(column = "id", property = "id"),
             @Result(column = "site", property = "site"),
             @Result(column = "device", property = "device"),
+            @Result(column = "zb", property = "zb"),
+            @Result(column = "alarmdir", property = "alarmDir"),
             @Result(column = "type", property = "type"),
             @Result(column = "remark", property = "remark"),
             @Result(column = "threshold", property = "threshold"),

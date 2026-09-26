@@ -248,12 +248,12 @@ td.empty:hover{background:transparent}
       <div class="tbl-wrap">
         <table>
           <colgroup>
-            <col style="width:15%"><col style="width:10%"><col style="width:12%"><col style="width:15%">
-            <col style="width:20%"><col style="width:13%"><col style="width:15%">
+            <col style="width:14%"><col style="width:9%"><col style="width:12%"><col style="width:11%">
+            <col style="width:14%"><col style="width:16%"><col style="width:12%"><col style="width:12%">
           </colgroup>
           <thead>
             <tr>
-              <th>站点</th><th>阈值类型</th><th>警戒值</th><th>告警方向</th><th>描述</th><th>更新时间</th><th>操作</th>
+              <th>站点</th><th>阈值类型</th><th>监测指标</th><th>警戒值</th><th>告警方向</th><th>描述</th><th>更新时间</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="tbl-body"></tbody>
@@ -286,6 +286,12 @@ td.empty:hover{background:transparent}
         <div class="sel" id="sel-type"></div>
         <div class="f-hint" id="type-hint" hidden></div>
         <div class="f-err" id="err-type"></div>
+      </div>
+      <!-- 监测指标：仅多指标类型（水质、墒情）展示，其余类型该字段隐藏 -->
+      <div class="f-item" id="fi-indicator" hidden>
+        <label class="f-label"><i class="req">*</i>监测指标</label>
+        <div class="sel" id="sel-indicator"></div>
+        <div class="f-err" id="err-indicator"></div>
       </div>
       <div class="f-item" id="fi-site" hidden>
         <label class="f-label"><i class="req">*</i>站点</label>
@@ -349,14 +355,13 @@ const ICON = {
 };
 
 const S = {
-  typeMap: {},                 // 类型编码 → 字典项（单位/默认方向/适用站点）
+  typeMap: {},                 // 类型编码 → 字典项（单位/默认方向/适用站点/监测指标清单）
   dirNameMap: {},              // 方向编码 → 中文名
   page: 1, size: 20, total: 0, records: [],
   filter: { type: '', siteId: '' },
   sites: [],                   // 当前类型下的站点候选
   mode: 'create', row: null,   // 抽屉三态
   flashId: null,               // 保存后需高亮的行
-  canDelete: false,            // 删除入口仅管理员（后端 @RequireAdmin 同口径）
   saving: false, seq: 0
 };
 let pendingDelete = null;
@@ -500,7 +505,7 @@ function closeAllSelects(except) {
   });
 }
 
-/* ============================ 字典与权限 ============================ */
+/* ============================ 字典 ============================ */
 async function loadMeta() {
   const data = await api('/threshold/meta');
   const types = (data && Array.isArray(data.types)) ? data.types : [];
@@ -510,15 +515,6 @@ async function loadMeta() {
   S.dirNameMap = {};
   dirs.forEach(d => { S.dirNameMap[d.code] = d.name; });
   return { types: types, dirs: dirs };
-}
-
-async function loadAdmin() {
-  try {
-    const u = await api('/auth/current-user');
-    S.canDelete = !!(u && (u.admin === true || String(u.superAdmin) === 'true'));
-  } catch (e) {
-    S.canDelete = false;  // 取权限失败保持无删除入口，安全优先
-  }
 }
 
 const typeName = code => {
@@ -555,7 +551,7 @@ function joinName(name, code) {
 
 /** 空态/过程态整行：空数据用平台空态插图，加载中等过程态只给文字 */
 function emptyRow(text, plain) {
-  return '<tr><td colspan="7" class="empty"><div class="empty-box">' +
+  return '<tr><td colspan="8" class="empty"><div class="empty-box">' +
     (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
 }
 
@@ -579,10 +575,11 @@ function renderTable() {
     const dir = r.alarmDirName ? '<span class="tag">' + esc(r.alarmDirName) + '</span>' : '--';
     const acts = actBtn('view', '查看阈值', ICON.eye, r.id) +
       actBtn('edit', '编辑阈值', ICON.pencil, r.id) +
-      (S.canDelete ? actBtn('del', '删除阈值', ICON.trash, r.id, true) : '');
+      actBtn('del', '删除阈值', ICON.trash, r.id, true);
     return '<tr data-id="' + esc(r.id) + '">' +
       '<td title="' + esc(r.siteCode ? '编号：' + r.siteCode : '') + '">' + esc(r.siteName || r.site || '--') + '</td>' +
       '<td>' + esc(r.typeName || r.thresholdType || '--') + '</td>' +
+      '<td>' + esc(r.indicatorName || '--') + '</td>' +
       '<td>' + val + '</td>' +
       '<td>' + dir + '</td>' +
       '<td title="' + esc(r.description || '') + '">' + esc(r.description || '--') + '</td>' +
@@ -706,6 +703,7 @@ function onPagerClick(e) {
 
 /* ============================ 抽屉 ============================ */
 const selType = createSelect($('sel-type'));
+const selIndicator = createSelect($('sel-indicator'));
 const selSite = createSelect($('sel-site'));
 const selDir = createSelect($('sel-dir'));
 const fltType = createSelect($('flt-type'));
@@ -763,10 +761,40 @@ async function openDrawer(mode, row) {
   }
 }
 
+/** 类型的监测指标清单（多指标类型：水质、墒情；单指标类型为空数组） */
+function indicatorsOf(type) {
+  const item = S.typeMap[type];
+  return item && Array.isArray(item.indicators) ? item.indicators : [];
+}
+
+/** 指标字典项（当前类型下按编码取，无则 null） */
+function indicatorItem(type, code) {
+  return indicatorsOf(type).filter(i => i.code === code)[0] || null;
+}
+
+/** 警戒值单位：多指标类型按指标单位，单指标类型按类型单位 */
+function unitOf(type, indicator) {
+  const ind = indicatorItem(type, indicator);
+  if (ind && ind.unit) return ind.unit;
+  const item = S.typeMap[type];
+  return item ? (item.unit || '') : '';
+}
+
+/** 默认告警方向：多指标类型按指标默认方向（如水质溶解氧为低于），否则按类型默认方向 */
+function defaultDirOf(type, indicator) {
+  const ind = indicatorItem(type, indicator);
+  if (ind && ind.defaultAlarmDir) return ind.defaultAlarmDir;
+  const item = S.typeMap[type];
+  return item ? (item.defaultAlarmDir || '') : '';
+}
+
 function resetForm() {
   selType.setDisabled(false).setOptions(metaTypeOptions()).setValue('');
   $('type-hint').hidden = true;
   $('type-hint').textContent = '';
+  $('fi-indicator').hidden = true;
+  selIndicator.setDisabled(false).setOptions([]).setValue('');
+  selIndicator.setPlaceholder('请先选择阈值类型').setEmptyText('请先选择阈值类型');
   $('fi-site').hidden = true;
   selSite.setDisabled(false).setOptions([]).setValue('');
   selSite.setPlaceholder('请先选择阈值类型').setEmptyText('请先选择阈值类型').setSearchable(true);
@@ -792,7 +820,7 @@ function metaDirOptions() {
   return dirs;
 }
 
-/** 编辑态回显（类型/站点锁定置灰，防破坏唯一约束与告警追溯） */
+/** 编辑态回显（类型/站点/指标锁定置灰，防破坏唯一约束与告警追溯） */
 function fillForm(row) {
   const type = row.thresholdType || '';
   const item = S.typeMap[type];
@@ -805,13 +833,23 @@ function fillForm(row) {
     hint.textContent = '';
     hint.hidden = true;
   }
+  // 指标：多指标类型展示并锁定（换指标 = 删除后重新新增，与站点/类型同口径）
+  const inds = indicatorsOf(type);
+  $('fi-indicator').hidden = !inds.length;
+  if (inds.length) {
+    selIndicator.setOptions(inds.map(i => ({ value: i.code, label: i.name, sub: i.unit || '' })));
+    selIndicator.setValue(row.indicator || '', row.indicatorName || row.indicator || '');
+    selIndicator.setDisabled(true);
+  } else {
+    selIndicator.setOptions([]).setValue('');
+  }
   $('fi-site').hidden = false;
   selSite.setSearchable(false);
   selSite.setOptions([{ value: row.site, label: row.siteName || row.site, sub: row.siteCode || '' }])
     .setValue(row.site, joinName(row.siteName, row.siteCode))
     .setDisabled(true);
-  syncUnit(row.unit || (item ? item.unit : ''));
-  selDir.setOptions(metaDirOptions()).setValue(row.alarmDir || (item ? item.defaultAlarmDir : ''));
+  syncUnit(row.unit || unitOf(type, row.indicator));
+  selDir.setOptions(metaDirOptions()).setValue(row.alarmDir || defaultDirOf(type, row.indicator));
   updateValuePlaceholder();
   $('in-value').value = (row.threshold === null || row.threshold === undefined || row.threshold === '')
     ? '' : String(row.threshold);
@@ -826,6 +864,7 @@ function renderView(row) {
   const list = [
     ['站点', joinName(row.siteName, row.siteCode)],
     ['阈值类型', row.typeName || row.thresholdType || ''],
+    ['监测指标', row.indicatorName || ''],
     ['警戒值', (row.threshold === null || row.threshold === undefined || row.threshold === '')
       ? '' : String(row.threshold) + (row.unit ? ' ' + row.unit : '')],
     ['告警方向', row.alarmDirName ? row.alarmDirName + (row.alarmDirDefault ? '（默认）' : '') : ''],
@@ -848,10 +887,10 @@ function updateValuePlaceholder() {
   $('in-value').placeholder = name ? name + '告警' : '请输入警戒值';
 }
 
-/** 类型选中联动：站点字段显隐 + 站点候选加载 + 方向默认值 + 单位与 placeholder */
+/** 类型选中联动：指标字段显隐 + 站点字段显隐 + 站点候选加载 + 方向默认值 + 单位与 placeholder */
 async function onTypePick(code) {
   const item = S.typeMap[code];
-  $('fi-site').hidden = !code;
+  const inds = indicatorsOf(code);
   const hint = $('type-hint');
   if (item && item.siteScopeDesc) {
     hint.textContent = '适用站点：' + item.siteScopeDesc;
@@ -860,16 +899,53 @@ async function onTypePick(code) {
     hint.textContent = '';
     hint.hidden = true;
   }
-  syncUnit(item ? item.unit : '');
-  selDir.setValue(item ? item.defaultAlarmDir : '');
+  // 多指标类型（水质/墒情）先选指标再选站点；单指标类型不展示指标字段
+  $('fi-indicator').hidden = !inds.length;
+  selIndicator.setValue('');
+  selIndicator.setError(false);
+  if (inds.length) {
+    selIndicator.setOptions(inds.map(i => ({ value: i.code, label: i.name, sub: i.unit || '' })));
+    selIndicator.setPlaceholder('请选择监测指标').setEmptyText('无匹配数据');
+  } else {
+    selIndicator.setOptions([]);
+    selIndicator.setPlaceholder('请先选择阈值类型').setEmptyText('请先选择阈值类型');
+  }
+  const needIndicator = inds.length > 0;
+  $('fi-site').hidden = !code || needIndicator;
+  syncUnit(unitOf(code, ''));
+  selDir.setValue(defaultDirOf(code, ''));
   updateValuePlaceholder();
 
   selSite.setValue('');
   selSite.setError(false);
   if (!code) { resetSiteSelect('请先选择阈值类型'); return; }
+  if (needIndicator) { resetSiteSelect('请先选择监测指标'); return; }
   selSite.setLoading(true);
   try {
-    await loadSites(code);
+    await loadSites(code, '');
+  } catch (e) {
+    S.sites = [];
+    selSite.setOptions([]);
+    showToast(e.message || '站点加载失败', true);
+  } finally {
+    selSite.setLoading(false);
+  }
+}
+
+/** 指标选中联动：站点候选（「已配置」按类型 + 指标判定）+ 单位 + 方向默认值 + placeholder */
+async function onIndicatorPick(code) {
+  const type = selType.getValue();
+  syncUnit(unitOf(type, code));
+  selDir.setValue(defaultDirOf(type, code));
+  updateValuePlaceholder();
+
+  selSite.setValue('');
+  selSite.setError(false);
+  $('fi-site').hidden = !type;
+  if (!type || !code) { resetSiteSelect('请先选择监测指标'); return; }
+  selSite.setLoading(true);
+  try {
+    await loadSites(type, code);
   } catch (e) {
     S.sites = [];
     selSite.setOptions([]);
@@ -886,8 +962,9 @@ function resetSiteSelect(text) {
   selSite.setEmptyText(text);
 }
 
-async function loadSites(type) {
-  const data = await api('/threshold/sites?type=' + encodeURIComponent(type));
+async function loadSites(type, indicator) {
+  const data = await api('/threshold/sites?type=' + encodeURIComponent(type) +
+    (indicator ? '&indicator=' + encodeURIComponent(indicator) : ''));
   S.sites = Array.isArray(data) ? data : [];
   const name = typeName(type);
   const emptyText = S.sites.length ? '无匹配数据' : '暂无支持【' + name + '】阈值的站点';
@@ -903,6 +980,7 @@ async function loadSites(type) {
 /* ============================ 校验 ============================ */
 const FIELD_MAP = {
   type: { sel: () => selType, err: 'err-type' },
+  indicator: { sel: () => selIndicator, err: 'err-indicator' },
   site: { sel: () => selSite, err: 'err-site' },
   value: { sel: null, err: 'err-value' }
 };
@@ -956,10 +1034,14 @@ function validate() {
   const isCreate = S.mode === 'create';
   const type = selType.getValue();
   if (isCreate) {
+    const needIndicator = !!type && indicatorsOf(type).length > 0;
     if (!type) {
       $('fi-site').hidden = false;                 // 未选类型时站点字段同步标红可见
       setFieldError('type', '请选择阈值类型');
       setFieldError('site', '请选择站点');
+      bad = true;
+    } else if (needIndicator && !selIndicator.getValue()) {
+      setFieldError('indicator', '请选择监测指标');
       bad = true;
     } else if (!S.sites.length) {
       setFieldError('site', '暂无支持【' + typeName(type) + '】阈值的站点');
@@ -991,6 +1073,7 @@ async function save() {
   const checked = validate();
   if (!checked) return;
   const type = selType.getValue();
+  const indicator = selIndicator.getValue();
   const site = selSite.getValue();
   const dir = selDir.getValue();
   const desc = $('in-desc').value.trim();
@@ -1001,7 +1084,10 @@ async function save() {
     if (isCreate) {
       saved = await api('/threshold', {
         method: 'POST',
-        body: { site: site, type: type, alarmDir: dir || null, threshold: Number(checked.threshold), description: desc || null }
+        body: {
+          site: site, type: type, indicator: indicator || null,
+          alarmDir: dir || null, threshold: Number(checked.threshold), description: desc || null
+        }
       });
     } else {
       saved = await api('/threshold/' + encodeURIComponent(S.row.id), {
@@ -1023,10 +1109,11 @@ async function save() {
   }
 }
 
-/* ============================ 删除（仅管理员） ============================ */
+/* ============================ 删除（登录用户均可操作，本期不做权限细分） ============================ */
 function askDelete(row) {
   pendingDelete = row;
-  $('confirm-text').textContent = '删除后该站点【' + (row.typeName || row.thresholdType || '该类型') + '】阈值将不再告警，是否继续？';
+  $('confirm-text').textContent = '删除后该站点【' + (row.typeName || row.thresholdType || '该类型') +
+    (row.indicatorName ? '·' + row.indicatorName : '') + '】阈值将不再告警，是否继续？';
   $('confirm-mask').classList.add('show');
 }
 
@@ -1093,6 +1180,7 @@ function bindEvents() {
   });
 
   selType.onChange(code => { clearFieldError('type'); onTypePick(code); });
+  selIndicator.onChange(code => { clearFieldError('indicator'); onIndicatorPick(code); });
   selSite.onChange(() => clearFieldError('site'));
   selDir.onChange(updateValuePlaceholder);
 
@@ -1135,7 +1223,6 @@ function bindEvents() {
   } catch (e) {
     showToast(e.message || '阈值类型字典加载失败', true);
   }
-  await loadAdmin();
   await loadFilterSites();
   await loadList();
 })();
