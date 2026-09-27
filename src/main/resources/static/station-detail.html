@@ -141,6 +141,29 @@ a.photo-thumb:hover{border-color:#1677ff}
 .op-icons button{border:none;background:transparent;cursor:default;color:var(--title);padding:0;line-height:1}
 .op-icons button.danger{color:#f5222d}
 
+/* ===== 设备绑定弹窗（管理员） ===== */
+.bind-search{display:flex;gap:8px;margin-bottom:12px}
+.bind-search input{flex:1;min-height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:6px 11px;font-size:14px;color:#262626;outline:none}
+.bind-search input:focus{border-color:var(--title)}
+.bind-panel{max-height:320px;overflow:auto;border:1px solid #f0f0f0;border-radius:6px}
+.bind-panel .data-table th{position:sticky;top:0;background:#fafafa;z-index:1}
+.bind-row{cursor:pointer}
+.bind-row:hover{background:#f5f9ff}
+.bind-row.selected{background:#e6f4ff}
+.bind-row.disabled{cursor:not-allowed;opacity:.55}
+.bind-cur{color:#1677ff;font-size:12px;margin-left:4px}
+.bind-block{display:block;color:#f5222d;font-size:12px;margin-top:2px}
+.bind-tip{margin-top:12px;font-size:13px;color:#8c8c8c;line-height:1.6;min-height:40px}
+.bind-tip.warn{color:#fa8c16}
+
+/* ===== toast（轻提示：替代 alert，风格与站内其他页面一致） ===== */
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;line-height:20px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s;max-width:72%;text-align:center;white-space:pre-line;word-break:break-word}
+.toast.show{opacity:1}
+
+/* ===== 确认框（替代原生 confirm，宽度小于主弹窗） ===== */
+#confirm-modal .modal{width:min(420px,100%)}
+.confirm-text{color:#262626;font-size:14px;line-height:22px;word-break:break-word;white-space:pre-line}
+
 @media (max-width:720px){
   .grid-2{grid-template-columns:1fr}
   .tabs{overflow-x:auto}
@@ -416,6 +439,7 @@ a.photo-thumb:hover{border-color:#1677ff}
       <div class="filter-actions">
         <button type="button" class="btn btn-primary" id="device-query">查询</button>
         <button type="button" class="btn btn-default" id="device-reset">重置</button>
+        <button type="button" class="btn btn-default" id="device-bind" style="display:none">绑定设备</button>
       </div>
     </div>
     <div class="table-panel">
@@ -506,6 +530,58 @@ a.photo-thumb:hover{border-color:#1677ff}
     </div>
   </div>
 
+  <div class="modal-mask" id="bind-modal" role="dialog" aria-modal="true" aria-labelledby="bind-modal-title">
+    <div class="modal">
+      <div class="modal-hd">
+        <h3 id="bind-modal-title">绑定设备</h3>
+        <button type="button" class="modal-close" id="bind-modal-close" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-bd">
+        <div class="bind-search">
+          <input type="text" id="bind-keyword" placeholder="输入设备名称或编号搜索" autocomplete="off">
+          <button type="button" class="btn btn-primary" id="bind-search-btn">搜索</button>
+        </div>
+        <div class="bind-panel">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:56px">选择</th>
+                <th>设备名称</th>
+                <th>设备编号</th>
+                <th>设备类型</th>
+                <th>当前绑定站点</th>
+              </tr>
+            </thead>
+            <tbody id="bind-tbody"></tbody>
+          </table>
+        </div>
+        <div class="bind-tip" id="bind-tip">搜索并选择要绑定到本站的设备</div>
+      </div>
+      <div class="modal-ft">
+        <button type="button" class="btn btn-default" id="bind-modal-cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="bind-modal-ok" disabled>确认绑定</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+    <div class="modal">
+      <div class="modal-hd">
+        <h3 id="confirm-modal-title">操作提示</h3>
+        <button type="button" class="modal-close" id="confirm-modal-close" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-bd">
+        <div class="confirm-text" id="confirm-text"></div>
+      </div>
+      <div class="modal-ft">
+        <button type="button" class="btn btn-default" id="confirm-modal-cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="confirm-modal-ok">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
 <script>
 (function () {
   var API = '/hltgq-site';
@@ -567,6 +643,29 @@ a.photo-thumb:hover{border-color:#1677ff}
   function emptyRow(cols, text) {
     return '<tr><td colspan="' + cols + '" style="text-align:center;color:#bfbfbf">' + esc(text || '暂无数据') + '</td></tr>';
   }
+  /* 轻提示（替代 alert）：顶部深色浮层，自动消失；重复触发重置计时 */
+  function toast(msg) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 3000);
+  }
+  /* 确认框（替代原生 confirm）：与页面弹窗同风格，返回 Promise<boolean> */
+  var confirmResolve = null;
+  function showConfirm(text) {
+    return new Promise(function (resolve) {
+      confirmResolve = resolve;
+      document.getElementById('confirm-text').textContent = text;
+      document.getElementById('confirm-modal').classList.add('show');
+    });
+  }
+  function hideConfirm(result) {
+    document.getElementById('confirm-modal').classList.remove('show');
+    var fn = confirmResolve;
+    confirmResolve = null;
+    if (fn) fn(result);
+  }
 
   async function fetchApi(path) {
     var res = await fetch(API + path, { credentials: 'include' });
@@ -585,6 +684,24 @@ a.photo-thumb:hover{border-color:#1677ff}
     return body;
   }
 
+  /* 写接口（表单 POST）：返回原响应；非 2xx 提取 message 抛错 */
+  async function postApi(path, params) {
+    var body = new URLSearchParams(params || {});
+    var res = await fetch(API + path, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: body.toString()
+    });
+    var data = null;
+    try { data = await res.json(); } catch (e) { data = null; }
+    if (!res.ok) {
+      var msg = (data && (data.message || data.msg)) || ('HTTP ' + res.status);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
   function qs(params) {
     var p = new URLSearchParams();
     Object.keys(params).forEach(function (k) {
@@ -598,6 +715,7 @@ a.photo-thumb:hover{border-color:#1677ff}
 
   function renderBasic(d) {
     d = d || {};
+    currentStationName = d.name || '';
     setText('f-code', d.code);
     setText('f-name', d.name);
     setText('f-type', d.type);
@@ -807,14 +925,14 @@ a.photo-thumb:hover{border-color:#1677ff}
   var ssPatrolPerson = initSearchSelect('ss-patrol-person');
   var ssIssueFinder = initSearchSelect('ss-issue-finder');
 
-  async function loadBasic() {
+  async function loadBasic(silent) {
     try {
       var data = await fetchApi('/station-detail/basic' + qs({ stationId: stationId }));
       renderBasic(data);
     } catch (e) {
       console.error(e);
       renderBasic({});
-      alert((e && e.message) || '基础信息加载失败');
+      if (!silent) toast((e && e.message) || '基础信息加载失败');
     }
   }
 
@@ -893,12 +1011,163 @@ a.photo-thumb:hover{border-color:#1677ff}
       document.getElementById('patrol-modal').classList.add('show');
     } catch (e) {
       console.error(e);
-      alert((e && e.message) || '巡检详情加载失败');
+      toast((e && e.message) || '巡检详情加载失败');
     }
   }
 
   function closePatrolModal() {
     document.getElementById('patrol-modal').classList.remove('show');
+  }
+
+  /* ===== 设备绑定（管理员，仅绑定/换绑）：候选搜索 + 换绑二次确认提醒 ===== */
+  var bindSelected = null;
+  var bindRows = {};
+  var bindSeq = 0;
+  var currentStationName = '';
+
+  function openBindModal() {
+    bindSelected = null;
+    bindRows = {};
+    document.getElementById('bind-keyword').value = '';
+    document.getElementById('bind-tbody').innerHTML = emptyRow(5, '加载中...');
+    var tip = document.getElementById('bind-tip');
+    tip.className = 'bind-tip';
+    tip.textContent = '搜索并选择要绑定到本站的设备';
+    document.getElementById('bind-modal-ok').disabled = true;
+    document.getElementById('bind-modal').classList.add('show');
+    loadBindCandidates();
+  }
+
+  function closeBindModal() {
+    document.getElementById('bind-modal').classList.remove('show');
+  }
+
+  async function loadBindCandidates() {
+    /* 重新检索即复位上一次选中与确认按钮；序号守卫丢弃连续检索时晚到的旧响应 */
+    var seq = ++bindSeq;
+    bindSelected = null;
+    document.getElementById('bind-modal-ok').disabled = true;
+    var tip = document.getElementById('bind-tip');
+    tip.className = 'bind-tip';
+    tip.textContent = '加载中...';
+    document.getElementById('bind-tbody').innerHTML = emptyRow(5, '加载中...');
+    try {
+      var data = await fetchApi('/station-detail/device/bindable' + qs({
+        stationId: stationId,
+        keyword: document.getElementById('bind-keyword').value.trim(),
+        page: 1,
+        size: PAGE_SIZE
+      }));
+      if (seq !== bindSeq) return;
+      renderBindCandidates(data);
+    } catch (e) {
+      console.error(e);
+      if (seq !== bindSeq) return;
+      var fail = (e && e.message) || '加载失败';
+      tip.textContent = fail;
+      document.getElementById('bind-tbody').innerHTML = emptyRow(5, fail);
+    }
+  }
+
+  function renderBindCandidates(data) {
+    var list = (data && data.records) || [];
+    var total = (data && data.total) || 0;
+    /* 重绘与选中态强绑定：任何重绘都清空选中并禁用确认，防止不可见选中被误提交 */
+    bindSelected = null;
+    document.getElementById('bind-modal-ok').disabled = true;
+    bindRows = {};
+    var tip = document.getElementById('bind-tip');
+    tip.className = 'bind-tip';
+    tip.textContent = total > list.length
+      ? ('共 ' + total + ' 台设备，已显示前 ' + list.length + ' 台，请输入名称或编号精确查找')
+      : '搜索并选择要绑定到本站的设备';
+    document.getElementById('bind-tbody').innerHTML = list.map(function (r) {
+      bindRows[r.id] = r;
+      var isCurrent = r.current === true;
+      var isBlocked = r.blocked === true;
+      var disabled = isCurrent || isBlocked;
+      var note = '';
+      if (isCurrent) {
+        note = '<span class="bind-cur">（本站）</span>';
+      } else if (isBlocked) {
+        note = '<span class="bind-block">' + esc(r.tip || '不可绑定') + '</span>';
+      }
+      return '<tr class="bind-row' + (disabled ? ' disabled' : '') + '" data-bind-id="' + esc(r.id) + '">' +
+        '<td><input type="radio" name="bind-device"' + (disabled ? ' disabled' : '') + '></td>' +
+        '<td class="name-strong">' + esc(dash(r.name)) + '</td>' +
+        '<td class="muted">' + esc(dash(r.code)) + '</td>' +
+        '<td>' + esc(dash(r.type)) + '</td>' +
+        '<td>' + esc(dash(r.siteName)) + note + '</td>' +
+        '</tr>';
+    }).join('') || emptyRow(5);
+  }
+
+  function selectBindCandidate(tr) {
+    var id = tr.getAttribute('data-bind-id');
+    var r = bindRows[id];
+    if (!r) return;
+    bindSelected = r;
+    document.querySelectorAll('#bind-tbody .bind-row').forEach(function (x) { x.classList.remove('selected'); });
+    document.querySelectorAll('#bind-tbody input[type=radio]').forEach(function (x) { x.checked = false; });
+    tr.classList.add('selected');
+    var radio = tr.querySelector('input[type=radio]');
+    if (radio) radio.checked = true;
+    var tip = document.getElementById('bind-tip');
+    tip.className = 'bind-tip warn';
+    var toSite = '归属更新为本站' + (currentStationName ? '「' + currentStationName + '」' : '');
+    var text = r.siteId
+      ? '该设备当前属于「' + (r.siteName || '未知站点') + '」。确认绑定后，该设备将从原站移出，' + toSite + '，原站设备列表将同步减少。'
+      : '该设备尚未归属任何站点。确认绑定后，' + toSite + '。';
+    if (r.tip) {
+      text = '注意：' + r.tip + '。' + text;
+    }
+    tip.textContent = text;
+    document.getElementById('bind-modal-ok').disabled = false;
+  }
+
+  /* 绑定成功收尾：关闭弹窗、成功提示（区分首次绑定/换绑）、刷新设备列表与基础信息 */
+  function onBindSuccess(result) {
+    var name = (result && result.deviceName) || bindSelected.name;
+    var firstBind = !bindSelected.siteId;
+    var oldName = ((result && result.oldSiteName) || bindSelected.siteName) || '原站点';
+    var newName = (result && result.newSiteName) || currentStationName || '本站';
+    closeBindModal();
+    var msg = firstBind
+      ? '绑定成功：设备「' + name + '」已绑定到「' + newName + '」'
+      : '绑定成功：设备「' + name + '」已从「' + oldName + '」转移到「' + newName + '」';
+    if (result && result.warning) {
+      msg += '\n注意：' + result.warning;
+    }
+    toast(msg);
+    loaded.device = true;
+    loadDevice();
+    /* 换绑同时影响本站闸口数/视频通道统计（按 device.site 取数），静默刷新基础信息避免误判 */
+    loaded.basic = true;
+    loadBasic(true);
+  }
+
+  async function confirmBind() {
+    if (!bindSelected) return;
+    var okBtn = document.getElementById('bind-modal-ok');
+    okBtn.disabled = true;
+    /* 带 tip 的设备（闸孔名称无法解析归属站）：核对提醒后继续提交；计量类同类冲突设备已在候选列表禁选 */
+    if (bindSelected.tip) {
+      if (!(await showConfirm('注意：' + bindSelected.tip + '。是否仍要绑定该设备？'))) {
+        okBtn.disabled = false;
+        return;
+      }
+    }
+    try {
+      var result = await postApi('/station-detail/device/bind', {
+        stationId: stationId,
+        deviceId: bindSelected.id
+      });
+      onBindSuccess(result);
+    } catch (e) {
+      console.error(e);
+      toast((e && e.message) || '绑定失败');
+      okBtn.disabled = false;
+    }
   }
 
   async function loadIssue() {
@@ -1014,7 +1283,11 @@ a.photo-thumb:hover{border-color:#1677ff}
     if (e.target === this) closePatrolModal();
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closePatrolModal();
+    if (e.key === 'Escape') {
+      /* Esc 逐层关闭：确认框打开时仅关闭确认框 */
+      if (document.getElementById('confirm-modal').classList.contains('show')) { hideConfirm(false); return; }
+      closePatrolModal(); closeBindModal();
+    }
   });
 
   document.getElementById('issue-query').addEventListener('click', function () {
@@ -1043,6 +1316,29 @@ a.photo-thumb:hover{border-color:#1677ff}
     loadDevice();
   });
 
+  document.getElementById('device-bind').addEventListener('click', openBindModal);
+  document.getElementById('bind-modal-close').addEventListener('click', closeBindModal);
+  document.getElementById('bind-modal-cancel').addEventListener('click', closeBindModal);
+  document.getElementById('bind-modal').addEventListener('click', function (e) {
+    if (e.target === this) closeBindModal();
+  });
+  document.getElementById('bind-search-btn').addEventListener('click', loadBindCandidates);
+  document.getElementById('bind-keyword').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') loadBindCandidates();
+  });
+  document.getElementById('bind-tbody').addEventListener('click', function (e) {
+    var tr = e.target.closest('tr[data-bind-id]');
+    if (!tr || tr.classList.contains('disabled')) return;
+    selectBindCandidate(tr);
+  });
+  document.getElementById('bind-modal-ok').addEventListener('click', confirmBind);
+  document.getElementById('confirm-modal-close').addEventListener('click', function () { hideConfirm(false); });
+  document.getElementById('confirm-modal-cancel').addEventListener('click', function () { hideConfirm(false); });
+  document.getElementById('confirm-modal-ok').addEventListener('click', function () { hideConfirm(true); });
+  document.getElementById('confirm-modal').addEventListener('click', function (e) {
+    if (e.target === this) hideConfirm(false);
+  });
+
   if (!stationId) {
     renderBasic({});
     renderPatrol([]);
@@ -1054,6 +1350,14 @@ a.photo-thumb:hover{border-color:#1677ff}
     loadOptions();
     loaded.basic = true;
     loadBasic();
+    /* 绑定入口仅管理员可见：admin 标记由后端统一判定（与 @RequireAdmin 校验同口径） */
+    fetchApi('/auth/current-user').then(function (u) {
+      if (u && u.admin === true) {
+        document.getElementById('device-bind').style.display = '';
+      }
+    }).catch(function (e) {
+      console.warn('当前用户信息获取失败，绑定入口不显示', e);
+    });
   }
 })();
 </script>

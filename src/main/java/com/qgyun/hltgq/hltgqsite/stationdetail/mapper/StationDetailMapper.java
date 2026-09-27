@@ -8,6 +8,7 @@ import com.qgyun.hltgq.hltgqsite.stationdetail.vo.StationBasicVO;
 import com.qgyun.hltgq.hltgqsite.stationdetail.vo.WorkOrderVO;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -435,4 +436,75 @@ public interface StationDetailMapper {
             "WHERE site = #{site} AND name IS NOT NULL AND name <> '' " +
             "ORDER BY name")
     List<String> selectDeviceNames(@Param("site") String site);
+
+    // ==================== 设备绑定（换绑） ====================
+
+    /**
+     * 绑定候选设备总数：全库搜索（keyword 模糊匹配名称/编号，空为全部）。
+     * <p>口径：设备归属仅设备表 site 单列（全库无站点-设备关联表，2026-09-27 核对），
+     * 候选列表含本站设备（由 Service 标记 current，前端禁选避免无效操作）。
+     */
+    @Select("<script>" +
+            "SELECT COUNT(*) " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
+            "WHERE 1 = 1 " +
+            "<if test='keyword != null and keyword != \"\"'>AND (d.name LIKE CONCAT('%', #{keyword}, '%') OR d.code LIKE CONCAT('%', #{keyword}, '%')) </if>" +
+            "</script>")
+    long countBindCandidates(@Param("keyword") String keyword);
+
+    /**
+     * 绑定候选设备分页：含当前归属站点名（LEFT JOIN 站点档案 zzkaec），按名称升序。
+     * <p>siteId 为站点档案 id（孤儿归属时 siteName 为 null，前端按「未知站点」展示）。
+     */
+    @Select("<script>" +
+            "SELECT d.id, d.name, d.code, d.type AS typeCodes, d.site AS siteId, s.zzkaec AS siteName " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON d.site = s.id " +
+            "WHERE 1 = 1 " +
+            "<if test='keyword != null and keyword != \"\"'>AND (d.name LIKE CONCAT('%', #{keyword}, '%') OR d.code LIKE CONCAT('%', #{keyword}, '%')) </if>" +
+            "ORDER BY d.name, d.code " +
+            "LIMIT #{limit} OFFSET #{offset}" +
+            "</script>")
+    List<DeviceVO.BindCandidate> selectBindCandidates(@Param("keyword") String keyword,
+                                               @Param("limit") int limit,
+                                               @Param("offset") int offset);
+
+    /**
+     * 单台设备当前归属（名称/类型/当前站点 id 与站名），不存在返回 null；供换绑校验与结果组装。
+     * <p>复用 DeviceVO.BindCandidate（id/name/typeCodes/siteId/siteName 同名映射）。
+     */
+    @Select("SELECT d.id, d.name, d.type AS typeCodes, d.site AS siteId, s.zzkaec AS siteName " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON d.site = s.id " +
+            "WHERE d.id = #{deviceId}")
+    DeviceVO.BindCandidate selectDeviceBinding(@Param("deviceId") String deviceId);
+
+    /**
+     * 全站名称清单（id + zzkaec，仅站名非空行）：供换绑约束按「站名最长前缀」解析设备名称归属
+     * （闸孔设备名 = 站名+孔号#，需全量站名参与前缀匹配；同名站按名称比较兼容）。键全小写。
+     */
+    @Select("SELECT id, zzkaec FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
+            "WHERE zzkaec IS NOT NULL AND zzkaec <> ''")
+    List<Map<String, Object>> selectSiteNames();
+
+    /**
+     * 站内设备类型与名称（type + name，按名升序）：供换绑约束判定目标站是否已有同类站级计量设备
+     * （水位/雨量/流量/墒情/水质 一站一台，重复绑定时返回警示）。键全小写。
+     */
+    @Select("SELECT type, name FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" " +
+            "WHERE site = #{site} ORDER BY name")
+    List<Map<String, Object>> selectDeviceTypeNames(@Param("site") String site);
+
+    /**
+     * 设备换绑：site 单列赋值（设备唯一归属位置），条件更新防并发——
+     * 仅当设备 site 仍等于读取时原值（COALESCE 兼容 NULL）才更新，返回影响行数（0=归属已被他处变更）。
+     * <p>遵循既有直写低代码表风格（同 H5 markRead）：不更新平台审计列（updated_at/updated_by），
+     * 避免平台 domain 类型兼容性风险；首次绑定（原值空）与换绑（原值非空）共用同一条 SQL。
+     */
+    @Update("UPDATE \"qixiao-apaas\".\"t_auto_hltgq_water_device\" " +
+            "SET site = #{newSite} " +
+            "WHERE id = #{deviceId} AND COALESCE(site, '') = COALESCE(#{expectedSite}, '')")
+    int updateDeviceSite(@Param("deviceId") String deviceId,
+                         @Param("newSite") String newSite,
+                         @Param("expectedSite") String expectedSite);
 }

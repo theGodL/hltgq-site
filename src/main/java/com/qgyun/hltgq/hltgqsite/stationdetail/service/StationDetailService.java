@@ -61,6 +61,8 @@ public class StationDetailService {
     private static final Map<String, String> TYPE_LABELS = new LinkedHashMap<>();
     /** 在线状态：#1# 在线、#2# 离线（站点 zebpsu / 设备 status 共用） */
     private static final Map<String, String> ON_OFF_LABELS = new LinkedHashMap<>();
+    /** 站级计量类型编码（一站一台约束范围：水位/雨量/流量/墒情/水质；闸门多闸孔、视频多通道不在其列） */
+    private static final Set<String> SITE_METER_TYPES = new LinkedHashSet<>();
 
     /** 丢包率熔断键：mq 到报统计调用失败/过慢时写入，熔断期内跳过调用（值为「1」） */
     private static final String LOSS_BREAKER_KEY = "station:loss:breaker";
@@ -102,6 +104,12 @@ public class StationDetailService {
 
         ON_OFF_LABELS.put("#1#", "在线");
         ON_OFF_LABELS.put("#2#", "离线");
+
+        SITE_METER_TYPES.add("#1#");
+        SITE_METER_TYPES.add("#2#");
+        SITE_METER_TYPES.add("#3#");
+        SITE_METER_TYPES.add("#7#");
+        SITE_METER_TYPES.add("#8#");
     }
 
     @Autowired
@@ -495,7 +503,219 @@ public class StationDetailService {
         return vo;
     }
 
+    // ==================== 设备绑定（换绑） ====================
+
+    /**
+     * 绑定弹窗候选设备搜索：全库设备按关键词（名称/编号模糊）分页，含当前归属站点；
+     * 本站设备也返回并标记 current（前端禁选，避免无效操作）。
+     * <p>换绑约束标注：闸孔设备（type 含 #4# 或名称呈「站名+孔号#」）按名称归属他站时标记 blocked
+     * （前端禁选）；名称无法解析归属站时标记 tip 警示；目标站已有同类站级计量设备（水位/雨量/
+     * 流量/墒情/水质一站一台，仅闸孔/视频可多台）时标记 blocked 禁选。
+     * <p>用途：管理员在站点详情「设备信息」把其他站设备换绑到本站（业务口径业主确认）。
+     */
+    public Page<DeviceVO.BindCandidate> bindCandidates(String stationKey, String keyword, long page, long size) {
+        String targetSiteId = resolveStation(stationKey).getId();
+        checkPage(page, size);
+        String kw = keyword == null || keyword.trim().isEmpty() ? null : keyword.trim();
+
+        long total = mapper.countBindCandidates(kw);
+        Page<DeviceVO.BindCandidate> resultPage = new Page<>(page, size);
+        resultPage.setTotal(total);
+        if (total == 0) {
+            resultPage.setRecords(Collections.emptyList());
+            return resultPage;
+        }
+
+        int offset = (int) ((page - 1) * size);
+        List<DeviceVO.BindCandidate> records = mapper.selectBindCandidates(kw, (int) size, offset);
+        BindRule rule = loadBindRule(targetSiteId);
+        for (DeviceVO.BindCandidate r : records) {
+            r.setType(translateTypes(r.getTypeCodes()));
+            r.setCurrent(targetSiteId.equals(r.getSiteId()));
+            markBindCandidate(r, rule);
+        }
+        resultPage.setRecords(records);
+        return resultPage;
+    }
+
+    /**
+     * 设备换绑：把设备转移绑定至本站（表 site 单列赋值即完成——全库核查确认无关联表）。
+     * <p>换绑须前端弹窗二次确认提醒「从原站移出、归属更新为本站」。
+     * <p>换绑约束（服务端最终防线，与候选标注同规则）：闸孔设备（type 含 #4# 或名称呈「站名+孔号#」）
+     * 按名称归属他站时拒绝（400）；本站已有同类站级计量设备（水位/雨量/流量/墒情/水质一站一台，
+     * 仅闸孔/视频可多台）时一律拒绝（400）。
+     * <p>并发防护：条件更新（仅当 site 仍等于读取原值时生效），两个站点同时抢绑同一设备时
+     * 后到者影响行数为 0，报错提示刷新重试，不会静默覆盖。
+     *
+     * @param confirmed 参数保留兼容：站级计量同类冲突已改为硬拦截，无确认放行场景（传值不影响结果）
+     */
+    public DeviceVO.BindResult bindDevice(String stationKey, String deviceId, boolean confirmed) {
+        StationKey key = resolveStation(stationKey);
+        if (deviceId == null || deviceId.trim().isEmpty()) {
+            throw new IllegalArgumentException("设备参数不能为空");
+        }
+        DeviceVO.BindCandidate device = mapper.selectDeviceBinding(deviceId.trim());
+        if (device == null) {
+            throw new IllegalArgumentException("设备不存在：" + deviceId);
+        }
+        if (key.getId().equals(device.getSiteId())) {
+            throw new IllegalArgumentException("该设备已属于本站，无需换绑");
+        }
+
+        // 换绑约束校验（服务端最终防线）：闸孔他站、计量类同类冲突均硬拦截（一站一台）
+        BindRule rule = loadBindRule(key.getId());
+        List<String> warnings = new ArrayList<>();
+        String matched = matchSitePrefix(device.getName(), rule.getSiteNames());
+        boolean gate = isGateDevice(device.getTypeCodes(), device.getName(), matched);
+        if (gate && matched != null && !matched.equals(rule.getTargetSiteName())) {
+            throw new IllegalArgumentException("该设备按名称归属「" + matched + "」站，不能绑定到本站");
+        }
+        if (gate && matched == null) {
+            warnings.add("设备名称未包含已知站点名，请核对归属");
+        }
+        String conflict = meterConflict(device.getTypeCodes(), rule.getExistingMeter());
+        if (conflict != null) {
+            throw new IllegalArgumentException(conflict);
+        }
+
+        int rows = mapper.updateDeviceSite(device.getId(), key.getId(), device.getSiteId());
+        if (rows == 0) {
+            throw new IllegalArgumentException("设备归属刚被其他操作变更，请刷新后重试");
+        }
+
+        StationBasicVO archive = mapper.selectStationBasic(key.getId());
+        DeviceVO.BindResult result = new DeviceVO.BindResult();
+        result.setDeviceId(device.getId());
+        result.setDeviceName(device.getName());
+        result.setOldSiteId(device.getSiteId());
+        result.setOldSiteName(device.getSiteName());
+        result.setNewSiteId(key.getId());
+        result.setNewSiteName(archive == null ? null : archive.getName());
+        result.setWarning(warnings.isEmpty() ? null : String.join("；", warnings));
+        log.info("设备换绑完成：deviceId={}, name={}, oldSite={}({}), newSite={}({}), warning={}",
+                device.getId(), device.getName(), device.getSiteId(), device.getSiteName(),
+                key.getId(), result.getNewSiteName(), result.getWarning());
+        return result;
+    }
+
     // ==================== 私有工具 ====================
+
+    /** 换绑约束上下文：目标站名 + 全站名清单 + 目标站既有计量设备（候选标注与换绑校验共用） */
+    private static class BindRule {
+        /** 目标站名（档案 zzkaec，可为 null） */
+        private String targetSiteName;
+        /** 全站名清单（设备名最长前缀匹配用） */
+        private List<String> siteNames = new ArrayList<>();
+        /** 目标站既有计量设备：类型编码 → 设备名列表（按名升序） */
+        private Map<String, List<String>> existingMeter = new LinkedHashMap<>();
+
+        String getTargetSiteName() {
+            return targetSiteName;
+        }
+
+        void setTargetSiteName(String targetSiteName) {
+            this.targetSiteName = targetSiteName;
+        }
+
+        List<String> getSiteNames() {
+            return siteNames;
+        }
+
+        Map<String, List<String>> getExistingMeter() {
+            return existingMeter;
+        }
+    }
+
+    /**
+     * 换绑约束上下文加载（均为轻量查询）：全站名清单（最长前缀匹配 + 目标站名取值）+
+     * 目标站既有计量设备（类型编码 → 设备名列表，判同类冲突用）。
+     */
+    private BindRule loadBindRule(String targetSiteId) {
+        BindRule rule = new BindRule();
+        for (Map<String, Object> row : mapper.selectSiteNames()) {
+            String id = str(row.get("id"));
+            String name = str(row.get("zzkaec"));
+            if (id == null || name == null) continue;
+            rule.getSiteNames().add(name);
+            if (id.equals(targetSiteId)) rule.setTargetSiteName(name);
+        }
+        for (Map<String, Object> row : mapper.selectDeviceTypeNames(targetSiteId)) {
+            String name = str(row.get("name"));
+            if (name == null) continue;
+            for (String code : meterTypeCodes(str(row.get("type")))) {
+                List<String> names = rule.getExistingMeter().get(code);
+                if (names == null) {
+                    names = new ArrayList<>();
+                    rule.getExistingMeter().put(code, names);
+                }
+                names.add(name);
+            }
+        }
+        return rule;
+    }
+
+    /** 候选行换绑约束标注：闸孔他站/计量类同类冲突 → blocked 禁选（前端展示 tip 原因）；无站名归属 → tip 警示 */
+    private void markBindCandidate(DeviceVO.BindCandidate c, BindRule rule) {
+        if (Boolean.TRUE.equals(c.getCurrent())) return;
+        List<String> tips = new ArrayList<>();
+        String matched = matchSitePrefix(c.getName(), rule.getSiteNames());
+        boolean gate = isGateDevice(c.getTypeCodes(), c.getName(), matched);
+        if (gate && matched != null && !matched.equals(rule.getTargetSiteName())) {
+            c.setBlocked(Boolean.TRUE);
+            c.setTip("该设备按名称归属「" + matched + "」站，不能绑定到本站");
+            return;
+        }
+        if (gate && matched == null) {
+            tips.add("设备名称未包含已知站点名，请核对归属后再确认绑定");
+        }
+        String conflict = meterConflict(c.getTypeCodes(), rule.getExistingMeter());
+        if (conflict != null) {
+            c.setBlocked(Boolean.TRUE);
+            tips.add(conflict);
+        }
+        if (!tips.isEmpty()) c.setTip(String.join("；", tips));
+    }
+
+    /** 设备名站名前缀最长匹配：返回命中的最长站名（同名站按名称比较）；无命中返回 null */
+    private String matchSitePrefix(String deviceName, List<String> siteNames) {
+        if (deviceName == null || deviceName.trim().isEmpty()) return null;
+        String best = null;
+        for (String name : siteNames) {
+            if (name == null || name.isEmpty() || !deviceName.startsWith(name)) continue;
+            if (best == null || name.length() > best.length()) best = name;
+        }
+        return best;
+    }
+
+    /** 闸孔类设备判定：type 含 #4#（权威编码），或按「站名+孔号#」解析成功（历史数据 type 缺失兜底） */
+    private boolean isGateDevice(String typeCodes, String deviceName, String matchedSite) {
+        if (typeCodes != null && typeCodes.contains("#4#")) return true;
+        if (matchedSite == null || deviceName == null) return false;
+        return deviceName.substring(matchedSite.length()).matches("\\d+#");
+    }
+
+    /** 站级计量类型编码过滤（typeCodes 按 | 拆分，仅保留水位/雨量/流量/墒情/水质，去重保持顺序） */
+    private List<String> meterTypeCodes(String typeCodes) {
+        List<String> out = new ArrayList<>();
+        if (typeCodes == null) return out;
+        for (String part : typeCodes.split("\\|")) {
+            String code = part.trim();
+            if (SITE_METER_TYPES.contains(code) && !out.contains(code)) out.add(code);
+        }
+        return out;
+    }
+
+    /** 站级计量类同类冲突文案：待绑设备类型与站内既有设备类型有交集时返回（含已有设备名，一站一台禁绑） */
+    private String meterConflict(String typeCodes, Map<String, List<String>> existingMeter) {
+        List<String> parts = new ArrayList<>();
+        for (String code : meterTypeCodes(typeCodes)) {
+            List<String> names = existingMeter.get(code);
+            if (names == null || names.isEmpty()) continue;
+            parts.add(TYPE_LABELS.getOrDefault(code, code) + "：" + String.join("、", names));
+        }
+        if (parts.isEmpty()) return null;
+        return "本站已有同类设备（" + String.join("；", parts) + "），每站仅限一台，不能绑定到本站";
+    }
 
     /**
      * 富文本字段解包：平台文本域存 JSON 包装 {"value":"<div…>…</div>"}，取 value 原文返回；

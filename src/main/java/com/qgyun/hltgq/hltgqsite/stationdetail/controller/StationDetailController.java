@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.stationdetail.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.auth.RequireAdmin;
 import com.qgyun.hltgq.hltgqsite.stationdetail.service.StationDetailService;
 import com.qgyun.hltgq.hltgqsite.stationdetail.vo.DeviceVO;
 import com.qgyun.hltgq.hltgqsite.stationdetail.vo.IssueRecordVO;
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -142,5 +144,40 @@ public class StationDetailController {
     @GetMapping("/options")
     public StationOptionsVO options(@RequestParam String stationId) {
         return stationDetailService.options(stationId);
+    }
+
+    /**
+     * 绑定弹窗候选设备搜索（管理员）：全库设备按名称/编号模糊分页，含每台设备当前归属站点
+     * （前端展示「当前：XX站」，本站设备由 current 标记禁选），供站点详情「设备信息」换绑入口。
+     *
+     * @param stationId 目标站点键（档案 id 或站点编号 iofhpi），必填
+     * @param keyword   设备名称/编号模糊关键词，可选（空为全部）
+     */
+    @RequireAdmin
+    @GetMapping("/device/bindable")
+    public Page<DeviceVO.BindCandidate> bindableDevices(
+            @RequestParam String stationId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size) {
+        return stationDetailService.bindCandidates(stationId, keyword, page, size);
+    }
+
+    /**
+     * 设备换绑（管理员）：把设备转移绑定至本站（设备表 site 单列赋值，条件更新防并发）。
+     * <p>业务口径（业主确认）：只有绑定/换绑；换绑由前端弹窗二次确认并提醒
+     * 「从原站移出、归属更新为本站」。非管理员返回 403（拦截器 @RequireAdmin 校验）。
+     * <p>换绑约束：闸孔设备按名称归属他站时拒绝（400）；目标站已有同类站级计量设备
+     * （水位/雨量/流量/墒情/水质一站一台，仅闸孔/视频可多台）时一律拒绝（400）。
+     *
+     * @param stationId 目标站点键（档案 id 或站点编号 iofhpi），必填
+     * @param deviceId  设备主键 id，必填
+     * @param confirmed 参数保留兼容：站级计量同类冲突已改为硬拦截，无确认放行场景（传值不影响结果）
+     */
+    @RequireAdmin
+    @PostMapping("/device/bind")
+    public DeviceVO.BindResult bindDevice(@RequestParam String stationId, @RequestParam String deviceId,
+                                          @RequestParam(defaultValue = "false") boolean confirmed) {
+        return stationDetailService.bindDevice(stationId, deviceId, confirmed);
     }
 }
