@@ -176,3 +176,49 @@ CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_rule (
     updated_by   VARCHAR(64),
     CONSTRAINT uk_message_rule UNIQUE (message_type, target_type, target_id)
 );
+
+-- ========== 系统资源监控（2026-09 新增，页面 system-monitor.html） ==========
+-- 故障记录：软件故障（GlobalExceptionHandler 上游依赖异常埋点）+ 系统故障（服务重启/依赖中断/资源越限）
+-- 同键（category+fault_type+fault_source）在抑制窗口内只记一条，落库异步、失败不影响业务链路
+CREATE TABLE IF NOT EXISTS t_auto_hltgq_sys_fault_record (
+    id           VARCHAR(64) PRIMARY KEY,
+    category     VARCHAR(16) NOT NULL,     -- soft 软件故障 / system 系统故障
+    fault_type   VARCHAR(64) NOT NULL,     -- 类型：上游服务调用失败 / 服务启动 / 资源越限
+    fault_source VARCHAR(255),             -- 来源：服务名（mq/device/archive/model/auth）或资源名（CPU/内存/磁盘挂载点/表空间名）
+    fault_level  VARCHAR(16),              -- error / warn
+    fault_desc   TEXT,                     -- 描述（含阈值与实际值等）
+    occur_time   TIMESTAMP NOT NULL,       -- 发生时间
+    corp_code    VARCHAR(64),
+    created_at   TIMESTAMP,
+    created_by   VARCHAR(64),
+    updated_at   TIMESTAMP,
+    updated_by   VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_sys_fault_category_time ON t_auto_hltgq_sys_fault_record(category, occur_time DESC);
+CREATE INDEX IF NOT EXISTS idx_sys_fault_time ON t_auto_hltgq_sys_fault_record(occur_time DESC);
+
+-- 资源采样：定时采集快照落库（“监控信息保存”，供历史回溯与报警子系统取用），默认 5 分钟一行
+CREATE TABLE IF NOT EXISTS t_auto_hltgq_sys_resource_sample (
+    id               VARCHAR(64) PRIMARY KEY,
+    sample_time      TIMESTAMP NOT NULL,
+    scope            VARCHAR(16),          -- host 宿主机视角 / container 容器视角
+    hostname         VARCHAR(128),
+    cpu_percent      DOUBLE PRECISION,
+    load1            DOUBLE PRECISION,
+    load5            DOUBLE PRECISION,
+    load15           DOUBLE PRECISION,
+    mem_total        BIGINT,
+    mem_used         BIGINT,
+    mem_percent      DOUBLE PRECISION,
+    swap_total       BIGINT,
+    swap_used        BIGINT,
+    swap_percent     DOUBLE PRECISION,
+    disk_json        TEXT,                 -- 各磁盘分区快照（JSON 数组）
+    db_json          TEXT,                 -- 数据库表空间快照（JSON 数组）
+    corp_code        VARCHAR(64),
+    created_at       TIMESTAMP,
+    created_by       VARCHAR(64),
+    updated_at       TIMESTAMP,
+    updated_by       VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_sys_sample_time ON t_auto_hltgq_sys_resource_sample(sample_time DESC);

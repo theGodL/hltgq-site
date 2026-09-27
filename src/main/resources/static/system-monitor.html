@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统资源监控</title>
+<style>
+/* ===== 平台变量：与阈值设置页同一套（色值/圆角/层级集中在此，规则里禁止硬编码） ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-color-warning:#faad14;
+  --el-color-warning-light:rgba(250,173,20,.12);
+  --el-color-warning-text:#d48806;
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;          /* 正文 / 表格 / 控件文字 */
+  --el-text-color-regular:#595959;       /* 次按钮文字 */
+  --el-text-color-secondary:#909399;     /* 单位与辅助说明 */
+  --el-text-color-tertiary:#8c8c8c;      /* 分页翻页箭头 */
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-fill-color-disabled:#f5f5f5;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;                       /* 小圆角：分页 / 标签 */
+  --el-radius-control:8px;               /* 卡片内控件与按钮圆角 */
+  --el-control-height:40px;              /* 顶栏控件高度 */
+  --el-control-height-sm:36px;           /* 面板内按钮 / 筛选控件高度 */
+  --el-table-header-bg:#f5f7fa;          /* 表头底色 */
+  --el-table-stripe-bg:#fafafa;          /* 斑马纹（偶数行） */
+  --el-table-row-height:52px;            /* 数据行高 */
+  --el-table-border:#f0f0f0;             /* 表格线（单元格仅下边框） */
+  --el-tag-bg:#f0f0f0;
+  --el-tag-color:#666;
+  --el-switch-off:#dcdfe6;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+
+/* ===== 页面骨架：内容纵向铺开整页滚动（顶栏卡 + 资源卡 + 各面板卡） ===== */
+.page-wrap{height:100%;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%}
+
+/* 顶栏白卡：主机信息 + 刷新控制（与阈值设置页筛选卡同规格） */
+.filter-card{flex-shrink:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.host-box{display:flex;align-items:center;gap:12px;min-width:0}
+.host-ic{width:36px;height:36px;border-radius:var(--el-radius-control);background:var(--el-color-primary-light);color:var(--el-color-primary);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.host-line{display:flex;align-items:center;gap:8px}
+.host-name{font-size:15px;font-weight:500;color:var(--el-text-color-title)}
+.host-sub{margin-top:2px;font-size:12px;color:var(--el-text-color-secondary)}
+/* 主机选择：多主机切换（仅切换展示口径，轮询节奏不变） */
+.host-sel{width:230px;flex-shrink:0}
+.host-name.offline{color:var(--el-color-danger)}
+.filter-acts{margin-left:auto;display:flex;align-items:center;gap:12px}
+.refresh-info{font-size:13px;color:var(--el-text-color-secondary)}
+.refresh-info b{color:var(--el-text-color-primary);font-weight:400;font-variant-numeric:tabular-nums}
+
+/* 开关（自动刷新） */
+.switch{position:relative;display:inline-block;width:40px;height:20px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0;position:absolute}
+.switch .slider{position:absolute;cursor:pointer;inset:0;background:var(--el-switch-off);transition:.2s;border-radius:10px}
+.switch .slider::before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.switch input:checked+.slider{background:var(--el-color-primary)}
+.switch input:checked+.slider::before{transform:translateX(20px)}
+.switch-label{font-size:13px;color:var(--el-text-color-regular)}
+
+/* ===== 控件（同阈值设置页） ===== */
+.field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%}
+.field::placeholder{color:var(--el-text-color-placeholder)}
+.field:hover{border-color:var(--el-border-color-hover)}
+.field:focus{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height);padding:0 20px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+.btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== 资源指标卡（CPU / 内存 / 交换区） ===== */
+.res-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;flex-shrink:0}
+@media (max-width:960px){.res-grid{grid-template-columns:1fr}}
+.res-card{background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.res-hd{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.res-name{font-size:14px;color:var(--el-text-color-title)}
+.res-val{font-size:20px;font-weight:500;color:var(--el-text-color-title);font-variant-numeric:tabular-nums}
+.res-ft{font-size:12px;color:var(--el-text-color-secondary);line-height:18px;word-break:break-all}
+
+/* 进度条：正常主色 / 接近阈值警示色 / 越限危险色（阈值由接口返回，前端不硬编码） */
+.bar{height:8px;border-radius:4px;background:var(--el-fill-color-light);overflow:hidden}
+.bar>i{display:block;height:100%;width:0;border-radius:4px;background:var(--el-color-primary);transition:width .4s,background .2s}
+.bar.warn>i{background:var(--el-color-warning)}
+.bar.danger>i{background:var(--el-color-danger)}
+.bar.sm{height:6px}
+.rate-cell{display:flex;align-items:center;gap:8px;min-width:140px}
+.rate-cell .bar{flex:1}
+.rate-cell span{flex-shrink:0;font-size:13px;color:var(--el-text-color-primary);font-variant-numeric:tabular-nums;min-width:48px;text-align:right}
+
+/* ===== 面板卡（磁盘 / 数据库表空间 / 故障记录共用） ===== */
+.panel{background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);flex-shrink:0;overflow:hidden}
+.panel-hd{display:flex;align-items:center;gap:24px;padding:16px 24px 0;flex-wrap:wrap}
+.panel-title{font-size:15px;font-weight:500;color:var(--el-text-color-title)}
+.panel-meta{margin-left:auto;font-size:12px;color:var(--el-text-color-secondary)}
+.panel-bd{padding:16px 24px}
+.panel-bd .tbl-wrap{overflow:visible;max-width:100%}
+.panel-hd .field,.panel-hd .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius)}
+.panel-hd .btn{padding:0 16px}
+.panel-hd .field{width:auto}
+.panel-hd .mini-sel{width:140px}
+.panel-hd .mini-date{width:150px}
+.range-sep{font-size:13px;color:var(--el-text-color-secondary)}
+.fault-acts{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* Tab（软件故障 / 系统故障） */
+.tabs{display:flex;align-items:center;gap:24px}
+.tab{position:relative;padding:6px 0;font-size:14px;color:var(--el-text-color-regular);cursor:pointer;transition:color .2s;user-select:none}
+.tab:hover{color:var(--el-color-primary)}
+.tab.active{color:var(--el-color-primary);font-weight:500}
+.tab.active::after{content:'';position:absolute;left:0;right:0;bottom:-2px;height:2px;border-radius:1px;background:var(--el-color-primary)}
+
+/* ===== 表格（同阈值设置页规格） ===== */
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
+thead tr{background:var(--el-table-header-bg)}
+th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
+td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(--el-table-border);font-size:14px;color:var(--el-text-color-primary);text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th:first-child,td:first-child{padding-left:16px}
+tbody tr:nth-child(even) td{background:var(--el-table-stripe-bg)}
+tbody tr:hover td{background:var(--el-fill-color-light)}
+td .tag{display:inline-flex;align-items:center;height:24px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-tag-bg);color:var(--el-tag-color);font-size:12px;line-height:1;border:none;vertical-align:middle}
+td .tag.err{background:var(--el-color-danger-light);color:var(--el-color-danger)}
+td .tag.warn{background:var(--el-color-warning-light);color:var(--el-color-warning-text)}
+td.empty{padding:0;color:var(--el-text-color-secondary)}
+td.empty:hover{background:transparent}
+.empty-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:48px 0;font-size:14px;line-height:22px;color:var(--el-text-color-secondary)}
+
+/* ===== 分页（同阈值设置页：共 X 条 · 页码 · 条/页 · 跳至 X 页） ===== */
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:16px 0 0;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.pg-info{color:var(--el-text-color-primary);font-size:13px;margin-right:4px}
+.pg-size{height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);padding:0 8px;outline:none}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-btn{min-width:32px;height:32px;padding:0 6px;border:1px solid var(--el-border-color);background:var(--el-bg-color);border-radius:var(--el-radius);cursor:pointer;font-size:13px;color:var(--el-text-color-primary);transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-ellipsis{min-width:20px;height:32px;display:inline-flex;align-items:center;justify-content:center;color:var(--el-text-color-secondary);font-size:13px;user-select:none;letter-spacing:1px}
+.pg-btn:hover:not([disabled]):not(.active){border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn.active{background:var(--el-bg-color);border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn[disabled]{color:var(--el-text-color-disabled);cursor:not-allowed}
+.pg-btn[data-pg="prev"],.pg-btn[data-pg="next"]{border-color:transparent;background:transparent;font-size:16px;color:var(--el-text-color-tertiary)}
+.pg-btn[data-pg="prev"]:hover:not([disabled]),.pg-btn[data-pg="next"]:hover:not([disabled]){border-color:transparent;background:transparent;color:var(--el-color-primary)}
+.pg-jump{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--el-text-color-primary)}
+.pg-jump input{width:52px;height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);text-align:center;font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);outline:none;padding:0 8px}
+.pg-jump input:focus{border-color:var(--el-color-primary)}
+
+/* 提示条：白底、圆角 4px、13px、顶部居中、2s 消失（成功正文色 / 失败红色） */
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
+.toast.show{opacity:1}
+.toast.err{color:var(--el-color-danger)}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <!-- 顶栏白卡：主机切换 + 主机信息 + 最后刷新时间 + 自动刷新开关 + 手动刷新 -->
+  <div class="filter-card">
+    <select class="field host-sel" id="host-sel" aria-label="选择服务器"></select>
+    <div class="host-box">
+      <span class="host-ic">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 20h8M12 16v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M7 8h.01M7 11h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </span>
+      <div>
+        <div class="host-line">
+          <span class="host-name" id="host-name">--</span>
+        </div>
+        <div class="host-sub" id="host-sub">--</div>
+      </div>
+    </div>
+    <div class="filter-acts">
+      <span class="refresh-info">最后刷新 <b id="last-refresh">--</b></span>
+      <label class="switch" title="每 15 秒自动刷新">
+        <input type="checkbox" id="auto-refresh" checked>
+        <span class="slider"></span>
+      </label>
+      <span class="switch-label">自动刷新</span>
+      <button class="btn btn-default" id="btn-refresh">刷新</button>
+    </div>
+  </div>
+
+  <!-- 资源指标卡：CPU / 内存 / 交换区（实时，随轮询刷新） -->
+  <div class="res-grid">
+    <div class="res-card">
+      <div class="res-hd"><span class="res-name">CPU 使用率</span><span class="res-val" id="cpu-val">--</span></div>
+      <div class="bar" id="cpu-bar-box"><i id="cpu-bar"></i></div>
+      <div class="res-ft" id="cpu-ft">--</div>
+    </div>
+    <div class="res-card">
+      <div class="res-hd"><span class="res-name">内存使用率</span><span class="res-val" id="mem-val">--</span></div>
+      <div class="bar" id="mem-bar-box"><i id="mem-bar"></i></div>
+      <div class="res-ft" id="mem-ft">--</div>
+    </div>
+    <div class="res-card">
+      <div class="res-hd"><span class="res-name">交换区使用率</span><span class="res-val" id="swap-val">--</span></div>
+      <div class="bar" id="swap-bar-box"><i id="swap-bar"></i></div>
+      <div class="res-ft" id="swap-ft">--</div>
+    </div>
+  </div>
+
+  <!-- 磁盘使用情况 -->
+  <div class="panel">
+    <div class="panel-hd">
+      <span class="panel-title">磁盘使用情况</span>
+      <span class="panel-meta" id="disk-meta">--</span>
+    </div>
+    <div class="panel-bd">
+      <div class="tbl-wrap">
+        <table>
+          <colgroup>
+            <col style="width:22%"><col style="width:19%"><col style="width:19%"><col style="width:19%"><col style="width:21%">
+          </colgroup>
+          <thead>
+            <tr><th>分区</th><th>总容量</th><th>已用</th><th>可用</th><th>使用率</th></tr>
+          </thead>
+          <tbody id="disk-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 数据库表空间 -->
+  <div class="panel">
+    <div class="panel-hd">
+      <span class="panel-title">数据库表空间</span>
+      <span class="panel-meta" id="db-meta">--</span>
+    </div>
+    <div class="panel-bd">
+      <div class="tbl-wrap">
+        <table>
+          <colgroup>
+            <col style="width:28%"><col style="width:20%"><col style="width:20%"><col style="width:32%">
+          </colgroup>
+          <thead>
+            <tr><th>表空间</th><th>已用大小</th><th>容量基线</th><th>使用率</th></tr>
+          </thead>
+          <tbody id="ts-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 故障记录：软件故障 / 系统故障 两类共用一张表（category 区分） -->
+  <div class="panel">
+    <div class="panel-hd">
+      <div class="tabs" id="fault-tabs">
+        <div class="tab active" data-cat="soft">软件故障记录</div>
+        <div class="tab" data-cat="system">系统故障记录</div>
+      </div>
+      <div class="fault-acts">
+        <select class="field mini-sel" id="fault-level" aria-label="故障级别">
+          <option value="">全部级别</option>
+          <option value="error">错误</option>
+          <option value="warn">警告</option>
+        </select>
+        <input type="date" class="field mini-date" id="fault-start" aria-label="起始日期">
+        <span class="range-sep">至</span>
+        <input type="date" class="field mini-date" id="fault-end" aria-label="截止日期">
+        <button class="btn btn-primary" id="fault-search">查询</button>
+        <button class="btn btn-default" id="fault-reset">重置</button>
+      </div>
+    </div>
+    <div class="panel-bd">
+      <div class="tbl-wrap">
+        <table>
+          <colgroup>
+            <col style="width:16%"><col style="width:14%"><col style="width:14%"><col style="width:8%"><col style="width:48%">
+          </colgroup>
+          <thead>
+            <tr><th>发生时间</th><th>故障类型</th><th>来源</th><th>级别</th><th>描述</th></tr>
+          </thead>
+          <tbody id="fault-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="fault-pg"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+/* ============================ 常量与状态 ============================ */
+const API = '/hltgq-site';
+const REFRESH_MS = 15000;    // 自动刷新间隔（需求：实时自动刷新当前资源信息）
+const ICON = {
+  /* 空态插图（与阈值设置页同一张） */
+  empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+const S = {
+  auto: true,
+  timer: null,
+  ovErrShown: false,       // 轮询失败只提示一次（避免每 15s 骚扰）
+  ovSeq: 0, ftSeq: 0,
+  ov: null,                // 最近一次概览数据（主机切换时本地重渲染，不额外发请求）
+  hostKey: '',             // 当前展示主机（hostname；空 = 未选择，默认落到本机）
+  hostSig: '',             // 主机下拉签名（列表未变时不重建，避免打断用户操作）
+  fault: { category: 'soft', level: '', startDate: '', endDate: '', page: 1, size: 10, total: 0, records: [] }
+};
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v === null || v === undefined ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+/** 后端 LocalDateTime 序列化为 ISO 字符串，统一展示到分钟 */
+function fmtTm(v) {
+  if (!v) return '--';
+  const s = String(v).replace('T', ' ');
+  return s.length >= 16 ? s.slice(0, 16) : s;
+}
+
+function nowText() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+/** 字节数转可读文本（后端给字节数，换算与展示由前端处理） */
+function fmtBytes(v) {
+  if (v === null || v === undefined || v === '') return '--';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  let n = Number(v), i = 0;
+  if (!isFinite(n)) return '--';
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + units[i];
+}
+
+const fmtNum = v => (v === null || v === undefined) ? '--' : Number(v).toFixed(2);
+const fmtPct = v => (v === null || v === undefined) ? '--' : Number(v).toFixed(1) + '%';
+
+/** 越限级别：>=阈值 危险 / >=80% 阈值 警示 / 其余正常（阈值由后端返回，口径与告警一致） */
+function levelCls(pct, threshold) {
+  if (pct === null || pct === undefined || threshold === null || threshold === undefined) return '';
+  return pct >= threshold ? ' danger' : (pct >= threshold * 0.8 ? ' warn' : '');
+}
+
+/** 表格单元格：进度条 + 百分比 */
+function rateCell(pct, threshold) {
+  const w = pct === null || pct === undefined ? 0 : Math.min(100, Math.max(0, pct));
+  return '<div class="rate-cell"><div class="bar sm' + levelCls(pct, threshold) + '">' +
+    '<i style="width:' + w + '%"></i></div><span>' + fmtPct(pct) + '</span></div>';
+}
+
+function showToast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+/** 统一请求：非 2xx 抛出后端 message */
+async function api(path, opts) {
+  const init = Object.assign({ credentials: 'include' }, opts || {});
+  const res = await fetch(API + path, init);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+    throw new Error((data && (data.message || data.error)) || fallback);
+  }
+  return data;
+}
+
+function emptyRow(colspan, text, plain) {
+  return '<tr><td colspan="' + colspan + '" class="empty"><div class="empty-box">' +
+    (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
+}
+
+/* ============================ 资源概览（轮询 /system-monitor/overview） ============================ */
+async function fetchOverview() {
+  const seq = ++S.ovSeq;
+  try {
+    const data = await api('/system-monitor/overview');
+    if (seq !== S.ovSeq) return;
+    renderOverview(data || {});
+    S.ovErrShown = false;
+  } catch (e) {
+    if (seq !== S.ovSeq) return;
+    if (!S.ovErrShown) {
+      showToast(e.message || '资源数据加载失败', true);
+      S.ovErrShown = true;
+    }
+  }
+}
+
+/* 主机列表（兼容旧接口：无 hosts 字段时退化为本机单主机） */
+function normalizeHosts(o) {
+  if (Array.isArray(o.hosts) && o.hosts.length) return o.hosts;
+  if (o.resource) {
+    return [{ hostname: o.resource.hostname, current: true, online: true,
+      lastReportTime: o.resource.sampleTime, resource: o.resource }];
+  }
+  return [];
+}
+
+/** 下拉选项文案：别名（或主机名）+ 离线标记 */
+function hostLabel(h) {
+  return (h.alias || h.hostname || '--') + (h.online ? '' : '[离线]');
+}
+
+/** 主机下拉：多于 1 台时显示；列表未变化不重建选项，避免打断用户操作 */
+function renderHostSel(hosts) {
+  const sel = $('host-sel');
+  const sig = hosts.map(h => [h.hostname, h.alias || '', h.current ? 1 : 0, h.online ? 1 : 0].join('|')).join(';');
+  if (sig !== S.hostSig) {
+    S.hostSig = sig;
+    sel.innerHTML = hosts.map(h => '<option value="' + esc(h.hostname) + '">' + esc(hostLabel(h)) + '</option>').join('');
+  }
+  sel.style.display = hosts.length > 1 ? '' : 'none';
+  sel.value = S.hostKey;
+}
+
+/**
+ * 概览渲染：先解析主机列表，再渲染“当前选中主机”的资源（本机实时 / 远端最近一次数据）；
+ * 数据库表空间与阈值口径与主机无关，始终渲染。切换主机不额外发请求（数据取最近一次轮询）。
+ */
+function renderOverview(o) {
+  S.ov = o;
+  const t = o.thresholds || {};
+  const hosts = normalizeHosts(o);
+  let cur = hosts.filter(h => h.hostname === S.hostKey)[0];
+  if (!cur) {
+    cur = hosts.filter(h => h.current)[0] || hosts[0] || null;
+    S.hostKey = cur ? cur.hostname : '';
+  }
+  renderHostSel(hosts);
+
+  const r = (cur && cur.resource) || {};
+
+  // 主机信息：别名（或主机名）+ 系统/核数/状态（面向业主页面：不展示技术术语与机器代号）
+  $('host-name').textContent = (cur && (cur.alias || cur.hostname)) || '--';
+  $('host-name').classList.toggle('offline', !!(cur && !cur.online));
+  const subs = [];
+  if (r.osName) subs.push(r.osName);
+  if (r.cpus) subs.push(r.cpus + ' 核');
+  if (cur && !cur.current) {
+    subs.push(cur.online ? '在线' : '离线');
+    if (cur.lastReportTime) subs.push('最后更新 ' + fmtTm(cur.lastReportTime));
+  }
+  $('host-sub').textContent = subs.join(' · ') || '--';
+
+  // CPU
+  setMetric('cpu', r.cpuPercent, t.cpu);
+  $('cpu-ft').textContent = '负载 ' + fmtNum(r.load1) + ' / ' + fmtNum(r.load5) + ' / ' + fmtNum(r.load15) +
+    '（1 / 5 / 15 分钟）';
+
+  // 内存：服务器口径（/proc/meminfo 与宿主共享内核），页面上仅展示服务器内存
+  setMetric('mem', r.memPercent, t.mem);
+  let memFt = '已用 ' + fmtBytes(r.memUsed) + ' / 总共 ' + fmtBytes(r.memTotal);
+  if (r.memAvailable !== null && r.memAvailable !== undefined) memFt += ' · 可用 ' + fmtBytes(r.memAvailable);
+  $('mem-ft').textContent = memFt;
+
+  // 交换区（未启用时总量为 0，显示 --）
+  if (r.swapTotal) {
+    setMetric('swap', r.swapPercent, t.swap);
+    $('swap-ft').textContent = '已用 ' + fmtBytes(r.swapUsed) + ' / 总共 ' + fmtBytes(r.swapTotal);
+  } else {
+    setMetric('swap', null, t.swap);
+    $('swap-ft').textContent = '未启用交换区';
+  }
+
+  renderDisks(r.disks || [], t.disk, !!(cur && !cur.current));
+  renderDb(o.database, t.tablespace);
+  $('last-refresh').textContent = nowText();
+}
+
+function setMetric(key, pct, threshold) {
+  $(key + '-val').textContent = fmtPct(pct);
+  const bar = $(key + '-bar');
+  bar.style.width = (pct === null || pct === undefined ? 0 : Math.min(100, Math.max(0, pct))) + '%';
+  $(key + '-bar-box').className = 'bar' + levelCls(pct, threshold);
+}
+
+function renderDisks(disks, threshold, snapshot) {
+  $('disk-meta').textContent = disks.length
+    ? '共 ' + disks.length + ' 个分区 · ' + (snapshot ? '最近数据' : '实时') : '--';
+  const tb = $('disk-body');
+  if (!disks.length) { tb.innerHTML = emptyRow(5, '暂无磁盘数据'); return; }
+  tb.innerHTML = disks.map(d =>
+    '<tr><td title="' + esc(d.mount || '') + '">' + esc(d.mount || '--') + '</td>' +
+    '<td>' + fmtBytes(d.total) + '</td>' +
+    '<td>' + fmtBytes(d.used) + '</td>' +
+    '<td>' + fmtBytes(d.avail) + '</td>' +
+    '<td>' + rateCell(d.percent, threshold) + '</td></tr>').join('');
+}
+
+function renderDb(db, threshold) {
+  const tb = $('ts-body');
+  if (!db) { $('db-meta').textContent = '--'; tb.innerHTML = emptyRow(4, '暂无数据库数据'); return; }
+  let meta = '库 ' + (db.dbName || '--') + ' · 库大小 ' + fmtBytes(db.dbSizeBytes);
+  if (db.capacityBytes === null || db.capacityBytes === undefined) {
+    meta += ' · 容量基线未配置（使用率显示 --）';
+  }
+  if (db.queryTime) meta += ' · 统计时间 ' + fmtTm(db.queryTime);
+  $('db-meta').textContent = meta;
+  const list = db.tablespaces || [];
+  if (!list.length) { tb.innerHTML = emptyRow(4, '暂无表空间数据'); return; }
+  tb.innerHTML = list.map(ts =>
+    '<tr><td>' + esc(ts.name || '--') + '</td>' +
+    '<td>' + fmtBytes(ts.sizeBytes) + '</td>' +
+    '<td>' + fmtBytes(ts.capacityBytes) + '</td>' +
+    '<td>' + rateCell(ts.percent, threshold) + '</td></tr>').join('');
+}
+
+/* ============================ 故障记录（分页 /system-monitor/faults） ============================ */
+async function loadFaults() {
+  const f = S.fault;
+  const seq = ++S.ftSeq;
+  const params = new URLSearchParams({ category: f.category, page: String(f.page), size: String(f.size) });
+  if (f.level) params.set('level', f.level);
+  if (f.startDate) params.set('startDate', f.startDate);
+  if (f.endDate) params.set('endDate', f.endDate);
+  $('fault-body').innerHTML = emptyRow(5, '加载中...', true);
+  try {
+    const data = await api('/system-monitor/faults?' + params.toString());
+    if (seq !== S.ftSeq) return;
+    f.total = Number(data && data.total) || 0;
+    f.records = (data && Array.isArray(data.records)) ? data.records : [];
+    if (!f.records.length && f.page > 1) { f.page -= 1; return loadFaults(); }
+    renderFaults();
+    renderFaultPager();
+  } catch (e) {
+    if (seq !== S.ftSeq) return;
+    f.records = [];
+    f.total = 0;
+    $('fault-body').innerHTML = emptyRow(5, '数据加载失败');
+    renderFaultPager();
+    showToast(e.message || '数据加载失败', true);
+  }
+}
+
+function renderFaults() {
+  const tb = $('fault-body');
+  const rows = S.fault.records || [];
+  if (!rows.length) { tb.innerHTML = emptyRow(5, '暂无故障记录'); return; }
+  tb.innerHTML = rows.map(r => {
+    const lv = r.faultLevel || '';
+    const tag = lv === 'error' ? '<span class="tag err">错误</span>'
+      : (lv === 'warn' ? '<span class="tag warn">警告</span>' : '--');
+    return '<tr><td>' + esc(fmtTm(r.occurTime)) + '</td>' +
+      '<td title="' + esc(r.faultType || '') + '">' + esc(r.faultType || '--') + '</td>' +
+      '<td title="' + esc(r.faultSource || '') + '">' + esc(r.faultSource || '--') + '</td>' +
+      '<td>' + tag + '</td>' +
+      '<td title="' + esc(r.faultDesc || '') + '">' + esc(r.faultDesc || '--') + '</td></tr>';
+  }).join('');
+}
+
+/* ============================ 分页（与阈值设置页同一套交互） ============================ */
+function pageNumbers(cur, total) {
+  if (total <= 7) {
+    const all = [];
+    for (let i = 1; i <= total; i++) all.push(i);
+    return all;
+  }
+  const out = [1];
+  const start = Math.max(2, cur - 1);
+  const end = Math.min(total - 1, cur + 1);
+  if (start > 2) out.push('...');
+  for (let p = start; p <= end; p++) out.push(p);
+  if (end < total - 1) out.push('...');
+  out.push(total);
+  return out;
+}
+
+function renderFaultPager() {
+  const f = S.fault;
+  const totalPages = Math.max(1, Math.ceil(f.total / f.size));
+  const sizes = [10, 20, 50, 100];
+  let html = '<span class="pg-info">共 ' + f.total + ' 条</span><div class="pg-btns">' +
+    '<button class="pg-btn" data-pg="prev"' + (f.page <= 1 ? ' disabled' : '') + '>‹</button>';
+  pageNumbers(f.page, totalPages).forEach(p => {
+    html += p === '...'
+      ? '<span class="pg-ellipsis">···</span>'
+      : '<button class="pg-btn' + (p === f.page ? ' active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+  });
+  html += '<button class="pg-btn" data-pg="next"' + (f.page >= totalPages ? ' disabled' : '') + '>›</button></div>' +
+    '<select class="pg-size" id="pg-size">' +
+    sizes.map(n => '<option value="' + n + '"' + (n === f.size ? ' selected' : '') + '>' + n + ' 条/页</option>').join('') +
+    '</select>' +
+    '<span class="pg-jump">跳至<input type="text" id="pg-jump" inputmode="numeric" aria-label="跳至页码"' +
+    ' value="' + f.page + '" autocomplete="off">页</span>';
+  $('fault-pg').innerHTML = html;
+}
+
+function jumpToPage(val) {
+  const f = S.fault;
+  const totalPages = Math.max(1, Math.ceil(f.total / f.size));
+  const n = parseInt(String(val).trim(), 10);
+  const target = isNaN(n) ? f.page : Math.min(totalPages, Math.max(1, n));
+  const box = $('pg-jump');
+  if (box) box.value = String(target);
+  if (target === f.page) return;
+  f.page = target;
+  loadFaults();
+}
+
+/* ============================ 自动刷新 ============================ */
+function startAuto() {
+  stopAuto();
+  if (!S.auto) return;
+  S.timer = setInterval(() => {
+    if (document.hidden) return;    // 页面不可见时暂停轮询
+    fetchOverview();
+  }, REFRESH_MS);
+}
+
+function stopAuto() {
+  if (S.timer) { clearInterval(S.timer); S.timer = null; }
+}
+
+/* ============================ 事件绑定与初始化 ============================ */
+function bindEvents() {
+  $('btn-refresh').addEventListener('click', async () => {
+    const btn = $('btn-refresh');
+    btn.disabled = true;
+    btn.classList.add('is-loading');
+    try {
+      await fetchOverview();
+      await loadFaults();
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('is-loading');
+    }
+  });
+
+  $('auto-refresh').addEventListener('change', e => {
+    S.auto = !!e.target.checked;
+    startAuto();
+  });
+
+  // 主机切换：用最近一次概览数据本地重渲染（不发请求；轮询照常刷新全部主机）
+  $('host-sel').addEventListener('change', e => {
+    S.hostKey = e.target.value || '';
+    if (S.ov) renderOverview(S.ov);
+  });
+
+  // 故障 Tab：两类故障同表查询，切换后回到第 1 页
+  $('fault-tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab || tab.classList.contains('active')) return;
+    document.querySelectorAll('#fault-tabs .tab').forEach(t => t.classList.toggle('active', t === tab));
+    S.fault.category = tab.dataset.cat;
+    S.fault.page = 1;
+    loadFaults();
+  });
+
+  $('fault-search').addEventListener('click', () => {
+    S.fault.level = $('fault-level').value || '';
+    S.fault.startDate = $('fault-start').value || '';
+    S.fault.endDate = $('fault-end').value || '';
+    S.fault.page = 1;
+    loadFaults();
+  });
+  $('fault-reset').addEventListener('click', () => {
+    $('fault-level').value = '';
+    $('fault-start').value = '';
+    $('fault-end').value = '';
+    Object.assign(S.fault, { level: '', startDate: '', endDate: '', page: 1 });
+    loadFaults();
+  });
+
+  const pg = $('fault-pg');
+  pg.addEventListener('click', e => {
+    const btn = e.target.closest('[data-pg]');
+    if (!btn || btn.disabled) return;
+    const f = S.fault;
+    const totalPages = Math.max(1, Math.ceil(f.total / f.size));
+    const v = btn.dataset.pg;
+    if (v === 'prev') f.page = Math.max(1, f.page - 1);
+    else if (v === 'next') f.page = Math.min(totalPages, f.page + 1);
+    else f.page = Number(v);
+    loadFaults();
+  });
+  pg.addEventListener('change', e => {
+    if (e.target && e.target.id === 'pg-size') {
+      S.fault.size = Number(e.target.value) || 10;
+      S.fault.page = 1;
+      loadFaults();
+    }
+  });
+  pg.addEventListener('keydown', e => {
+    if (e.target && e.target.id === 'pg-jump' && e.key === 'Enter') e.target.blur();
+  });
+  pg.addEventListener('focusout', e => {
+    if (e.target && e.target.id === 'pg-jump') jumpToPage(e.target.value);
+  });
+
+  // 页面重新可见时立即补一次刷新（轮询期间被暂停）
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && S.auto) fetchOverview();
+  });
+}
+
+(async function init() {
+  bindEvents();
+  await fetchOverview();
+  await loadFaults();
+  startAuto();
+})();
+</script>
+</body>
+</html>

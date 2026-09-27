@@ -19,15 +19,23 @@ case "${1:-deploy}" in
         docker build -t ${IMAGE_NAME}:latest "$PROJECT_DIR"
         mkdir -p /service/hltgq/logs/hltgq-site
         mkdir -p /service/hltgq/hltgq-site/decision-excel
+        # -v /:/host:ro → 系统资源监控采集宿主机视角（/proc、磁盘挂载点），只读挂载
+        # SYSTEM_MONITOR_DB_CAPACITY_GB → 表空间使用率分母（数据库服务器数据盘 /service 分区 7.7TiB）
+        # SYSTEM_MONITOR_REPORT_TOKEN → 各服务器采集脚本上报凭证（须与各机 sysmon-collect.sh 内一致）
+        # SYSTEM_MONITOR_REPORT_ALLOW_CIDR → 上报来源 IP 前缀白名单（默认仅内网段）
         docker run -d \
             --name ${CONTAINER_NAME} \
             --restart unless-stopped \
             -p 18687:8080 \
             -v /service/hltgq/logs/hltgq-site:/app/logs \
             -v /service/hltgq/hltgq-site/decision-excel:/app/decision-excel \
+            -v /:/host:ro \
             -e TZ=Asia/Shanghai \
             -e MODEL_BASE_URL="${MODEL_BASE_URL:-http://10.68.18.11:8000}" \
             -e ARCHIVE_BASE_URL="${ARCHIVE_BASE_URL:-http://10.68.18.12:8090}" \
+            -e SYSTEM_MONITOR_DB_CAPACITY_GB="${SYSTEM_MONITOR_DB_CAPACITY_GB:-7885}" \
+            -e SYSTEM_MONITOR_REPORT_TOKEN="${SYSTEM_MONITOR_REPORT_TOKEN:-hltgq-sysmon-2026}" \
+            -e SYSTEM_MONITOR_REPORT_ALLOW_CIDR="${SYSTEM_MONITOR_REPORT_ALLOW_CIDR:-10.68.18.}" \
             --memory="1024m" \
             ${IMAGE_NAME}:latest
         echo "部署完成，查看日志："

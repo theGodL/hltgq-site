@@ -6,6 +6,8 @@ import com.qgyun.hltgq.hltgqsite.auth.UnauthorizedException;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelCallException;
 import com.qgyun.hltgq.hltgqsite.stats.client.DeviceStatsCallException;
 import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsCallException;
+import com.qgyun.hltgq.hltgqsite.system.service.FaultRecordService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,9 +26,14 @@ import java.util.Map;
  * UnauthorizedException → 401（未登录/会话过期）；
  * SessionUnavailableException → 503（会话服务不可用）；
  * DataIntegrityViolationException → 409（唯一约束冲突，如阈值表 uniq_hltgq_threshold_site_type_zb）。
+ * <p>上游依赖异常（6 类，401/400/409 除外）同时埋点记录软件故障
+ * （t_auto_hltgq_sys_fault_record，页面 system-monitor.html），"监控信息反馈给报警子系统"的数据来源之一。
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @Autowired
+    private FaultRecordService faultRecordService;
 
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -39,6 +46,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public Map<String, Object> handleIllegalState(IllegalStateException e) {
+        faultRecordService.recordSoft("上游服务调用失败", "upstream",
+                e.getMessage() == null ? "上游服务调用失败" : e.getMessage());
         Map<String, Object> result = new HashMap<>();
         result.put("code", 502);
         result.put("message", e.getMessage() == null ? "上游服务调用失败" : e.getMessage());
@@ -48,6 +57,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ModelCallException.class)
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public Map<String, Object> handleModelCall(ModelCallException e) {
+        faultRecordService.recordSoft("上游服务调用失败", "model",
+                "模型服务调用失败：code=" + e.getCode() + ", " + e.getMessage());
         Map<String, Object> result = new HashMap<>();
         result.put("code", e.getCode());
         result.put("message", e.getMessage());
@@ -57,6 +68,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ArchiveCallException.class)
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public Map<String, Object> handleArchiveCall(ArchiveCallException e) {
+        faultRecordService.recordSoft("上游服务调用失败", "archive",
+                "档案服务调用失败：rc=" + e.getRc() + ", " + e.getMessage());
         Map<String, Object> result = new HashMap<>();
         result.put("rc", e.getRc());
         result.put("message", e.getMessage());
@@ -66,6 +79,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MqStatsCallException.class)
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public Map<String, Object> handleMqStatsCall(MqStatsCallException e) {
+        faultRecordService.recordSoft("上游服务调用失败", "mq",
+                "MQ 统计服务调用失败：" + e.getMessage());
         Map<String, Object> result = new HashMap<>();
         result.put("code", 502);
         result.put("message", e.getMessage());
@@ -75,6 +90,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DeviceStatsCallException.class)
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public Map<String, Object> handleDeviceStatsCall(DeviceStatsCallException e) {
+        faultRecordService.recordSoft("上游服务调用失败", "device",
+                "视频统计服务调用失败：" + e.getMessage());
         Map<String, Object> result = new HashMap<>();
         result.put("code", 502);
         result.put("message", e.getMessage());
@@ -93,6 +110,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SessionUnavailableException.class)
     @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
     public Map<String, Object> handleSessionUnavailable(SessionUnavailableException e) {
+        faultRecordService.recordSoft("上游服务调用失败", "auth",
+                "会话服务不可用：" + (e.getMessage() == null ? "会话服务不可用" : e.getMessage()));
         Map<String, Object> result = new HashMap<>();
         result.put("code", 503);
         result.put("message", e.getMessage() == null ? "会话服务不可用" : e.getMessage());
