@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>雨量数据维护</title>
+<style>
+/* ===== 平台变量：对齐平台「告警管理」；色值/圆角/层级集中在此，规则里禁止硬编码 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-hover:#f78989;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-color-warning:#E6A23C;
+  --el-color-warning-light:rgba(230,162,60,.1);
+  --el-color-success:#4EA450;
+  --el-color-success-light:rgba(78,164,80,.1);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-tertiary:#8c8c8c;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-text-color-icon:#606266;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-fill-color-disabled:#f5f5f5;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height:40px;
+  --el-control-height-sm:36px;
+  --el-table-header-bg:#f5f7fa;
+  --el-table-stripe-bg:#fafafa;
+  --el-table-row-height:52px;
+  --el-table-border:#f0f0f0;
+  --el-tag-bg:#f0f0f0;
+  --el-tag-color:#666;
+  --el-switch-off:#dcdfe6;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+  --el-drawer-width:480px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+
+/* ===== 页面骨架：一个页面两个 tab（删除数据 / 补偿值）+ 顶部返回入口 ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:100%;overflow:hidden}
+.page-wrap[hidden]{display:none}
+.maint-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0}
+.maint-tabs{display:flex;align-items:center;background:var(--el-bg-color);border-radius:var(--el-radius-control);padding:4px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.maint-tab{display:inline-flex;align-items:center;height:36px;padding:0 28px;border-radius:6px;font-size:14px;color:var(--el-text-color-regular);cursor:pointer;user-select:none;white-space:nowrap;transition:color .2s,background .2s}
+.maint-tab:hover{color:var(--el-color-primary)}
+.maint-tab.active{background:var(--el-color-primary);color:#fff;font-weight:500}
+.back-link{flex-shrink:0;font-size:13px;color:var(--el-text-color-secondary);line-height:20px;text-decoration:none;transition:color .2s}
+.back-link:hover{color:var(--el-color-primary)}
+.pane{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px}
+.pane[hidden]{display:none}
+
+/* 筛选白卡 */
+.filter-card{flex-shrink:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.filter-item{display:flex;align-items:center;gap:8px}
+.flt-label{font-size:14px;color:var(--el-text-color-title);text-align:right;white-space:nowrap}
+.flt-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
+.filter-item .sel{width:240px}
+.filter-item .field{width:240px}
+.filter-item .field-time{width:196px}
+.flt-sep{color:var(--el-text-color-secondary)}
+.filter-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+.panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.panel-hd{display:flex;align-items:center;gap:8px;padding:16px 24px 0;flex-shrink:0}
+.panel-hd .act-right{margin-left:auto}
+.panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
+.hd-tip{font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
+.panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
+
+.field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%}
+.field::placeholder{color:var(--el-text-color-placeholder)}
+.field:hover{border-color:var(--el-border-color-hover)}
+.field:focus{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.field.is-err{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.field:disabled,.field.is-disabled{background:var(--el-fill-color-disabled);color:var(--el-text-color-disabled);border-color:var(--el-border-color-light);cursor:not-allowed}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height);padding:0 20px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn-danger{background:var(--el-color-danger);border-color:var(--el-color-danger);color:#fff}
+.btn-danger:hover{background:var(--el-color-danger-hover);border-color:var(--el-color-danger-hover)}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+.btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes flash{0%{background:var(--el-color-primary-light)}100%{background:transparent}}
+
+.tbl-wrap{flex:1;min-height:0;overflow:auto;max-width:100%}
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
+thead tr{background:var(--el-table-header-bg)}
+th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
+td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(--el-table-border);font-size:14px;color:var(--el-text-color-primary);text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th:first-child,td:first-child{padding-left:16px}
+tbody tr:nth-child(even) td{background:var(--el-table-stripe-bg)}
+tbody tr:hover td{background:var(--el-fill-color-light)}
+td.col-act{white-space:nowrap;overflow:visible}
+td .sub{margin-left:4px;font-size:12px;color:var(--el-text-color-secondary)}
+td .tag{display:inline-flex;align-items:center;height:24px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-tag-bg);color:var(--el-tag-color);font-size:12px;line-height:1;border:none;vertical-align:middle}
+td .tag.on{background:var(--el-color-success-light);color:var(--el-color-success)}
+tr.flash td{animation:flash 1s ease}
+.act-btn{position:relative;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-color-primary);cursor:pointer;transition:background .2s,color .2s;vertical-align:middle}
+.act-btn+.act-btn{margin-left:16px}
+.act-btn:hover{background:var(--el-color-primary-light)}
+.act-btn.danger:hover{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+.act-btn::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;font-size:12px;line-height:18px;padding:5px 9px;border-radius:var(--el-radius);white-space:nowrap;opacity:0;visibility:hidden;transition:opacity .2s;pointer-events:none;z-index:6}
+.act-btn:last-child::after{left:auto;right:0;transform:none}
+.act-btn:hover::after{opacity:1;visibility:visible}
+td.empty{padding:0;color:var(--el-text-color-secondary)}
+td.empty:hover{background:transparent}
+.empty-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:64px 0;font-size:14px;line-height:22px;color:var(--el-text-color-secondary)}
+
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:16px 0 0;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.pg-info{color:var(--el-text-color-primary);font-size:13px;margin-right:4px}
+.pg-size{height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);padding:0 8px;outline:none}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-btn{min-width:32px;height:32px;padding:0 6px;border:1px solid var(--el-border-color);background:var(--el-bg-color);border-radius:var(--el-radius);cursor:pointer;font-size:13px;color:var(--el-text-color-primary);transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-ellipsis{min-width:20px;height:32px;display:inline-flex;align-items:center;justify-content:center;color:var(--el-text-color-secondary);font-size:13px;user-select:none;letter-spacing:1px}
+.pg-btn:hover:not([disabled]):not(.active){border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn.active{background:var(--el-bg-color);border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn[disabled]{color:var(--el-text-color-disabled);cursor:not-allowed}
+.pg-btn[data-pg="prev"],.pg-btn[data-pg="next"]{border-color:transparent;background:transparent;font-size:16px;color:var(--el-text-color-tertiary)}
+.pg-btn[data-pg="prev"]:hover:not([disabled]),.pg-btn[data-pg="next"]:hover:not([disabled]){border-color:transparent;background:transparent;color:var(--el-color-primary)}
+.pg-jump{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--el-text-color-primary)}
+.pg-jump input{width:52px;height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);text-align:center;font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);outline:none;padding:0 8px}
+.pg-jump input:focus{border-color:var(--el-color-primary)}
+
+/* 下拉组件（删除数据筛选、补偿值筛选与表单共用） */
+.sel{position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 12px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box:hover{border-color:var(--el-border-color-hover)}
+.sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sel.is-err .sel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.sel-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-text.placeholder{color:var(--el-text-color-placeholder)}
+.sel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.sel.open .sel-arrow{transform:rotate(180deg)}
+.sel-spin{position:absolute;right:12px;top:50%;width:16px;height:16px;margin-top:-8px;border-radius:50%;border:2px solid rgba(0,0,0,.06);border-top-color:var(--el-color-primary);animation:spin .6s linear infinite}
+.sel.is-loading .sel-arrow{display:none}
+.sel.is-disabled .sel-box{background:var(--el-fill-color-disabled);border-color:var(--el-border-color-light);cursor:not-allowed}
+.sel.is-disabled .sel-text{color:var(--el-text-color-disabled)}
+.sel.is-disabled .sel-arrow{border-top-color:var(--el-text-color-disabled)}
+.sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.sel.open .sel-panel{display:block}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search[hidden]{display:none}
+.sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.sel-search input::placeholder{color:var(--el-text-color-placeholder)}
+.sel-list{max-height:274px;overflow-y:auto;padding:4px 0}
+.sel-opt{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt:hover{background:var(--el-fill-color-light)}
+.sel-opt.active{color:var(--el-color-primary)}
+.sel-opt .opt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{margin-left:auto;flex-shrink:0;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt .tick{flex-shrink:0;color:var(--el-color-primary)}
+.sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+
+/* 确认弹窗（删除数据 / 补偿值：删除确认，共用样式） */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2100;display:none;align-items:center;justify-content:center;padding:20px}
+.mask.show{display:flex}
+.mbox{width:520px;max-width:100%;background:var(--el-bg-color);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.12);overflow:hidden}
+.mbox-hd{padding:16px 20px 0;font-size:16px;font-weight:500;color:var(--el-text-color-primary)}
+.mbox-hd .warn-mark{color:var(--el-color-warning)}
+.mbox-bd{padding:12px 20px 20px;font-size:14px;color:var(--el-text-color-regular);line-height:22px;white-space:pre-wrap;word-break:break-word}
+.mbox-alert{margin:0 20px 12px;padding:10px 12px;border-radius:var(--el-radius);background:var(--el-color-warning-light);border:1px solid rgba(230,162,60,.35);color:#b88230;font-size:13px;line-height:20px}
+.mbox-alert[hidden]{display:none}
+/* 删除弹窗固定提示：删除后无法恢复（无回滚入口） */
+.mbox-recover{margin:0 20px 12px;padding:10px 12px;border-radius:var(--el-radius);background:var(--el-fill-color-light);color:var(--el-text-color-secondary);font-size:13px;line-height:20px}
+.mbox-recover[hidden]{display:none}
+/* 删除弹窗「设备补偿」区块：删除必须同时明确补偿（0=设备复位停用补偿；站点未登记设备时仅提示不阻塞） */
+.mbox-adjust{margin:0 20px 12px;padding:12px;border-radius:var(--el-radius);background:var(--el-fill-color-light)}
+.mbox-adjust[hidden]{display:none}
+.adj-hd{font-size:13px;font-weight:500;color:var(--el-text-color-title);line-height:18px;margin-bottom:6px}
+.adj-hd .req{color:var(--el-color-danger);font-style:normal;margin-left:2px}
+.adj-cur{font-size:12px;color:var(--el-text-color-secondary);line-height:18px;margin-bottom:8px;word-break:break-word}
+.adj-cur b{color:var(--el-text-color-primary);font-weight:500}
+#adj-input{height:var(--el-control-height-sm);border-radius:var(--el-radius);background:var(--el-bg-color)}
+#adj-input.is-err{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.adj-preview{margin-top:8px;font-size:12px;line-height:18px;color:var(--el-color-primary)}
+.adj-preview[hidden]{display:none}
+.adj-preview.warn{color:var(--el-color-warning)}
+.adj-err{margin-top:8px;font-size:12px;line-height:18px;color:var(--el-color-danger)}
+.adj-err[hidden]{display:none}
+.mbox-ft{padding:0 20px 16px;display:flex;justify-content:flex-end;gap:12px}
+
+/* ===== 抽屉（补偿值：修改，右侧滑入 480px） ===== */
+.drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s}
+.drawer-mask.show{opacity:1;visibility:visible}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:var(--el-drawer-width);background:var(--el-bg-color);z-index:2001;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s ease;border-radius:8px 0 0 8px;overflow:hidden}
+.drawer.show{transform:translateX(0)}
+.drawer-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.drawer-hd h3{font-size:16px;font-weight:500;color:var(--el-text-color-primary)}
+.hd-acts{display:flex;align-items:center;gap:4px}
+.icon-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-text-color-icon);cursor:pointer;transition:all .2s}
+.icon-btn:hover{color:var(--el-text-color-primary);background:var(--el-fill-color-light)}
+.drawer-bd{flex:1;min-height:0;overflow-y:auto;padding:24px}
+.drawer-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
+@media (max-width:768px){.drawer{width:100%;border-radius:0}}
+
+.drawer-bd .field,.drawer-bd .sel-box{height:var(--el-control-height-sm);border-radius:var(--el-radius)}
+.drawer-bd textarea.field{height:auto;min-height:88px;padding:8px 12px;line-height:22px;resize:vertical;font-family:inherit}
+.drawer-ft .btn,#aj-confirm-mask .mbox-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
+
+.f-item{margin-bottom:24px}
+.f-item:last-child{margin-bottom:0}
+.f-label{display:block;font-size:14px;font-weight:400;color:var(--el-text-color-primary);margin-bottom:8px}
+.f-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
+.f-hint{margin-top:6px;font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
+.f-err{display:none;margin-top:4px;font-size:12px;color:var(--el-color-danger);align-items:center;gap:4px;line-height:16px}
+.f-err.show{display:flex}
+.num-wrap{position:relative}
+.num-wrap .field{padding-right:64px}
+.num-wrap .unit{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--el-text-color-secondary);pointer-events:none}
+.counter{margin-top:4px;text-align:right;font-size:12px;color:var(--el-text-color-secondary)}
+
+/* 开关（启用/停用） */
+.switch-wrap{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.switch{position:relative;display:inline-block;width:40px;height:20px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0;position:absolute}
+.switch .slider{position:absolute;cursor:pointer;inset:0;background:var(--el-switch-off);transition:.2s;border-radius:10px}
+.switch .slider::before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.switch input:checked+.slider{background:var(--el-color-primary)}
+.switch input:checked+.slider::before{transform:translateX(20px)}
+.switch-label{font-size:13px;color:var(--el-text-color-regular)}
+
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
+.toast.show{opacity:1}
+.toast.err{color:var(--el-color-danger)}
+
+/* 无权限拦截（非管理员直接打开本页时整页展示；后端 /manage/*、/rain-adjust/* 接口同为 @RequireAdmin 兜底） */
+.no-perm{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:var(--el-bg-page)}
+.no-perm[hidden]{display:none}
+.no-perm-box{display:flex;flex-direction:column;align-items:center;gap:8px;padding:48px 72px;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.no-perm-title{font-size:16px;font-weight:500;color:var(--el-text-color-title);line-height:24px}
+.no-perm-sub{font-size:14px;color:var(--el-text-color-secondary);line-height:22px}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <!-- 顶部：两个 tab（删除数据 / 补偿值）+ 返回入口 -->
+  <div class="maint-bar">
+    <div class="maint-tabs" id="maint-tabs" role="tablist" aria-label="数据维护功能">
+      <div class="maint-tab active" data-pane="data" role="tab">删除数据</div>
+      <div class="maint-tab" data-pane="adjust" role="tab">补偿值</div>
+    </div>
+    <a class="back-link" href="./rainfall-monitor.html">← 返回雨量监测</a>
+  </div>
+
+  <!-- Tab 1：删除数据（查看 / 删除＋设备补偿必填；删除后不可恢复） -->
+  <div class="pane" id="pane-data">
+    <div class="filter-card">
+      <div class="filter-item">
+        <span class="flt-label"><i class="req">*</i>站点</span>
+        <div class="sel" id="flt-site"></div>
+      </div>
+      <div class="filter-item">
+        <span class="flt-label">时间</span>
+        <input type="datetime-local" class="field field-time" id="flt-start" step="60" aria-label="开始时间">
+        <span class="flt-sep">至</span>
+        <input type="datetime-local" class="field field-time" id="flt-end" step="60" aria-label="结束时间">
+      </div>
+      <div class="filter-acts">
+        <button class="btn btn-primary" id="flt-search">查询</button>
+        <button class="btn btn-default" id="flt-reset">重置</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd">
+        <span class="hd-tip">删除不可恢复，请确认数据无误后再操作；删除时须填写设备补偿值，用于修正后续新入库数据。删除仅系统管理员可操作。</span>
+      </div>
+      <div class="panel-bd">
+        <div class="tbl-wrap">
+          <table>
+            <colgroup>
+              <col style="width:24%"><col style="width:18%"><col style="width:18%"><col style="width:18%"><col style="width:12%"><col style="width:10%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>时间</th><th>DRP（mm）</th><th>PDR（mm）</th><th>DYP（mm）</th><th>间隔（min）</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-body"></tbody>
+          </table>
+        </div>
+        <div class="pg-bar" id="pg-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 2：补偿值（删除数据时填写或更新的补偿在此展示，可修改、可删除） -->
+  <div class="pane" id="pane-adjust" hidden>
+    <div class="filter-card">
+      <div class="filter-item">
+        <span class="flt-label">站点</span>
+        <div class="sel" id="aj-flt-site"></div>
+      </div>
+      <div class="filter-item">
+        <span class="flt-label">关键字</span>
+        <input class="field" id="flt-kw" placeholder="站名 / 编号 / 设备名 / 设备编号" autocomplete="off">
+      </div>
+      <div class="filter-acts">
+        <button class="btn btn-primary" id="aj-flt-search">查询</button>
+        <button class="btn btn-default" id="aj-flt-reset">重置</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd">
+        <span class="hd-tip">删除历史数据时填写或更新的补偿值在此展示，可修改、可删除；新入库数据将自动按补偿值修正。</span>
+      </div>
+      <div class="panel-bd">
+        <div class="tbl-wrap">
+          <table>
+            <colgroup>
+              <col style="width:15%"><col style="width:17%"><col style="width:10%"><col style="width:9%">
+              <col style="width:8%"><col style="width:14%"><col style="width:13%"><col style="width:14%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>站点</th><th>设备</th><th>RTU 站号</th><th>补偿值</th><th>状态</th><th>备注</th><th>更新时间</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="aj-tbl-body"></tbody>
+          </table>
+        </div>
+        <div class="pg-bar" id="aj-pg-bar"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 无权限拦截（非管理员直接打开本页时展示；后端 /manage/*、/rain-adjust/* 接口同为 @RequireAdmin 兜底） -->
+<div class="no-perm" id="no-perm" hidden>
+  <div class="no-perm-box">
+    <div class="no-perm-title">仅系统管理员可访问</div>
+    <div class="no-perm-sub">该页面涉及雨量数据删除、设备补偿值操作，请联系系统管理员使用。</div>
+  </div>
+</div>
+
+<!-- 删除数据：删除确认弹窗（含设备补偿必填） -->
+<div class="mask" id="confirm-mask">
+  <div class="mbox">
+    <div class="mbox-hd" id="confirm-title">删除确认</div>
+    <div class="mbox-bd" id="confirm-text"></div>
+    <div class="mbox-alert" id="confirm-alert" hidden></div>
+    <div class="mbox-recover" id="confirm-recover" hidden>删除后该行数据将无法恢复，请确认数据无误后再操作。</div>
+    <div class="mbox-adjust" id="confirm-adjust" hidden>
+      <div class="adj-hd" id="adj-hd">设备补偿<i class="req">*</i></div>
+      <div class="adj-cur" id="adj-cur"></div>
+      <input class="field" id="adj-input" inputmode="decimal" autocomplete="off" placeholder="设备多灌填正数（如 34），少灌填负数，设备已复位填 0">
+      <div class="adj-preview" id="adj-preview" hidden></div>
+      <div class="adj-err" id="adj-err" hidden></div>
+    </div>
+    <div class="mbox-ft">
+      <button class="btn btn-default" id="confirm-cancel">取消</button>
+      <button class="btn btn-danger" id="confirm-ok">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 补偿值：删除确认 -->
+<div class="mask" id="aj-confirm-mask">
+  <div class="mbox">
+    <div class="mbox-hd">删除确认</div>
+    <div class="mbox-bd" id="aj-confirm-text"></div>
+    <div class="mbox-ft">
+      <button class="btn btn-default" id="aj-confirm-cancel">取消</button>
+      <button class="btn btn-danger" id="aj-confirm-ok">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 补偿值：修改抽屉 -->
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3 id="drawer-title">修改补偿值</h3>
+    <div class="hd-acts">
+      <button class="icon-btn" id="btn-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="drawer-bd">
+    <div class="f-item">
+      <label class="f-label"><i class="req">*</i>站点</label>
+      <div class="sel" id="sel-site"></div>
+      <div class="f-err" id="err-site"></div>
+    </div>
+    <div class="f-item">
+      <label class="f-label"><i class="req">*</i>设备</label>
+      <div class="sel" id="sel-device"></div>
+      <div class="f-hint" id="device-hint">站点与设备为匹配键，锁定不可改；如需更换设备，请先停用或删除旧配置。</div>
+      <div class="f-err" id="err-device"></div>
+    </div>
+    <div class="f-item">
+      <label class="f-label"><i class="req">*</i>补偿值</label>
+      <div class="num-wrap">
+        <input class="field" id="in-offset" inputmode="decimal" autocomplete="off" placeholder="如 -34.00，可正可负">
+        <span class="unit">mm</span>
+      </div>
+      <div class="f-hint">保存后 ≤5 分钟自动生效（无需重启）；补偿值将以两位小数入库前叠加。</div>
+      <div class="f-err" id="err-offset"></div>
+    </div>
+    <div class="f-item">
+      <label class="f-label">启用状态</label>
+      <label class="switch-wrap">
+        <span class="switch"><input type="checkbox" id="in-enabled" checked><span class="slider"></span></span>
+        <span class="switch-label" id="enabled-label">启用（入库应用补偿）</span>
+      </label>
+    </div>
+    <div class="f-item">
+      <label class="f-label">备注</label>
+      <textarea class="field" id="in-remark" maxlength="255" placeholder="可选，调整原因 / 巡检记录，最多 255 字"></textarea>
+      <div class="counter"><span id="remark-count">0</span>/255</div>
+    </div>
+  </div>
+  <div class="drawer-ft">
+    <button class="btn btn-default" id="btn-cancel">取消</button>
+    <button class="btn btn-primary" id="btn-save">保存</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+<script>
+/* ============================ 共用基础：常量 / 图标 / 工具 / 下拉组件（两个 tab 共享） ============================ */
+window.DM = (function () {
+  const API = '/hltgq-site';
+  const ICON = {
+    search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    tick: '<svg class="tick" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    err: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.6v4.2M8 11.1v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    pencil: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.6 9.4a2.12 2.12 0 0 0-3-3L5 17v3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.4 6.8l2.8 2.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.6 7V4.6h4.8V7M6.6 7l.9 12.3A1.6 1.6 0 0 0 9.1 20.8h5.8a1.6 1.6 0 0 0 1.6-1.5L17.4 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 10.8v5.6M13.6 10.8v5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+
+  const $ = id => document.getElementById(id);
+  const esc = v => String(v === null || v === undefined ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  /** 展示到秒（历史数据表格用；后端 LocalDateTime 为 ISO 字符串） */
+  function fmtFull(v) {
+    if (!v) return '--';
+    const s = String(v).replace('T', ' ');
+    return s.length >= 19 ? s.slice(0, 19) : s;
+  }
+
+  /** 展示到分钟（补偿值列表用） */
+  function fmtTm(v) {
+    if (!v) return '--';
+    const s = String(v).replace('T', ' ');
+    return s.length >= 16 ? s.slice(0, 16) : s;
+  }
+
+  /** 行数据 tm → 接口参数格式 yyyy-MM-dd HH:mm:ss */
+  const toApiTm = v => String(v || '').replace('T', ' ').slice(0, 19);
+
+  /** 筛选框时间值（yyyy-MM-ddTHH:mm[[:ss]]）→ 接口参数格式 */
+  function toApiTime(v) {
+    if (!v) return null;
+    let s = v.replace('T', ' ');
+    if (s.length === 16) s += ':00';
+    return s;
+  }
+
+  function showToast(msg, isErr) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.toggle('err', !!isErr);
+    t.classList.add('show');
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => t.classList.remove('show'), 2000);
+  }
+
+  /** 统一请求：非 2xx 抛出后端 message；URLSearchParams 按表单提交，对象 body 自动 JSON */
+  async function api(path, opts) {
+    const init = Object.assign({ credentials: 'include' }, opts || {});
+    if (init.body && typeof init.body !== 'string' && !(init.body instanceof URLSearchParams)) {
+      init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
+      init.body = JSON.stringify(init.body);
+    }
+    const res = await fetch(API + path, init);
+    const text = await res.text();
+    let data = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch (e) { data = null; }
+    }
+    if (!res.ok) {
+      const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+      throw new Error((data && (data.message || data.error)) || fallback);
+    }
+    return data;
+  }
+
+  /* ============================ 下拉组件（删除数据筛选、补偿值筛选与表单共用） ============================ */
+  function createSelect(el) {
+    const st = {
+      value: '', label: '', options: [], placeholder: '请选择', emptyText: '无匹配数据',
+      searchable: false, disabled: false, loading: false, onChange: null
+    };
+    el.innerHTML =
+      '<div class="sel-box" tabindex="0"><span class="sel-text placeholder"></span><span class="sel-arrow"></span></div>' +
+      '<div class="sel-panel"><div class="sel-search" hidden>' + ICON.search +
+      '<input type="text" placeholder="搜索" autocomplete="off"></div><div class="sel-list"></div></div>';
+
+    const box = el.querySelector('.sel-box');
+    const textEl = el.querySelector('.sel-text');
+    const searchWrap = el.querySelector('.sel-search');
+    const searchInput = searchWrap.querySelector('input');
+    const list = el.querySelector('.sel-list');
+
+    function sync() {
+      const hit = st.options.filter(o => o.value === st.value)[0];
+      const label = st.value ? (hit ? hit.label : (st.label || st.value)) : '';
+      textEl.textContent = label || st.placeholder;
+      textEl.classList.toggle('placeholder', !label);
+    }
+    function render() {
+      if (st.loading) { list.innerHTML = '<div class="sel-empty">加载中...</div>'; return; }
+      const kw = (st.searchable ? searchInput.value : '').trim().toLowerCase();
+      const opts = kw
+        ? st.options.filter(o => (o.label + ' ' + (o.sub || '')).toLowerCase().indexOf(kw) >= 0)
+        : st.options;
+      if (!opts.length) { list.innerHTML = '<div class="sel-empty">' + esc(st.emptyText) + '</div>'; return; }
+      list.innerHTML = opts.map(o =>
+        '<div class="sel-opt' + (o.value === st.value ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+        '<span class="opt-name">' + esc(o.label) + '</span>' +
+        (o.sub ? '<span class="opt-sub">' + esc(o.sub) + '</span>' : '') +
+        (o.value === st.value ? ICON.tick : '') + '</div>').join('');
+    }
+    function open() {
+      if (st.disabled) return;
+      closeAllSelects(el);
+      el.classList.add('open');
+      if (st.searchable) searchInput.value = '';
+      render();
+      try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 忽略 */ }
+      if (st.searchable) setTimeout(() => { try { searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+    }
+    function close() { el.classList.remove('open'); }
+
+    box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+      if (e.key === 'Escape') close();
+    });
+    searchInput.addEventListener('input', render);
+    list.addEventListener('mousedown', e => {
+      const opt = e.target.closest('.sel-opt');
+      if (!opt) return;
+      e.preventDefault();
+      st.value = opt.dataset.value;
+      st.label = '';
+      sync(); render(); close();
+      if (st.onChange) st.onChange(st.value);
+    });
+    box.setAttribute('tabindex', '0');
+    el._close = close;
+
+    return {
+      getValue: () => st.value,
+      setOptions(list2) { st.options = list2 || []; sync(); render(); return this; },
+      setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
+      setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+      setEmptyText(t) { st.emptyText = t; render(); return this; },
+      setSearchable(on) { st.searchable = !!on; searchWrap.hidden = !on; return this; },
+      setDisabled(on) { st.disabled = !!on; el.classList.toggle('is-disabled', !!on); return this; },
+      setLoading(on) {
+        st.loading = !!on;
+        el.classList.toggle('is-loading', !!on);
+        let spin = el.querySelector('.sel-spin');
+        if (on && !spin) {
+          spin = document.createElement('span');
+          spin.className = 'sel-spin';
+          el.querySelector('.sel-box').appendChild(spin);
+        } else if (!on && spin) {
+          spin.remove();
+        }
+        if (!on) render();
+        return this;
+      },
+      setError(on) { el.classList.toggle('is-err', !!on); return this; },
+      onChange(fn) { st.onChange = fn; return this; }
+    };
+  }
+
+  function closeAllSelects(except) {
+    document.querySelectorAll('.sel.open').forEach(s => {
+      if (s !== except && typeof s._close === 'function') s._close();
+    });
+  }
+
+  /* 全局交互：点击空白收起下拉；Escape 依「遮挡层级」从高到低关闭
+     （删除数据确认弹窗 → 补偿值删除确认弹窗 → 下拉面板 → 补偿值抽屉） */
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.sel')) closeAllSelects(null);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if ($('confirm-mask').classList.contains('show')) {
+      if (window.DM.cancelDataConfirm) window.DM.cancelDataConfirm();
+      return;
+    }
+    if ($('aj-confirm-mask').classList.contains('show')) {
+      if (window.DM.cancelAjConfirm) window.DM.cancelAjConfirm();
+      return;
+    }
+    if (document.querySelector('.sel.open')) { closeAllSelects(null); return; }
+    if ($('drawer').classList.contains('show') && window.DM.closeDrawer) window.DM.closeDrawer();
+  });
+
+  return { API, ICON, $, esc, fmtFull, fmtTm, toApiTm, toApiTime, showToast, api, createSelect, closeAllSelects };
+})();
+
+/* ============================ Tab 1：删除数据（删除＋设备补偿必填；删除不可恢复） ============================ */
+(function () {
+  const { ICON, $, esc, fmtFull, toApiTm, toApiTime, showToast, api, createSelect } = window.DM;
+
+  const S = {
+    page: 1, size: 20, total: 0, records: [],
+    filter: { stcd: '', start: '', end: '' }
+  };
+  let pending = null;   // {type:'delete', row, levels, adjust}
+  let busy = false;
+  let lastAdjustInput = '';   // 设备偏差输入记忆（连续删多行自动预填；页面会话级）
+
+  /* ============================ 站点候选 ============================ */
+  const fltSite = createSelect($('flt-site')).setSearchable(true);
+
+  /** 雨量站点（与降雨监测页站点同源：站点档案含雨量类型者，按站点排序配置排序） */
+  async function loadSites() {
+    const data = await api('/station-metrics/sites?type=rainfall');
+    const rows = Array.isArray(data) ? data : [];
+    fltSite.setOptions(rows.map(s => ({
+      value: s.stcd || s.code || s.siteId,
+      label: s.name || s.stcd || s.code || s.siteId,
+      sub: s.stcd || ''
+    })));
+    fltSite.setPlaceholder(rows.length ? '请选择站点' : '暂无雨量站点');
+    fltSite.setEmptyText('暂无雨量站点');
+  }
+
+  /* ============================ 列表 ============================ */
+  function buildParams() {
+    const params = new URLSearchParams({
+      page: String(S.page),
+      size: String(S.size),
+      stcd: S.filter.stcd
+    });
+    if (S.filter.start) params.set('startTime', toApiTime(S.filter.start));
+    if (S.filter.end) params.set('endTime', toApiTime(S.filter.end));
+    return params;
+  }
+
+  async function loadList() {
+    if (!S.filter.stcd) {
+      S.records = [];
+      S.total = 0;
+      $('tbl-body').innerHTML = emptyRow('请选择站点后查询', true);
+      renderPager();
+      return;
+    }
+    $('tbl-body').innerHTML = emptyRow('加载中...', true);
+    try {
+      const data = await api('/st-pptn-r/manage/page?' + buildParams().toString());
+      S.total = Number(data && data.total) || 0;
+      S.records = (data && Array.isArray(data.records)) ? data.records : [];
+      if (!S.records.length && S.page > 1) { S.page -= 1; return loadList(); }
+      renderTable();
+      renderPager();
+    } catch (e) {
+      S.records = [];
+      S.total = 0;
+      $('tbl-body').innerHTML = emptyRow('数据加载失败');
+      renderPager();
+      showToast(e.message || '数据加载失败', true);
+    }
+  }
+
+  function emptyRow(text, plain) {
+    return '<tr><td colspan="6" class="empty"><div class="empty-box">' +
+      (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
+  }
+
+  function num(v) {
+    return (v === null || v === undefined || v === '') ? '--' : esc(String(v));
+  }
+
+  function renderTable() {
+    const tb = $('tbl-body');
+    if (!S.records.length) {
+      tb.innerHTML = emptyRow('暂无数据');
+      return;
+    }
+    tb.innerHTML = S.records.map(r => {
+      // 行标识用 tm（单站点查询下唯一）；操作按钮携带 data-tm
+      const acts = '<button class="act-btn danger" data-act="del" data-tm="' + esc(r.tm) + '"' +
+        ' data-tip="删除该行" aria-label="删除该行">' + ICON.trash + '</button>';
+      return '<tr data-tm="' + esc(r.tm) + '">' +
+        '<td>' + esc(fmtFull(r.tm)) + '</td>' +
+        '<td>' + num(r.drp) + '</td>' +
+        '<td>' + num(r.pdr) + '</td>' +
+        '<td>' + num(r.dyp) + '</td>' +
+        '<td>' + num(r.intv) + '</td>' +
+        '<td class="col-act">' + acts + '</td></tr>';
+    }).join('');
+  }
+
+  function pageNumbers(cur, total) {
+    if (total <= 7) {
+      const all = [];
+      for (let i = 1; i <= total; i++) all.push(i);
+      return all;
+    }
+    const out = [1];
+    const start = Math.max(2, cur - 1);
+    const end = Math.min(total - 1, cur + 1);
+    if (start > 2) out.push('...');
+    for (let p = start; p <= end; p++) out.push(p);
+    if (end < total - 1) out.push('...');
+    out.push(total);
+    return out;
+  }
+
+  function renderPager() {
+    const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+    const sizes = [10, 20, 50, 100];
+    let html = '<span class="pg-info">共 ' + S.total + ' 条</span><div class="pg-btns">' +
+      '<button class="pg-btn" data-pg="prev"' + (S.page <= 1 ? ' disabled' : '') + '>‹</button>';
+    pageNumbers(S.page, totalPages).forEach(p => {
+      html += p === '...'
+        ? '<span class="pg-ellipsis">···</span>'
+        : '<button class="pg-btn' + (p === S.page ? ' active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+    });
+    html += '<button class="pg-btn" data-pg="next"' + (S.page >= totalPages ? ' disabled' : '') + '>›</button></div>' +
+      '<select class="pg-size" id="pg-size">' +
+      sizes.map(n => '<option value="' + n + '"' + (n === S.size ? ' selected' : '') + '>' + n + ' 条/页</option>').join('') +
+      '</select>' +
+      '<span class="pg-jump">跳至<input type="text" id="pg-jump" inputmode="numeric" aria-label="跳至页码"' +
+      ' value="' + S.page + '" autocomplete="off">页</span>';
+    $('pg-bar').innerHTML = html;
+  }
+
+  function doSearch() {
+    const stcd = fltSite.getValue();
+    if (!stcd) { showToast('请先选择站点', true); return; }
+    const start = $('flt-start').value;
+    const end = $('flt-end').value;
+    if (start && end && start > end) { showToast('开始时间不能晚于结束时间', true); return; }
+    S.filter = { stcd: stcd, start: start, end: end };
+    S.page = 1;
+    loadList();
+  }
+
+  function jumpToPage(val) {
+    const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+    const n = parseInt(String(val).trim(), 10);
+    const target = isNaN(n) ? S.page : Math.min(totalPages, Math.max(1, n));
+    const box = $('pg-jump');
+    if (box) box.value = String(target);
+    if (target === S.page) return;
+    S.page = target;
+    loadList();
+  }
+
+  function findRow(tm) {
+    return S.records.filter(r => String(r.tm) === String(tm))[0] || null;
+  }
+
+  function onTableClick(e) {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const row = findRow(btn.dataset.tm);
+    if (!row) return;
+    if (btn.dataset.act === 'del') askDelete(row);
+  }
+
+  function onPagerClick(e) {
+    const btn = e.target.closest('[data-pg]');
+    if (!btn || btn.disabled) return;
+    const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+    const v = btn.dataset.pg;
+    if (v === 'prev') S.page = Math.max(1, S.page - 1);
+    else if (v === 'next') S.page = Math.min(totalPages, S.page + 1);
+    else S.page = Number(v);
+    loadList();
+  }
+
+  /* ============================ 删除（三级护栏，删除不可恢复） ============================ */
+  function setConfirmBtn(text, cls, disabled) {
+    const btn = $('confirm-ok');
+    btn.textContent = text;
+    btn.className = 'btn ' + cls;
+    btn.disabled = !!disabled;
+  }
+
+  function openConfirm() { $('confirm-mask').classList.add('show'); }
+  function closeConfirm() {
+    pending = null;
+    $('confirm-mask').classList.remove('show');
+  }
+
+  /** 删除第一步：预检（护栏级别判定，不改数据），按级别渲染强化提示 + 设备补偿必填区块 */
+  async function askDelete(row) {
+    if (busy) return;
+    busy = true;
+    pending = { type: 'delete', row: row, levels: '', adjust: null };
+    $('confirm-title').textContent = '删除确认';
+    $('confirm-text').textContent = '正在判定护栏级别...';
+    $('confirm-alert').hidden = true;
+    $('confirm-recover').hidden = false;
+    renderAdjustBlock(null, false);
+    setConfirmBtn('删除', 'btn-danger', true);
+    openConfirm();
+    try {
+      const params = new URLSearchParams({ stcd: row.stcd, tm: toApiTm(row.tm) });
+      const res = await api('/st-pptn-r/manage/delete-precheck', { method: 'POST', body: params });
+      pending.levels = (res && res.levels) || '';
+      renderAdjustBlock(res && res.adjust, true);
+      showDeletePrompt(res);
+      setConfirmBtn('删除', 'btn-danger', false);
+    } catch (e) {
+      closeConfirm();
+      showToast(e.message || '预检失败', true);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** 按预检结果渲染删除确认弹窗（warning 文案由服务端合成：基线行 / 24 小时内 / 生效方式） */
+  function showDeletePrompt(res) {
+    const baseline = !!(res && res.baseline);
+    const recent = !!(res && res.recent24h);
+    $('confirm-title').innerHTML = baseline
+      ? '删除确认<span class="warn-mark"> —— 命中当前基线行</span>'
+      : (recent ? '删除确认<span class="warn-mark"> —— 最近 24 小时数据</span>' : '删除确认');
+    $('confirm-text').textContent = (res && res.warning) || '确定删除该行数据？';
+    const alert = $('confirm-alert');
+    if (baseline || recent) {
+      alert.hidden = false;
+      alert.textContent = '敏感操作：' + (baseline ? '该行当前作为入库基线行被引用，删除将改变后续入库取值。' : '') +
+        (recent ? '该行属于最近 24 小时数据，删除将影响当前实时展示与基线取值。' : '') + '请确认后再继续。';
+    } else {
+      alert.hidden = true;
+    }
+  }
+
+  /* ============================ 设备补偿（随删必填：0=设备复位） ============================ */
+
+  /** 补偿值展示（两位小数） */
+  function fmtOffset(v) {
+    return (v === null || v === undefined || isNaN(Number(v))) ? '--' : Number(v).toFixed(2);
+  }
+
+  /** 偏差输入校验：正负号 + 最多两位小数（范围 ±99999999.99）；返回数值，非法返回 null */
+  function parseAdjust(raw) {
+    if (!/^[+-]?\d{1,8}(\.\d{1,2})?$/.test(raw)) return null;
+    return Number(raw);
+  }
+
+  /** 预填：上次输入优先；否则取当前启用中补偿的反数＝当前偏差（如补偿 -34 → 偏差 34） */
+  function prefillAdjust(adj) {
+    if (lastAdjustInput) return lastAdjustInput;
+    if (!adj || !adj.configured || !adj.enabled || adj.offsetValue === null || adj.offsetValue === undefined) return '';
+    const n = -Number(adj.offsetValue);
+    return isNaN(n) ? '' : String(Math.round(n * 100) / 100);
+  }
+
+  /** 渲染「设备补偿」区块：现值展示 + 预填；站点未登记设备时仅提示（不阻塞删除） */
+  function renderAdjustBlock(adj, prefill) {
+    pending.adjust = adj || null;
+    const box = $('confirm-adjust');
+    $('adj-input').classList.remove('is-err');
+    $('adj-err').hidden = true;
+    $('adj-preview').hidden = true;
+    if (!adj) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    const input = $('adj-input');
+    if (!adj.deviceFound) {
+      $('adj-hd').textContent = '设备补偿';
+      $('adj-cur').textContent = '该站点未在站点档案登记雨量设备，本次删除无法配置补偿（仅删除数据）。';
+      input.hidden = true;
+      return;
+    }
+    input.hidden = false;
+    $('adj-hd').innerHTML = '设备补偿<i class="req">*</i>';
+    const device = adj.deviceName ? '设备：' + esc(adj.deviceName) + '；' : '';
+    $('adj-cur').innerHTML = adj.configured
+      ? device + '当前补偿：<b>' + fmtOffset(adj.offsetValue) + '</b>（' + (adj.enabled ? '启用中' : '已停用') + '）'
+      : device + '当前无补偿配置（提交后将新建）';
+    if (prefill) {
+      input.value = prefillAdjust(adj);
+      updateAdjustPreview();
+    }
+  }
+
+  /** 偏差输入实时预览：补偿值 = 偏差取反（≤5 分钟生效） */
+  function updateAdjustPreview() {
+    const adj = pending && pending.adjust;
+    const pv = $('adj-preview');
+    if (!adj || !adj.deviceFound) { pv.hidden = true; return; }
+    $('adj-input').classList.remove('is-err');
+    $('adj-err').hidden = true;
+    const v = parseAdjust($('adj-input').value.trim());
+    if (v === null) { pv.hidden = true; return; }
+    pv.hidden = false;
+    pv.classList.remove('warn');
+    if (v === 0) {
+      pv.classList.add('warn');
+      pv.textContent = (adj.configured && adj.enabled)
+        ? '提交后：停用该设备现有补偿（' + fmtOffset(adj.offsetValue) + '），新入库按原值入库；已入库数据不变。'
+        : '提交后：该设备无启用中的补偿，删除后新入库按原值入库。';
+      return;
+    }
+    const text = '提交后：该设备新入库数据按 原值 ' + (v > 0 ? '−' : '+') + ' ' + Math.abs(v) + ' 修正'
+      + '（补偿值 ' + fmtOffset(-v) + '，≤5 分钟生效）';
+    pv.textContent = adj.configured
+      ? text + '；当前补偿 ' + fmtOffset(adj.offsetValue) + ' → ' + fmtOffset(-v) + (adj.enabled ? '' : '（重新启用）')
+      : text + '（将新建配置）';
+  }
+
+  /** 偏差校验失败提示 */
+  function showAdjustError(text) {
+    $('adj-input').classList.add('is-err');
+    const err = $('adj-err');
+    err.textContent = text;
+    err.hidden = false;
+    $('adj-preview').hidden = true;
+  }
+
+  /** 删除第二步：携 confirm 级别重调（服务端重判比对，防确认期间级别变化） */
+  async function doConfirm() {
+    if (!pending || busy) return;
+    busy = true;
+    const btn = $('confirm-ok');
+    btn.disabled = true;
+    btn.classList.add('is-loading');
+    try {
+      const row = pending.row;
+      const params = new URLSearchParams({ stcd: row.stcd, tm: toApiTm(row.tm) });
+      // 设备补偿必填（删除必须同时明确补偿；站点未登记设备时仅提示，不阻塞删除）
+      const adj = pending.adjust;
+      if (adj && adj.deviceFound) {
+        const raw = $('adj-input').value.trim();
+        if (parseAdjust(raw) === null) {
+          showAdjustError(raw
+            ? '格式不正确：支持正负号、最多两位小数（范围 ±99999999.99）'
+            : '请填写设备偏差值：多灌填正数（如 34），少灌填负数，已复位填 0');
+          return;
+        }
+        lastAdjustInput = raw;
+        params.set('adjustValue', raw);
+      }
+      params.set('confirm', pending.levels || '');
+      const res = await api('/st-pptn-r/manage/delete', { method: 'POST', body: params });
+      if (res && res.needConfirm) {
+        // 级别已变化：更新提示，等用户按最新提示再次确认
+        pending.levels = res.levels || '';
+        showDeletePrompt(res);
+        showToast('数据状态已变化，请按最新提示重新确认', true);
+        return;
+      }
+      closeConfirm();
+      await loadList();
+      let msg = '删除成功';
+      if (res && res.adjust && res.adjust.message) msg += '；' + res.adjust.message;
+      showToast(msg);
+    } catch (e) {
+      showToast(e.message || '删除失败', true);
+    } finally {
+      busy = false;
+      btn.disabled = false;
+      btn.classList.remove('is-loading');
+    }
+  }
+
+  /* ============================ 事件绑定与初始化 ============================ */
+  function bindEvents() {
+    const pgBar = $('pg-bar');
+    $('tbl-body').addEventListener('click', onTableClick);
+    pgBar.addEventListener('click', onPagerClick);
+    pgBar.addEventListener('change', e => {
+      if (e.target && e.target.id === 'pg-size') {
+        S.size = Number(e.target.value) || 20;
+        S.page = 1;
+        loadList();
+      }
+    });
+    pgBar.addEventListener('keydown', e => {
+      if (e.target && e.target.id === 'pg-jump' && e.key === 'Enter') e.target.blur();
+    });
+    pgBar.addEventListener('focusout', e => {
+      if (e.target && e.target.id === 'pg-jump') jumpToPage(e.target.value);
+    });
+
+    fltSite.onChange(stcd => {
+      // 站点选定即查询（未选时展示占位提示）
+      S.filter.stcd = stcd || '';
+      S.page = 1;
+      loadList();
+    });
+    $('flt-search').addEventListener('click', doSearch);
+    $('flt-reset').addEventListener('click', () => {
+      S.filter = { stcd: '', start: '', end: '' };
+      fltSite.setValue('');
+      $('flt-start').value = '';
+      $('flt-end').value = '';
+      S.page = 1;
+      loadList();
+    });
+
+    $('confirm-cancel').addEventListener('click', closeConfirm);
+    $('confirm-ok').addEventListener('click', doConfirm);
+    $('adj-input').addEventListener('input', updateAdjustPreview);
+  }
+
+  // Escape 关闭（共用层统一分发）
+  window.DM.cancelDataConfirm = closeConfirm;
+
+  window.DM.initDataPane = async function () {
+    bindEvents();
+    try {
+      await loadSites();
+    } catch (e) {
+      showToast(e.message || '站点加载失败', true);
+    }
+    loadList();
+  };
+})();
+/* ============================ Tab 2：补偿值（查看 / 修改 / 删除） ============================ */
+(function () {
+  const { ICON, $, esc, fmtTm, showToast, api, createSelect, closeAllSelects } = window.DM;
+
+  const REMARK_MAX = 255;
+  const S = {
+    page: 1, size: 20, total: 0, records: [],
+    filter: { siteId: '', keyword: '' },
+    sites: [],                   // 站点候选（筛选与表单共用一份）
+    row: null,
+    flashId: null,
+    saving: false
+  };
+  let pendingDelete = null;
+
+  /* ============================ 候选数据 ============================ */
+  const joinName = (name, code) => code ? String(name || code) + '（' + code + '）' : String(name || '');
+
+  /** 站点候选（筛选与表单共用；表单下拉可搜索站名/编号） */
+  async function loadSites() {
+    const data = await api('/rain-adjust/sites');
+    S.sites = Array.isArray(data) ? data : [];
+    const options = S.sites.map(s => ({ value: s.id, label: s.stnm || s.id, sub: s.stcd || '' }));
+    const fv = fltSite.getValue();
+    fltSite.setOptions(options);
+    fltSite.setPlaceholder(S.sites.length ? '全部站点' : '暂无站点');
+    if (fv && !S.sites.some(s => s.id === fv)) {
+      S.filter.siteId = '';
+      fltSite.setValue('');
+    }
+    const sv = selSite.getValue();
+    selSite.setOptions(options);
+    selSite.setPlaceholder(S.sites.length ? '请选择站点' : '暂无站点');
+    if (sv && !S.sites.some(s => s.id === sv)) selSite.setValue('');
+  }
+
+  /** 某站设备候选（表单设备下拉联动；含类型中文名） */
+  async function loadDevices(siteId) {
+    selDevice.setLoading(true);
+    try {
+      const data = await api('/rain-adjust/devices?siteId=' + encodeURIComponent(siteId));
+      const rows = Array.isArray(data) ? data : [];
+      selDevice.setOptions(rows.map(d => ({
+        value: d.id,
+        label: d.name || d.id,
+        sub: [d.code || '', d.typeName || ''].filter(Boolean).join(' · ')
+      })));
+      const emptyText = rows.length ? '无匹配数据' : '该站点暂无设备';
+      selDevice.setPlaceholder(rows.length ? '请选择设备' : emptyText);
+      selDevice.setEmptyText(emptyText);
+    } finally {
+      selDevice.setLoading(false);
+    }
+  }
+
+  /* ============================ 列表 ============================ */
+  async function loadList() {
+    const params = new URLSearchParams({ page: String(S.page), size: String(S.size) });
+    if (S.filter.siteId) params.set('siteId', S.filter.siteId);
+    if (S.filter.keyword) params.set('keyword', S.filter.keyword);
+    $('aj-tbl-body').innerHTML = emptyRow('加载中...', true);
+    try {
+      const data = await api('/rain-adjust/page?' + params.toString());
+      S.total = Number(data && data.total) || 0;
+      S.records = (data && Array.isArray(data.records)) ? data.records : [];
+      if (!S.records.length && S.page > 1) { S.page -= 1; return loadList(); }
+      renderTable();
+      renderPager();
+    } catch (e) {
+      S.records = [];
+      S.total = 0;
+      $('aj-tbl-body').innerHTML = emptyRow('数据加载失败');
+      renderPager();
+      showToast(e.message || '数据加载失败', true);
+    }
+  }
+
+  function emptyRow(text, plain) {
+    return '<tr><td colspan="8" class="empty"><div class="empty-box">' +
+      (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
+  }
+
+  function actBtn(act, tip, icon, id, danger) {
+    return '<button class="act-btn' + (danger ? ' danger' : '') + '"' +
+      ' data-act="' + act + '" data-id="' + esc(id) + '"' +
+      ' data-tip="' + esc(tip) + '" aria-label="' + esc(tip) + '">' + icon + '</button>';
+  }
+
+  function renderTable() {
+    const tb = $('aj-tbl-body');
+    if (!S.records.length) {
+      tb.innerHTML = emptyRow('暂无数据');
+      return;
+    }
+    tb.innerHTML = S.records.map(r => {
+      const offset = (r.offsetValue === null || r.offsetValue === undefined || r.offsetValue === '')
+        ? '--' : esc(String(r.offsetValue)) + '<span class="sub">mm</span>';
+      const state = r.enabled === false ? '<span class="tag">停用</span>' : '<span class="tag on">启用</span>';
+      const acts = actBtn('edit', '修改配置', ICON.pencil, r.id) +
+        actBtn('del', '删除配置', ICON.trash, r.id, true);
+      return '<tr data-id="' + esc(r.id) + '">' +
+        '<td title="' + esc(r.siteCode ? '编号：' + r.siteCode : '') + '">' + esc(r.siteName || r.site || '--') + '</td>' +
+        '<td title="' + esc(r.deviceCode ? '编号：' + r.deviceCode : '') + '">' + esc(r.deviceName || r.device || '--') + '</td>' +
+        '<td>' + esc(r.stcd || '--') + '</td>' +
+        '<td>' + offset + '</td>' +
+        '<td>' + state + '</td>' +
+        '<td title="' + esc(r.remark || '') + '">' + esc(r.remark || '--') + '</td>' +
+        '<td>' + esc(fmtTm(r.updatedAt)) + '</td>' +
+        '<td class="col-act">' + acts + '</td></tr>';
+    }).join('');
+
+    if (S.flashId) {
+      const tr = tb.querySelector('tr[data-id="' + S.flashId + '"]');
+      S.flashId = null;
+      if (tr) {
+        tr.classList.add('flash');
+        setTimeout(() => tr.classList.remove('flash'), 1100);
+      }
+    }
+  }
+
+  function pageNumbers(cur, total) {
+    if (total <= 7) {
+      const all = [];
+      for (let i = 1; i <= total; i++) all.push(i);
+      return all;
+    }
+    const out = [1];
+    const start = Math.max(2, cur - 1);
+    const end = Math.min(total - 1, cur + 1);
+    if (start > 2) out.push('...');
+    for (let p = start; p <= end; p++) out.push(p);
+    if (end < total - 1) out.push('...');
+    out.push(total);
+    return out;
+  }
+
+  function renderPager() {
+    const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+    const sizes = [10, 20, 50, 100];
+    let html = '<span class="pg-info">共 ' + S.total + ' 条</span><div class="pg-btns">' +
+      '<button class="pg-btn" data-pg="prev"' + (S.page <= 1 ? ' disabled' : '') + '>‹</button>';
+    pageNumbers(S.page, totalPages).forEach(p => {
+      html += p === '...'
+        ? '<span class="pg-ellipsis">···</span>'
+        : '<button class="pg-btn' + (p === S.page ? ' active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+    });
+    html += '<button class="pg-btn" data-pg="next"' + (S.page >= totalPages ? ' disabled' : '') + '>›</button></div>' +
+      '<select class="pg-size" id="aj-pg-size">' +
+      sizes.map(n => '<option value="' + n + '"' + (n === S.size ? ' selected' : '') + '>' + n + ' 条/页</option>').join('') +
+      '</select>' +
+      '<span class="pg-jump">跳至<input type="text" id="aj-pg-jump" inputmode="numeric" aria-label="跳至页码"' +
+      ' value="' + S.page + '" autocomplete="off">页</span>';
+    $('aj-pg-bar').innerHTML = html;
+  }
+
+  /** 查询：把筛选区当前取值落到查询条件后从第 1 页重新加载 */
+  function doSearch() {
+    S.filter.siteId = fltSite.getValue() || '';
+    S.filter.keyword = ($('flt-kw').value || '').trim();
+    S.page = 1;
+    loadList();
+  }
+
+  function jumpToPage(val) {
+    const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+    const n = parseInt(String(val).trim(), 10);
+    const target = isNaN(n) ? S.page : Math.min(totalPages, Math.max(1, n));
+    const box = $('aj-pg-jump');
+    if (box) box.value = String(target);
+    if (target === S.page) return;
+    S.page = target;
+    loadList();
+  }
+
+  function findRow(id) {
+    return S.records.filter(r => String(r.id) === String(id))[0] || null;
+  }
+
+  function onTableClick(e) {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const row = findRow(btn.dataset.id);
+    if (!row) return;
+    if (btn.dataset.act === 'edit') openDrawer(row);
+    else if (btn.dataset.act === 'del') askDelete(row);
+  }
+
+  function onPagerClick(e) {
+    const btn = e.target.closest('[data-pg]');
+    if (!btn || btn.disabled) return;
+    const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+    const v = btn.dataset.pg;
+    if (v === 'prev') S.page = Math.max(1, S.page - 1);
+    else if (v === 'next') S.page = Math.min(totalPages, S.page + 1);
+    else S.page = Number(v);
+    loadList();
+  }
+
+  /* ============================ 抽屉 ============================ */
+  const fltSite = createSelect($('aj-flt-site')).setSearchable(true);
+  const selSite = createSelect($('sel-site')).setSearchable(true);
+  const selDevice = createSelect($('sel-device')).setSearchable(true);
+
+  function showDrawer() {
+    $('drawer-mask').classList.add('show');
+    $('drawer').classList.add('show');
+    $('drawer').setAttribute('aria-hidden', 'false');
+  }
+
+  function closeDrawer() {
+    $('drawer-mask').classList.remove('show');
+    $('drawer').classList.remove('show');
+    $('drawer').setAttribute('aria-hidden', 'true');
+    closeAllSelects(null);
+    S.row = null;
+  }
+
+  /** 打开抽屉：修改既有补偿配置 */
+  function openDrawer(row) {
+    S.row = row || null;
+    clearErrors();
+    showDrawer();
+    fillForm(row);
+  }
+
+  /** 回显：站点/设备为匹配键，锁定不可改；需换设备时先停用或删除旧配置 */
+  function fillForm(row) {
+    selSite.setOptions([{ value: row.site, label: row.siteName || row.site, sub: row.siteCode || '' }])
+      .setValue(row.site, joinName(row.siteName || row.site, row.siteCode))
+      .setDisabled(true);
+    selDevice.setOptions([{ value: row.device, label: row.deviceName || row.device, sub: row.deviceCode || '' }])
+      .setValue(row.device, joinName(row.deviceName || row.device, row.deviceCode))
+      .setDisabled(true);
+    $('device-hint').textContent = '站点与设备为匹配键，锁定不可改；如需更换设备，请先停用或删除旧配置。';
+    $('in-offset').value = (row.offsetValue === null || row.offsetValue === undefined || row.offsetValue === '')
+      ? '' : String(row.offsetValue);
+    $('in-enabled').checked = row.enabled !== false;
+    syncEnabledLabel();
+    $('in-remark').value = row.remark || '';
+    updateCounter();
+    clearErrors();
+  }
+
+  function syncEnabledLabel() {
+    $('enabled-label').textContent = $('in-enabled').checked ? '启用（入库应用补偿）' : '停用（按原值入库）';
+  }
+
+  /* ============================ 校验 ============================ */
+  const FIELD_MAP = {
+    site: { sel: () => selSite, err: 'err-site' },
+    device: { sel: () => selDevice, err: 'err-device' },
+    offset: { sel: null, err: 'err-offset' }
+  };
+
+  function setFieldError(field, msg) {
+    const cfg = FIELD_MAP[field];
+    if (!cfg) return;
+    if (cfg.sel) cfg.sel().setError(!!msg);
+    else $('in-offset').classList.toggle('is-err', !!msg);
+    const box = $(cfg.err);
+    box.innerHTML = msg ? ICON.err + '<span>' + esc(msg) + '</span>' : '';
+    box.classList.toggle('show', !!msg);
+  }
+
+  const clearFieldError = field => setFieldError(field, '');
+  const clearErrors = () => Object.keys(FIELD_MAP).forEach(clearFieldError);
+
+  /** 补偿值输入：允许负号（只能在开头）、最多两位小数 */
+  function onOffsetInput() {
+    const el = $('in-offset');
+    let v = el.value.replace(/[^\d.-]/g, '').replace(/(?!^)-/g, '');
+    if (v.charAt(0) === '.') v = '0' + v;
+    if (v.charAt(0) === '-' && v.charAt(1) === '.') v = '-0' + v.slice(1);
+    const i = v.indexOf('.');
+    if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '').slice(0, 2);
+    el.value = v;
+    clearFieldError('offset');
+  }
+
+  /** 失焦保留两位小数（非法输入留给校验提示） */
+  function onOffsetBlur() {
+    const el = $('in-offset');
+    let v = el.value.trim();
+    if (/^-?\d+\.$/.test(v)) el.value = v.slice(0, -1);
+    v = el.value.trim();
+    if (!/^-?\d+(\.\d{1,2})?$/.test(v)) return;
+    el.value = Number(v).toFixed(2);
+  }
+
+  function updateCounter() {
+    const len = ($('in-remark').value || '').length;
+    $('remark-count').textContent = Math.min(len, REMARK_MAX);
+  }
+
+  /** 校验通过返回 {offsetValue:xx.xx}，失败返回 null 并已渲染错误提示 */
+  function validate() {
+    clearErrors();
+    const raw = $('in-offset').value.trim();
+    if (!raw || !/^-?\d+(\.\d{1,2})?$/.test(raw)) {
+      setFieldError('offset', '请输入数字（可正可负，最多两位小数）');
+      return null;
+    }
+    if (Math.abs(Number(raw)) > 99999999.99) {
+      setFieldError('offset', '补偿值超出允许范围（±99999999.99）');
+      return null;
+    }
+    return { offsetValue: Number(raw).toFixed(2) };
+  }
+
+  /* ============================ 保存 ============================ */
+  function setSaving(on) {
+    S.saving = !!on;
+    const btn = $('btn-save');
+    btn.disabled = !!on;
+    btn.classList.toggle('is-loading', !!on);
+  }
+
+  async function save() {
+    if (S.saving) return;
+    const checked = validate();
+    if (!checked) return;
+    const remark = $('in-remark').value.trim();
+    const enabled = $('in-enabled').checked;
+
+    setSaving(true);
+    try {
+      const saved = await api('/rain-adjust/' + encodeURIComponent(S.row.id), {
+        method: 'PUT',
+        body: { offsetValue: Number(checked.offsetValue), enabled: enabled, remark: remark || null }
+      });
+      S.flashId = saved && saved.id ? saved.id : null;
+      closeDrawer();
+      await loadList();
+      showToast('保存成功，配置将在 5 分钟内自动生效');
+    } catch (e) {
+      showToast(e.message || '保存失败', true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* ============================ 删除 ============================ */
+  function askDelete(row) {
+    pendingDelete = row;
+    $('aj-confirm-text').textContent = '删除后，设备【' + (row.deviceName || row.device || '') + '】的雨量入库将不再应用补偿。\n' +
+      '若该站为出厂默认补偿站，mq 预置自检将产生告警记录。\n' +
+      '建议优先「停用」（修改 → 关闭启用开关），保留配置便于回溯。是否继续删除？';
+    $('aj-confirm-mask').classList.add('show');
+  }
+
+  async function doDelete() {
+    if (!pendingDelete) return;
+    const row = pendingDelete;
+    const btn = $('aj-confirm-ok');
+    btn.disabled = true;
+    btn.classList.add('is-loading');
+    try {
+      await api('/rain-adjust/' + encodeURIComponent(row.id), { method: 'DELETE' });
+      pendingDelete = null;
+      $('aj-confirm-mask').classList.remove('show');
+      await loadList();
+      showToast('删除成功');
+    } catch (e) {
+      showToast(e.message || '删除失败', true);
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('is-loading');
+    }
+  }
+
+  /* ============================ 事件绑定与初始化 ============================ */
+  function bindEvents() {
+    $('btn-close').addEventListener('click', closeDrawer);
+    $('btn-cancel').addEventListener('click', closeDrawer);
+    $('btn-save').addEventListener('click', save);
+    $('drawer-mask').addEventListener('click', closeDrawer);
+
+    const pgBar = $('aj-pg-bar');
+    $('aj-tbl-body').addEventListener('click', onTableClick);
+    pgBar.addEventListener('click', onPagerClick);
+    pgBar.addEventListener('change', e => {
+      if (e.target && e.target.id === 'aj-pg-size') {
+        S.size = Number(e.target.value) || 20;
+        S.page = 1;
+        loadList();
+      }
+    });
+    pgBar.addEventListener('keydown', e => {
+      if (e.target && e.target.id === 'aj-pg-jump' && e.key === 'Enter') e.target.blur();
+    });
+    pgBar.addEventListener('focusout', e => {
+      if (e.target && e.target.id === 'aj-pg-jump') jumpToPage(e.target.value);
+    });
+
+    fltSite.onChange(() => { S.filter.siteId = fltSite.getValue() || ''; S.page = 1; loadList(); });
+    $('flt-kw').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+    $('aj-flt-search').addEventListener('click', doSearch);
+    $('aj-flt-reset').addEventListener('click', () => {
+      S.filter = { siteId: '', keyword: '' };
+      fltSite.setValue('');
+      $('flt-kw').value = '';
+      S.page = 1;
+      loadList();
+    });
+
+    /* 表单联动：选站 → 加载该站设备并清空已选设备 */
+    selSite.onChange(async id => {
+      clearFieldError('site');
+      selDevice.setValue('');
+      selDevice.setError(false);
+      selDevice.setOptions([]);
+      if (!id) {
+        selDevice.setPlaceholder('请先选择站点').setEmptyText('请先选择站点');
+        return;
+      }
+      selDevice.setPlaceholder('请选择设备').setEmptyText('暂无设备');
+      try {
+        await loadDevices(id);
+      } catch (e) {
+        showToast(e.message || '设备加载失败', true);
+      }
+    });
+    selDevice.onChange(() => clearFieldError('device'));
+
+    $('in-offset').addEventListener('input', onOffsetInput);
+    $('in-offset').addEventListener('blur', onOffsetBlur);
+    $('in-offset').addEventListener('keydown', e => {
+      if (e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+    });
+    $('in-enabled').addEventListener('change', syncEnabledLabel);
+    $('in-remark').addEventListener('input', updateCounter);
+    $('aj-confirm-cancel').addEventListener('click', () => {
+      pendingDelete = null;
+      $('aj-confirm-mask').classList.remove('show');
+    });
+    $('aj-confirm-ok').addEventListener('click', doDelete);
+  }
+
+  // Escape / 下拉收起由共用层统一分发
+  window.DM.cancelAjConfirm = function () {
+    pendingDelete = null;
+    $('aj-confirm-mask').classList.remove('show');
+  };
+  window.DM.closeDrawer = closeDrawer;
+
+  window.DM.initAdjustPane = async function () {
+    bindEvents();
+    try {
+      await loadSites();
+    } catch (e) {
+      showToast(e.message || '站点加载失败', true);
+    }
+    await loadList();
+  };
+})();
+
+/* ============================ 顶部 tab 切换（删除数据 / 补偿值） ============================ */
+(function () {
+  const tabs = document.querySelectorAll('#maint-tabs .maint-tab');
+  tabs.forEach(t => t.addEventListener('click', () => {
+    const pane = t.dataset.pane === 'adjust' ? 'adjust' : 'data';
+    tabs.forEach(x => x.classList.toggle('active', x === t));
+    document.getElementById('pane-data').hidden = pane !== 'data';
+    document.getElementById('pane-adjust').hidden = pane !== 'adjust';
+  }));
+})();
+
+/* ============================ 启动：管理员权限门 → 初始化两个 tab ============================ */
+(async function boot() {
+  // 权限门：仅系统管理员可进入（与后端 /manage/*、/rain-adjust/* 接口 @RequireAdmin 同口径）；
+  // 明确判定为非管理员时整页拦截；判定请求失败时不拦截（走正常流程，后端 403 兜底）
+  try {
+    const user = await window.DM.api('/auth/current-user');
+    if (user && user.admin !== true) {
+      document.querySelector('.page-wrap').hidden = true;
+      window.DM.$('no-perm').hidden = false;
+      return;
+    }
+  } catch (e) { /* 判定失败不拦截 */ }
+  window.DM.initDataPane();
+  window.DM.initAdjustPane();
+})();
+</script>
+</body>
+</html>

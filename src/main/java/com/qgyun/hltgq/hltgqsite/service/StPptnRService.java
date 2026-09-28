@@ -105,4 +105,35 @@ public interface StPptnRService extends IService<StPptnR> {
      * 水库雨情简报：指定日期各站点的日雨量/旬雨量/月雨量
      */
     List<ReservoirRainfallBriefVO> reservoirRainfallBrief(LocalDate date);
+
+    /**
+     * 历史数据管理分页（监测数据删除方案 §5.2，唯一可查看已删行的读取通道）：
+     * stcd 必填；deletedOnly=true 时仅已删除行（「已删除数据」视图，供恢复/回滚）；
+     * includeDeleted=true 时含已删除行（兼容旧交互）；均 false 时仅未删行。
+     */
+    IPage<StPptnR> managePage(long page, long size, String stcd, LocalDateTime startTime,
+                              LocalDateTime endTime, boolean includeDeleted, boolean deletedOnly);
+
+    /**
+     * 删除预检（三级护栏级别判定，不改数据）：返回 needConfirm/levels/warning，前端按级别确认；
+     * 级别：baseline=命中当前基线行（强化提示）；recent=最近 24h 内；normal=常规（方案 §5.3）。
+     */
+    Map<String, Object> deletePrecheck(String stcd, LocalDateTime tm);
+
+    /**
+     * 软删（两段式确认）：重判护栏级别并与 confirm 比对（防确认期间级别变化），
+     * 一致才执行 deleted 翻转 + 审计列写入（DB 时钟 now()）；不一致返回最新级别待重新确认。
+     * <p>adjustValue=随删配补偿的设备偏差值（可选；正=多灌、负=少灌、0=设备复位停用补偿）——
+     * 非空时与软删同事务写入雨量补偿配置，结果在返回体 adjust 键（数据维护删除弹窗必填项）。
+     */
+    Map<String, Object> softDelete(String stcd, LocalDateTime tm, String confirm, BigDecimal adjustValue);
+
+    /** 恢复一行（deleted 翻转回 false + 审计列刷新；恢复不清空 deleted_at） */
+    void restore(String stcd, LocalDateTime tm);
+
+    /**
+     * 直接软删（既有 DELETE /st-pptn-r 兼容通道：写软删 + 审计，不经级别确认交互——
+     * 管理表单删除请走 deletePrecheck/softDelete 两段式）。
+     */
+    boolean softDeleteDirect(String stcd, LocalDateTime tm);
 }

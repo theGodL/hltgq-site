@@ -150,19 +150,12 @@ a.photo-thumb:hover{border-color:#1677ff}
 .bind-row{cursor:pointer}
 .bind-row:hover{background:#f5f9ff}
 .bind-row.selected{background:#e6f4ff}
-.bind-row.disabled{cursor:not-allowed;opacity:.55}
-.bind-cur{color:#1677ff;font-size:12px;margin-left:4px}
-.bind-block{display:block;color:#f5222d;font-size:12px;margin-top:2px}
 .bind-tip{margin-top:12px;font-size:13px;color:#8c8c8c;line-height:1.6;min-height:40px}
 .bind-tip.warn{color:#fa8c16}
 
 /* ===== toast（轻提示：替代 alert，风格与站内其他页面一致） ===== */
 .toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;line-height:20px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s;max-width:72%;text-align:center;white-space:pre-line;word-break:break-word}
 .toast.show{opacity:1}
-
-/* ===== 确认框（替代原生 confirm，宽度小于主弹窗） ===== */
-#confirm-modal .modal{width:min(420px,100%)}
-.confirm-text{color:#262626;font-size:14px;line-height:22px;word-break:break-word;white-space:pre-line}
 
 @media (max-width:720px){
   .grid-2{grid-template-columns:1fr}
@@ -564,22 +557,6 @@ a.photo-thumb:hover{border-color:#1677ff}
     </div>
   </div>
 
-  <div class="modal-mask" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
-    <div class="modal">
-      <div class="modal-hd">
-        <h3 id="confirm-modal-title">操作提示</h3>
-        <button type="button" class="modal-close" id="confirm-modal-close" aria-label="关闭">×</button>
-      </div>
-      <div class="modal-bd">
-        <div class="confirm-text" id="confirm-text"></div>
-      </div>
-      <div class="modal-ft">
-        <button type="button" class="btn btn-default" id="confirm-modal-cancel">取消</button>
-        <button type="button" class="btn btn-primary" id="confirm-modal-ok">确定</button>
-      </div>
-    </div>
-  </div>
-
   <div class="toast" id="toast"></div>
 
 <script>
@@ -650,21 +627,6 @@ a.photo-thumb:hover{border-color:#1677ff}
     el.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(function () { el.classList.remove('show'); }, 3000);
-  }
-  /* 确认框（替代原生 confirm）：与页面弹窗同风格，返回 Promise<boolean> */
-  var confirmResolve = null;
-  function showConfirm(text) {
-    return new Promise(function (resolve) {
-      confirmResolve = resolve;
-      document.getElementById('confirm-text').textContent = text;
-      document.getElementById('confirm-modal').classList.add('show');
-    });
-  }
-  function hideConfirm(result) {
-    document.getElementById('confirm-modal').classList.remove('show');
-    var fn = confirmResolve;
-    confirmResolve = null;
-    if (fn) fn(result);
   }
 
   async function fetchApi(path) {
@@ -1083,21 +1045,12 @@ a.photo-thumb:hover{border-color:#1677ff}
       : '搜索并选择要绑定到本站的设备';
     document.getElementById('bind-tbody').innerHTML = list.map(function (r) {
       bindRows[r.id] = r;
-      var isCurrent = r.current === true;
-      var isBlocked = r.blocked === true;
-      var disabled = isCurrent || isBlocked;
-      var note = '';
-      if (isCurrent) {
-        note = '<span class="bind-cur">（本站）</span>';
-      } else if (isBlocked) {
-        note = '<span class="bind-block">' + esc(r.tip || '不可绑定') + '</span>';
-      }
-      return '<tr class="bind-row' + (disabled ? ' disabled' : '') + '" data-bind-id="' + esc(r.id) + '">' +
-        '<td><input type="radio" name="bind-device"' + (disabled ? ' disabled' : '') + '></td>' +
+      return '<tr class="bind-row" data-bind-id="' + esc(r.id) + '">' +
+        '<td><input type="radio" name="bind-device"></td>' +
         '<td class="name-strong">' + esc(dash(r.name)) + '</td>' +
         '<td class="muted">' + esc(dash(r.code)) + '</td>' +
         '<td>' + esc(dash(r.type)) + '</td>' +
-        '<td>' + esc(dash(r.siteName)) + note + '</td>' +
+        '<td>' + esc(dash(r.siteName)) + '</td>' +
         '</tr>';
     }).join('') || emptyRow(5);
   }
@@ -1118,9 +1071,6 @@ a.photo-thumb:hover{border-color:#1677ff}
     var text = r.siteId
       ? '该设备当前属于「' + (r.siteName || '未知站点') + '」。确认绑定后，该设备将从原站移出，' + toSite + '，原站设备列表将同步减少。'
       : '该设备尚未归属任何站点。确认绑定后，' + toSite + '。';
-    if (r.tip) {
-      text = '注意：' + r.tip + '。' + text;
-    }
     tip.textContent = text;
     document.getElementById('bind-modal-ok').disabled = false;
   }
@@ -1135,13 +1085,10 @@ a.photo-thumb:hover{border-color:#1677ff}
     var msg = firstBind
       ? '绑定成功：设备「' + name + '」已绑定到「' + newName + '」'
       : '绑定成功：设备「' + name + '」已从「' + oldName + '」转移到「' + newName + '」';
-    if (result && result.warning) {
-      msg += '\n注意：' + result.warning;
-    }
     toast(msg);
     loaded.device = true;
     loadDevice();
-    /* 换绑同时影响本站闸口数/视频通道统计（按 device.site 取数），静默刷新基础信息避免误判 */
+    /* 换绑（仅视频设备）影响本站视频通道统计（按 device.site 取数），静默刷新基础信息避免误判 */
     loaded.basic = true;
     loadBasic(true);
   }
@@ -1150,13 +1097,6 @@ a.photo-thumb:hover{border-color:#1677ff}
     if (!bindSelected) return;
     var okBtn = document.getElementById('bind-modal-ok');
     okBtn.disabled = true;
-    /* 带 tip 的设备（闸孔名称无法解析归属站）：核对提醒后继续提交；计量类同类冲突设备已在候选列表禁选 */
-    if (bindSelected.tip) {
-      if (!(await showConfirm('注意：' + bindSelected.tip + '。是否仍要绑定该设备？'))) {
-        okBtn.disabled = false;
-        return;
-      }
-    }
     try {
       var result = await postApi('/station-detail/device/bind', {
         stationId: stationId,
@@ -1284,8 +1224,6 @@ a.photo-thumb:hover{border-color:#1677ff}
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
-      /* Esc 逐层关闭：确认框打开时仅关闭确认框 */
-      if (document.getElementById('confirm-modal').classList.contains('show')) { hideConfirm(false); return; }
       closePatrolModal(); closeBindModal();
     }
   });
@@ -1332,12 +1270,6 @@ a.photo-thumb:hover{border-color:#1677ff}
     selectBindCandidate(tr);
   });
   document.getElementById('bind-modal-ok').addEventListener('click', confirmBind);
-  document.getElementById('confirm-modal-close').addEventListener('click', function () { hideConfirm(false); });
-  document.getElementById('confirm-modal-cancel').addEventListener('click', function () { hideConfirm(false); });
-  document.getElementById('confirm-modal-ok').addEventListener('click', function () { hideConfirm(true); });
-  document.getElementById('confirm-modal').addEventListener('click', function (e) {
-    if (e.target === this) hideConfirm(false);
-  });
 
   if (!stationId) {
     renderBasic({});

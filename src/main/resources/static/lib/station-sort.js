@@ -18,8 +18,9 @@
  *   });
  *
  * 行为：
- *   1. 在 .tab-bar（Tab 同行）最右侧追加「站点排序」按钮（用独立类名，不参与页面 Tab 切换；样式与页面 Tab 一致），
- *      配置 visible 为 false 时按钮隐藏（如麻塘湖灌区 Tab 数据未接入）；
+ *   1. 在 .tab-bar（Tab 同行）最右侧追加「站点排序」按钮（用独立类名，不参与页面 Tab 切换；样式与页面 Tab 一致）；
+ *      入口仅系统管理员可见（挂载时向 /auth/current-user 判定 admin 标记，非管理员或判定失败不显示；
+ *      后端保存接口 @RequireAdmin 兜底），且配置 visible 为 false 时按钮隐藏（如麻塘湖灌区 Tab 数据未接入）；
  *   2. 点击从右侧滑出抽屉，列出该监测类型下（配置了 scope 时为该范围内）的站点（序号 + 站点名称）；
  *   3. 支持鼠标拖拽（按住站点行实时换位）与序号输入两种方式设置展示顺序；
  *      多类型抽屉按组呈现，各组顺序互相独立（拖拽与序号输入均限在组内，组内序号各自从 1 起）；
@@ -164,6 +165,17 @@
     var loadedScope = '';
 
     injectStyle();
+
+    // 0. 入口仅系统管理员可见（与后端 @RequireAdmin 同口径，缓解入口敏感的误操作风险）：
+    //    挂载时向 /auth/current-user 判定 admin；判定前/非管理员/判定失败一律不显示入口
+    var adminOk = false;
+    fetch(api + '/auth/current-user', { credentials: 'include' })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (user) {
+        adminOk = !!(user && user.admin === true);
+        syncVisible();
+      })
+      .catch(function () { /* 判定失败保持隐藏（后端保存接口有 @RequireAdmin 兜底） */ });
 
     // 1. 「站点排序」按钮：追加到 Tab 栏，靠 margin-left:auto 固定在同行最右侧（样式与 Tab 一致）
     var anchor = document.querySelector(opt.anchor || '.tab-bar');
@@ -446,7 +458,7 @@
     }
 
     function open() {
-      if (!currentVisible()) return;
+      if (!adminOk || !currentVisible()) return;
       root.classList.add('open');
       document.body.classList.add('stsort-body-lock');
       tipEl.textContent = currentTip();
@@ -458,10 +470,11 @@
       document.body.classList.remove('stsort-body-lock');
     }
 
-    /** 入口显隐（仅在状态变化时改写样式）：隐藏入口时关闭抽屉，避免抽屉停留在已失效的范围上 */
+    /** 入口显隐（仅在状态变化时改写样式）：入口 = 系统管理员 + 页面自身 visible 条件；
+     *  隐藏入口时关闭抽屉，避免抽屉停留在已失效的范围上 */
     var shownVisible = null;
     function syncVisible() {
-      var visible = currentVisible();
+      var visible = adminOk && currentVisible();
       if (visible === shownVisible) return;
       shownVisible = visible;
       btn.style.display = visible ? '' : 'none';

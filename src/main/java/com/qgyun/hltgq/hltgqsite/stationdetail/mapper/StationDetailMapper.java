@@ -77,13 +77,14 @@ public interface StationDetailMapper {
      * <p>键口径与设备实时数据一致——水位/雨量按 STCD（=iofhpi）、流量/闸门按 site（档案 id）、
      * 墒情/水质/水温双键；只按站点键过滤（任何一条上报都算通信），无监测数据的站点返回 null；
      * 水温表 pcp_info 时间列为 spt（表内无 tm 列），按 spt 参与（与水质报文同组对齐）。
+     * <p>雨量取数已剔除软删行（监测数据删除方案 §5.4）：已删行不算“最近上报”，避免被删行被当作最新数据。
      */
     @Select("SELECT MAX(t) AS tm FROM (" +
             "SELECT MAX(\"TM\") AS t FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info " +
             "WHERE \"STCD\" = #{stcd} " +
             "UNION ALL " +
             "SELECT MAX(\"TM\") FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info " +
-            "WHERE \"STCD\" = #{stcd} " +
+            "WHERE \"STCD\" = #{stcd} AND deleted IS NOT TRUE " +
             "UNION ALL " +
             "SELECT MAX(tm) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" " +
             "WHERE site = #{site} " +
@@ -370,10 +371,10 @@ public interface StationDetailMapper {
             "ORDER BY \"TM\" DESC LIMIT 1")
     Map<String, Object> selectLatestLevel(@Param("stcd") String stcd);
 
-    /** 雨量最新值（DRP 水文日累计，2 位小数）：雨量表按 STCD 关联，列名大写需引号 */
+    /** 雨量最新值（DRP 水文日累计，2 位小数）：雨量表按 STCD 关联，列名大写需引号；已删行不参与取最新（方案 §5.4） */
     @Select("SELECT TRUNC(\"DRP\", 2) AS value " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info " +
-            "WHERE \"STCD\" = #{stcd} AND \"DRP\" IS NOT NULL AND \"DRP\" >= 0 " +
+            "WHERE \"STCD\" = #{stcd} AND deleted IS NOT TRUE AND \"DRP\" IS NOT NULL AND \"DRP\" >= 0 " +
             "ORDER BY \"TM\" DESC LIMIT 1")
     Map<String, Object> selectLatestRain(@Param("stcd") String stcd);
 
@@ -440,32 +441,33 @@ public interface StationDetailMapper {
     // ==================== 设备绑定（换绑） ====================
 
     /**
-     * 绑定候选设备总数：全库搜索（keyword 模糊匹配名称/编号，空为全部）。
-     * <p>口径：设备归属仅设备表 site 单列（全库无站点-设备关联表，2026-09-27 核对），
-     * 候选列表含本站设备（由 Service 标记 current，前端禁选避免无效操作）。
+     * 绑定候选设备总数：仅可换绑设备（纯视频 #5# 且非目标站；keyword 模糊匹配名称/编号，空为全部）。
+     * <p>候选过滤口径（2026-09-28 二次收紧）：不可绑定设备不展示——遥测设备（非纯视频）与
+     * 目标站自身设备由查询直接排除；设备归属仅设备表 site 单列（全库无站点-设备关联表，2026-09-27 核对）。
      */
     @Select("<script>" +
             "SELECT COUNT(*) " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
-            "WHERE 1 = 1 " +
+            "WHERE TRIM(d.type) = '#5#' AND COALESCE(d.site, '') &lt;> #{siteId} " +
             "<if test='keyword != null and keyword != \"\"'>AND (d.name LIKE CONCAT('%', #{keyword}, '%') OR d.code LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "</script>")
-    long countBindCandidates(@Param("keyword") String keyword);
+    long countBindCandidates(@Param("keyword") String keyword, @Param("siteId") String siteId);
 
     /**
-     * 绑定候选设备分页：含当前归属站点名（LEFT JOIN 站点档案 zzkaec），按名称升序。
+     * 绑定候选设备分页：仅可换绑设备（纯视频 #5# 且非目标站），含当前归属站点名（LEFT JOIN 站点档案 zzkaec），按名称升序。
      * <p>siteId 为站点档案 id（孤儿归属时 siteName 为 null，前端按「未知站点」展示）。
      */
     @Select("<script>" +
             "SELECT d.id, d.name, d.code, d.type AS typeCodes, d.site AS siteId, s.zzkaec AS siteName " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON d.site = s.id " +
-            "WHERE 1 = 1 " +
+            "WHERE TRIM(d.type) = '#5#' AND COALESCE(d.site, '') &lt;> #{siteId} " +
             "<if test='keyword != null and keyword != \"\"'>AND (d.name LIKE CONCAT('%', #{keyword}, '%') OR d.code LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "ORDER BY d.name, d.code " +
             "LIMIT #{limit} OFFSET #{offset}" +
             "</script>")
     List<DeviceVO.BindCandidate> selectBindCandidates(@Param("keyword") String keyword,
+                                               @Param("siteId") String siteId,
                                                @Param("limit") int limit,
                                                @Param("offset") int offset);
 
@@ -478,22 +480,6 @@ public interface StationDetailMapper {
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON d.site = s.id " +
             "WHERE d.id = #{deviceId}")
     DeviceVO.BindCandidate selectDeviceBinding(@Param("deviceId") String deviceId);
-
-    /**
-     * 全站名称清单（id + zzkaec，仅站名非空行）：供换绑约束按「站名最长前缀」解析设备名称归属
-     * （闸孔设备名 = 站名+孔号#，需全量站名参与前缀匹配；同名站按名称比较兼容）。键全小写。
-     */
-    @Select("SELECT id, zzkaec FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
-            "WHERE zzkaec IS NOT NULL AND zzkaec <> ''")
-    List<Map<String, Object>> selectSiteNames();
-
-    /**
-     * 站内设备类型与名称（type + name，按名升序）：供换绑约束判定目标站是否已有同类站级计量设备
-     * （水位/雨量/流量/墒情/水质 一站一台，重复绑定时返回警示）。键全小写。
-     */
-    @Select("SELECT type, name FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" " +
-            "WHERE site = #{site} ORDER BY name")
-    List<Map<String, Object>> selectDeviceTypeNames(@Param("site") String site);
 
     /**
      * 设备换绑：site 单列赋值（设备唯一归属位置），条件更新防并发——

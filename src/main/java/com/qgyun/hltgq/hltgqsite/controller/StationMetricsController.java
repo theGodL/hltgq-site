@@ -94,6 +94,8 @@ public class StationMetricsController {
                 .collect(Collectors.toMap(r -> r.getStcd().trim(), r -> r));
 
         // 有雨量数据的站点集合（只要 rain_info 表中有记录即为雨量站）
+        // 刻意不过滤软删行（监测数据删除方案 §5.4，勿改）：站点资格＝存在性判定而非数值口径，
+        // 删除问题数据行不改变站点资格；数值口径（本水文日累计降雨量）走已过滤的取数通道
         Set<String> pptnStcds = stPptnRMapper.selectDistinctRainfallStcds()
                 .stream()
                 .filter(Objects::nonNull)

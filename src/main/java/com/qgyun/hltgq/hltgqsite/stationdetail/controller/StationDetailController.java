@@ -147,8 +147,9 @@ public class StationDetailController {
     }
 
     /**
-     * 绑定弹窗候选设备搜索（管理员）：全库设备按名称/编号模糊分页，含每台设备当前归属站点
-     * （前端展示「当前：XX站」，本站设备由 current 标记禁选），供站点详情「设备信息」换绑入口。
+     * 绑定弹窗候选设备搜索（管理员）：仅返回可换绑设备（纯视频 #5# 且非本站）——不可绑定设备
+     * 不展示（遥测设备、本站设备由查询直接排除），按名称/编号模糊分页，含每台设备当前归属站点
+     * （确认时前端展示「当前：XX站」），供站点详情「设备信息」换绑入口。
      *
      * @param stationId 目标站点键（档案 id 或站点编号 iofhpi），必填
      * @param keyword   设备名称/编号模糊关键词，可选（空为全部）
@@ -167,17 +168,16 @@ public class StationDetailController {
      * 设备换绑（管理员）：把设备转移绑定至本站（设备表 site 单列赋值，条件更新防并发）。
      * <p>业务口径（业主确认）：只有绑定/换绑；换绑由前端弹窗二次确认并提醒
      * 「从原站移出、归属更新为本站」。非管理员返回 403（拦截器 @RequireAdmin 校验）。
-     * <p>换绑约束：闸孔设备按名称归属他站时拒绝（400）；目标站已有同类站级计量设备
-     * （水位/雨量/流量/墒情/水质一站一台，仅闸孔/视频可多台）时一律拒绝（400）。
+     * <p>换绑约束（2026-09-28 业主口径）：仅纯视频设备（#5#）可换绑；遥测设备（水位/雨量/
+     * 流量/闸孔/墒情/水质及 type 缺失设备）采集数据按报文 STCD 入库，换绑不改变数据归属
+     * 且造成台账/统计不一致，一律拒绝（400）。
      *
      * @param stationId 目标站点键（档案 id 或站点编号 iofhpi），必填
      * @param deviceId  设备主键 id，必填
-     * @param confirmed 参数保留兼容：站级计量同类冲突已改为硬拦截，无确认放行场景（传值不影响结果）
      */
     @RequireAdmin
     @PostMapping("/device/bind")
-    public DeviceVO.BindResult bindDevice(@RequestParam String stationId, @RequestParam String deviceId,
-                                          @RequestParam(defaultValue = "false") boolean confirmed) {
-        return stationDetailService.bindDevice(stationId, deviceId, confirmed);
+    public DeviceVO.BindResult bindDevice(@RequestParam String stationId, @RequestParam String deviceId) {
+        return stationDetailService.bindDevice(stationId, deviceId);
     }
 }

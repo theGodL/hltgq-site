@@ -36,4 +36,22 @@ public class StPptnR {
 
     @TableField("\"WTH\"")
     private String wth;
+
+    /**
+     * 软删标记：true=业主巡检删除的问题数据行（监测数据删除方案；不参与入库计算前值/基线，保留占位）。
+     * <p>列由平台 DDL 新增（NOT NULL DEFAULT false），列名小写无需引号；mq 入库过滤依赖本列。
+     */
+    @TableField("deleted")
+    private Boolean deleted;
+
+    /**
+     * 最近一次软删状态变更时刻（删除/恢复均刷新，恢复不清空；由 DB 时钟 now() 写入）。
+     * <p>仅供历史数据管理表单展示与留痕，不参与任何计算（v1.9 无重算机制）。
+     */
+    @TableField("deleted_at")
+    private LocalDateTime deletedAt;
+
+    /** 最近一次操作人（平台用户 id，随 deleted_at 一并刷新） */
+    @TableField("deleted_by")
+    private String deletedBy;
 }

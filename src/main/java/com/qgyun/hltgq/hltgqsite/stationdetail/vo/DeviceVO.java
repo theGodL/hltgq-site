@@ -53,7 +53,8 @@ public class DeviceVO {
     private String unit;
 
     /**
-     * 绑定弹窗候选设备行（管理员）：全库搜索含当前归属站点，本站设备标记 current 由前端禁选
+     * 绑定弹窗候选设备行（管理员）：仅含可换绑设备（纯视频、非本站），整行可选；
+     * 含当前归属站点，不可绑定设备（遥测/本站设备）由查询直接排除、不返回
      */
     @Data
     public static class BindCandidate {
@@ -78,15 +79,6 @@ public class DeviceVO {
 
         /** 当前归属站点名称（站点档案 zzkaec；档案缺失为 null） */
         private String siteName;
-
-        /** 是否已属于目标站（true=已在本站，前端禁选） */
-        private Boolean current;
-
-        /** 是否禁止选择（true=闸孔设备按名称归属其他站或站级计量同类冲突，前端禁选并展示 tip 原因） */
-        private Boolean blocked;
-
-        /** 绑定提示（禁选原因 / 闸孔归属存疑提醒；无提示为 null） */
-        private String tip;
     }
 
     /**
@@ -112,8 +104,5 @@ public class DeviceVO {
 
         /** 新归属站点名称（本站） */
         private String newSiteName;
-
-        /** 绑定结果警示（闸孔名称无法解析归属站等放行提示；无警示为 null） */
-        private String warning;
     }
 }

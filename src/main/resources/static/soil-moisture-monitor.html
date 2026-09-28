@@ -21,7 +21,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 /* ===== 渠系树侧边栏（仅花凉亭灌区 Tab 展示：麻塘湖灌区仅一条太怀干渠且暂无站点） ===== */
 .side-card.is-hidden{display:none}
-.side-card{width:248px;flex-shrink:0;position:sticky;top:16px;height:calc(100vh - 32px);background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.side-card{width:200px;flex-shrink:0;position:sticky;top:16px;height:calc(100vh - 32px);background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .side-hd{padding:14px 16px 0;font-size:14px;font-weight:600;color:#1f1f1f}
 .side-search{padding:10px 12px}
 .side-search input{width:100%;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;transition:border-color .2s}
@@ -48,8 +48,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 
-.tab-bar{display:flex;gap:10px;align-items:center;flex-shrink:0}
-.tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 108px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent}
+.tab-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex-shrink:0}
+.tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 42px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent;white-space:nowrap}
 .tab-item:hover{color:#1677ff}
 .tab-item.active{color:#1677ff;font-weight:500;border-color:#1677ff;box-shadow:0 1px 4px rgba(22,119,255,.12)}
 .panel{display:none}
@@ -181,6 +181,11 @@ tbody tr:hover td{background:#fafafa}
   .page-wrap{min-height:auto}
   .result-card{min-height:360px}
   .tbl-wrap{flex:none}
+}
+
+/* 窄屏 Tab 再收窄：Tab 与右侧站点排序按钮同排放下（再窄由 .tab-bar 换行兜底，不再拉高变形） */
+@media (max-width:1000px){
+  .tab-item{padding:10px 24px}
 }
 </style>
 </head>

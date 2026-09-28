@@ -57,13 +57,14 @@ public interface FloodDroughtMapper {
      * LAG 窗口 + GREATEST 截断 DYP 归零/回退产生的负增量。
      * <p>标签用 date_trunc('day', tm-8h) 返回 timestamp（KingbaseES 的 ::date 自定义类型
      * JDBC 无法转 LocalDate，项目统一用 date_trunc + LocalDateTime）。
+     * <p>软删过滤（监测数据删除方案 §5.4）：已删行不参与 DYP 增量与 LAG 前值计算。
      */
     @Select("SELECT date_trunc('day', tm - INTERVAL '8 hours') AS d, " +
             "SUM(GREATEST(dyp - COALESCE(lag_dyp, 0), 0)) AS \"value\" " +
             "FROM (SELECT \"TM\" AS tm, \"DYP\" AS dyp, " +
             "             LAG(\"DYP\") OVER (ORDER BY \"TM\") AS lag_dyp " +
             "      FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_info " +
-            "      WHERE \"STCD\" = #{stcd} AND \"TM\" >= #{start} AND \"TM\" <= #{end}) t " +
+            "      WHERE \"STCD\" = #{stcd} AND deleted IS NOT TRUE AND \"TM\" >= #{start} AND \"TM\" <= #{end}) t " +
             "GROUP BY date_trunc('day', tm - INTERVAL '8 hours') " +
             "ORDER BY d")
     List<ObsDailyVO> selectRainDaily(@Param("stcd") String stcd,

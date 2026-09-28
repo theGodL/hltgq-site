@@ -21,7 +21,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 /* ===== 渠系树侧边栏（仅花凉亭灌区 Tab 展示：花凉亭水库为上游、无渠系，麻塘湖灌区仅一条无站点干渠） ===== */
 .side-card.is-hidden{display:none}
-.side-card{width:248px;flex-shrink:0;position:sticky;top:16px;height:calc(100vh - 32px);background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.side-card{width:200px;flex-shrink:0;position:sticky;top:16px;height:calc(100vh - 32px);background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .side-hd{padding:14px 16px 0;font-size:14px;font-weight:600;color:#1f1f1f}
 .side-search{padding:10px 12px}
 .side-search input{width:100%;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:13px;outline:none;background:#fff;transition:border-color .2s}
@@ -49,10 +49,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 
 /* 花凉亭灌区 / 花凉亭水库 / 麻塘湖灌区 */
-.tab-bar{display:flex;gap:10px;align-items:center;flex-shrink:0}
-.tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 108px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent}
+.tab-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex-shrink:0}
+.tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 42px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent;white-space:nowrap}
 .tab-item:hover{color:#1677ff}
 .tab-item.active{color:#1677ff;font-weight:500;border-color:#1677ff;box-shadow:0 1px 4px rgba(22,119,255,.12)}
+
+/* 数据维护入口：Tab 栏右侧、站点排序左侧的管理页入口（直达历史数据管理页）。
+   按钮统一挂 .tab-acts 按钮组（margin-left:auto 整组贴右；窄屏换行时整组同进退）；
+   .tab-acts .stsort-btn 让出组件自带 margin-left:auto：数据维护在前、站点排序紧随其后 */
+.tab-acts{display:flex;align-items:center;gap:10px;margin-left:auto}
+.tab-acts .stsort-btn{margin-left:0}
+.maint-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:10px 20px;border:1px solid transparent;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.03);color:#666;font-size:14px;font-family:inherit;white-space:nowrap;cursor:pointer;user-select:none;transition:color .2s,box-shadow .2s;text-decoration:none}
+.maint-btn:hover{color:#1677ff}
+.maint-btn[hidden]{display:none}
 
 .filter-card{padding:16px 20px;flex-shrink:0}
 .filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
@@ -191,6 +200,11 @@ tbody tr.total-row:hover td{background:#e6f4ff}
   .result-card{min-height:360px}
   .tbl-wrap{flex:none}
 }
+
+/* 窄屏 Tab 再收窄：三 Tab 与右侧按钮组同排放下（再窄由 .tab-bar 换行兜底，不再拉高变形） */
+@media (max-width:1000px){
+  .tab-item{padding:10px 24px}
+}
 </style>
 </head>
 <body>
@@ -217,6 +231,12 @@ tbody tr.total-row:hover td{background:#e6f4ff}
     <div class="tab-item active" data-tab="irrigation">花凉亭灌区</div>
     <div class="tab-item" data-tab="reservoir">花凉亭水库</div>
     <div class="tab-item" data-tab="mth">麻塘湖灌区</div>
+    <!-- 数据维护：直达雨量数据维护页（数据管理：删除/恢复＋设备补偿；补偿设置：补偿配置管理），同标签跳转；
+         入口仅系统管理员可见（脚本判定后显示，与后端 @RequireAdmin 同口径）；
+         站点排序按钮由组件追加到本按钮组（同样仅管理员可见） -->
+    <div class="tab-acts" id="tab-acts">
+      <a class="maint-btn" id="maint-btn" href="./rain-data-manage.html" hidden>数据维护</a>
+    </div>
   </div>
 
   <!-- 花凉亭灌区 -->
@@ -1936,6 +1956,19 @@ function onIrrTableClick(e) {
   if (row) openDetail(row);
 }
 
+/** 数据维护入口仅系统管理员可见（与后端 @RequireAdmin 同口径）：判定 /auth/current-user 的 admin 标记；
+ *  判定前保持隐藏；判定失败不显示（删除/恢复、补偿配置接口后端兜底 403） */
+async function loadMaintEntry() {
+  try {
+    const res = await fetch(API + '/auth/current-user', { credentials: 'include' });
+    if (!res.ok) return;
+    const user = await res.json();
+    if (user && user.admin === true) {
+      $('maint-btn').hidden = false;
+    }
+  } catch (e) { /* 判定失败保持隐藏 */ }
+}
+
 async function init() {
   setDefaultDates('irr');
   setDefaultDates('mth');
@@ -1972,6 +2005,8 @@ async function init() {
   bindAsyncClick($('mth-reset-btn'), mthReset);
   $('irr-tbody').addEventListener('click', onIrrTableClick);
   renderMthEmpty();
+  // 数据维护入口：仅系统管理员可见（后台判定，不阻塞主流程）
+  loadMaintEntry();
 
   // 渠系树侧边栏：与主数据并行加载，失败不阻塞正文（仅花凉亭灌区 Tab 展示）
   loadCanalTree();
@@ -1982,6 +2017,7 @@ async function init() {
   // 雨量类型两范围共用一条序列，因水库位于上游，序列中水库块恒在灌区块之前（保存只重排本范围），保存后两处均重载；
   // 麻塘湖灌区数据未接入，该 Tab 下不显示排序入口
   StationSort.mount({
+    anchor: '#tab-acts',
     type: 'rainfall',
     scope: () => (activeMainTab() === 'reservoir' ? 'reservoir' : 'gq'),
     visible: () => activeMainTab() !== 'mth',

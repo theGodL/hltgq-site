@@ -5,11 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.qgyun.hltgq.hltgqsite.auth.UserContext;
+import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
 import com.qgyun.hltgq.hltgqsite.entity.StPptnR;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.service.CanalService;
+import com.qgyun.hltgq.hltgqsite.service.RainAdjustService;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.GqDailyRainfallVO;
@@ -21,8 +24,12 @@ import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallBriefVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirTenDayRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -47,6 +54,15 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Autowired
     private CanalService canalService;
+
+    @Autowired
+    private RainAdjustService rainAdjustService;
+
+    private static final Logger log = LoggerFactory.getLogger(StPptnRServiceImpl.class);
+
+    /** 操作人兜底（审计列 deleted_by；@RequireAdmin 场景会话理论上不会缺失） */
+    @Value("${hltgq.created-by}")
+    private String fallbackOperator;
 
     // ======================== 灌区接口-水库站点排除 ========================
     // 13 个水库站点新 STCD 已全部确认
@@ -1342,5 +1358,168 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             stations.add(si);
         }
         return stations;
+    }
+
+    // ======================== 历史数据管理（监测数据删除方案 §5.2/§5.3） ========================
+
+    @Override
+    public IPage<StPptnR> managePage(long page, long size, String stcd, LocalDateTime startTime,
+                                     LocalDateTime endTime, boolean includeDeleted, boolean deletedOnly) {
+        String key = requireStcd(stcd);
+        Page<StPptnR> pager = new Page<>(page < 1 ? 1 : page, size < 1 ? 20 : Math.min(size, 200));
+        QueryWrapper<StPptnR> wrapper = new QueryWrapper<>();
+        wrapper.eq("STCD", key);
+        if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
+        if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        // 方案 §5.2 唯一例外通道：deletedOnly=「已删除数据」视图（仅供恢复/回滚）；
+        // includeDeleted=含已删行（兼容旧交互）；默认仍走软删过滤
+        if (deletedOnly) wrapper.apply("deleted IS TRUE");
+        else if (!includeDeleted) wrapper.apply("deleted IS NOT TRUE");
+        wrapper.orderByDesc("TM");
+        return page(pager, wrapper);
+    }
+
+    @Override
+    public Map<String, Object> deletePrecheck(String stcd, LocalDateTime tm) {
+        Map<String, Object> guard = deleteGuard(stcd, tm);
+        // 随删配补偿上下文（只读）：stcd→站点档案→补偿现值/雨量设备，供弹窗必填输入展示
+        guard.put("adjust", rainAdjustService.adjustContext((String) guard.get("stcd")));
+        return guard;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> softDelete(String stcd, LocalDateTime tm, String confirm, BigDecimal adjustValue) {
+        Map<String, Object> guard = deleteGuard(stcd, tm);
+        String levels = (String) guard.get("levels");
+        // 两段式确认：未携 confirm 或与当前级别不一致（如确认期间新报文使该行成为基线行）→ 不执行，返回最新级别重新确认
+        String confirmed = confirm == null ? "" : confirm.trim();
+        if (confirmed.isEmpty() || !levels.equals(confirmed)) {
+            guard.put("needConfirm", true);
+            return guard;
+        }
+        String key = (String) guard.get("stcd");
+        String operator = operatorId();
+        int affected = baseMapper.softDeleteByKey(key, Timestamp.valueOf(tm), operator);
+        if (affected == 0) {
+            throw new IllegalArgumentException("删除失败：行不存在或状态已变化，请刷新后重试");
+        }
+        log.info("[监测数据删除] 软删：stcd={}，tm={}，级别={}，操作人={}", key, tm, levels, operator);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("success", true);
+        // 随删配补偿（用户口径：删除必须同时明确补偿处理；0=设备复位→停用补偿）：
+        // 补偿写入异常抛出 → 事务整体回滚（删除一并撤销），前端提示重试
+        if (adjustValue != null) {
+            Map<String, Object> adjustResult = rainAdjustService.applyByDataDelete(key, fmtMinute(tm), adjustValue);
+            out.put("adjust", adjustResult);
+            log.info("[监测数据删除] 随删配补偿：stcd={}，tm={}，偏差={}，结果={}",
+                    key, tm, adjustValue, adjustResult.get("action"));
+        }
+        return out;
+    }
+
+    @Override
+    public void restore(String stcd, LocalDateTime tm) {
+        String key = requireStcd(stcd);
+        if (tm == null) {
+            throw new IllegalArgumentException("tm 必填");
+        }
+        StPptnR row = getOne(new QueryWrapper<StPptnR>()
+                .eq("STCD", key)
+                .eq("TM", Timestamp.valueOf(tm)));
+        if (row == null) {
+            throw new IllegalArgumentException("行不存在：stcd=" + key + "，tm=" + tm);
+        }
+        if (!Boolean.TRUE.equals(row.getDeleted())) {
+            throw new IllegalArgumentException("该行未处于删除状态，无需恢复");
+        }
+        String operator = operatorId();
+        int affected = baseMapper.restoreByKey(key, Timestamp.valueOf(tm), operator);
+        if (affected == 0) {
+            throw new IllegalArgumentException("恢复失败：行不存在或状态已变化，请刷新后重试");
+        }
+        log.info("[监测数据删除] 恢复：stcd={}，tm={}，操作人={}", key, tm, operator);
+    }
+
+    @Override
+    public boolean softDeleteDirect(String stcd, LocalDateTime tm) {
+        String key = requireStcd(stcd);
+        if (tm == null) {
+            throw new IllegalArgumentException("tm 必填");
+        }
+        String operator = operatorId();
+        int affected = baseMapper.softDeleteByKey(key, Timestamp.valueOf(tm), operator);
+        log.info("[监测数据删除] 软删（兼容通道）：stcd={}，tm={}，affected={}，操作人={}", key, tm, affected, operator);
+        return affected > 0;
+    }
+
+    /**
+     * 删除护栏判定（方案 §5.3；用户口径：不硬拦截——二次确认 + 提醒）：
+     * 校验行存在且未删；一级=命中当前基线行（stcd 匹配、未删、tm ≤ 当前水文日起点、tm 最大），
+     * 二级=最近 24h 内；返回级别串与分级提示文案，由前端展示确认后再携 confirm 执行。
+     */
+    private Map<String, Object> deleteGuard(String stcd, LocalDateTime tm) {
+        String key = requireStcd(stcd);
+        if (tm == null) {
+            throw new IllegalArgumentException("tm 必填");
+        }
+        // 行状态校验（不过滤 deleted：管理层需精确区分“不存在”与“已删除”）
+        StPptnR row = getOne(new QueryWrapper<StPptnR>()
+                .eq("STCD", key)
+                .eq("TM", Timestamp.valueOf(tm)));
+        if (row == null) {
+            throw new IllegalArgumentException("行不存在：stcd=" + key + "，tm=" + tm);
+        }
+        if (Boolean.TRUE.equals(row.getDeleted())) {
+            throw new IllegalArgumentException("该行已处于删除状态，请使用恢复操作");
+        }
+        // 一级：是否命中当前基线行（与 mq computeCurrentRainfall 同口径；毫秒 long 比较）
+        LocalDateTime hydroStart = hydroDayStart(LocalDateTime.now());
+        Timestamp baselineTm = baseMapper.selectBaselineTm(key, Timestamp.valueOf(hydroStart));
+        boolean baseline = baselineTm != null && baselineTm.getTime() == Timestamp.valueOf(tm).getTime();
+        // 二级：最近 24h 内（含时钟偏差下的未来时刻）
+        boolean recent = !tm.isBefore(LocalDateTime.now().minusHours(24));
+        String levels = baseline ? (recent ? "baseline,recent" : "baseline") : (recent ? "recent" : "normal");
+        // 分级提示文案（用户口径：提醒删除后新入库数据会变化、已入库保持不变）
+        List<String> parts = new ArrayList<>();
+        if (baseline) {
+            parts.add("【基线行】该行是该站当前基线行（当前水文日 08:00 起点前的最后一条未删记录）：" +
+                    "删除后基线将自动前移到更早一行，昨日尾雨会并入今日「当前降雨」，可能造成数值虚增。");
+        }
+        if (recent) {
+            parts.add("【24 小时内】该行属于最近 24 小时数据：删除将影响当前实时展示与基线取值。");
+        }
+        parts.add("【生效方式】删除后：该行不再参与后续入库的前值/基线计算——新入库数据将按删除后的序列计算（数值会变化），已入库历史数据保持不变。");
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("needConfirm", true);
+        out.put("levels", levels);
+        out.put("baseline", baseline);
+        out.put("recent24h", recent);
+        out.put("warning", String.join("\n", parts));
+        out.put("stcd", key);
+        return out;
+    }
+
+    /** 当前操作人（审计列 deleted_by；会话缺失时用配置兜底） */
+    private String operatorId() {
+        UserContext user = UserContextHolder.currentUser();
+        if (user != null && user.getUserId() != null && !user.getUserId().trim().isEmpty()) {
+            return user.getUserId().trim();
+        }
+        return fallbackOperator;
+    }
+
+    /** 删除行时间 → 补偿备注用文本（yyyy-MM-dd HH:mm） */
+    private static String fmtMinute(LocalDateTime tm) {
+        return tm == null ? "" : tm.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+    }
+
+    /** 站点编号参数校验（必填，去首尾空白） */
+    private String requireStcd(String stcd) {
+        String key = stcd == null ? null : stcd.trim();
+        if (key == null || key.isEmpty()) {
+            throw new IllegalArgumentException("stcd 必填");
+        }
+        return key;
     }
 }

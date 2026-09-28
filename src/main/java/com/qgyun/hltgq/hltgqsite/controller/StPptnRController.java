@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.auth.RequireAdmin;
 import com.qgyun.hltgq.hltgqsite.entity.StPptnR;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.vo.GqDailyRainfallVO;
@@ -19,12 +20,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @RestController
@@ -50,6 +54,8 @@ public class StPptnRController {
         if (stcd != null) wrapper.eq("STCD", stcd);
         // 全站模式仅保留监测类型含雨量 #2# 的站点
         else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#2#%'");
+        // 软删过滤（监测数据删除方案 §5.4）：已删行不展示
+        wrapper.apply("deleted IS NOT TRUE");
         return stPptnRService.list(wrapper);
     }
 
@@ -70,6 +76,8 @@ public class StPptnRController {
         else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#2#%'");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        // 软删过滤（监测数据删除方案 §5.4）：已删行不展示
+        wrapper.apply("deleted IS NOT TRUE");
         return stPptnRService.dailyPage(new Page<>(page, size), wrapper);
     }
 
@@ -86,6 +94,8 @@ public class StPptnRController {
         else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#2#%'");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        // 软删过滤（监测数据删除方案 §5.4）：已删行不展示
+        wrapper.apply("deleted IS NOT TRUE");
         return (Page<StPptnR>) stPptnRService.page(new Page<StPptnR>(page, size).addOrder(OrderItem.asc("TM")), wrapper);
     }
 
@@ -100,6 +110,8 @@ public class StPptnRController {
         else wrapper.inSql("STCD", "SELECT iofhpi FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#2#%'");
         if (startTime != null) wrapper.ge("TM", Timestamp.valueOf(startTime));
         if (endTime != null) wrapper.le("TM", Timestamp.valueOf(endTime));
+        // 软删过滤（监测数据删除方案 §5.4）：已删行不展示
+        wrapper.apply("deleted IS NOT TRUE");
         return stPptnRService.list(wrapper);
     }
 
@@ -107,9 +119,11 @@ public class StPptnRController {
     public StPptnR getOne(
             @RequestParam String stcd,
             @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime tm) {
+        // 软删过滤（监测数据删除方案 §5.4）：已删行不可见（恢复请走历史数据管理接口）
         return stPptnRService.getOne(new QueryWrapper<StPptnR>()
                 .eq("STCD", stcd)
-                .eq("TM", Timestamp.valueOf(tm)));
+                .eq("TM", Timestamp.valueOf(tm))
+                .apply("deleted IS NOT TRUE"));
     }
 
     @PostMapping
@@ -124,13 +138,17 @@ public class StPptnRController {
                 .eq("TM", Timestamp.valueOf(stPptnR.getTm())));
     }
 
+    /**
+     * 删除（兼容保留）：物理删除已废弃——统一转为软删（写 deleted 标记 + 审计列，监测数据删除方案 §5.2），
+     * 数据行保留占位防重投复活；删除的生效方式＝入库前值/基线过滤（见 mq）。
+     * <p>管理表单删除请走 /st-pptn-r/manage/delete（含三级护栏确认交互）；本通道为兼容入口，不做级别确认。
+     */
+    @RequireAdmin
     @DeleteMapping
     public boolean delete(
             @RequestParam String stcd,
             @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime tm) {
-        return stPptnRService.remove(new QueryWrapper<StPptnR>()
-                .eq("STCD", stcd)
-                .eq("TM", Timestamp.valueOf(tm)));
+        return stPptnRService.softDeleteDirect(stcd, tm);
     }
 
     /**
@@ -288,5 +306,66 @@ public class StPptnRController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date) {
         if (date == null) date = LocalDate.now();
         return stPptnRService.reservoirRainfallBrief(date);
+    }
+
+    // ======================== 历史数据管理（监测数据删除方案 §5.2；仅系统管理员） ========================
+
+    /**
+     * 历史数据管理分页：展示 tm/dyp 等数据列 + deleted 状态与审计列（含已删除视图——方案 §5.2 唯一例外）。
+     *
+     * @param includeDeleted 含已删行（兼容旧交互），默认仅未删行
+     * @param deletedOnly    「已删除数据」视图：仅已删行（供恢复/回滚）
+     */
+    @RequireAdmin
+    @GetMapping("/manage/page")
+    public IPage<StPptnR> managePage(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size,
+            @RequestParam String stcd,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean deletedOnly) {
+        return stPptnRService.managePage(page, size, stcd, startTime, endTime, includeDeleted, deletedOnly);
+    }
+
+    /**
+     * 删除预检（护栏级别判定，不改数据）：返回 needConfirm/levels/warning，
+     * 级别：baseline=命中当前基线行（强化提示）、recent=最近 24h 内、normal=常规（方案 §5.3）。
+     */
+    @RequireAdmin
+    @PostMapping("/manage/delete-precheck")
+    public Map<String, Object> deletePrecheck(
+            @RequestParam String stcd,
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime tm) {
+        return stPptnRService.deletePrecheck(stcd, tm);
+    }
+
+    /**
+     * 软删（两段式确认）：重判护栏级别并与 confirm 比对，一致才执行；
+     * 首次调用（不携 confirm）或级别已变化时返回 needConfirm + warning，由前端展示确认后再调。
+     * <p>adjustValue=随删配补偿的设备偏差（可选；正=多灌、负=少灌、0=设备复位停用补偿），
+     * 数据维护页必填提交；与软删同事务，结果在返回体 adjust 键。
+     */
+    @RequireAdmin
+    @PostMapping("/manage/delete")
+    public Map<String, Object> manageDelete(
+            @RequestParam String stcd,
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime tm,
+            @RequestParam(required = false) String confirm,
+            @RequestParam(required = false) BigDecimal adjustValue) {
+        return stPptnRService.softDelete(stcd, tm, confirm, adjustValue);
+    }
+
+    /** 恢复一行（deleted 翻转 + 审计列刷新；恢复的生效方式同为入库过滤） */
+    @RequireAdmin
+    @PostMapping("/manage/restore")
+    public Map<String, Object> manageRestore(
+            @RequestParam String stcd,
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime tm) {
+        stPptnRService.restore(stcd, tm);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("success", true);
+        return out;
     }
 }

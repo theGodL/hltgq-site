@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.controller;
 
+import com.qgyun.hltgq.hltgqsite.auth.RequireAdmin;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.StationSortSaveVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSortVO;
@@ -45,12 +46,13 @@ public class StationSortController {
     }
 
     /**
-     * 保存站点排序：siteIds 按拖拽/序号调整后的展示顺序提交
+     * 保存站点排序（仅系统管理员，与页面「站点排序」入口显隐同口径）：siteIds 按拖拽/序号调整后的展示顺序提交
      * <p>不属于该类型的站点标识忽略；未提交的站点按当前顺序追加在后（新接入站点自动排末尾）。
      * <p>scope 指定范围时只重排该范围所在分块，另一范围保持原顺序，整表恒为「水库块在前、灌区块在后」。
      *
      * @return success + count（落库站点数）
      */
+    @RequireAdmin
     @PostMapping
     public Map<String, Object> save(@RequestBody StationSortSaveVO body) {
         log.info("收到站点排序保存请求：type={}，scope={}，提交站点数={}",
