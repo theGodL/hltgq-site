@@ -1,5 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.vo;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -61,6 +63,15 @@ public class WaterQualityVO {
 
     /** WT 水温 (℃)，取自 pcp_info（时间列 spt 与 nmisp tm 同组对齐），无对应组为 null */
     private BigDecimal wt;
+
+    /** 在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）。
+     *  仅实时列表接口（monitoring）评估，历史查询等场景不输出 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Boolean isOnline;
+
+    /** 档案在线状态原值（站点表 zebpsu，内部判定用，不出 JSON） */
+    @JsonIgnore
+    private String zebpsu;
 
     /** 该站水质阈值行（t_auto_hltgq_water_threshold，type 含 #8#），仅 monitoring 填充，无配置为空列表 */
     private List<WaterThresholdVO> thresholds;

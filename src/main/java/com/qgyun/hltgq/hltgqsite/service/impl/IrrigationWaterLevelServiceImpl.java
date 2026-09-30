@@ -113,8 +113,11 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         String startStr = queryStart.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String endStr = endTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-        // 3. 查询原始记录
+        // 3. 查询原始记录（河道数据源无记录时，回退闸站闸前水位）
         List<Map<String, Object>> rawRecords = irrigationWaterLevelMapper.selectHistoryRaw(stcd, startStr, endStr);
+        if (rawRecords.isEmpty()) {
+            rawRecords = irrigationWaterLevelMapper.selectGateUpZRaw(stcd, startStr, endStr);
+        }
 
         // 4. 按小时聚合：取整点小时桶内的最新一条水位值
         Map<String, BigDecimal> hourWaterLevel = new LinkedHashMap<>();
@@ -225,6 +228,9 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         String startStr = startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String endStr = endTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         List<Map<String, Object>> rawRecords = irrigationWaterLevelMapper.selectHistoryRaw(stcd, startStr, endStr);
+        if (rawRecords.isEmpty()) {
+            rawRecords = irrigationWaterLevelMapper.selectGateUpZRaw(stcd, startStr, endStr);
+        }
 
         // 4. 按小时聚合：取整点小时桶内的最新一条水位值
         Map<String, BigDecimal> hourWaterLevel = new LinkedHashMap<>();
@@ -296,8 +302,11 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         String startStr = queryStart.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String endStr = endTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-        // 2. 查询原始记录
+        // 2. 查询原始记录（河道数据源无记录时，回退闸站闸前水位）
         List<Map<String, Object>> rawRecords = irrigationWaterLevelMapper.selectHistoryRaw(stcd, startStr, endStr);
+        if (rawRecords.isEmpty()) {
+            rawRecords = irrigationWaterLevelMapper.selectGateUpZRaw(stcd, startStr, endStr);
+        }
 
         // 3. 按小时聚合：取整点小时桶内的最新一条水位值
         Map<String, BigDecimal> hourWaterLevel = new LinkedHashMap<>();

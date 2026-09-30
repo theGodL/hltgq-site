@@ -34,7 +34,8 @@ public interface WaterQualityMapper {
      * <p>站点标识 skey = COALESCE(stcd, site)：老站点用编号，无 stcd 时回退到 site（UUID）。
      * site 字段输出 skey 供查询/筛选；siteId 输出站点档案真实主键（n.site，阈值行关联用）。
      * <p>经纬度：站点表 s 按 n.site = s.id 匹配，s2 按编号补位（老站 n.site 为空时
-     * 用 s2.iofhpi = n.stcd 匹配档案），取 COALESCE(s.bviiio_x, s2.bviiio_x) / COALESCE(s.bviiio_y, s2.bviiio_y)。
+     * 用 s2.iofhpi = n.stcd 匹配档案），取 COALESCE(s.bviiio_x, s2.bviiio_x) / COALESCE(s.bviiio_y, s2.bviiio_y)，
+     * zebpsu = COALESCE(s.zebpsu, s2.zebpsu)（在线判定：手动离线优先，Service 层计算，不出 JSON）。
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，不能直接用 COALESCE 函数表达式
      * （PG 会报 "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"），
      * 故先在子查询中物化出 skey，外层按 skey 去重排序。
@@ -45,12 +46,13 @@ public interface WaterQualityMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.lon, t.lat, t.tm, " +
+            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.lon, t.lat, t.tm, t.zebpsu, " +
             "t.nh3n, t.codmn, t.codcr, t.bod5, t.tp, t.tn, t.dox, t.wt " +
             "FROM ( " +
             "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, n.site AS site_id, " +
             "  COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, " +
             "  COALESCE(s.bviiio_x, s2.bviiio_x) AS lon, COALESCE(s.bviiio_y, s2.bviiio_y) AS lat, " +
+            "  COALESCE(s.zebpsu, s2.zebpsu) AS zebpsu, " +
             "  n.tm, " +
             "  CASE WHEN n.nh3n = -999 THEN NULL ELSE TRUNC(n.nh3n, 3) END AS nh3n, " +
             "  CASE WHEN n.codmn = -999 THEN NULL ELSE TRUNC(n.codmn, 3) END AS codmn, " +
@@ -95,7 +97,8 @@ public interface WaterQualityMapper {
             @Result(column = "tp", property = "tp"),
             @Result(column = "tn", property = "tn"),
             @Result(column = "dox", property = "dox"),
-            @Result(column = "wt", property = "wt")
+            @Result(column = "wt", property = "wt"),
+            @Result(column = "zebpsu", property = "zebpsu")
     })
     List<WaterQualityVO> selectLatestPerStation(
             @Param("stcds") List<String> stcds,

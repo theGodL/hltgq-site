@@ -83,6 +83,16 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     /** -9991 = 设备异常：保留原值透传（前端展示 '--'），不参与单位换算 */
     private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
 
+    /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
+    private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
+            "南山寺节制闸", "渠首进水闸", "渠首电站防洪闸", "双庙湖节制闸"
+    ));
+
+    /** MQTT 站断联阈值：报文 10 分钟一次，30 分钟无更新判离线 */
+    private static final long MQTT_STALE_MINUTES = 30;
+    /** RabbitMQ 站断联阈值：报文 1 小时一次，70 分钟无更新判离线 */
+    private static final long RBT_STALE_MINUTES = 70;
+
     /**
      * 水位水情站默认展示顺序（业主口径）：周家河 > 花凉亭坝上 > 花凉亭坝下。
      * 日时段水情表默认按此顺序分组输出（不受前端传入 stcds 顺序影响）；
@@ -123,6 +133,23 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             return m3;
         }
         return WaterVolumeUtils.m3ToWan(m3);
+    }
+
+    /**
+     * 断联判定（与前端 isStaleTm 规则一致）：MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线；
+     * 无时间值（null）视为在线（不判离线）；时间在未来（时钟偏差）也视为在线
+     */
+    private boolean isStale(LocalDateTime tm, String stnm) {
+        if (tm == null) return false;
+        long threshold = MQTT_STATION_NAMES.contains(stnm) ? MQTT_STALE_MINUTES : RBT_STALE_MINUTES;
+        // 毫秒级严格大于，与前端 Date.now() - t > staleMs 语义完全一致（toMinutes 向下取整会导致边界差一分钟误判）
+        return Duration.between(tm, LocalDateTime.now()).toMillis() > threshold * 60_000L;
+    }
+
+    /** zebpsu 站点状态：#1# 在线、#2# 离线；兼容 "#1#"/"1"/"#1" 格式，null 或未知值默认在线 */
+    private boolean isZebpsuOnline(String zebpsu) {
+        if (zebpsu == null) return true;
+        return !"2".equals(zebpsu.trim().replace("#", ""));
     }
 
     /**
@@ -186,6 +213,8 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
                 cumulativeFlow = ttf.subtract(prevTtf != null ? prevTtf : BigDecimal.ZERO);
             }
             r.setCumulativeFlow(toWanFlow(cumulativeFlow));
+            // 在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则按最新采集时间断联判定
+            r.setIsOnline(isZebpsuOnline(r.getZebpsu()) && !isStale(r.getTm(), r.getStnm()));
         });
         // 站点排序配置（流量监测类型）：已配置站点按配置顺序，未配置站点保持 SQL 默认顺序排在其后；
         // 站点标识 = 站点管理主键（档案缺失时为 null，该行保持默认位置）

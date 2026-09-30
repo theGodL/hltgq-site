@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.vo;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -50,6 +51,15 @@ public class FlowMonitoringVO {
 
     /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
     private BigDecimal vol;
+
+    /** 在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）。
+     *  仅实时列表接口（monitoring）评估，历史查询等场景不输出 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Boolean isOnline;
+
+    /** 档案在线状态原值（站点表 zebpsu，内部判定用，不出 JSON） */
+    @JsonIgnore
+    private String zebpsu;
 
     /** 年累计流量（m³ 原值，内部计算用，不出 JSON） */
     @JsonIgnore

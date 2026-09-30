@@ -31,7 +31,8 @@ public interface WaterFlowMapper {
      * 供 Service 层相减计算时间框范围累计流量。
      * <p>渠系/经纬度信息：站点表 s 按 f.site = s.id 匹配，s2 按编号补位（老站 f.site 为空时
      * 用 s2.iofhpi = f.stcd 匹配档案），canal_id = COALESCE(s.ywvyds, s2.ywvyds)，
-     * 经纬度取 COALESCE(s.bviiio_x, s2.bviiio_x) / COALESCE(s.bviiio_y, s2.bviiio_y)；
+     * 经纬度取 COALESCE(s.bviiio_x, s2.bviiio_x) / COALESCE(s.bviiio_y, s2.bviiio_y)，
+     * zebpsu = COALESCE(s.zebpsu, s2.zebpsu)（在线判定：手动离线优先，Service 层计算，不出 JSON）；
      * canalIds 非空时按渠系树过滤（canalId 及其所有子孙渠系 id，由 CanalService 收集）。
      *
      * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部（仅返回监测类型含流量 #3# 的站点）
@@ -41,7 +42,7 @@ public interface WaterFlowMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.lon, t.lat, t.tm, t.q, t.tf, t.ytf, t.ttf, t.vol, t.canal_id, t.canal_name" +
+            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.lon, t.lat, t.tm, t.q, t.tf, t.ytf, t.ttf, t.vol, t.canal_id, t.canal_name, t.zebpsu" +
             "<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
             "FROM ( " +
             "  SELECT f.stcd, COALESCE(f.stcd, f.site) AS skey, " +
@@ -49,7 +50,8 @@ public interface WaterFlowMapper {
             "  COALESCE(s.zzkaec, f.stcd, f.site) AS stnm, " +
             "  COALESCE(s.bviiio_x, s2.bviiio_x) AS lon, COALESCE(s.bviiio_y, s2.bviiio_y) AS lat, " +
             "  f.tm, TRUNC(f.q, 3) AS q, TRUNC(f.tf, 2) AS tf, f.ytf, f.ttf, fv.vol, " +
-            "  COALESCE(s.ywvyds, s2.ywvyds) AS canal_id, c.gfaegg AS canal_name " +
+            "  COALESCE(s.ywvyds, s2.ywvyds) AS canal_id, c.gfaegg AS canal_name, " +
+            "  COALESCE(s.zebpsu, s2.zebpsu) AS zebpsu " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON f.site = s.id " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s2 ON s.id IS NULL AND s2.iofhpi = f.stcd " +
@@ -105,6 +107,7 @@ public interface WaterFlowMapper {
             @Result(column = "ytf", property = "ytf"),
             @Result(column = "ttf", property = "ttf"),
             @Result(column = "vol", property = "vol"),
+            @Result(column = "zebpsu", property = "zebpsu"),
             @Result(column = "prev_ttf", property = "prevTtf")
     })
     List<FlowMonitoringVO> selectLatestPerStation(

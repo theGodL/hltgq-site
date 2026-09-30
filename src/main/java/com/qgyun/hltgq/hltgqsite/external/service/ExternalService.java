@@ -24,9 +24,11 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 三维系统对接（/external）聚合逻辑。
@@ -247,7 +249,10 @@ public class ExternalService {
      * （1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 7 墒情 / 8 水质，另兼容 #N# 编码与语义串便于联调）。
      * <p>站点集合取站点档案（含当前无数据的站点，与原 qx-api 列表一致），name 非空时按站名模糊过滤
      * （先筛档案再查实时值，未命中站点时不触发实时值查询）；实时值按类型批量查一次（无逐站 N+1）；
-     * 站点顺序按「站点排序」配置输出（未配置该类型排序时保持档案默认顺序）。
+     * 站点顺序按「站点排序」配置输出（已配置站点以配置序号为准，不按在线状态调整）；未配置排序的站点
+     * 保持档案默认顺序、在线优先（在线/未设置在前、离线站在后，组内保持默认顺序）。
+     * <p>isOnline 与 hasData 每行必有：有实时值站点按实时值字段输出；无实时值站点按档案状态兜底
+     * （zebpsu 1=在线 / 2=离线 / 未设置按在线），保证人工设为离线的站点不会因字段缺失被误当作在线。
      * 非法 type 抛 IllegalArgumentException → 全局 400。
      *
      * @param type 监测类型：1/2/3/4/7/8（另兼容 #N# 编码与语义串）
@@ -274,14 +279,39 @@ public class ExternalService {
                         row.put(entry.getKey(), entry.getValue());
                     }
                 }
+                // isOnline 每行必有：个别实时值来源缺该字段时按档案状态兜底（防御，正常不应触发）
+                if (!row.containsKey("isOnline")) {
+                    row.put("isOnline", !"2".equals(stringOf(row.get("zebpsu"))));
+                }
+            } else {
+                // 无实时值（hasData=false）的站点：isOnline 按档案状态兜底，1=在线 / 2=离线 / 未设置按在线
+                // （isOnline 每行必有：字段缺失时前端无法与人工离线站区分；未设置按在线，与水位接口档案口径一致）
+                row.put("isOnline", !"2".equals(stringOf(row.get("zebpsu"))));
             }
             row.put("data", data);
             row.put("hasData", data != null);
             rows.add(row);
         }
         String sortType = monitorSortType(typeCode);
-        vo.setData(sortType == null ? rows
-                : stationSortService.applyOrder(sortType, rows, item -> (String) item.get("id")));
+        List<Map<String, Object>> ordered = sortType == null ? rows
+                : stationSortService.applyOrder(sortType, rows, item -> (String) item.get("id"));
+        // 在线优先仅作用于未配置排序的站点（已配置站点以排序配置为准，不按在线状态调整）：
+        // 未配置站点中在线（含未设置）在前、离线在后，组内保持默认顺序
+        Set<String> configuredIds = sortType == null ? new HashSet<>()
+                : new HashSet<>(stationSortService.configuredSiteIds(sortType));
+        List<Map<String, Object>> result = new ArrayList<>(ordered.size());
+        List<Map<String, Object>> unconfiguredOffline = new ArrayList<>();
+        for (Map<String, Object> row : ordered) {
+            if (configuredIds.contains(row.get("id"))) {
+                result.add(row);
+            } else if (Boolean.FALSE.equals(row.get("isOnline"))) {
+                unconfiguredOffline.add(row);
+            } else {
+                result.add(row);
+            }
+        }
+        result.addAll(unconfiguredOffline);
+        vo.setData(result);
         return vo;
     }
 

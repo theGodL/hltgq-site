@@ -12,16 +12,20 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 水质监测服务实现
@@ -32,12 +36,24 @@ public class WaterQualityServiceImpl implements WaterQualityService {
     @Autowired
     private WaterQualityMapper waterQualityMapper;
 
+    /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
+    private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
+            "南山寺节制闸", "渠首进水闸", "渠首电站防洪闸", "双庙湖节制闸"
+    ));
+
+    /** MQTT 站断联阈值：报文 10 分钟一次，30 分钟无更新判离线 */
+    private static final long MQTT_STALE_MINUTES = 30;
+    /** RabbitMQ 站断联阈值：报文 1 小时一次，70 分钟无更新判离线 */
+    private static final long RBT_STALE_MINUTES = 70;
+
     @Override
     public List<WaterQualityVO> monitoring(List<String> stcds, LocalDate startDate, LocalDate endDate) {
         LocalDateTime startTime = startDate != null ? startDate.atStartOfDay() : null;
         // 截止日含当日全天：endDate +1 天 00:00（SQL 为 < 不含）
         LocalDateTime endTime = endDate != null ? endDate.plusDays(1).atStartOfDay() : null;
         List<WaterQualityVO> records = waterQualityMapper.selectLatestPerStation(stcds, startTime, endTime);
+        // 在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则按最新采集时间断联判定
+        records.forEach(r -> r.setIsOnline(isZebpsuOnline(r.getZebpsu()) && !isStale(r.getTm(), r.getStnm())));
         attachThresholds(records);
         return records;
     }
@@ -207,5 +223,22 @@ public class WaterQualityServiceImpl implements WaterQualityService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * 断联判定（与前端 isStaleTm 规则一致）：MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线；
+     * 无时间值（null）视为在线（不判离线）；时间在未来（时钟偏差）也视为在线
+     */
+    private boolean isStale(LocalDateTime tm, String stnm) {
+        if (tm == null) return false;
+        long threshold = MQTT_STATION_NAMES.contains(stnm) ? MQTT_STALE_MINUTES : RBT_STALE_MINUTES;
+        // 毫秒级严格大于，与前端 Date.now() - t > staleMs 语义完全一致（toMinutes 向下取整会导致边界差一分钟误判）
+        return Duration.between(tm, LocalDateTime.now()).toMillis() > threshold * 60_000L;
+    }
+
+    /** zebpsu 站点状态：#1# 在线、#2# 离线；兼容 "#1#"/"1"/"#1" 格式，null 或未知值默认在线 */
+    private boolean isZebpsuOnline(String zebpsu) {
+        if (zebpsu == null) return true;
+        return !"2".equals(zebpsu.trim().replace("#", ""));
     }
 }
