@@ -430,6 +430,7 @@ public class ExternalService {
         row.put("zzkaec", stringOf(archive.get("zzkaec")));
         row.put("iofhpi", stringOf(archive.get("iofhpi")));
         row.put("devicecode", stringOf(archive.get("devicecode")));
+        row.put("cadcode", stringOf(archive.get("cadcode")));
         row.put("mivbcz", stringOf(archive.get("mivbcz")));
         row.put("epjutj", codeArray(archive.get("epjutj")));
         row.put("bviiio", geoOf(archive));

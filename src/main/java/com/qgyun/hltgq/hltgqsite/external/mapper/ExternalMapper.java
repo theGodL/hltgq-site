@@ -54,7 +54,7 @@ public interface ExternalMapper {
      */
     @Select("<script>" +
             "SELECT s.id AS id, s.iofhpi AS iofhpi, s.zzkaec AS zzkaec, " +
-            "s.devicecode AS devicecode, s.mivbcz AS mivbcz, s.epjutj AS epjutj, " +
+            "s.devicecode AS devicecode, s.cadcode AS cadcode, s.mivbcz AS mivbcz, s.epjutj AS epjutj, " +
             "s.nxtggq AS nxtggq, s.bviiio_x AS bviiio_x, s.bviiio_y AS bviiio_y, " +
             "s.bviiio_geohash AS bviiio_geohash, s.zebpsu AS zebpsu, " +
             "s.ahieto AS ahieto, u.zzkaec AS ahieto_title, " +
