@@ -113,13 +113,15 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
     /**
      * 各闸孔最新一条数据（按站点 + 闸孔分组，取最新 TM）
      * <p>site 为空（全站模式）时仅返回监测类型含闸门 #4# 的站点。
-     * <p>使用 PostgreSQL DISTINCT ON 对 (site, gate_no) 去重，每组取 tm 最大的一条。
-     * <p>性能注意：流量取值已移出本查询——Service 层按闸门表最新时刻 ±20 分钟窗口
-     * 单独查询流量表（WaterFlowMapper.selectLatestInWindow，走 (site, tm) 索引 LIMIT 1），
-     * 本查询不再关联流量表（原 fq 预聚合子查询每站全表扫描一次，结果已无人使用，已移除）。
-     * 电压 vol 用预聚合子查询关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID，取最新一条）。
-     * <p>累计流量取数：fq_prev（仅指定起始时间时拼接）返回起始时间前最近一条 ttf 非空行的 ttf，
-     * 供 Service 层相减计算范围累计流量。
+     * <p>取数结构：m 子查询按 (site, gate_no) GROUP BY 求 MAX(tm) 取各闸孔最新时刻
+     * （聚合走 (site, gate_no, tm) 索引流式完成，避免对全量明细行做 DISTINCT ON 排序），
+     * 再按 (site, gate_no, tm) 关联回闸门表取整行；最外层 DISTINCT ON (site, gate_no) 兜底去重。
+     * <p>性能注意：流量取值不在本查询——Service 层按闸门表最新时刻 ±20 分钟窗口
+     * 批量查询流量表（WaterFlowMapper.selectLatestInWindowBatch，VALUES + LATERAL 一次取多站）。
+     * 电压 vol 用预聚合子查询关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID，取最新一条；
+     * 站点筛选时按站点下推过滤，全站模式限定为闸门监测站点集合，避免电压表全表 DISTINCT ON 排序）。
+     * <p>累计流量取数：fq_prev（仅指定起始时间时拼接）用 LATERAL 点查返回起始时间前最近一条
+     * ttf 非空行的 ttf（走 (site, tm) 索引 LIMIT 1），供 Service 层相减计算范围累计流量。
      * <p>数据清洗：库中存在 gate_no='0' 且开度为 NULL 的采集占位行，
      * 直接映射为 '1' 会与真实闸孔 1 撞号（holes 中出现重复编号），
      * 因此先过滤该类脏行，再将 gate_no 归一化（'0'→'1'）后在子查询输出列上分组，
@@ -129,47 +131,63 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
      * @param endTime   截止时间（含），null 表示不限制
      */
     @Select("<script>" +
-            "SELECT DISTINCT ON (t.site, t.gate_no) " +
-            "t.site, t.site_name, t.lon, t.lat, t.gate_no, t.tm, " +
-            "t.open_degree, t.up_z, t.down_z, t.status, t.vol, t.canal_id, t.canal_name" +
-            "<if test='startTime != null'>, t.prev_ttf</if> " +
+            "SELECT x.site, x.site_name, x.lon, x.lat, x.gate_no, x.tm, " +
+            "x.open_degree, x.up_z, x.down_z, x.status, x.vol, x.canal_id, x.canal_name" +
+            "<if test='startTime != null'>, x.prev_ttf</if> " +
             "FROM ( " +
-            "  SELECT g.site, s.zzkaec AS site_name, s.bviiio_x AS lon, s.bviiio_y AS lat, " +
-            "  CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gate_no, g.tm, " +
-            "  TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status, " +
-            "  fv.vol, s.ywvyds AS canal_id, c.gfaegg AS canal_name" +
+            "  SELECT DISTINCT ON (t.site, t.gn) " +
+            "  t.site, t.site_name, t.lon, t.lat, t.gn AS gate_no, t.tm, " +
+            "  t.open_degree, t.up_z, t.down_z, t.status, t.vol, t.canal_id, t.canal_name" +
+            "<if test='startTime != null'>, t.prev_ttf</if> " +
+            "  FROM ( " +
+            "    SELECT g.site, s.zzkaec AS site_name, s.bviiio_x AS lon, s.bviiio_y AS lat, " +
+            "    CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gn, g.tm, " +
+            "    TRUNC(g.open_degree, 2) AS open_degree, TRUNC(g.up_z, 2) AS up_z, TRUNC(g.down_z, 2) AS down_z, g.status, " +
+            "    fv.vol, s.ywvyds AS canal_id, c.gfaegg AS canal_name" +
             "<if test='startTime != null'>, fq_prev.prev_ttf</if> " +
-            "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
-            "  INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
-            "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON s.ywvyds = c.id " +
-            "  LEFT JOIN ( " +
-            "    SELECT DISTINCT ON (v.site) v.site, v.vol " +
-            "    FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
-            "    WHERE 1=1 " +
-            "    <if test='startTime != null'>AND v.tm &gt;= #{startTime} </if>" +
-            "    <if test='endTime != null'>AND v.tm &lt;= #{endTime} </if>" +
-            "    ORDER BY v.site, v.tm DESC " +
-            "  ) fv ON fv.site = g.site " +
-            "  <if test='startTime != null'>" +
-            "  LEFT JOIN ( " +
-            "    SELECT DISTINCT ON (f.site) f.site, f.ttf AS prev_ttf " +
-            "    FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
-            "    WHERE f.tm &lt; #{startTime} AND f.ttf IS NOT NULL " +
-            "    ORDER BY f.site, f.tm DESC " +
-            "  ) fq_prev ON fq_prev.site = g.site " +
-            "  </if>" +
-            "  WHERE 1=1 " +
-            "  AND NOT (g.gate_no = '0' AND g.open_degree IS NULL) " +
-            "  <if test='site == null or site == \"\"'>AND s.epjutj LIKE '%#4#%' </if>" +
-            "  <if test='site != null and site != \"\"'>AND g.site = #{site} </if>" +
-            "  <if test='canalIds != null and canalIds.size() > 0'>" +
-            "AND s.ywvyds IN " +
-            "<foreach collection='canalIds' item='cid' open='(' separator=',' close=')'>#{cid}</foreach>" +
-            "  </if>" +
-            "  <if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
-            "  <if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
-            ") t " +
-            "ORDER BY t.site, t.gate_no, t.tm DESC" +
+            "    FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
+            "    JOIN ( " +
+            "      SELECT g2.site, g2.gate_no, MAX(g2.tm) AS tm " +
+            "      FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g2 " +
+            "      WHERE NOT (g2.gate_no = '0' AND g2.open_degree IS NULL) " +
+            "      <if test='site != null and site != \"\"'>AND g2.site = #{site} </if>" +
+            "      <if test='canalIds != null and canalIds.size() > 0'>" +
+            "AND g2.site IN (SELECT id FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" WHERE ywvyds IN " +
+            "<foreach collection='canalIds' item='cid' open='(' separator=',' close=')'>#{cid}</foreach>) " +
+            "      </if>" +
+            "      <if test='startTime != null'>AND g2.tm &gt;= #{startTime} </if>" +
+            "      <if test='endTime != null'>AND g2.tm &lt;= #{endTime} </if>" +
+            "      GROUP BY g2.site, g2.gate_no " +
+            "    ) m ON g.site = m.site AND g.gate_no = m.gate_no AND g.tm = m.tm " +
+            "    INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
+            "    LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON s.ywvyds = c.id " +
+            "    LEFT JOIN ( " +
+            "      SELECT DISTINCT ON (v.site) v.site, v.vol " +
+            "      FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
+            "      WHERE 1=1 " +
+            "      <if test='site != null and site != \"\"'>AND v.site = #{site} </if>" +
+            "      <if test='site == null or site == \"\"'>" +
+            "AND v.site IN (SELECT id FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" WHERE epjutj LIKE '%#4#%') " +
+            "      </if>" +
+            "      <if test='startTime != null'>AND v.tm &gt;= #{startTime} </if>" +
+            "      <if test='endTime != null'>AND v.tm &lt;= #{endTime} </if>" +
+            "      ORDER BY v.site, v.tm DESC " +
+            "    ) fv ON fv.site = g.site " +
+            "    <if test='startTime != null'>" +
+            "    LEFT JOIN LATERAL ( " +
+            "      SELECT f.ttf AS prev_ttf " +
+            "      FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "      WHERE f.site = g.site AND f.tm &lt; #{startTime} AND f.ttf IS NOT NULL " +
+            "      ORDER BY f.tm DESC NULLS LAST LIMIT 1 " +
+            "    ) fq_prev ON true " +
+            "    </if>" +
+            "    WHERE NOT (g.gate_no = '0' AND g.open_degree IS NULL) " +
+            "    <if test='site == null or site == \"\"'>AND s.epjutj LIKE '%#4#%' </if>" +
+            "    <if test='site != null and site != \"\"'>AND g.site = #{site} </if>" +
+            "  ) t " +
+            "  ORDER BY t.site, t.gn, t.tm DESC " +
+            ") x " +
+            "ORDER BY x.site, x.gate_no, x.tm DESC" +
             "</script>")
     @Results({
             @Result(column = "site", property = "site"),

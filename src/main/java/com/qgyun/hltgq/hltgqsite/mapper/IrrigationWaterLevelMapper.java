@@ -22,7 +22,8 @@ public interface IrrigationWaterLevelMapper {
 
     /**
      * 分页 UNION 分支一 SQL（河道/水库站）：每站最新一条水位 + 1h 涨幅；
-     * 日期过滤由调用注解在 ${ew.customSqlSegment} 占位处注入
+     * 日期过滤由调用注解在 ${ew.customSqlSegment} 占位处注入；
+     * vol 子查询按站点下推（stcd 为空限定水位站集合，非空限定单站），避免全表 DISTINCT ON 排序
      */
     String RIVER_LATEST_SQL =
             "SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, " +
@@ -45,12 +46,17 @@ public interface IrrigationWaterLevelMapper {
             "LEFT JOIN (" +
             "  SELECT DISTINCT ON (v.site) v.site, v.vol " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
+            "  WHERE 1=1 " +
+            "  <if test='stcd != null'>AND v.site = (SELECT id FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE iofhpi = #{stcd} LIMIT 1) </if>" +
+            "  <if test='stcd == null'>AND v.site IN (SELECT id FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#1#%') </if>" +
             "  ORDER BY v.site, v.tm DESC " +
             ") fv ON fv.site = s.id ";
 
     /**
      * 分页 UNION 分支二 SQL（闸站）：每站最新一批有效闸前水位 up_z（哨兵 -999/-9991 预过滤），
-     * 同一时刻多闸孔（gate_no）取一条；1h 涨幅取至少 1 小时前最近有效值，无更早记录按 0
+     * 同一时刻多闸孔（gate_no）取一条；1h 涨幅取至少 1 小时前最近有效值，无更早记录按 0。
+     * 最新批次改用「分组 MAX(tm) 聚合 + 点查回表 + DISTINCT ON 兜底」（原全表 DISTINCT ON 排序）、
+     * vol 子查询按站点下推（同分支一）；日期过滤仍由 ${ew.customSqlSegment} 注入聚合内层
      */
     String GATE_LATEST_SQL =
             "SELECT s2.iofhpi AS stcd, s2.zzkaec AS stnm, s2.id AS id, gm.tm AS tm, " +
@@ -64,15 +70,24 @@ public interface IrrigationWaterLevelMapper {
             "fv2.vol AS vol " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s2 " +
             "INNER JOIN (" +
-            "  SELECT DISTINCT ON (x.site) x.site, x.tm, x.up_z FROM (" +
-            "    SELECT g.site, g.tm, g.up_z FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
-            "    ${ew.customSqlSegment} " +
-            "  ) x WHERE x.up_z IS NOT NULL AND x.up_z NOT IN (-999, -9991) " +
-            "  ORDER BY x.site, x.tm DESC" +
+            "  SELECT DISTINCT ON (g3.site) g3.site, g3.tm, g3.up_z FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g3 " +
+            "  JOIN (" +
+            "    SELECT g0.site, MAX(g0.tm) AS tm FROM (" +
+            "      SELECT g.site, g.tm, g.up_z FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
+            "      ${ew.customSqlSegment} " +
+            "    ) g0 " +
+            "    WHERE g0.up_z IS NOT NULL AND g0.up_z NOT IN (-999, -9991) " +
+            "    GROUP BY g0.site" +
+            "  ) m ON m.site = g3.site AND m.tm = g3.tm " +
+            "  WHERE g3.up_z IS NOT NULL AND g3.up_z NOT IN (-999, -9991) " +
+            "  ORDER BY g3.site" +
             ") gm ON gm.site = s2.id " +
             "LEFT JOIN (" +
             "  SELECT DISTINCT ON (v.site) v.site, v.vol " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
+            "  WHERE 1=1 " +
+            "  <if test='stcd != null'>AND v.site = (SELECT id FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE iofhpi = #{stcd} LIMIT 1) </if>" +
+            "  <if test='stcd == null'>AND v.site IN (SELECT id FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#1#%') </if>" +
             "  ORDER BY v.site, v.tm DESC " +
             ") fv2 ON fv2.site = s2.id ";
 
@@ -114,7 +129,8 @@ public interface IrrigationWaterLevelMapper {
             @Param("offset") int offset);
 
     /**
-     * 计数查询：符合条件的站点总数（与 selectPage 同口径：河道站 + 闸站 UNION）
+     * 计数查询：符合条件的站点总数（与 selectPage 同口径：河道站 + 闸站 UNION）；
+     * 闸站「存在有效闸前水位」用分组聚合判定（原全表 DISTINCT ON），日期过滤在聚合内层注入
      */
     @Select("<script>" +
             "SELECT COUNT(*) FROM (" +
@@ -133,11 +149,12 @@ public interface IrrigationWaterLevelMapper {
             "  SELECT s2.iofhpi AS stcd " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s2 " +
             "  INNER JOIN (" +
-            "    SELECT DISTINCT ON (x.site) x.site FROM (" +
+            "    SELECT g0.site FROM (" +
             "      SELECT g.site, g.tm, g.up_z FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
             "      ${ew.customSqlSegment} " +
-            "    ) x WHERE x.up_z IS NOT NULL AND x.up_z NOT IN (-999, -9991) " +
-            "    ORDER BY x.site, x.tm DESC" +
+            "    ) g0 " +
+            "    WHERE g0.up_z IS NOT NULL AND g0.up_z NOT IN (-999, -9991) " +
+            "    GROUP BY g0.site" +
             "  ) gm ON gm.site = s2.id " +
             "  <if test='stcd != null'>WHERE s2.iofhpi = #{stcd} </if>" +
             "  <if test='stcd == null'>WHERE s2.epjutj LIKE '%#1#%' </if>" +

@@ -6,6 +6,10 @@ CREATE INDEX IF NOT EXISTS idx_rain_stcd_tm
     ON "qixiao-apaas".t_auto_hltgq_water_rain_info (STCD, TM DESC);
 CREATE INDEX IF NOT EXISTS idx_river_stcd_tm
     ON "qixiao-apaas".t_auto_hltgq_water_river_info (STCD, TM DESC);
+-- 闸站监测电压取数：vol_info 按站点取最新一条（DISTINCT ON (site) ORDER BY site, tm DESC），
+-- 无该索引时电压子查询需全表扫描排序（实测约 350ms）；生产库建议以 CREATE INDEX CONCURRENTLY 人工执行
+CREATE INDEX IF NOT EXISTS idx_vol_site_tm
+    ON "qixiao-apaas".t_auto_hltgq_water_vol_info (site, tm DESC);
 
 -- ========== 库容曲线表 ==========
 CREATE UNIQUE INDEX uk_level_storage_water_level ON t_auto_hltgq_water_level_storage(water_level);

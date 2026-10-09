@@ -190,10 +190,12 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         // 站点编号（档案 iofhpi）：闸门业务表只存站点主键（UUID），编号一次批量从档案解析
         Map<String, String> codeBySiteId = resolveGateSiteCodes(siteGroup.keySet());
 
-        // 3. 每个站点构建一个 GateMonitoringVO
-        List<GateMonitoringVO> result = new ArrayList<>();
+        // 3. 流量同批次取值预处理：报文按批次入库，流量 tm 应在开度/水位最新时刻 ±20 分钟窗口内。
+        // 先逐站过滤闸孔、计算最新时刻并收集窗口参数，稍后一次批量查询（替代原逐站 N+1 查询）
+        Map<String, List<GateMonitor>> holesBySite = new LinkedHashMap<>();
+        Map<String, LocalDateTime> latestTmBySite = new HashMap<>();
+        List<Map<String, Object>> flowEntries = new ArrayList<>();
         for (Map.Entry<String, List<GateMonitor>> entry : siteGroup.entrySet()) {
-            String siteId = entry.getKey();
             // -999 = 闸孔不存在：过滤后不参与返回（-9991 设备异常保留，透传由前端展示 '--'）
             List<GateMonitor> holes = entry.getValue().stream()
                     .filter(h -> h.getOpenDegree() == null || !isMissing(h.getOpenDegree()))
@@ -202,15 +204,45 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                 continue;
             }
 
-            // 站点名称（取第一条记录的 siteName，各孔相同）
-            String siteName = holes.get(0).getSiteName();
-
             // 监测时间：取各闸孔中最新者
             LocalDateTime latestTm = holes.stream()
                     .map(GateMonitor::getTm)
                     .filter(Objects::nonNull)
                     .max(LocalDateTime::compareTo)
                     .orElse(null);
+            holesBySite.put(entry.getKey(), holes);
+            latestTmBySite.put(entry.getKey(), latestTm);
+            if (latestTm != null) {
+                Map<String, Object> flowEntry = new HashMap<>();
+                flowEntry.put("siteId", entry.getKey());
+                flowEntry.put("windowStart", latestTm.minusMinutes(FLOW_ALIGN_MINUTES));
+                flowEntry.put("windowEnd", latestTm.plusMinutes(FLOW_ALIGN_MINUTES));
+                flowEntries.add(flowEntry);
+            }
+        }
+        Map<String, Map<String, Object>> flowBySite = new HashMap<>();
+        if (!flowEntries.isEmpty()) {
+            for (Map<String, Object> flowRow : waterFlowMapper.selectLatestInWindowBatch(flowEntries, startTime, endTime)) {
+                if (flowRow.get("site") != null) {
+                    flowBySite.put(String.valueOf(flowRow.get("site")), flowRow);
+                }
+            }
+        }
+
+        // 4. 每个站点构建一个 GateMonitoringVO
+        List<GateMonitoringVO> result = new ArrayList<>();
+        for (Map.Entry<String, List<GateMonitor>> entry : siteGroup.entrySet()) {
+            String siteId = entry.getKey();
+            List<GateMonitor> holes = holesBySite.get(siteId);
+            if (holes == null) {
+                continue;
+            }
+
+            // 站点名称（取第一条记录的 siteName，各孔相同）
+            String siteName = holes.get(0).getSiteName();
+
+            // 监测时间：取各闸孔中最新者（预扫时已计算）
+            LocalDateTime latestTm = latestTmBySite.get(siteId);
 
             // 最新时刻开度/水位有效性：latestTm 时刻的开度、闸前/闸后水位全部无有效值时
             // 视为该时刻设备监测数据不可用（null/-999/-9991/0），流量一并置空展示，
@@ -221,12 +253,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                             || isEffective(h.getUpZ()) || isEffective(h.getDownZ()));
 
             // 流量同批次取值：报文按批次入库，流量 tm 应在开度/水位最新时刻 ±20 分钟窗口内；
-            // 窗口内取最新一条（受 startTime/endTime 范围约束），窗口外无记录视为该批次无流量数据
-            Map<String, Object> flowRow = latestTm == null ? null
-                    : waterFlowMapper.selectLatestInWindow(siteId,
-                            latestTm.minusMinutes(FLOW_ALIGN_MINUTES),
-                            latestTm.plusMinutes(FLOW_ALIGN_MINUTES),
-                            startTime, endTime);
+            // 窗口内取最新一条（受 startTime/endTime 范围约束）；批量查询已在步骤 3 完成，
+            // 无窗口内记录的站点 q/ytf/ttf 均为 null（效果同无记录）
+            Map<String, Object> flowRow = latestTm == null ? null : flowBySite.get(siteId);
             BigDecimal flowQ = flowRow == null ? null : toBigDecimal(flowRow.get("q"));
             BigDecimal flowYtf = flowRow == null ? null : toBigDecimal(flowRow.get("ytf"));
             BigDecimal flowTtf = flowRow == null ? null : toBigDecimal(flowRow.get("ttf"));

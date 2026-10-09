@@ -60,7 +60,8 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
      * 灌区雨量：每站点最新一条，含该时刻及1h/3h/6h前的DYP值（用于计算时段增量；
      * 1h/3h/6h 窗口按当前水文日 8:00 边界截断，不跨水文日，8 点后自动"清零"）
      * <p>性能：用 DISTINCT ON 替代 ROW_NUMBER 窗口（配合 (STCD, TM DESC) 索引，
-     * 每组直接取最新行，无需全量窗口排序）；基线子查询仅对每站最新一行执行。
+     * 每组直接取最新行，无需全量窗口排序）；基线子查询仅对每站最新一行执行；
+     * vol（电压）改 LATERAL 点查（每站走 (site, tm) 索引取最新一条），避免全表 DISTINCT ON 排序。
      * 支持按站点编号、监测日期范围筛选
      * <p>drp 基线（dyp_day）口径：
      * 未带时间筛选（实时列表）→ 服务器当前水文日 8 点起点（hydroBase），
@@ -105,11 +106,10 @@ public interface StPptnRMapper extends BaseMapper<StPptnR> {
             + ") t "
             + "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON s.iofhpi = t.STCD "
             + "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON c.id = s.ywvyds "
-            + "LEFT JOIN ( "
-            + "  SELECT DISTINCT ON (v.site) v.site, v.vol "
-            + "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v "
-            + "  ORDER BY v.site, v.tm DESC "
-            + ") fv ON fv.site = s.id "
+            + "LEFT JOIN LATERAL ( "
+            + "  SELECT v.vol FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v "
+            + "  WHERE v.site = s.id ORDER BY v.tm DESC LIMIT 1 "
+            + ") fv ON true "
             + "<if test=\"canalIds != null and canalIds.size() > 0\">"
             + "WHERE s.ywvyds IN "
             + "<foreach collection=\"canalIds\" item=\"cid\" open=\"(\" separator=\",\" close=\")\">#{cid}</foreach> "
