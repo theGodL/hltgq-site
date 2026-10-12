@@ -6,6 +6,9 @@ target/
 # 决策 Excel 快照存档目录（运行时生成）
 decision-excel/
 
+# 临时探测/验证脚本目录（不入库）
+.tmp-probe/
+
 ### STS ###
 .apt_generated
 .classpath

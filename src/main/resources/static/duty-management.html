@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>值班管理</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#fff;color:#333;font-size:14px;-webkit-font-smoothing:antialiased}
+.page-wrap{padding:20px 20px 48px}
+
+/* 右上角操作区(仅「新增」) */
+.page-head{display:flex;justify-content:flex-end;align-items:center;margin-bottom:16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border:1px solid transparent;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .2s}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-primary:active{background:#0958d9;border-color:#0958d9}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn-success{background:#52c41a;color:#fff;border-color:#52c41a}
+.btn-success:hover{background:#73d13d;border-color:#73d13d}
+.btn-danger{background:#ff4d4f;color:#fff;border-color:#ff4d4f}
+.btn-danger:hover{background:#ff7875;border-color:#ff7875}
+.btn:disabled{opacity:.6;cursor:not-allowed;pointer-events:none}
+.btn svg{display:block;flex-shrink:0}
+
+/* 表格 */
+.tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px}
+.tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:12px 16px;border:1px solid #f0f0f0;white-space:nowrap}
+.tbl td{padding:12px 16px;border:1px solid #f0f0f0;color:#333;line-height:22px;vertical-align:middle;overflow-wrap:break-word}
+.act{color:#1677ff;cursor:pointer;transition:color .2s}
+.act:hover{color:#4096ff}
+.tbl td .act + .act{margin-left:14px}
+.sep{color:#d9d9d9;margin:0 10px}
+.legend-tbl{margin-top:24px}
+
+/* 值班签到提醒弹窗 */
+.sign-overlay{display:none;position:fixed;inset:0;z-index:1000;background:transparent;align-items:flex-start;justify-content:center;padding:20px}
+.sign-overlay.show{display:flex}
+.sign-modal{width:420px;max-width:96vw;margin-top:15vh;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 6px 22px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.08)}
+.sign-hd{display:flex;align-items:center;gap:8px;padding:11px 16px;background:#fffbe6;font-size:15px;font-weight:600;color:#333}
+.sign-bd{padding:28px 24px 4px;text-align:center}
+.sign-bell{font-size:54px;line-height:1;margin-bottom:16px}
+.sign-title{font-size:16px;font-weight:600;color:#333;margin-bottom:12px}
+.sign-line{font-size:14px;color:#333;line-height:22px}
+.sign-tip{font-size:14px;color:#333;line-height:22px;margin-top:12px}
+.hl-red{color:#f5222d}
+.sign-ft{display:flex;justify-content:center;gap:12px;padding:22px 24px 26px}
+.sign-ft .btn{height:38px;padding:0 22px}
+
+/* 值班排班抽屉(新增/编辑/查看共用) */
+.drawer-mask{position:fixed;inset:0;z-index:1050;background:transparent;opacity:0;visibility:hidden;transition:opacity .3s,visibility .3s}
+.drawer-mask.show{opacity:1;visibility:visible}
+.drawer{position:fixed;top:0;right:0;z-index:1060;display:flex;flex-direction:column;width:660px;max-width:100vw;height:100vh;background:#fff;box-shadow:-6px 0 24px rgba(0,0,0,.1);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.drawer.show{transform:translateX(0)}
+.drawer-x{position:absolute;top:16px;right:16px;z-index:2;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:4px;background:none;color:#595959;cursor:pointer;transition:color .2s,background .2s}
+.drawer-x:hover{color:#262626;background:#f5f5f5}
+.drawer-bd{flex:1;min-height:0;overflow-y:auto;padding:80px 24px 32px}
+.drawer-ft{flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 24px;border-top:1px solid #f0f0f0}
+.drawer-ft .btn{height:36px;padding:0 18px}
+
+/* 表单 */
+.form-item{margin-bottom:20px}
+.form-item > label{display:block;margin-bottom:8px;font-size:14px;color:#333}
+.req{color:#ff4d4f;font-style:normal;margin-left:2px}
+.ipt{width:100%;height:36px;border:1px solid #d9d9d9;border-radius:6px;padding:0 12px;font-size:14px;font-family:inherit;color:#333;outline:none;background:#fff;transition:border-color .2s,box-shadow .2s}
+.ipt:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.ipt::placeholder{color:#bfbfbf}
+.date-wrap{position:relative}
+.date-wrap .ipt{padding-right:36px}
+.ipt-icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:inline-flex;pointer-events:none}
+.native-picker{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0;z-index:2}
+.range-wrap{position:relative;display:flex;align-items:center;height:36px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 36px 0 12px;transition:border-color .2s,box-shadow .2s}
+.range-wrap:focus-within{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.range-input{flex:1;min-width:0;height:100%;border:0;outline:none;background:transparent;font-size:14px;font-family:inherit;color:#333;padding:0;cursor:pointer}
+.range-input::placeholder{color:#bfbfbf}
+.range-sep{flex-shrink:0;color:#d9d9d9;margin:0 8px;font-size:13px}
+.native-picker.pk-left{width:calc(50% - 20px);right:auto}
+.native-picker.pk-right{width:calc(50% - 20px);left:auto}
+.select-wrap{position:relative}
+.sel-input{width:100%;height:36px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 32px 0 12px;font-size:14px;font-family:inherit;color:#333;outline:none;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+.sel-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.chev{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:inline-flex;pointer-events:none}
+.sel-dd{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:10;max-height:224px;overflow-y:auto;background:#fff;border:1px solid #f0f0f0;border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08);padding:4px}
+.sel-dd.open{display:block}
+.sel-dd.up{top:auto;bottom:calc(100% + 4px)}
+.dd-opt{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:4px;cursor:pointer;color:#333;font-size:14px}
+.dd-opt:hover{background:#f5f5f5}
+.dd-opt.active{background:#e6f4ff;color:#1677ff;font-weight:500}
+.dd-opt.multi-on{color:#1677ff;font-weight:500}
+.dd-check{flex-shrink:0}
+.multi-box{min-height:36px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid #d9d9d9;border-radius:6px;padding:5px 32px 5px 8px;background:#fff;cursor:pointer;transition:border-color .2s}
+.multi-box:hover{border-color:#4096ff}
+.m-placeholder{color:#bfbfbf;font-size:14px;padding-left:4px}
+.m-tag{display:inline-flex;align-items:center;gap:2px;height:24px;max-width:100%;padding:0 3px 0 8px;border-radius:4px;background:#f5f5f5;color:#333;font-size:13px;line-height:24px}
+.m-x{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;color:#999;font-size:14px;line-height:1;cursor:pointer;font-style:normal}
+.m-x:hover{color:#595959;background:#e6e6e6}
+.drawer.is-view .date-wrap,.drawer.is-view .range-wrap,.drawer.is-view .select-wrap{pointer-events:none}
+.drawer.is-view .ipt,.drawer.is-view .range-wrap,.drawer.is-view .sel-input,.drawer.is-view .multi-box{background:#fafafa}
+
+/* 删除确认框 */
+.confirm-overlay{display:none;position:fixed;inset:0;z-index:1300;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:20px}
+.confirm-overlay.show{display:flex}
+.confirm-modal{width:420px;max-width:96vw;margin-top:20vh;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 6px 22px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.08)}
+.confirm-bd{display:flex;align-items:flex-start;gap:12px;padding:24px 24px 8px}
+.confirm-icon{flex-shrink:0;display:inline-flex;margin-top:1px}
+.confirm-text{font-size:14px;color:#333;line-height:22px;word-break:break-all}
+.confirm-ft{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px 20px}
+
+/* 轻提示 */
+.toast{position:fixed;top:24px;left:50%;z-index:1500;padding:9px 18px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;box-shadow:0 6px 16px rgba(0,0,0,.12);font-size:14px;color:#333;opacity:0;pointer-events:none;transform:translate(-50%,-16px);transition:opacity .25s,transform .25s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <!-- 右上角操作区:仅保留「新增」 -->
+  <div class="page-head">
+    <button type="button" class="btn btn-primary" id="btn-add">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>新增
+    </button>
+  </div>
+
+  <!-- 值班排班列表 -->
+  <table class="tbl">
+    <colgroup>
+      <col style="width:12%"><col style="width:14%"><col style="width:18%">
+      <col style="width:14%"><col style="width:15%"><col style="width:13%"><col style="width:14%">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>值班日期</th><th>班次</th><th>所在单位</th><th>带班领导</th>
+        <th>值班人员</th><th>排班状态</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="duty-tbody"></tbody>
+  </table>
+
+  <!-- 排班状态说明 -->
+  <table class="tbl legend-tbl">
+    <colgroup>
+      <col style="width:35%"><col style="width:32%"><col style="width:33%">
+    </colgroup>
+    <thead>
+      <tr><th>排班状态</th><th>状态说明</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      <tr data-status="未开始">
+        <td style="color:#fa8c16">未开始</td>
+        <td>尚未到允许开始值班的时间</td>
+        <td>
+          <span class="act" data-action="view">查看</span><span class="sep">|</span>
+          <span class="act" data-action="edit">编辑</span><span class="sep">|</span>
+          <span class="act" data-action="delete">删除</span>
+        </td>
+      </tr>
+      <tr data-status="待值班">
+        <td style="color:#8c8c8c">待值班</td>
+        <td>已到值班时间,值班人员尚未签到</td>
+        <td><span class="act" data-action="view">查看</span></td>
+      </tr>
+      <tr data-status="值班中">
+        <td style="color:#52c41a">值班中</td>
+        <td>值班人员已经开始值班</td>
+        <td><span class="act" data-action="view">查看</span></td>
+      </tr>
+      <tr data-status="已完成">
+        <td style="color:#52c41a">已完成</td>
+        <td>值班人员已经完成交班</td>
+        <td><span class="act" data-action="view">查看</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 值班签到提醒弹窗 -->
+<div class="sign-overlay" id="sign-overlay">
+  <div class="sign-modal" role="dialog" aria-label="值班签到提醒">
+    <div class="sign-hd">
+      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 2.2a6 6 0 0 0-6 6v3.01c0 .62-.19 1.22-.55 1.73l-1.24 1.75c-.66.93-.03 2.21 1.1 2.21h13.38c1.13 0 1.76-1.28 1.1-2.21l-1.24-1.75a3.02 3.02 0 0 1-.55-1.73V8.2a6 6 0 0 0-6-6Z" fill="#f5222d"/>
+        <path d="M9.6 20.1a2.4 2.4 0 0 0 4.8 0" stroke="#f5222d" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+      </svg>
+      <span>值班签到提醒</span>
+    </div>
+    <div class="sign-bd">
+      <div class="sign-bell">🔔</div>
+      <p class="sign-title"><span class="hl-red" id="sign-name">张伟</span> 同志,您今日为值班人员!</p>
+      <p class="sign-line" id="sign-shift">班次:白班(8:00 - 20:00)</p>
+      <p class="sign-line" id="sign-leader">带班领导:刘建国</p>
+      <p class="sign-tip">您尚未进入值班状态,请立即进行<span class="hl-red">值班签到</span>。</p>
+    </div>
+    <div class="sign-ft">
+      <button type="button" class="btn btn-default" id="btn-later">稍后签到</button>
+      <button type="button" class="btn btn-success" id="btn-sign">立即前往签到</button>
+    </div>
+  </div>
+</div>
+
+<!-- 值班排班抽屉(新增/编辑/查看共用) -->
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-label="值班排班表单">
+  <button type="button" class="drawer-x" id="drawer-close" aria-label="关闭">
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+      <path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </svg>
+  </button>
+  <div class="drawer-bd">
+    <div class="form-item">
+      <label>值班日期 <i class="req">*</i></label>
+      <div class="date-wrap">
+        <input type="text" class="ipt" id="f-date" placeholder="选择日期" readonly>
+        <span class="ipt-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="3" y="4.5" width="18" height="16" rx="2" stroke="#bfbfbf" stroke-width="1.7"/>
+            <path d="M3 9.5h18" stroke="#bfbfbf" stroke-width="1.7"/>
+            <path d="M8 2.5v4M16 2.5v4" stroke="#bfbfbf" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <input type="date" class="native-picker" id="f-date-picker" data-for="f-date" tabindex="-1" aria-hidden="true">
+      </div>
+    </div>
+    <div class="form-item">
+      <label>班次 <i class="req">*</i></label>
+      <div class="select-wrap">
+        <input type="text" class="sel-input" id="f-shift" placeholder="白班/中班/夜班" readonly>
+        <span class="chev">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="sel-dd" id="shift-dd"></div>
+      </div>
+    </div>
+    <div class="form-item">
+      <label>值班时间 //时间区间// <i class="req">*</i></label>
+      <div class="range-wrap">
+        <input type="text" class="range-input" id="f-time-start" placeholder="开始时间" readonly>
+        <span class="range-sep">—</span>
+        <input type="text" class="range-input" id="f-time-end" placeholder="结束时间" readonly>
+        <span class="ipt-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="3" y="4.5" width="18" height="16" rx="2" stroke="#bfbfbf" stroke-width="1.7"/>
+            <path d="M3 9.5h18" stroke="#bfbfbf" stroke-width="1.7"/>
+            <path d="M8 2.5v4M16 2.5v4" stroke="#bfbfbf" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <input type="time" class="native-picker pk-left" id="f-time-start-picker" data-for="f-time-start" tabindex="-1" aria-hidden="true">
+        <input type="time" class="native-picker pk-right" id="f-time-end-picker" data-for="f-time-end" tabindex="-1" aria-hidden="true">
+      </div>
+    </div>
+    <div class="form-item">
+      <label>所在单位 <i class="req">*</i></label>
+      <div class="select-wrap">
+        <input type="text" class="sel-input" id="f-unit" placeholder="请选择" readonly>
+        <span class="chev">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="sel-dd" id="unit-dd"></div>
+      </div>
+    </div>
+    <div class="form-item">
+      <label>带班领导 <i class="req">*</i></label>
+      <div class="select-wrap">
+        <input type="text" class="sel-input" id="f-leader" placeholder="请选择" readonly>
+        <span class="chev">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="sel-dd" id="leader-dd"></div>
+      </div>
+    </div>
+    <div class="form-item" style="margin-bottom:0">
+      <label>值班人员</label>
+      <div class="select-wrap">
+        <div class="multi-box" id="f-members"></div>
+        <span class="chev">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="sel-dd up" id="member-dd"></div>
+      </div>
+    </div>
+  </div>
+  <div class="drawer-ft">
+    <button type="button" class="btn btn-default" id="btn-drawer-cancel">取消</button>
+    <button type="button" class="btn btn-primary" id="btn-drawer-confirm">确认交班</button>
+  </div>
+</aside>
+
+<!-- 删除确认框 -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-modal" role="dialog" aria-label="删除确认">
+    <div class="confirm-bd">
+      <span class="confirm-icon">
+        <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <circle cx="11" cy="11" r="10" fill="#ff4d4f"/>
+          <path d="M11 6v6.2" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/>
+          <circle cx="11" cy="15.6" r="1.15" fill="#fff"/>
+        </svg>
+      </span>
+      <div class="confirm-text" id="confirm-text">确定删除该条值班排班吗?</div>
+    </div>
+    <div class="confirm-ft">
+      <button type="button" class="btn btn-default" id="btn-del-cancel">取消</button>
+      <button type="button" class="btn btn-danger" id="btn-del-ok">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 轻提示 -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ===================== Mock 数据区 =====================
+   * 后端接口就绪后:删除 MOCK_* 常量与各 mock 函数体,替换为真实请求:
+   *   今日值班判定   → GET    /hltgq-site/duty/today-status
+   *   排班列表       → GET    /hltgq-site/duty/list?page=1&size=20
+   *   保存(新增/编辑) → POST   /hltgq-site/duty/save
+   *   删除           → DELETE /hltgq-site/duty/{id}
+   * ====================================================== */
+
+  var MOCK_DUTY_LIST = [
+    { id: 1, date: '2026-09-08', shift: '晚班(20:00-次日 08:00)', org: '防汛调度中心', leader: '赵海涛', members: '陈刚、刘洋', status: '已完成' },
+    { id: 2, date: '2026-09-09', shift: '白班(08:00-20:00)',      org: '河道管理处',   leader: '李卫东', members: '周强、孙丽', status: '已完成' },
+    { id: 3, date: '2026-09-09', shift: '晚班(20:00-次日 08:00)', org: '河道管理处',   leader: '王建国', members: '李华、陈刚', status: '未开始' },
+    { id: 4, date: '2026-09-10', shift: '白班(08:00-20:00)',      org: '防汛调度中心', leader: '赵海涛', members: '张明、刘洋', status: '值班中' },
+    { id: 5, date: '2026-09-10', shift: '晚班(20:00-次日 08:00)', org: '防汛调度中心', leader: '李卫东', members: '周强、孙丽', status: '待值班' }
+  ];
+
+  // 表单下拉候选(mock)
+  var MOCK_SHIFTS = ['白班', '中班', '夜班'];
+  var MOCK_UNITS = ['防汛调度中心', '河道管理处', '办公室', '工程管理科'];
+  var MOCK_LEADERS = ['赵海涛', '李卫东', '王建国', '刘建国', '张伟'];
+  var MOCK_MEMBERS = ['张安', '李璐', '陈刚', '刘洋', '周强', '孙丽', '李华', '张明'];
+  var MOCK_ADD_DEFAULT_MEMBERS = ['张安', '李璐']; // 新增打开时默认值班人员,对齐设计图
+
+  /** 模拟「今日是否我值班」接口 */
+  function fetchTodayDutyStatus() {
+    return new Promise(function (resolve) {
+      setTimeout(function () {
+        resolve({ onDuty: true, name: '张伟', shift: '白班', shiftTime: '8:00 - 20:00', leader: '刘建国' });
+      }, 300);
+    });
+  }
+
+  /** 模拟「排班列表」接口 */
+  function fetchDutyList() {
+    return new Promise(function (resolve) {
+      setTimeout(function () { resolve(MOCK_DUTY_LIST.slice()); }, 200);
+    });
+  }
+
+  var nextDutyId = 100;
+
+  /** 模拟「保存」接口:payload.id 有值 → 编辑,否则新增 */
+  function saveDuty(payload) {
+    return new Promise(function (resolve) {
+      setTimeout(function () {
+        if (payload.id != null) {
+          for (var i = 0; i < MOCK_DUTY_LIST.length; i++) {
+            if (MOCK_DUTY_LIST[i].id === payload.id) {
+              MOCK_DUTY_LIST[i].date = payload.date;
+              MOCK_DUTY_LIST[i].shift = payload.shift;
+              MOCK_DUTY_LIST[i].org = payload.org;
+              MOCK_DUTY_LIST[i].leader = payload.leader;
+              MOCK_DUTY_LIST[i].members = payload.members;
+              break;
+            }
+          }
+        } else {
+          MOCK_DUTY_LIST.unshift({
+            id: ++nextDutyId, date: payload.date, shift: payload.shift, org: payload.org,
+            leader: payload.leader, members: payload.members, status: '未开始'
+          });
+        }
+        resolve({ ok: true });
+      }, 200);
+    });
+  }
+
+  /** 模拟「删除」接口 */
+  function deleteDuty(id) {
+    return new Promise(function (resolve) {
+      setTimeout(function () {
+        for (var i = 0; i < MOCK_DUTY_LIST.length; i++) {
+          if (MOCK_DUTY_LIST[i].id === id) { MOCK_DUTY_LIST.splice(i, 1); break; }
+        }
+        resolve({ ok: true });
+      }, 200);
+    });
+  }
+  /* ===================== Mock 数据区结束 ===================== */
+
+  // 排班状态 → 文字颜色
+  var STATUS_COLORS = { '未开始': '#fa8c16', '待值班': '#8c8c8c', '值班中': '#52c41a', '已完成': '#52c41a' };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var signOverlay = $('sign-overlay');
+  var drawer = $('drawer');
+  var drawerMask = $('drawer-mask');
+  var confirmOverlay = $('confirm-overlay');
+  var toastEl = $('toast');
+
+  var drawerState = { mode: 'add', id: null }; // mode: add / edit / view
+  var memberSel = [];        // 值班人员多选当前值
+  var openDd = null;         // 当前展开的下拉面板
+  var pendingDeleteId = null;
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
+  }
+
+  function findRow(id) {
+    for (var i = 0; i < MOCK_DUTY_LIST.length; i++) {
+      if (MOCK_DUTY_LIST[i].id === id) return MOCK_DUTY_LIST[i];
+    }
+    return null;
+  }
+
+  function findFirstByStatus(status) {
+    for (var i = 0; i < MOCK_DUTY_LIST.length; i++) {
+      if (MOCK_DUTY_LIST[i].status === status) return MOCK_DUTY_LIST[i];
+    }
+    return null;
+  }
+
+  /* ===== 列表渲染 ===== */
+
+  /** 操作列:未开始 → 查看/编辑/删除;其余状态仅查看 */
+  function actionCell(row) {
+    var html = '<span class="act" data-action="view" data-id="' + row.id + '">查看</span>';
+    if (row.status === '未开始') {
+      html += '<span class="act" data-action="edit" data-id="' + row.id + '">编辑</span>'
+            + '<span class="act" data-action="delete" data-id="' + row.id + '">删除</span>';
+    }
+    return '<td>' + html + '</td>';
+  }
+
+  function renderList(rows) {
+    $('duty-tbody').innerHTML = rows.map(function (row) {
+      return '<tr>'
+        + '<td>' + esc(row.date) + '</td>'
+        + '<td>' + esc(row.shift) + '</td>'
+        + '<td>' + esc(row.org) + '</td>'
+        + '<td>' + esc(row.leader) + '</td>'
+        + '<td>' + esc(row.members) + '</td>'
+        + '<td style="color:' + (STATUS_COLORS[row.status] || '#333') + '">' + esc(row.status) + '</td>'
+        + actionCell(row)
+        + '</tr>';
+    }).join('');
+  }
+
+  /* ===== 签到提醒弹窗 ===== */
+  function showSignModal(duty) {
+    $('sign-name').textContent = duty.name;
+    $('sign-shift').textContent = '班次:' + duty.shift + '(' + duty.shiftTime + ')';
+    $('sign-leader').textContent = '带班领导:' + duty.leader;
+    signOverlay.classList.add('show');
+  }
+
+  $('btn-later').addEventListener('click', function () { signOverlay.classList.remove('show'); });
+
+  // 「立即前往签到」:进入值班交接班页面(进入后弹出开始值班弹窗)
+  $('btn-sign').addEventListener('click', function () {
+    location.href = './duty-handover.html';
+  });
+
+  /* ===== 下拉通用 ===== */
+  function closeDd() {
+    if (openDd) { openDd.classList.remove('open'); openDd = null; }
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.select-wrap')) closeDd();
+  });
+
+  function openDdPanel(dd) {
+    if (openDd === dd) { closeDd(); return; }
+    if (openDd) openDd.classList.remove('open');
+    dd.classList.add('open');
+    openDd = dd;
+  }
+
+  /** 单选下拉绑定:options 支持数组或函数(函数形式在展开时求值) */
+  function bindSingleSelect(inputId, ddId, options) {
+    var input = $(inputId);
+    var dd = $(ddId);
+    input.addEventListener('click', function () {
+      if (drawerState.mode === 'view') return;
+      if (openDd === dd) { closeDd(); return; }
+      var opts = typeof options === 'function' ? options() : options;
+      dd.innerHTML = opts.map(function (o) {
+        return '<div class="dd-opt"' + (input.value === o ? ' active' : '') + '>' + esc(o) + '</div>';
+      }).join('');
+      openDdPanel(dd);
+    });
+    dd.addEventListener('click', function (e) {
+      var opt = e.target.closest('.dd-opt');
+      if (!opt) return;
+      input.value = opt.textContent;
+      closeDd();
+    });
+  }
+
+  bindSingleSelect('f-unit', 'unit-dd', MOCK_UNITS);
+  bindSingleSelect('f-leader', 'leader-dd', MOCK_LEADERS);
+  // 班次:固定选项 白班/中班/夜班;编辑其他班次名(如历史数据「晚班」)时并入选项,避免回显失配
+  bindSingleSelect('f-shift', 'shift-dd', function () {
+    var opts = MOCK_SHIFTS.slice();
+    var cur = $('f-shift').value.trim();
+    if (cur && opts.indexOf(cur) < 0) opts.unshift(cur);
+    return opts;
+  });
+
+  /* ===== 多选(值班人员) ===== */
+  var memberBox = $('f-members');
+  var memberDd = $('member-dd');
+
+  function renderMemberBox() {
+    var canEdit = drawerState.mode !== 'view';
+    memberBox.innerHTML = memberSel.map(function (m) {
+      return '<span class="m-tag">' + esc(m)
+        + (canEdit ? '<i class="m-x" data-m="' + esc(m) + '" title="移除">&times;</i>' : '')
+        + '</span>';
+    }).join('') || '<span class="m-placeholder">请选择</span>';
+  }
+
+  function renderMemberDd() {
+    memberDd.innerHTML = MOCK_MEMBERS.map(function (m) {
+      var on = memberSel.indexOf(m) >= 0;
+      return '<div class="dd-opt' + (on ? ' multi-on' : '') + '" data-m="' + esc(m) + '">'
+        + esc(m)
+        + (on ? '<svg class="dd-check" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2L4.8 9 10 3.4" stroke="#1677ff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '')
+        + '</div>';
+    }).join('');
+  }
+
+  function toggleMember(m) {
+    var i = memberSel.indexOf(m);
+    if (i >= 0) memberSel.splice(i, 1); else memberSel.push(m);
+    renderMemberBox();
+    if (openDd === memberDd) renderMemberDd();
+  }
+
+  memberBox.parentNode.addEventListener('click', function (e) {
+    if (drawerState.mode === 'view') return;
+    var x = e.target.closest('.m-x');
+    if (x) { e.stopPropagation(); toggleMember(x.dataset.m); return; }
+    if (openDd === memberDd) { closeDd(); return; }
+    renderMemberDd();
+    openDdPanel(memberDd);
+  });
+
+  memberDd.addEventListener('click', function (e) {
+    var opt = e.target.closest('.dd-opt');
+    if (!opt) return;
+    toggleMember(opt.dataset.m);
+  });
+
+  /* ===== 日期/时间选择(透明原生 picker 覆盖层) ===== */
+  Array.prototype.forEach.call(document.querySelectorAll('.native-picker'), function (picker) {
+    var text = $(picker.dataset.for);
+    picker.addEventListener('click', function () {
+      if (drawerState.mode === 'view') return;
+      try { picker.showPicker(); } catch (e) { picker.focus(); }
+    });
+    picker.addEventListener('change', function () { text.value = picker.value || ''; });
+  });
+
+  function resetPickers() {
+    Array.prototype.forEach.call(document.querySelectorAll('.native-picker'), function (p) {
+      p.value = '';
+      var t = $(p.dataset.for);
+      if (t) t.value = '';
+    });
+  }
+
+  /* ===== 抽屉 ===== */
+
+  /** '晚班(20:00-次日 08:00)' → { name:'晚班', start:'20:00', end:'08:00' } */
+  function parseShift(shift) {
+    var m = /^(.*?)\((\d{1,2}:\d{2})-(?:次日 )?(\d{1,2}:\d{2})\)$/.exec(shift || '');
+    if (m) return { name: m[1], start: m[2], end: m[3] };
+    return { name: shift || '', start: '', end: '' };
+  }
+
+  /** '陈刚、刘洋' → ['陈刚','刘洋'] */
+  function splitMembers(s) {
+    if (!s) return [];
+    return String(s).split('、').filter(function (x) { return x; });
+  }
+
+  function openDrawer(mode, row) {
+    drawerState.mode = mode;
+    drawerState.id = row ? row.id : null;
+    resetPickers();
+    closeDd();
+
+    if (row) {
+      var p = parseShift(row.shift);
+      $('f-date').value = row.date || '';
+      $('f-shift').value = p.name;
+      $('f-time-start').value = p.start;
+      $('f-time-end').value = p.end;
+      $('f-unit').value = row.org || '';
+      $('f-leader').value = row.leader || '';
+      memberSel = splitMembers(row.members);
+    } else {
+      $('f-date').value = '';
+      $('f-shift').value = '';
+      $('f-time-start').value = '';
+      $('f-time-end').value = '';
+      $('f-unit').value = '';
+      $('f-leader').value = '';
+      memberSel = MOCK_ADD_DEFAULT_MEMBERS.slice();
+    }
+
+    drawer.classList.toggle('is-view', mode === 'view');
+    renderMemberBox();
+
+    if (mode === 'view') {
+      $('btn-drawer-cancel').style.display = 'none';
+      $('btn-drawer-confirm').textContent = '关闭';
+    } else {
+      $('btn-drawer-cancel').style.display = '';
+      $('btn-drawer-confirm').textContent = '确认交班';
+    }
+
+    drawerMask.classList.add('show');
+    drawer.classList.add('show');
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove('show');
+    drawerMask.classList.remove('show');
+    closeDd();
+  }
+
+  $('drawer-close').addEventListener('click', closeDrawer);
+  $('btn-drawer-cancel').addEventListener('click', closeDrawer);
+
+  /* ===== 表单收集与校验 ===== */
+  function validateForm() {
+    var checks = [
+      ['值班日期', $('f-date').value],
+      ['班次', $('f-shift').value.trim()],
+      ['值班时间(开始时间)', $('f-time-start').value],
+      ['值班时间(结束时间)', $('f-time-end').value],
+      ['所在单位', $('f-unit').value],
+      ['带班领导', $('f-leader').value]
+    ];
+    for (var i = 0; i < checks.length; i++) {
+      if (!checks[i][1]) return checks[i][0];
+    }
+    return '';
+  }
+
+  /** 表单 → 行数据(班次与时间区间拼为 '晚班(20:00-次日 08:00)' 形式,跨日自动加「次日」) */
+  function collectForm() {
+    var name = $('f-shift').value.trim();
+    var start = $('f-time-start').value;
+    var end = $('f-time-end').value;
+    var shift = name + '(' + start + '-' + (end < start ? '次日 ' : '') + end + ')';
+    return {
+      date: $('f-date').value,
+      shift: shift,
+      org: $('f-unit').value,
+      leader: $('f-leader').value,
+      members: memberSel.length ? memberSel.join('、') : '—'
+    };
+  }
+
+  /* ===== 保存(新增/编辑) ===== */
+  $('btn-drawer-confirm').addEventListener('click', function () {
+    if (drawerState.mode === 'view') { closeDrawer(); return; }
+    var missing = validateForm();
+    if (missing) { toast('请填写「' + missing + '」'); return; }
+
+    var isEdit = drawerState.mode === 'edit';
+    var payload = collectForm();
+    payload.id = isEdit ? drawerState.id : null;
+
+    var btn = this;
+    btn.disabled = true;
+    saveDuty(payload).then(function () {
+      btn.disabled = false;
+      closeDrawer();
+      renderList(MOCK_DUTY_LIST);
+      toast(isEdit ? '保存成功' : '新增成功');
+    });
+  });
+
+  /* ===== 删除 ===== */
+  function askDelete(row) {
+    pendingDeleteId = row.id;
+    $('confirm-text').textContent = '确定删除「' + row.date + ' ' + row.shift + '」这条值班排班吗?删除后不可恢复。';
+    confirmOverlay.classList.add('show');
+  }
+
+  $('btn-del-cancel').addEventListener('click', function () {
+    confirmOverlay.classList.remove('show');
+    pendingDeleteId = null;
+  });
+
+  $('btn-del-ok').addEventListener('click', function () {
+    var btn = this;
+    btn.disabled = true;
+    deleteDuty(pendingDeleteId).then(function () {
+      btn.disabled = false;
+      confirmOverlay.classList.remove('show');
+      pendingDeleteId = null;
+      renderList(MOCK_DUTY_LIST);
+      toast('删除成功');
+    });
+  });
+
+  /* ===== 表格操作入口 ===== */
+  $('btn-add').addEventListener('click', function () { openDrawer('add', null); });
+
+  /** 统一执行记录操作:查看 / 编辑 / 删除 */
+  function handleAction(action, row) {
+    if (!row) return;
+    if (action === 'view') openDrawer('view', row);
+    else if (action === 'edit') openDrawer('edit', row);
+    else if (action === 'delete') askDelete(row);
+  }
+
+  $('duty-tbody').addEventListener('click', function (e) {
+    var el = e.target.closest('.act');
+    if (!el) return;
+    handleAction(el.dataset.action, findRow(Number(el.dataset.id)));
+  });
+
+  // 状态说明表操作:作用于该状态下的第一条排班记录(无记录时轻提示)
+  document.querySelector('.legend-tbl').addEventListener('click', function (e) {
+    var el = e.target.closest('.act');
+    if (!el) return;
+    var status = el.closest('tr').getAttribute('data-status');
+    var row = findFirstByStatus(status);
+    if (!row) { toast('暂无「' + status + '」状态的排班记录'); return; }
+    handleAction(el.dataset.action, row);
+  });
+
+  /* ===== 初始化:渲染列表 → 判断今日是否值班 → 弹出签到提醒 ===== */
+  fetchDutyList().then(renderList);
+  fetchTodayDutyStatus().then(function (duty) {
+    if (duty && duty.onDuty) showSignModal(duty);
+  });
+})();
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@ package com.qgyun.hltgq.hltgqsite.controller;
 import com.qgyun.hltgq.hltgqsite.archive.client.ArchiveCallException;
 import com.qgyun.hltgq.hltgqsite.auth.SessionUnavailableException;
 import com.qgyun.hltgq.hltgqsite.auth.UnauthorizedException;
+import com.qgyun.hltgq.hltgqsite.duty.DutyConflictException;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelCallException;
 import com.qgyun.hltgq.hltgqsite.stats.client.DeviceStatsCallException;
 import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsCallException;
@@ -25,6 +26,7 @@ import java.util.Map;
  * DeviceStatsCallException → 502（上游 hltgq-device 视频统计服务返回错误或不可达）；
  * UnauthorizedException → 401（未登录/会话过期）；
  * SessionUnavailableException → 503（会话服务不可用）；
+ * DutyConflictException → 409（值班交接班状态机冲突）；
  * DataIntegrityViolationException → 409（唯一约束冲突，如阈值表 uniq_hltgq_threshold_site_type_zb）。
  * <p>上游依赖异常（6 类，401/400/409 除外）同时埋点记录软件故障
  * （t_auto_hltgq_sys_fault_record，页面 system-monitor.html），"监控信息反馈给报警子系统"的数据来源之一。
@@ -115,6 +117,14 @@ public class GlobalExceptionHandler {
         Map<String, Object> result = new HashMap<>();
         result.put("code", 503);
         result.put("message", e.getMessage() == null ? "会话服务不可用" : e.getMessage());
+        return result;
+    }
+
+    @ExceptionHandler(DutyConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, Object> handleDutyConflict(DutyConflictException e) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("message", e.getMessage() == null ? "当前状态不允许该操作" : e.getMessage());
         return result;
     }
 

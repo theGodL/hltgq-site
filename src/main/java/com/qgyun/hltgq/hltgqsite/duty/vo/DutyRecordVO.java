@@ -17,10 +17,10 @@ public class DutyRecordVO {
     /** 值班日期（yaaebo 规范化为 YYYY-MM-DD） */
     private String dutyDate;
 
-    /** 班次时间（lzcjgq，文本原样，如「08:00-16:00」） */
+    /** 班次时间（新列格式化 HH:mm-HH:mm、跨天加「次日」前缀；旧列 lzcjgq 文本兜底） */
     private String shift;
 
-    /** 所在单位（sdcgli） */
+    /** 所在单位（联单位表取名称；旧列 sdcgli 文本兜底） */
     private String unit;
 
     /** 带班领导 id（atfzxl = 用户 id，权威值） */
