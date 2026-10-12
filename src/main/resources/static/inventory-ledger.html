@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物资台账</title>
+<script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
+<style>
+/* ===== 平台变量：对齐平台「告警管理」；色值/圆角/层级集中在此，规则里禁止硬编码 ===== */
+:root{
+  --el-color-primary:#1677FF;            /* 主题主色 */
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-hover:#f78989;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-warning:#fa8c16;            /* 偏低（橙） */
+  --el-color-warning-light:rgba(250,140,22,.1);
+  --el-color-success:#52c41a;            /* 正常（绿） */
+  --el-color-success-light:rgba(82,196,26,.1);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;          /* 正文 / 表格 / 控件文字 */
+  --el-text-color-regular:#595959;       /* 次按钮文字 */
+  --el-text-color-secondary:#909399;     /* 单位与辅助说明 */
+  --el-text-color-tertiary:#8c8c8c;      /* 分页翻页箭头 */
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-text-color-icon:#606266;          /* 弹窗标题栏图标 */
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-fill-color-disabled:#f5f5f5;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;                       /* 小圆角：弹窗内控件 / 分页 / 标签 */
+  --el-radius-control:8px;               /* 卡片内控件与按钮圆角 */
+  --el-control-height:40px;              /* 筛选区控件高度 */
+  --el-control-height-sm:36px;           /* 卡片内按钮高度 */
+  --el-table-header-bg:#f5f7fa;          /* 表头底色 */
+  --el-table-stripe-bg:#fafafa;          /* 斑马纹（偶数行） */
+  --el-table-row-height:52px;            /* 数据行高 */
+  --el-table-border:#f0f0f0;             /* 表格线（单元格仅下边框） */
+  --el-tag-bg:#f0f0f0;
+  --el-tag-color:#666;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+
+/* ===== 页面骨架：左侧仓库树（200px） + 右侧（筛选卡 + 表格卡） ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;gap:16px;width:100%;max-width:100%;overflow:hidden}
+.side-card{width:200px;flex-shrink:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.side-hd{padding:16px;font-size:14px;font-weight:500;color:var(--el-text-color-title);border-bottom:1px solid var(--el-border-color-lighter);flex-shrink:0}
+.tree{flex:1;min-height:0;overflow-y:auto;padding:8px}
+.tree-node{display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:var(--el-radius);font-size:14px;color:var(--el-text-color-primary);cursor:pointer;transition:background .2s;margin-bottom:2px}
+.tree-node:hover{background:var(--el-fill-color-light)}
+.tree-node.active{background:var(--el-color-primary-light);color:var(--el-color-primary);font-weight:500}
+.tree-node .node-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree-node .node-tag{flex-shrink:0;height:18px;padding:0 6px;border-radius:3px;background:var(--el-tag-bg);color:var(--el-tag-color);font-size:11px;line-height:18px}
+.tree-empty{padding:16px 12px;font-size:13px;color:var(--el-text-color-secondary);text-align:center}
+.main-col{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;gap:16px;overflow:hidden}
+
+/* 筛选白卡：标签 + 控件横排，行尾 查询 / 重置 */
+.filter-card{flex-shrink:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.filter-item{display:flex;align-items:center;gap:8px}
+.flt-label{font-size:14px;color:var(--el-text-color-title);text-align:right;white-space:nowrap}
+.filter-item .field{width:240px}
+.filter-item .sel{width:170px}
+.filter-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+/* 表格卡：右上角 [导出]（次按钮），与表格间距 16px */
+.panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.panel-hd{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:16px 24px 0;flex-shrink:0}
+.panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
+.panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
+
+/* ===== 控件 ===== */
+.field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%;font-family:inherit}
+.field::placeholder{color:var(--el-text-color-placeholder)}
+.field:hover{border-color:var(--el-border-color-hover)}
+.field:focus{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height);padding:0 20px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative;font-family:inherit}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn[hidden]{display:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+.btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== 表格 ===== */
+.tbl-wrap{flex:1;min-height:0;overflow:auto;max-width:100%}
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
+thead tr{background:var(--el-table-header-bg)}
+th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
+td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(--el-table-border);font-size:14px;color:var(--el-text-color-primary);text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th:first-child,td:first-child{padding-left:16px}
+tbody tr:nth-child(even) td{background:var(--el-table-stripe-bg)}
+tbody tr:hover td{background:var(--el-fill-color-light)}
+td.col-act{white-space:nowrap;overflow:visible}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+td.num.low{color:var(--el-color-warning);font-weight:600}
+/* 标签：彩色圆点 + 文字（状态：正常=绿 / 偏低=橙；类型：入库=蓝 / 出库=橙黄） */
+td .tag{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-tag-bg);color:var(--el-tag-color);font-size:12px;line-height:1;border:none;vertical-align:middle}
+td .tag::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+td .tag.ok{color:var(--el-color-success);background:var(--el-color-success-light)}
+td .tag.warn{color:var(--el-color-warning);background:var(--el-color-warning-light)}
+td .tag.in{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+td .tag.out{color:var(--el-color-warning);background:var(--el-color-warning-light)}
+td .tag.profit{color:var(--el-color-success);background:var(--el-color-success-light)}
+td .tag.loss{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+/* 操作列文字按钮（白底浅蓝字 + 线性图标） */
+.lnk-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:none;border-radius:var(--el-radius);background:transparent;color:var(--el-color-primary);font-size:14px;cursor:pointer;transition:background .2s;font-family:inherit;vertical-align:middle}
+.lnk-btn:hover{background:var(--el-color-primary-light)}
+/* 空态：插图 + 文案居中 */
+td.empty{padding:0;color:var(--el-text-color-secondary)}
+td.empty:hover{background:transparent}
+.empty-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:64px 0;font-size:14px;line-height:22px;color:var(--el-text-color-secondary)}
+
+/* ===== 分页（居右） ===== */
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:16px 0 0;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.pg-info{color:var(--el-text-color-primary);font-size:13px;margin-right:4px}
+.pg-size{height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);padding:0 8px;outline:none}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-btn{min-width:32px;height:32px;padding:0 6px;border:1px solid var(--el-border-color);background:var(--el-bg-color);border-radius:var(--el-radius);cursor:pointer;font-size:13px;color:var(--el-text-color-primary);transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-ellipsis{min-width:20px;height:32px;display:inline-flex;align-items:center;justify-content:center;color:var(--el-text-color-secondary);font-size:13px;user-select:none;letter-spacing:1px}
+.pg-btn:hover:not([disabled]):not(.active){border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn.active{background:var(--el-bg-color);border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn[disabled]{color:var(--el-text-color-disabled);cursor:not-allowed}
+.pg-btn[data-pg="prev"],.pg-btn[data-pg="next"]{border-color:transparent;background:transparent;font-size:16px;color:var(--el-text-color-tertiary)}
+.pg-btn[data-pg="prev"]:hover:not([disabled]),.pg-btn[data-pg="next"]:hover:not([disabled]){border-color:transparent;background:transparent;color:var(--el-color-primary)}
+.pg-jump{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--el-text-color-primary)}
+.pg-jump input{width:52px;height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);text-align:center;font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);outline:none;padding:0 8px}
+.pg-jump input:focus{border-color:var(--el-color-primary)}
+
+/* ===== 弹窗（P5 出入库记录） ===== */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2100;display:none;align-items:center;justify-content:center;padding:20px}
+.mask.show{display:flex}
+.dlg{width:min(1000px,94vw);max-height:min(680px,88vh);background:var(--el-bg-color);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,.12)}
+.dlg-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.dlg-hd h3{font-size:16px;font-weight:500;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.icon-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-text-color-icon);cursor:pointer;transition:all .2s}
+.icon-btn:hover{color:var(--el-text-color-primary);background:var(--el-fill-color-light)}
+.icon-btn[hidden]{display:none}
+.dlg-bd{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;padding:16px 24px;overflow:hidden}
+.dlg-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
+.dlg-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
+.chg-sub{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0;font-size:14px;color:var(--el-text-color-title)}
+.chg-sub .btn{height:32px;padding:0 12px;border-radius:var(--el-radius);font-size:13px}
+.tbl-wrap2{flex:1;min-height:0;overflow:auto;border:1px solid var(--el-table-border);border-radius:var(--el-radius)}
+.tbl-wrap2 table{border:none}
+.tbl-wrap2 th{height:44px;font-size:13px}
+.tbl-wrap2 td{height:48px;font-size:13px}
+.tbl-wrap2 .empty-box{padding:48px 0}
+.tbl-wrap2 .num{text-align:right;font-variant-numeric:tabular-nums}
+.dlg-bd .pg-bar{padding-top:0}
+
+/* ===== 下拉组件 ===== */
+.sel{position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 12px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box:hover{border-color:var(--el-border-color-hover)}
+.sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sel-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-text.placeholder{color:var(--el-text-color-placeholder)}
+.sel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.sel.open .sel-arrow{transform:rotate(180deg)}
+.sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.sel.open .sel-panel{display:block}
+.sel-list{max-height:274px;overflow-y:auto;padding:4px 0}
+.sel-opt{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt:hover{background:var(--el-fill-color-light)}
+.sel-opt.active{color:var(--el-color-primary)}
+.sel-opt .opt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{margin-left:auto;flex-shrink:0;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt .tick{flex-shrink:0;color:var(--el-color-primary)}
+.sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+
+/* 提示条 */
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
+.toast.show{opacity:1}
+.toast.err{color:var(--el-color-danger)}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <!-- 左树：全部 + 全部仓库（含停用，停用节点带标识且仍可查历史台账） -->
+  <div class="side-card">
+    <div class="side-hd">仓库</div>
+    <div class="tree" id="tree"></div>
+  </div>
+
+  <div class="main-col">
+    <!-- 筛选白卡 -->
+    <div class="filter-card">
+      <div class="filter-item">
+        <span class="flt-label">物资</span>
+        <input class="field" id="f-kw" placeholder="请输入物资编号/名称" autocomplete="off">
+      </div>
+      <div class="filter-item">
+        <span class="flt-label">库存状态</span>
+        <div class="sel" id="f-status"></div>
+      </div>
+      <div class="filter-acts">
+        <button class="btn btn-primary" id="flt-search">查询</button>
+        <button class="btn btn-default" id="flt-reset">重置</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd">
+        <button class="btn btn-default" id="btn-export">导出</button>
+      </div>
+      <div class="panel-bd">
+        <div class="tbl-wrap">
+          <table>
+            <colgroup>
+              <col style="width:11%"><col style="width:9%"><col style="width:13%"><col style="width:13%">
+              <col style="width:6%"><col style="width:10%"><col style="width:9%"><col style="width:8%">
+              <col style="width:8%"><col style="width:13%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>物资编号</th><th>品牌</th><th>物资名称</th><th>规格型号</th><th>单位</th>
+                <th>所属仓库</th><th style="text-align:right">库存数量</th><th style="text-align:right">安全库存</th>
+                <th>状态</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-body"></tbody>
+          </table>
+        </div>
+        <div class="pg-bar" id="pg-bar"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- P5 出入库记录弹窗（只读） -->
+<div class="mask" id="chg-mask">
+  <div class="dlg">
+    <div class="dlg-hd">
+      <h3 id="chg-title">出入库记录</h3>
+      <button class="icon-btn" id="chg-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="dlg-bd">
+      <div class="chg-sub">
+        <span id="chg-sub">动账明细（0 条，按时间倒序）</span>
+        <button class="btn btn-default" id="chg-export">导出</button>
+      </div>
+      <div class="tbl-wrap2">
+        <table>
+          <colgroup>
+            <col style="width:9%"><col style="width:15%"><col style="width:9%"><col style="width:8%">
+            <col style="width:8%"><col style="width:8%"><col style="width:10%"><col style="width:13%">
+            <col style="width:8%"><col style="width:12%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>类型</th><th>单据编号</th><th>仓库</th><th style="text-align:right">数量</th>
+              <th style="text-align:right">变动前</th><th style="text-align:right">变动后</th>
+              <th>业务类型</th><th>往来单位/领用人</th><th>经手人</th><th>单据日期</th>
+            </tr>
+          </thead>
+          <tbody id="chg-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="chg-pg"></div>
+    </div>
+    <div class="dlg-ft">
+      <button class="btn btn-default" id="chg-cancel">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+/* ============================ 常量与状态 ============================ */
+const API = '/hltgq-site';
+const ICON = {
+  tick: '<svg class="tick" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  record: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+const S = {
+  warehouses: [],
+  page: 1, size: 20, total: 0, records: [], listSeq: 0,
+  filter: { warehouseId: '', keyword: '', status: '' },
+  chg: { row: null, page: 1, size: 20, total: 0, records: [], seq: 0 }
+};
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v === null || v === undefined ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+function showToast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/** 统一请求：非 2xx 抛出后端 message */
+async function api(path, opts) {
+  const init = Object.assign({ credentials: 'include' }, opts || {});
+  const res = await fetch(API + path, init);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+    throw new Error((data && (data.message || data.error)) || fallback);
+  }
+  return data;
+}
+
+/** 过滤值转查询串（跳过空值） */
+function qs(obj) {
+  const p = new URLSearchParams();
+  Object.keys(obj).forEach(k => {
+    const v = obj[k];
+    if (v !== null && v !== undefined && String(v).trim() !== '') p.set(k, String(v).trim());
+  });
+  return p.toString();
+}
+
+/* ============================ 下拉组件（库存状态） ============================ */
+function createSelect(el) {
+  const st = { value: '', label: '', options: [], placeholder: '请选择', emptyText: '无匹配数据', disabled: false, onChange: null };
+  el.innerHTML =
+    '<div class="sel-box" tabindex="0"><span class="sel-text placeholder"></span><span class="sel-arrow"></span></div>' +
+    '<div class="sel-panel"><div class="sel-list"></div></div>';
+
+  const box = el.querySelector('.sel-box');
+  const textEl = el.querySelector('.sel-text');
+  const list = el.querySelector('.sel-list');
+
+  function sync() {
+    const hit = st.options.filter(o => o.value === st.value)[0];
+    const label = st.value ? (hit ? hit.label : (st.label || st.value)) : '';
+    textEl.textContent = label || st.placeholder;
+    textEl.classList.toggle('placeholder', !label);
+  }
+  function render() {
+    if (!st.options.length) { list.innerHTML = '<div class="sel-empty">' + esc(st.emptyText) + '</div>'; return; }
+    list.innerHTML = st.options.map(o =>
+      '<div class="sel-opt' + (o.value === st.value ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+      '<span class="opt-name">' + esc(o.label) + '</span>' +
+      (o.value === st.value ? ICON.tick : '') + '</div>').join('');
+  }
+  function open() {
+    if (st.disabled) return;
+    closeAllSelects(el);
+    el.classList.add('open');
+    render();
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 忽略 */ }
+  }
+  function close() { el.classList.remove('open'); }
+
+  box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    if (e.key === 'Escape') close();
+  });
+  list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.sel-opt');
+    if (!opt) return;
+    e.preventDefault();
+    st.value = opt.dataset.value;
+    st.label = '';
+    sync(); render(); close();
+    if (st.onChange) st.onChange(st.value);
+  });
+  el._close = close;
+
+  return {
+    getValue: () => st.value,
+    setOptions(list2) { st.options = list2 || []; sync(); render(); return this; },
+    setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
+    setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+function closeAllSelects(except) {
+  document.querySelectorAll('.sel.open').forEach(s => {
+    if (s !== except && typeof s._close === 'function') s._close();
+  });
+}
+
+/* ============================ 左树（全部 + 全部仓库，含停用） ============================ */
+async function loadWarehouses() {
+  try {
+    const rows = await api('/inventory-ledger/warehouses');
+    S.warehouses = (Array.isArray(rows) ? rows : []).map(w => ({
+      id: w.id, name: w.name, code: w.code, disabled: !!w.disabled
+    }));
+  } catch (e) {
+    S.warehouses = [];
+    showToast(e.message || '仓库加载失败', true);
+  }
+  renderTree();
+}
+
+function renderTree() {
+  let html = '<div class="tree-node' + (S.filter.warehouseId === '' ? ' active' : '') + '" data-wid="">' +
+    '<span class="node-name">全部仓库</span></div>';
+  if (!S.warehouses.length) {
+    html += '<div class="tree-empty">暂无仓库</div>';
+  } else {
+    html += S.warehouses.map(w =>
+      '<div class="tree-node' + (S.filter.warehouseId === w.id ? ' active' : '') + '" data-wid="' + esc(w.id) +
+      '" title="' + esc(w.name || '') + '">' +
+      '<span class="node-name">' + esc(w.name || w.id) + '</span>' +
+      (w.disabled ? '<span class="node-tag">停用</span>' : '') + '</div>').join('');
+  }
+  $('tree').innerHTML = html;
+}
+
+function onTreeClick(e) {
+  const node = e.target.closest('.tree-node');
+  if (!node) return;
+  const wid = node.dataset.wid || '';
+  if (S.filter.warehouseId === wid) return;
+  S.filter.warehouseId = wid;
+  renderTree();
+  S.page = 1;
+  loadList();
+}
+
+/* ============================ P4 台账列表 ============================ */
+function emptyRow(text, plain) {
+  return '<tr><td colspan="10" class="empty"><div class="empty-box">' +
+    (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
+}
+
+async function loadList() {
+  const seq = ++S.listSeq;
+  const params = new URLSearchParams(qs(S.filter));
+  params.set('page', String(S.page));
+  params.set('size', String(S.size));
+  $('tbl-body').innerHTML = emptyRow('加载中...', true);
+  try {
+    const data = await api('/inventory-ledger/page?' + params.toString());
+    if (seq !== S.listSeq) return;
+    S.total = Number(data && data.total) || 0;
+    S.records = (data && Array.isArray(data.records)) ? data.records : [];
+    if (!S.records.length && S.page > 1) { S.page -= 1; return loadList(); }
+    renderTable();
+    renderPager();
+  } catch (e) {
+    if (seq !== S.listSeq) return;
+    S.records = [];
+    S.total = 0;
+    $('tbl-body').innerHTML = emptyRow('数据加载失败');
+    renderPager();
+    showToast(e.message || '数据加载失败', true);
+  }
+}
+
+function intText(v) {
+  return v === null || v === undefined ? '--' : esc(String(v));
+}
+
+function renderTable() {
+  const tb = $('tbl-body');
+  if (!S.records.length) {
+    tb.innerHTML = emptyRow('暂无数据');
+    return;
+  }
+  tb.innerHTML = S.records.map(r => {
+    const low = r.statusCode === '#2#';
+    const tag = '<span class="tag ' + (low ? 'warn' : 'ok') + '">' + esc(r.statusName || (low ? '偏低' : '正常')) + '</span>';
+    const act = '<button class="lnk-btn" data-act="chg" data-key="' + esc(String(r.materialId) + '#' + String(r.warehouseId)) +
+      '">' + ICON.record + '出入库记录</button>';
+    return '<tr data-key="' + esc(String(r.materialId) + '#' + String(r.warehouseId)) + '">' +
+      '<td title="' + esc(r.materialCode || '') + '">' + esc(r.materialCode || '--') + '</td>' +
+      '<td title="' + esc(r.brand || '') + '">' + esc(r.brand || '--') + '</td>' +
+      '<td title="' + esc(r.name || '') + '">' + esc(r.name || '--') + '</td>' +
+      '<td title="' + esc(r.spec || '') + '">' + esc(r.spec || '--') + '</td>' +
+      '<td>' + esc(r.unit || '--') + '</td>' +
+      '<td title="' + esc(r.warehouseName || '') + '">' + esc(r.warehouseName || '--') + '</td>' +
+      '<td class="num' + (low ? ' low' : '') + '">' + intText(r.quantity) + '</td>' +
+      '<td class="num">' + intText(r.safetyStock) + '</td>' +
+      '<td>' + tag + '</td>' +
+      '<td class="col-act">' + act + '</td></tr>';
+  }).join('');
+}
+
+function findRecord(key) {
+  return S.records.filter(r => String(r.materialId) + '#' + String(r.warehouseId) === String(key))[0] || null;
+}
+
+function onTableClick(e) {
+  const btn = e.target.closest('[data-act="chg"]');
+  if (!btn) return;
+  const row = findRecord(btn.dataset.key);
+  if (row) openChg(row);
+}
+
+/* ============================ 分页（主列表） ============================ */
+function pageNumbers(cur, total) {
+  if (total <= 7) {
+    const all = [];
+    for (let i = 1; i <= total; i++) all.push(i);
+    return all;
+  }
+  const out = [1];
+  const start = Math.max(2, cur - 1);
+  const end = Math.min(total - 1, cur + 1);
+  if (start > 2) out.push('...');
+  for (let p = start; p <= end; p++) out.push(p);
+  if (end < total - 1) out.push('...');
+  out.push(total);
+  return out;
+}
+
+function pagerHtml(page, size, total) {
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  const sizes = [10, 20, 50, 100];
+  let html = '<span class="pg-info">共 ' + total + ' 条</span><div class="pg-btns">' +
+    '<button class="pg-btn" data-pg="prev"' + (page <= 1 ? ' disabled' : '') + '>‹</button>';
+  pageNumbers(page, totalPages).forEach(p => {
+    html += p === '...'
+      ? '<span class="pg-ellipsis">···</span>'
+      : '<button class="pg-btn' + (p === page ? ' active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+  });
+  html += '<button class="pg-btn" data-pg="next"' + (page >= totalPages ? ' disabled' : '') + '>›</button></div>' +
+    '<select class="pg-size" data-pgsize="1">' +
+    sizes.map(n => '<option value="' + n + '"' + (n === size ? ' selected' : '') + '>' + n + ' 条/页</option>').join('') +
+    '</select>' +
+    '<span class="pg-jump">跳至<input type="text" data-pgjump="1" inputmode="numeric" aria-label="跳至页码"' +
+    ' value="' + page + '" autocomplete="off">页</span>';
+  return html;
+}
+
+function renderPager() {
+  $('pg-bar').innerHTML = pagerHtml(S.page, S.size, S.total);
+}
+
+function jumpTarget(val, page, size, total) {
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  const n = parseInt(String(val).trim(), 10);
+  return isNaN(n) ? page : Math.min(totalPages, Math.max(1, n));
+}
+
+function onPagerClick(e) {
+  const btn = e.target.closest('[data-pg]');
+  if (!btn || btn.disabled) return;
+  const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+  const v = btn.dataset.pg;
+  if (v === 'prev') S.page = Math.max(1, S.page - 1);
+  else if (v === 'next') S.page = Math.min(totalPages, S.page + 1);
+  else S.page = Number(v);
+  loadList();
+}
+
+/* ============================ 筛选 / 导出（P4） ============================ */
+let fltStatus = null;
+
+function doSearch() {
+  S.filter.keyword = $('f-kw').value.trim();
+  S.filter.status = fltStatus.getValue() || '';
+  S.page = 1;
+  loadList();
+}
+
+function resetFilter() {
+  $('f-kw').value = '';
+  fltStatus.setValue('');
+  S.filter.keyword = '';
+  S.filter.status = '';
+  S.page = 1;
+  loadList();
+}
+
+/* 导出列（表头与列表口径一致；长数字码由 MonitorExport 统一按文本写入，避免科学计数法） */
+const LEDGER_EXPORT_FIELDS = [
+  { key: 'materialCode', label: '物资编号' }, { key: 'brand', label: '品牌' }, { key: 'name', label: '物资名称' },
+  { key: 'spec', label: '规格型号' }, { key: 'unit', label: '单位' }, { key: 'warehouseName', label: '所属仓库' },
+  { key: 'quantity', label: '库存数量' }, { key: 'safetyStock', label: '安全库存' }, { key: 'statusName', label: '状态' }
+];
+
+async function onExport() {
+  const btn = $('btn-export');
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  try {
+    const rows = await api('/inventory-ledger/export?' + qs(S.filter));
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) { showToast('暂无数据可导出', true); return; }
+    MonitorExport.download({ fields: LEDGER_EXPORT_FIELDS, rows: list, filename: '物资台账', sheetName: '物资台账' });
+    showToast('已导出 ' + list.length + ' 条');
+  } catch (e) {
+    showToast(e.message || '导出失败', true);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+/* ============================ P5 出入库记录弹窗 ============================ */
+function chgEmptyRow(text, plain) {
+  return '<tr><td colspan="10" class="empty"><div class="empty-box">' +
+    (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
+}
+
+function openChg(row) {
+  S.chg.row = row;
+  S.chg.page = 1;
+  $('chg-title').textContent = '出入库记录 - ' + (row.name || '') + '（' + (row.warehouseName || '') + '）';
+  $('chg-mask').classList.add('show');
+  loadChg();
+}
+
+function closeChg() {
+  $('chg-mask').classList.remove('show');
+  S.chg.row = null;
+  S.chg.seq++;
+}
+
+async function loadChg() {
+  const row = S.chg.row;
+  if (!row) return;
+  const seq = ++S.chg.seq;
+  $('chg-body').innerHTML = chgEmptyRow('加载中...', true);
+  try {
+    const data = await api('/inventory-ledger/changes?' + qs({
+      materialId: row.materialId, warehouseId: row.warehouseId, page: S.chg.page, size: S.chg.size
+    }));
+    if (seq !== S.chg.seq) return;
+    S.chg.total = Number(data && data.total) || 0;
+    S.chg.records = (data && Array.isArray(data.records)) ? data.records : [];
+    if (!S.chg.records.length && S.chg.page > 1) { S.chg.page -= 1; return loadChg(); }
+    renderChgTable();
+    $('chg-pg').innerHTML = pagerHtml(S.chg.page, S.chg.size, S.chg.total);
+  } catch (e) {
+    if (seq !== S.chg.seq) return;
+    S.chg.records = [];
+    S.chg.total = 0;
+    $('chg-body').innerHTML = chgEmptyRow('数据加载失败');
+    $('chg-pg').innerHTML = pagerHtml(1, S.chg.size, 0);
+    showToast(e.message || '数据加载失败', true);
+  }
+}
+
+/* 变动类型标签：入库蓝 / 出库橙 / 盘盈绿 / 盘亏红（中文由后端 changeTypeName 联合映射） */
+const CT_TAGS = {
+  '#1#': ['in', '入库'], '#2#': ['out', '出库'],
+  '#3#': ['profit', '盘盈'], '#4#': ['loss', '盘亏']
+};
+
+function renderChgTable() {
+  $('chg-sub').textContent = '动账明细（' + S.chg.total + ' 条，按时间倒序）';
+  const tb = $('chg-body');
+  if (!S.chg.records.length) {
+    tb.innerHTML = chgEmptyRow('暂无变动记录');
+    return;
+  }
+  tb.innerHTML = S.chg.records.map(r => {
+    const ct = CT_TAGS[r.changeType] || ['out', r.changeTypeName || r.changeType || '--'];
+    const tag = '<span class="tag ' + ct[0] + '">' + esc(r.changeTypeName || ct[1]) + '</span>';
+    return '<tr>' +
+      '<td>' + tag + '</td>' +
+      '<td title="' + esc(r.orderNo || '') + '">' + esc(r.orderNo || '--') + '</td>' +
+      '<td title="' + esc(r.warehouseName || '') + '">' + esc(r.warehouseName || '--') + '</td>' +
+      '<td class="num">' + intText(r.changeQty) + '</td>' +
+      '<td class="num">' + intText(r.qtyBefore) + '</td>' +
+      '<td class="num">' + intText(r.qtyAfter) + '</td>' +
+      '<td title="' + esc(r.bizTypeName || '') + '">' + esc(r.bizTypeName || '--') + '</td>' +
+      '<td title="' + esc(r.counterparty || '') + '">' + esc(r.counterparty || '--') + '</td>' +
+      '<td>' + esc(r.operatorName || '--') + '</td>' +
+      '<td title="' + esc(r.createdAt ? '流水时间：' + r.createdAt : '') + '">' + esc(r.orderDate || '--') + '</td></tr>';
+  }).join('');
+}
+
+function onChgPagerClick(e) {
+  const btn = e.target.closest('[data-pg]');
+  if (!btn || btn.disabled) return;
+  const totalPages = Math.max(1, Math.ceil(S.chg.total / S.chg.size));
+  const v = btn.dataset.pg;
+  if (v === 'prev') S.chg.page = Math.max(1, S.chg.page - 1);
+  else if (v === 'next') S.chg.page = Math.min(totalPages, S.chg.page + 1);
+  else S.chg.page = Number(v);
+  loadChg();
+}
+
+/* 导出列（与记录表列口径一致；长数字码由 MonitorExport 统一按文本写入，避免科学计数法） */
+const CHG_EXPORT_FIELDS = [
+  { key: 'changeTypeName', label: '类型' }, { key: 'orderNo', label: '单据编号' }, { key: 'warehouseName', label: '仓库' },
+  { key: 'changeQty', label: '数量' }, { key: 'qtyBefore', label: '变动前' }, { key: 'qtyAfter', label: '变动后' },
+  { key: 'bizTypeName', label: '业务类型' }, { key: 'counterparty', label: '往来单位/领用人' }, { key: 'operatorName', label: '经手人' },
+  { key: 'orderDate', label: '单据日期' }, { key: 'createdAt', label: '流水时间' }
+];
+
+async function chgExport() {
+  const row = S.chg.row;
+  if (!row) return;
+  const btn = $('chg-export');
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  try {
+    const rows = await api('/inventory-ledger/changes-export?' + qs({
+      materialId: row.materialId, warehouseId: row.warehouseId
+    }));
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) { showToast('暂无数据可导出', true); return; }
+    MonitorExport.download({ fields: CHG_EXPORT_FIELDS, rows: list, filename: '出入库记录', sheetName: '出入库记录' });
+    showToast('已导出 ' + list.length + ' 条');
+  } catch (e) {
+    showToast(e.message || '导出失败', true);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+/* ============================ 事件绑定与初始化 ============================ */
+function bindEvents() {
+  $('tree').addEventListener('click', onTreeClick);
+  $('tbl-body').addEventListener('click', onTableClick);
+
+  const pgBar = $('pg-bar');
+  pgBar.addEventListener('click', onPagerClick);
+  pgBar.addEventListener('change', e => {
+    if (e.target && e.target.dataset.pgsize) {
+      S.size = Number(e.target.value) || 20;
+      S.page = 1;
+      loadList();
+    }
+  });
+  pgBar.addEventListener('keydown', e => {
+    if (e.target && e.target.dataset.pgjump && e.key === 'Enter') e.target.blur();
+  });
+  pgBar.addEventListener('focusout', e => {
+    if (e.target && e.target.dataset.pgjump) {
+      const target = jumpTarget(e.target.value, S.page, S.size, S.total);
+      e.target.value = String(target);
+      if (target !== S.page) { S.page = target; loadList(); }
+    }
+  });
+
+  $('flt-search').addEventListener('click', doSearch);
+  $('flt-reset').addEventListener('click', resetFilter);
+  $('f-kw').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  $('btn-export').addEventListener('click', onExport);
+
+  // P5 弹窗
+  $('chg-close').addEventListener('click', closeChg);
+  $('chg-cancel').addEventListener('click', closeChg);
+  $('chg-export').addEventListener('click', chgExport);
+  const chgPg = $('chg-pg');
+  chgPg.addEventListener('click', onChgPagerClick);
+  chgPg.addEventListener('change', e => {
+    if (e.target && e.target.dataset.pgsize) {
+      S.chg.size = Number(e.target.value) || 20;
+      S.chg.page = 1;
+      loadChg();
+    }
+  });
+  chgPg.addEventListener('keydown', e => {
+    if (e.target && e.target.dataset.pgjump && e.key === 'Enter') e.target.blur();
+  });
+  chgPg.addEventListener('focusout', e => {
+    if (e.target && e.target.dataset.pgjump) {
+      const target = jumpTarget(e.target.value, S.chg.page, S.chg.size, S.chg.total);
+      e.target.value = String(target);
+      if (target !== S.chg.page) { S.chg.page = target; loadChg(); }
+    }
+  });
+
+  // 全局
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.sel')) closeAllSelects(null);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if ($('chg-mask').classList.contains('show')) { closeChg(); return; }
+    if (document.querySelector('.sel.open')) closeAllSelects(null);
+  });
+}
+
+(async function init() {
+  bindEvents();
+  fltStatus = createSelect($('f-status'));
+  fltStatus.setOptions([
+    { value: '', label: '全部状态' },
+    { value: '#1#', label: '正常' },
+    { value: '#2#', label: '偏低' }
+  ]);
+  fltStatus.setPlaceholder('全部状态');
+  await loadWarehouses();
+  await loadList();
+})();
+</script>
+</body>
+</html>

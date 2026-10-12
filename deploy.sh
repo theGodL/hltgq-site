@@ -19,6 +19,7 @@ case "${1:-deploy}" in
         docker build -t ${IMAGE_NAME}:latest "$PROJECT_DIR"
         mkdir -p /service/hltgq/logs/hltgq-site
         mkdir -p /service/hltgq/hltgq-site/decision-excel
+        mkdir -p /service/hltgq/hltgq-site/file-dir
         # -v /:/host:ro → 系统资源监控采集宿主机视角（/proc、磁盘挂载点），只读挂载
         # SYSTEM_MONITOR_DB_CAPACITY_GB → 表空间使用率分母（数据库服务器数据盘 /service 分区 7.7TiB）
         # SYSTEM_MONITOR_REPORT_TOKEN → 各服务器采集脚本上报凭证（须与各机 sysmon-collect.sh 内一致）
@@ -29,6 +30,7 @@ case "${1:-deploy}" in
             -p 18687:8080 \
             -v /service/hltgq/logs/hltgq-site:/app/logs \
             -v /service/hltgq/hltgq-site/decision-excel:/app/decision-excel \
+            -v /service/hltgq/hltgq-site/file-dir:/app/file-dir \
             -v /:/host:ro \
             -e TZ=Asia/Shanghai \
             -e MODEL_BASE_URL="${MODEL_BASE_URL:-http://10.68.18.11:8000}" \

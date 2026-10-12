@@ -29,6 +29,8 @@ import javax.sql.DataSource;
         "com.qgyun.hltgq.hltgqsite.workorder.mapper", "com.qgyun.hltgq.hltgqsite.duty.mapper",
         "com.qgyun.hltgq.hltgqsite.wateruse.mapper", "com.qgyun.hltgq.hltgqsite.watersaving.mapper",
         "com.qgyun.hltgq.hltgqsite.patrol.mapper", "com.qgyun.hltgq.hltgqsite.inventorycheck.mapper",
+        "com.qgyun.hltgq.hltgqsite.inventoryorder.mapper",
+        "com.qgyun.hltgq.hltgqsite.inventorystocktake.mapper",
         "com.qgyun.hltgq.hltgqsite.system.mapper"},
         sqlSessionFactoryRef = "primarySqlSessionFactory")
 public class PrimaryDataSourceConfig {
