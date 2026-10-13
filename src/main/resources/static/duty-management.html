@@ -32,21 +32,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .act:hover{color:#4096ff}
 .tbl td .act + .act{margin-left:14px}
 .sep{color:#d9d9d9;margin:0 10px}
-.legend-tbl{margin-top:24px}
-
-/* 值班签到提醒弹窗 */
-.sign-overlay{display:none;position:fixed;inset:0;z-index:1000;background:transparent;align-items:flex-start;justify-content:center;padding:20px}
-.sign-overlay.show{display:flex}
-.sign-modal{width:420px;max-width:96vw;margin-top:15vh;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 6px 22px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.08)}
-.sign-hd{display:flex;align-items:center;gap:8px;padding:11px 16px;background:#fffbe6;font-size:15px;font-weight:600;color:#333}
-.sign-bd{padding:28px 24px 4px;text-align:center}
-.sign-bell{font-size:54px;line-height:1;margin-bottom:16px}
-.sign-title{font-size:16px;font-weight:600;color:#333;margin-bottom:12px}
-.sign-line{font-size:14px;color:#333;line-height:22px}
-.sign-tip{font-size:14px;color:#333;line-height:22px;margin-top:12px}
-.hl-red{color:#f5222d}
-.sign-ft{display:flex;justify-content:center;gap:12px;padding:22px 24px 26px}
-.sign-ft .btn{height:38px;padding:0 22px}
 
 /* 值班排班抽屉(新增/编辑/查看共用) */
 .drawer-mask{position:fixed;inset:0;z-index:1050;background:transparent;opacity:0;visibility:hidden;transition:opacity .3s,visibility .3s}
@@ -63,20 +48,37 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .form-item{margin-bottom:20px}
 .form-item > label{display:block;margin-bottom:8px;font-size:14px;color:#333}
 .req{color:#ff4d4f;font-style:normal;margin-left:2px}
-.ipt{width:100%;height:36px;border:1px solid #d9d9d9;border-radius:6px;padding:0 12px;font-size:14px;font-family:inherit;color:#333;outline:none;background:#fff;transition:border-color .2s,box-shadow .2s}
-.ipt:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
-.ipt::placeholder{color:#bfbfbf}
-.date-wrap{position:relative}
-.date-wrap .ipt{padding-right:36px}
 .ipt-icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:inline-flex;pointer-events:none}
-.native-picker{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0;z-index:2}
 .range-wrap{position:relative;display:flex;align-items:center;height:36px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 36px 0 12px;transition:border-color .2s,box-shadow .2s}
 .range-wrap:focus-within{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 .range-input{flex:1;min-width:0;height:100%;border:0;outline:none;background:transparent;font-size:14px;font-family:inherit;color:#333;padding:0;cursor:pointer}
 .range-input::placeholder{color:#bfbfbf}
 .range-sep{flex-shrink:0;color:#d9d9d9;margin:0 8px;font-size:13px}
-.native-picker.pk-left{width:calc(50% - 20px);right:auto}
-.native-picker.pk-right{width:calc(50% - 20px);left:auto}
+/* 值班时间日历面板 */
+.cal-panel{display:none;position:absolute;left:0;top:calc(100% + 6px);z-index:20;width:284px;background:#fff;border:1px solid #f0f0f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:12px}
+.cal-panel.open{display:block}
+.cal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.cal-ym{font-size:14px;font-weight:600;color:#333}
+.cal-nav{display:flex;gap:4px}
+.cal-nav button{width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:#666;font-size:15px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.cal-nav button:hover{background:#f5f5f5;color:#1677ff}
+.cal-week{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:2px}
+.cal-week span{height:28px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#999}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-cell{height:32px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#333;border-radius:6px;cursor:pointer;border:1px solid transparent}
+.cal-cell:hover{background:#f5f5f5}
+.cal-cell.empty{visibility:hidden}
+.cal-cell.today{color:#1677ff;border-color:#91caff}
+.cal-cell.sel{background:#1677ff;color:#fff}
+.cal-cell.sel:hover{background:#1677ff}
+.cal-ft{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:10px;border-top:1px solid #f0f0f0}
+.cal-time{display:flex;align-items:center;gap:5px;font-size:13px;color:#666}
+.cal-time i{color:#bbb;font-style:normal;font-size:12px}
+.cal-step{width:22px;height:22px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;color:#666;font-size:13px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.cal-step:hover{border-color:#1677ff;color:#1677ff}
+.cal-hm{min-width:20px;text-align:center;font-weight:600;color:#333;font-size:13px}
+.cal-today-btn{border:0;background:transparent;color:#1677ff;font-size:13px;cursor:pointer;padding:3px 8px;border-radius:6px}
+.cal-today-btn:hover{background:#e6f4ff}
 .select-wrap{position:relative}
 .sel-input{width:100%;height:36px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 32px 0 12px;font-size:14px;font-family:inherit;color:#333;outline:none;cursor:pointer;transition:border-color .2s,box-shadow .2s}
 .sel-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
@@ -88,6 +90,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .dd-opt:hover{background:#f5f5f5}
 .dd-opt.active{background:#e6f4ff;color:#1677ff;font-weight:500}
 .dd-opt.multi-on{color:#1677ff;font-weight:500}
+.dd-empty{padding:10px 12px;font-size:13px;color:#bfbfbf;text-align:center}
 .dd-check{flex-shrink:0}
 .multi-box{min-height:36px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid #d9d9d9;border-radius:6px;padding:5px 32px 5px 8px;background:#fff;cursor:pointer;transition:border-color .2s}
 .multi-box:hover{border-color:#4096ff}
@@ -95,8 +98,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .m-tag{display:inline-flex;align-items:center;gap:2px;height:24px;max-width:100%;padding:0 3px 0 8px;border-radius:4px;background:#f5f5f5;color:#333;font-size:13px;line-height:24px}
 .m-x{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;color:#999;font-size:14px;line-height:1;cursor:pointer;font-style:normal}
 .m-x:hover{color:#595959;background:#e6e6e6}
-.drawer.is-view .date-wrap,.drawer.is-view .range-wrap,.drawer.is-view .select-wrap{pointer-events:none}
-.drawer.is-view .ipt,.drawer.is-view .range-wrap,.drawer.is-view .sel-input,.drawer.is-view .multi-box{background:#fafafa}
+.drawer.is-view .range-wrap,.drawer.is-view .select-wrap{pointer-events:none}
+.drawer.is-view .range-wrap,.drawer.is-view .sel-input,.drawer.is-view .multi-box{background:#fafafa}
 
 /* 删除确认框 */
 .confirm-overlay{display:none;position:fixed;inset:0;z-index:1300;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:20px}
@@ -126,77 +129,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   <!-- 值班排班列表 -->
   <table class="tbl">
     <colgroup>
-      <col style="width:12%"><col style="width:14%"><col style="width:18%">
-      <col style="width:14%"><col style="width:15%"><col style="width:13%"><col style="width:14%">
+      <col style="width:20%"><col style="width:10%"><col style="width:16%">
+      <col style="width:12%"><col style="width:14%"><col style="width:12%"><col style="width:16%">
     </colgroup>
     <thead>
       <tr>
-        <th>值班日期</th><th>班次</th><th>所在单位</th><th>带班领导</th>
+        <th>值班时间</th><th>班次</th><th>所在单位</th><th>带班领导</th>
         <th>值班人员</th><th>排班状态</th><th>操作</th>
       </tr>
     </thead>
     <tbody id="duty-tbody"></tbody>
   </table>
 
-  <!-- 排班状态说明 -->
-  <table class="tbl legend-tbl">
-    <colgroup>
-      <col style="width:35%"><col style="width:32%"><col style="width:33%">
-    </colgroup>
-    <thead>
-      <tr><th>排班状态</th><th>状态说明</th><th>操作</th></tr>
-    </thead>
-    <tbody>
-      <tr data-status="未开始">
-        <td style="color:#fa8c16">未开始</td>
-        <td>尚未到允许开始值班的时间</td>
-        <td>
-          <span class="act" data-action="view">查看</span><span class="sep">|</span>
-          <span class="act" data-action="edit">编辑</span><span class="sep">|</span>
-          <span class="act" data-action="delete">删除</span>
-        </td>
-      </tr>
-      <tr data-status="待值班">
-        <td style="color:#8c8c8c">待值班</td>
-        <td>已到值班时间,值班人员尚未签到</td>
-        <td><span class="act" data-action="view">查看</span></td>
-      </tr>
-      <tr data-status="值班中">
-        <td style="color:#52c41a">值班中</td>
-        <td>值班人员已经开始值班</td>
-        <td><span class="act" data-action="view">查看</span></td>
-      </tr>
-      <tr data-status="已完成">
-        <td style="color:#52c41a">已完成</td>
-        <td>值班人员已经完成交班</td>
-        <td><span class="act" data-action="view">查看</span></td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-<!-- 值班签到提醒弹窗 -->
-<div class="sign-overlay" id="sign-overlay">
-  <div class="sign-modal" role="dialog" aria-label="值班签到提醒">
-    <div class="sign-hd">
-      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 2.2a6 6 0 0 0-6 6v3.01c0 .62-.19 1.22-.55 1.73l-1.24 1.75c-.66.93-.03 2.21 1.1 2.21h13.38c1.13 0 1.76-1.28 1.1-2.21l-1.24-1.75a3.02 3.02 0 0 1-.55-1.73V8.2a6 6 0 0 0-6-6Z" fill="#f5222d"/>
-        <path d="M9.6 20.1a2.4 2.4 0 0 0 4.8 0" stroke="#f5222d" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-      </svg>
-      <span>值班签到提醒</span>
-    </div>
-    <div class="sign-bd">
-      <div class="sign-bell">🔔</div>
-      <p class="sign-title"><span class="hl-red" id="sign-name">张伟</span> 同志,您今日为值班人员!</p>
-      <p class="sign-line" id="sign-shift">班次:白班(8:00 - 20:00)</p>
-      <p class="sign-line" id="sign-leader">带班领导:刘建国</p>
-      <p class="sign-tip">您尚未进入值班状态,请立即进行<span class="hl-red">值班签到</span>。</p>
-    </div>
-    <div class="sign-ft">
-      <button type="button" class="btn btn-default" id="btn-later">稍后签到</button>
-      <button type="button" class="btn btn-success" id="btn-sign">立即前往签到</button>
-    </div>
-  </div>
 </div>
 
 <!-- 值班排班抽屉(新增/编辑/查看共用) -->
@@ -209,9 +153,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   </button>
   <div class="drawer-bd">
     <div class="form-item">
-      <label>值班日期 <i class="req">*</i></label>
-      <div class="date-wrap">
-        <input type="text" class="ipt" id="f-date" placeholder="选择日期" readonly>
+      <label>值班时间 <i class="req">*</i></label>
+      <div class="range-wrap">
+        <input type="text" class="range-input" id="f-time-start" placeholder="开始时间" readonly>
+        <span class="range-sep">—</span>
+        <input type="text" class="range-input" id="f-time-end" placeholder="结束时间" readonly>
         <span class="ipt-icon">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <rect x="3" y="4.5" width="18" height="16" rx="2" stroke="#bfbfbf" stroke-width="1.7"/>
@@ -219,7 +165,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
             <path d="M8 2.5v4M16 2.5v4" stroke="#bfbfbf" stroke-width="1.7" stroke-linecap="round"/>
           </svg>
         </span>
-        <input type="date" class="native-picker" id="f-date-picker" data-for="f-date" tabindex="-1" aria-hidden="true">
+        <div class="cal-panel" id="cal-panel"></div>
       </div>
     </div>
     <div class="form-item">
@@ -232,23 +178,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
           </svg>
         </span>
         <div class="sel-dd" id="shift-dd"></div>
-      </div>
-    </div>
-    <div class="form-item">
-      <label>值班时间 //时间区间// <i class="req">*</i></label>
-      <div class="range-wrap">
-        <input type="text" class="range-input" id="f-time-start" placeholder="开始时间" readonly>
-        <span class="range-sep">—</span>
-        <input type="text" class="range-input" id="f-time-end" placeholder="结束时间" readonly>
-        <span class="ipt-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="3" y="4.5" width="18" height="16" rx="2" stroke="#bfbfbf" stroke-width="1.7"/>
-            <path d="M3 9.5h18" stroke="#bfbfbf" stroke-width="1.7"/>
-            <path d="M8 2.5v4M16 2.5v4" stroke="#bfbfbf" stroke-width="1.7" stroke-linecap="round"/>
-          </svg>
-        </span>
-        <input type="time" class="native-picker pk-left" id="f-time-start-picker" data-for="f-time-start" tabindex="-1" aria-hidden="true">
-        <input type="time" class="native-picker pk-right" id="f-time-end-picker" data-for="f-time-end" tabindex="-1" aria-hidden="true">
       </div>
     </div>
     <div class="form-item">
@@ -266,7 +195,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     <div class="form-item">
       <label>带班领导 <i class="req">*</i></label>
       <div class="select-wrap">
-        <input type="text" class="sel-input" id="f-leader" placeholder="请选择" readonly>
+        <input type="text" class="sel-input" id="f-leader" placeholder="输入姓名搜索">
         <span class="chev">
           <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
             <path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -290,7 +219,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   </div>
   <div class="drawer-ft">
     <button type="button" class="btn btn-default" id="btn-drawer-cancel">取消</button>
-    <button type="button" class="btn btn-primary" id="btn-drawer-confirm">确认交班</button>
+    <button type="button" class="btn btn-primary" id="btn-drawer-confirm">保存</button>
   </div>
 </aside>
 
@@ -322,8 +251,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   'use strict';
 
   /* ===================== 接口区 =====================
-   * 接口文档 v1.0《值班交接班接口.md》:
-   *   今日值班判定   → GET    /duty/today-status
+   *   接口文档 v1.0《值班交接班接口.md》:
    *   下拉选项       → GET    /duty/options
    *   排班列表       → GET    /duty/schedule/list
    *   排班详情       → GET    /duty/schedule/detail
@@ -390,16 +318,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     return request(API_BASE + '/schedule/' + encodeURIComponent(id), { method: 'DELETE' });
   }
 
-  /** 今日值班判定(签到提醒) */
-  function fetchTodayDutyStatus() {
-    return request(API_BASE + '/today-status');
-  }
-
   // 排班状态 → 文字颜色
   var STATUS_COLORS = { '未开始': '#fa8c16', '待值班': '#8c8c8c', '值班中': '#52c41a', '已完成': '#52c41a' };
 
   var $ = function (id) { return document.getElementById(id); };
-  var signOverlay = $('sign-overlay');
   var drawer = $('drawer');
   var drawerMask = $('drawer-mask');
   var confirmOverlay = $('confirm-overlay');
@@ -430,16 +352,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     return null;
   }
 
-  function findFirstByStatus(status) {
-    for (var i = 0; i < LIST_DATA.length; i++) {
-      if (LIST_DATA[i].status === status) return LIST_DATA[i];
-    }
-    return null;
-  }
-
   /* ===== 列表渲染 ===== */
 
-  /** 操作列:未开始类(#1# 未开始 / #zzkl# 待值班)→ 查看/编辑/删除;其余状态仅查看 */
+  /** 操作列:未开始类(statusCode=#1#/#zzkl#)→ 查看/编辑/删除;其余状态仅查看 */
   function actionCell(row) {
     var id = esc(row.id);
     var html = '<span class="act" data-action="view" data-id="' + id + '">查看</span>';
@@ -450,16 +365,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     return '<td>' + html + '</td>';
   }
 
+  /** 值班时间文本:timeStart~timeEnd;同日结束只显示 HH:mm,跨天加「次日」;历史数据(date+shiftTime)兜底 */
+  function timeRangeText(row) {
+    if (row.timeStart && row.timeEnd) {
+      var sd = row.timeStart.slice(0, 10);
+      var ed = row.timeEnd.slice(0, 10);
+      var eHm = row.timeEnd.slice(11);
+      if (ed === sd) return row.timeStart + ' ~ ' + eHm;
+      if (ed === addDays(sd, 1)) return row.timeStart + ' ~ 次日' + eHm;
+      return row.timeStart + ' ~ ' + row.timeEnd;
+    }
+    return row.date ? row.date + (row.shiftTime ? ' ' + row.shiftTime : '') : '-';
+  }
+
   function renderList() {
     if (!LIST_DATA.length) {
       $('duty-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bfbfbf;padding:32px 0">暂无数据</td></tr>';
       return;
     }
     $('duty-tbody').innerHTML = LIST_DATA.map(function (row) {
-      var shiftText = row.shiftTime ? row.shift + '(' + row.shiftTime + ')' : (row.shift || '');
       return '<tr>'
-        + '<td>' + esc(row.date) + '</td>'
-        + '<td>' + esc(shiftText) + '</td>'
+        + '<td>' + esc(timeRangeText(row)) + '</td>'
+        + '<td>' + esc(row.shift || '-') + '</td>'
         + '<td>' + esc(row.org || '-') + '</td>'
         + '<td>' + esc(row.leader || '-') + '</td>'
         + '<td>' + esc(row.members || '-') + '</td>'
@@ -468,21 +395,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         + '</tr>';
     }).join('');
   }
-
-  /* ===== 签到提醒弹窗 ===== */
-  function showSignModal(duty) {
-    $('sign-name').textContent = duty.name;
-    $('sign-shift').textContent = '班次:' + duty.shift + '(' + duty.shiftTime + ')';
-    $('sign-leader').textContent = '带班领导:' + duty.leader;
-    signOverlay.classList.add('show');
-  }
-
-  $('btn-later').addEventListener('click', function () { signOverlay.classList.remove('show'); });
-
-  // 「立即前往签到」:进入值班交接班页面(进入后弹出开始值班弹窗)
-  $('btn-sign').addEventListener('click', function () {
-    location.href = './duty-handover.html';
-  });
 
   /* ===== 下拉通用 ===== */
   function closeDd() {
@@ -525,7 +437,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   bindSingleSelect('f-unit', 'unit-dd', function () {
     return OPTIONS.orgs.map(function (o) { return { value: o.id, label: o.name }; });
   });
-  bindSingleSelect('f-leader', 'leader-dd', function () {
+
+  /** 可搜索单选(带班领导):点击或输入关键字过滤人员,选中回填姓名并记录 id */
+  function bindSearchSelect(inputId, ddId, optionsFn) {
+    var input = $(inputId);
+    var dd = $(ddId);
+    function renderDd(kw) {
+      var opts = optionsFn().filter(function (o) { return !kw || o.label.indexOf(kw) >= 0; });
+      dd.innerHTML = opts.length
+        ? opts.map(function (o) {
+            return '<div class="dd-opt' + (input.dataset.value === o.value ? ' active' : '') + '" data-value="' + esc(o.value) + '">' + esc(o.label) + '</div>';
+          }).join('')
+        : '<div class="dd-empty">无匹配人员</div>';
+    }
+    input.addEventListener('click', function () {
+      if (drawerState.mode === 'view' || openDd === dd) return;
+      renderDd(input.value.trim());
+      openDdPanel(dd);
+    });
+    input.addEventListener('input', function () {
+      if (drawerState.mode === 'view') return;
+      input.dataset.value = ''; // 手动编辑后原选中失效,需重新选择
+      renderDd(input.value.trim());
+      if (openDd !== dd) openDdPanel(dd);
+    });
+    dd.addEventListener('click', function (e) {
+      var opt = e.target.closest('.dd-opt');
+      if (!opt) return;
+      input.value = opt.textContent;
+      input.dataset.value = opt.dataset.value || '';
+      closeDd();
+    });
+  }
+
+  bindSearchSelect('f-leader', 'leader-dd', function () {
     return OPTIONS.users.map(function (u) { return { value: u.id, label: u.name }; });
   });
   // 班次:选项来自接口字典(白班/中班/夜班);选中后按字典预填时间;历史班次名不在字典时并入显示
@@ -538,8 +483,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     var s = null;
     OPTIONS.shifts.forEach(function (x) { if (x.code === code) s = x; });
     if (!s) return;
-    if (s.defaultStart) setField('f-time-start', s.defaultStart);
-    if (s.defaultEnd) setField('f-time-end', s.defaultEnd);
+    // 日期沿用已选时间的日期(均未选则默认今天);结束时间为 24:00 时折算为次日 00:00
+    var base = ($('f-time-start').value || '').slice(0, 10)
+            || ($('f-time-end').value || '').slice(0, 10)
+            || todayStr();
+    if (s.defaultStart) setField('f-time-start', base + ' ' + s.defaultStart);
+    if (s.defaultEnd) {
+      if (s.defaultEnd === '24:00') setField('f-time-end', addDays(base, 1) + ' 00:00');
+      else setField('f-time-end', base + ' ' + s.defaultEnd);
+    }
   });
 
   /* ===== 多选(值班人员) ===== */
@@ -587,35 +539,112 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     toggleMember(opt.dataset.m);
   });
 
-  /* ===== 日期/时间选择(透明原生 picker 覆盖层) ===== */
-  Array.prototype.forEach.call(document.querySelectorAll('.native-picker'), function (picker) {
-    var text = $(picker.dataset.for);
-    picker.addEventListener('click', function () {
-      if (drawerState.mode === 'view') return;
-      try { picker.showPicker(); } catch (e) { picker.focus(); }
-    });
-    picker.addEventListener('change', function () { text.value = picker.value || ''; });
+  /* ===== 值班时间选择(自绘日历面板) ===== */
+  var calPanel = $('cal-panel');
+  var calTarget = null;        // 绑定输入框:f-time-start / f-time-end
+  var calY, calM;              // 面板显示年月
+  var calDate, calHh, calMm;   // 当前选择日期与时刻
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  /** 打开面板:按输入框现有值初始化,无值则顺延(结束→取开始值,开始→今天当前时刻) */
+  function openCal(inputId) {
+    closeDd();
+    calTarget = inputId;
+    var v = $(inputId).value;
+    if (!v && inputId === 'f-time-end') v = $('f-time-start').value;
+    if (!v) {
+      var now = new Date();
+      v = todayStr() + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes());
+    }
+    calDate = v.slice(0, 10);
+    calHh = v.slice(11, 13);
+    calMm = v.slice(14, 16);
+    calY = +calDate.slice(0, 4);
+    calM = +calDate.slice(5, 7);
+    renderCal();
+    calPanel.classList.add('open');
+  }
+
+  /** 渲染面板:月份导航 + 日期网格 + 时间步进 + 今天(选择实时写回输入框) */
+  function renderCal() {
+    var startW = new Date(calY, calM - 1, 1).getDay();
+    var days = new Date(calY, calM, 0).getDate();
+    var today = todayStr();
+    var html = '<div class="cal-hd"><span class="cal-ym">' + calY + '年' + calM + '月</span>'
+      + '<span class="cal-nav">'
+      + '<button type="button" data-nav="-1" aria-label="上个月">‹</button>'
+      + '<button type="button" data-nav="1" aria-label="下个月">›</button>'
+      + '</span></div>'
+      + '<div class="cal-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>'
+      + '<div class="cal-grid">';
+    for (var i = 0; i < startW; i++) html += '<div class="cal-cell empty"></div>';
+    for (var d = 1; d <= days; d++) {
+      var ds = calY + '-' + pad2(calM) + '-' + pad2(d);
+      var cls = 'cal-cell' + (ds === calDate ? ' sel' : (ds === today ? ' today' : ''));
+      html += '<div class="' + cls + '" data-day="' + ds + '">' + d + '</div>';
+    }
+    html += '</div>'
+      + '<div class="cal-ft">'
+      + '<span class="cal-time">时间'
+      + '<button type="button" class="cal-step" data-step="hh" data-d="-1">−</button><b class="cal-hm">' + calHh + '</b><button type="button" class="cal-step" data-step="hh" data-d="1">+</button>'
+      + '<i>:</i>'
+      + '<button type="button" class="cal-step" data-step="mm" data-d="-1">−</button><b class="cal-hm">' + calMm + '</b><button type="button" class="cal-step" data-step="mm" data-d="1">+</button>'
+      + '</span>'
+      + '<button type="button" class="cal-today-btn" data-today="1">今天</button>'
+      + '</div>';
+    calPanel.innerHTML = html;
+  }
+
+  /** 选择结果实时写回输入框 */
+  function commitCal() {
+    if (calTarget) $(calTarget).value = calDate + ' ' + calHh + ':' + calMm;
+  }
+
+  calPanel.addEventListener('click', function (e) {
+    var nav = e.target.closest('[data-nav]');
+    if (nav) {
+      calM += +nav.dataset.nav;
+      if (calM < 1) { calM = 12; calY--; }
+      else if (calM > 12) { calM = 1; calY++; }
+      renderCal();
+      return;
+    }
+    var day = e.target.closest('[data-day]');
+    if (day) { calDate = day.dataset.day; commitCal(); renderCal(); return; }
+    var step = e.target.closest('[data-step]');
+    if (step) {
+      var d = +step.dataset.d;
+      if (step.dataset.step === 'hh') calHh = pad2((+calHh + d + 24) % 24);
+      else calMm = pad2((+calMm + d * 5 + 60) % 60);
+      commitCal(); renderCal(); return;
+    }
+    if (e.target.closest('[data-today]')) {
+      calDate = todayStr();
+      calY = +calDate.slice(0, 4);
+      calM = +calDate.slice(5, 7);
+      commitCal(); renderCal();
+    }
   });
 
-  function resetPickers() {
-    Array.prototype.forEach.call(document.querySelectorAll('.native-picker'), function (p) {
-      p.value = '';
-      var t = $(p.dataset.for);
-      if (t) t.value = '';
-    });
-  }
+  // 点击输入框打开面板;点击面板外关闭
+  document.querySelector('.range-wrap').addEventListener('click', function (e) {
+    var inp = e.target.closest('.range-input');
+    if (!inp || drawerState.mode === 'view') return;
+    if (calTarget === inp.id && calPanel.classList.contains('open')) return;
+    openCal(inp.id);
+  });
+  // 面板内点击会重渲染(innerHTML),e.target 脱离 DOM 后 closest 会失效误关面板;故用捕获阶段判断外部点击
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.range-wrap')) calPanel.classList.remove('open');
+  }, true);
 
   /* ===== 抽屉 ===== */
 
-  /** 设置文本字段并同步对应原生 picker 的值(24:00 等非法值 picker 自动留空) */
+  /** 设置文本字段值 */
   function setField(id, v) {
     $(id).value = v || '';
-    var p = document.querySelector('.native-picker[data-for="' + id + '"]');
-    if (p) { try { p.value = v || ''; } catch (e) { p.value = ''; } }
   }
-
-  /** 'yyyy-MM-dd HH:mm' → 'HH:mm' */
-  function hhmm(s) { return s ? String(s).slice(11, 16) : ''; }
 
   /** 打开抽屉:编辑/查看先取详情回显;新增直接空表单 */
   function openDrawer(mode, row) {
@@ -636,13 +665,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   /** 表单回显:d=null 为空表单;d 为详情对象(§3.3) */
   function fillForm(d) {
-    resetPickers();
+    calPanel.classList.remove('open');
     if (d) {
-      setField('f-date', d.dutyDate);
       setField('f-shift', d.shift);
       $('f-shift').dataset.value = d.shiftCode || '';
-      setField('f-time-start', hhmm(d.timeStart));
-      setField('f-time-end', hhmm(d.timeEnd));
+      setField('f-time-start', d.timeStart);
+      setField('f-time-end', d.timeEnd);
       setField('f-unit', d.orgName);
       $('f-unit').dataset.value = d.orgId || '';
       setField('f-leader', d.leaderName);
@@ -652,7 +680,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         if (d.memberIds && d.memberIds[i]) memberIdMap[n] = d.memberIds[i];
       });
     } else {
-      setField('f-date', '');
       setField('f-shift', '');
       $('f-shift').dataset.value = '';
       setField('f-time-start', '');
@@ -673,7 +700,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       $('btn-drawer-confirm').textContent = '关闭';
     } else {
       $('btn-drawer-cancel').style.display = '';
-      $('btn-drawer-confirm').textContent = '确认交班';
+      $('btn-drawer-confirm').textContent = '保存';
     }
     drawerMask.classList.add('show');
     drawer.classList.add('show');
@@ -683,6 +710,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     drawer.classList.remove('show');
     drawerMask.classList.remove('show');
     closeDd();
+    calPanel.classList.remove('open');
   }
 
   $('drawer-close').addEventListener('click', closeDrawer);
@@ -691,7 +719,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   /* ===== 表单收集与校验 ===== */
   function validateForm() {
     var checks = [
-      ['值班日期', $('f-date').value],
       ['班次', $('f-shift').value.trim()],
       ['值班时间(开始时间)', $('f-time-start').value],
       ['值班时间(结束时间)', $('f-time-end').value],
@@ -715,19 +742,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
   }
 
-  /** 表单 → 保存请求体(§3.5):时间为 'yyyy-MM-dd HH:mm';结束不晚于开始时自动顺延次日 */
+  /** 今天的 'yyyy-MM-dd' */
+  function todayStr() {
+    var d = new Date();
+    var m = d.getMonth() + 1, day = d.getDate();
+    return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+  }
+
+  /** 表单 → 保存请求体(§3.5):时间已是 'yyyy-MM-dd HH:mm';dutyDate 由开始时间推导(接口仍要求);结束不晚于开始时自动顺延次日 */
   function collectForm() {
-    var date = $('f-date').value;
     var start = $('f-time-start').value;
     var end = $('f-time-end').value;
-    var endDate = date;
-    if (end === '24:00') { end = '00:00'; endDate = addDays(date, 1); }
-    else if (end <= start) { endDate = addDays(date, 1); }
+    if (end <= start) end = addDays(end.slice(0, 10), 1) + ' ' + end.slice(11);
     return {
-      dutyDate: date,
+      dutyDate: start.slice(0, 10),
       shiftCode: $('f-shift').dataset.value,
-      timeStart: date + ' ' + start,
-      timeEnd: endDate + ' ' + end,
+      timeStart: start,
+      timeEnd: end,
       orgId: $('f-unit').dataset.value,
       leaderId: $('f-leader').dataset.value,
       memberIds: memberSel.map(function (n) { return memberIdMap[n]; }).filter(function (x) { return !!x; })
@@ -760,8 +791,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   /* ===== 删除 ===== */
   function askDelete(row) {
     pendingDeleteId = row.id;
-    var shiftText = row.shiftTime ? row.shift + '(' + row.shiftTime + ')' : (row.shift || '');
-    $('confirm-text').textContent = '确定删除「' + row.date + ' ' + shiftText + '」这条值班排班吗?删除后不可恢复。';
+    $('confirm-text').textContent = '确定删除「' + timeRangeText(row) + ' ' + (row.shift || '') + '」这条值班排班吗?删除后不可恢复。';
     confirmOverlay.classList.add('show');
   }
 
@@ -804,23 +834,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     handleAction(el.dataset.action, findRow(el.dataset.id));
   });
 
-  // 状态说明表操作:作用于该状态下的第一条排班记录(无记录时轻提示)
-  document.querySelector('.legend-tbl').addEventListener('click', function (e) {
-    var el = e.target.closest('.act');
-    if (!el) return;
-    var status = el.closest('tr').getAttribute('data-status');
-    var row = findFirstByStatus(status);
-    if (!row) { toast('暂无「' + status + '」状态的排班记录'); return; }
-    handleAction(el.dataset.action, row);
-  });
-
-  /* ===== 初始化:加载下拉选项 / 列表 / 今日值班判定 → 弹出签到提醒 ===== */
+  /* ===== 初始化:加载下拉选项 / 排班列表 ===== */
   loadOptions().catch(function (err) { toast(err.message); });
   loadList().catch(function (err) { toast(err.message); });
-  fetchTodayDutyStatus().then(function (duty) {
-    // 签到提醒仅在待签到态弹出(#1# 未开始 / #zzkl# 待值班;#cmiu# 为值班中兜底,不再弹签到)
-    if (duty && duty.onDuty && (duty.statusCode === '#1#' || duty.statusCode === '#zzkl#')) showSignModal(duty);
-  }).catch(function (err) { toast(err.message); });
 })();
 </script>
 </body>
