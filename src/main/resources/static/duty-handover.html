@@ -138,13 +138,13 @@ textarea::placeholder{color:#bfbfbf}
     </section>
   </div>
 </div>
-<!-- 开始值班弹窗 -->
+<!-- 开始值班/值班签到弹窗(按待签到子形态自适应文案) -->
 <div class="ov" id="start-ov">
   <div class="modal modal-sm" role="dialog" aria-label="开始值班">
-    <div class="modal-hd">开始值班</div>
+    <div class="modal-hd" id="start-hd">开始值班</div>
     <div class="modal-bd">
       <div id="start-stage-1">
-        <p class="tips-text">今日您有值班安排,确认后开始值班并记录实际开始时间。</p>
+        <p class="tips-text" id="start-tips">今日您有值班安排,确认后开始值班并记录实际开始时间。</p>
         <div id="start-info"></div>
       </div>
       <div class="success-inner" id="start-stage-2" style="display:none">
@@ -252,6 +252,25 @@ textarea::placeholder{color:#bfbfbf}
           <div class="mini-act-row"><button type="button" class="btn act-disabled btn-sm" style="width:104px;padding:0" data-note="值班未开始,暂不可填写本班报告。">填写值班报告</button><span class="mini-note">值班未开始,暂不可填写本班报告。</span></div>
         </div>
       </div>
+      <div class="state-col" data-col="notstarted-checkin">
+        <div class="state-col-title">待签到</div>
+        <p class="state-desc">当前班次已由同班人员开启,本人尚未签到,需补记本人签到时间。</p>
+        <div class="mini-card">
+          <div class="duty-card-hd"><h3>当前值班</h3><span class="badge notstarted">待签到</span></div>
+          <p class="record-no">记录编号:-</p>
+          <div class="kv"><span class="k">值班日期</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">班次时间</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">单位</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">带班领导</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">值班人员</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">摘要</span><span class="v">-</span></div>
+        </div>
+        <div class="mini-acts">
+          <div class="mini-act-row"><button type="button" class="btn btn-primary btn-sm" style="width:104px;padding:0" data-act="start">去签到</button><span class="mini-note">点击补记本人签到时间,签到后方可交班/填写报告。</span></div>
+          <div class="mini-act-row"><button type="button" class="btn act-disabled btn-sm" style="width:104px;padding:0" data-note="本人尚未签到,暂不可交班。">交班</button><span class="mini-note">本人尚未签到,暂不可交班。</span></div>
+          <div class="mini-act-row"><button type="button" class="btn act-disabled btn-sm" style="width:104px;padding:0" data-note="本人尚未签到,暂不可填写本班报告。">填写值班报告</button><span class="mini-note">本人尚未签到,暂不可填写本班报告。</span></div>
+        </div>
+      </div>
       <div class="state-col" data-col="ongoing">
         <div class="state-col-title">值班中</div>
         <p class="state-desc">值班人员已经开始值班,可填写值班报告或向接班人员交班。</p>
@@ -263,6 +282,7 @@ textarea::placeholder{color:#bfbfbf}
           <div class="kv"><span class="k">单位</span><span class="v">-</span></div>
           <div class="kv"><span class="k">带班领导</span><span class="v">-</span></div>
           <div class="kv"><span class="k">值班人员</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">我的签到</span><span class="v">-</span></div>
           <div class="kv"><span class="k">摘要</span><span class="v">-</span></div>
         </div>
         <div class="mini-acts">
@@ -371,9 +391,9 @@ textarea::placeholder{color:#bfbfbf}
     }).catch(function (err) { toast(err.message); });
   }
 
-  /** 开始值班(签到):scheduleId 来自 today 响应 */
-  function startDuty(scheduleId) {
-    return request(API_BASE + '/attendance/start', { method: 'POST', body: { scheduleId: scheduleId } });
+  /** 开始值班(签到):body 传 {recordId}(待签到子形态按记录直达补签) 或 {scheduleId}(未开始子形态按排班开始) */
+  function startDuty(payload) {
+    return request(API_BASE + '/attendance/start', { method: 'POST', body: payload });
   }
 
   /** 提交值班报告 */
@@ -425,6 +445,9 @@ textarea::placeholder{color:#bfbfbf}
       ['带班领导', data.leader],
       ['值班人员', data.members]
     ];
+    if (data.status === 'ongoing' && data.myCheckinAt) {
+      rows.push(['我的签到', data.myCheckinAt]);
+    }
     if (data.status === 'completed') {
       rows.push(['实际开始', data.actualStart], ['实际交班', data.actualEnd]);
     }
@@ -435,14 +458,16 @@ textarea::placeholder{color:#bfbfbf}
     renderDutyActs(data);
   }
 
-  /** 操作按钮:值班中 → 填写报告/交班;未开始 → 开始值班;已完成/无安排 → 全部禁用 */
+  /** 操作按钮:值班中 → 填写报告/交班;未开始 → 开始值班 / 待签到 → 去签到;已完成/无安排 → 全部禁用 */
   function renderDutyActs(data) {
     var html = '';
     if (data.status === 'ongoing') {
       html = '<button type="button" class="btn btn-primary" data-act="report">填写值班报告</button>'
            + '<button type="button" class="btn btn-primary" data-act="handover">交班</button>';
     } else if (data.status === 'notstarted') {
-      html = '<button type="button" class="btn btn-primary" data-act="start">开始值班</button>'
+      // 「未开始」两子形态:无 recordId=我的待值班排班(开始值班);有 recordId=在途班他人已开、本人未签到(去签到补记)
+      var startLabel = data.recordId ? '去签到' : '开始值班';
+      html = '<button type="button" class="btn btn-primary" data-act="start">' + startLabel + '</button>'
            + '<button type="button" class="btn act-disabled" data-act="handover" data-note="值班未开始,暂不可交班。">交班</button>'
            + '<button type="button" class="btn act-disabled" data-act="report" data-note="值班未开始,暂不可填写本班报告。">填写值班报告</button>';
     } else if (data.status === 'completed') {
@@ -571,12 +596,18 @@ textarea::placeholder{color:#bfbfbf}
     return '距交班 ' + h + 'h' + mm + 'm';
   }
 
-  /* ===================== 开始值班(两阶段) ===================== */
+  /* ===================== 开始值班/待签到(两阶段) ===================== */
   function openStartModal() {
+    // 待签到子形态(在途班他人已开、本人未签到,recordId 存在):弹窗按补签语义展示;否则为开始值班
+    var isCheckin = !!(current && current.status === 'notstarted' && current.recordId);
     $('start-stage-1').style.display = '';
     $('start-stage-2').style.display = 'none';
     $('btn-start-cancel').style.display = '';
-    $('btn-start-ok').textContent = '开始值班';
+    $('start-hd').textContent = isCheckin ? '值班签到' : '开始值班';
+    $('start-tips').textContent = isCheckin
+      ? '当前班次已由同班人员开始,您尚未签到。确认后将补记您的签到时间。'
+      : '今日您有值班安排,确认后开始值班并记录实际开始时间。';
+    $('btn-start-ok').textContent = isCheckin ? '确认签到' : '开始值班';
     $('btn-start-ok').disabled = false;
     var d = current || {};
     var rows = [
@@ -594,10 +625,12 @@ textarea::placeholder{color:#bfbfbf}
     var btn = this;
     if ($('start-stage-1').style.display !== 'none') {
       // 阶段一:确认开始值班 → POST /duty/attendance/start
+      // 待签到子形态(recordId 存在)按记录直达补签(排班可能反查不到);未开始子形态按排班开始
       var scheduleId = current && current.scheduleId;
-      if (!scheduleId) { toast('缺少排班信息,无法开始值班'); return; }
+      var recordId = current && current.recordId;
+      if (!scheduleId && !recordId) { toast('缺少排班信息,无法开始值班'); return; }
       btn.disabled = true;
-      startDuty(scheduleId).then(function (res) {
+      startDuty(recordId ? { recordId: recordId } : { scheduleId: scheduleId }).then(function (res) {
         btn.disabled = false;
         if (current) {
           current.recordId = (res && res.recordId) || current.recordId;
@@ -730,7 +763,7 @@ textarea::placeholder{color:#bfbfbf}
   });
 
   /* ===================== 状态显示说明 ===================== */
-  // 「点击查看各状态显示」:点击时先拉取最新值班状态(会发请求),再按当前状态只展示对应的一列(未开始/值班中/已值过班/无安排)
+  // 「点击查看各状态显示」:点击时先拉取最新值班状态(会发请求),再按当前状态只展示对应的一列(未开始/待签到/值班中/已值过班/无安排)
   $('state-link').addEventListener('click', function () {
     fetchTodayDuty().then(function (d) {
       current = d;
@@ -742,9 +775,11 @@ textarea::placeholder{color:#bfbfbf}
     });
   });
 
-  /** 渲染状态说明浮层:按 current.status 显示对应列并用当前数据填充 */
+  /** 渲染状态说明浮层:按 current.status 显示对应列并用当前数据填充(未开始含待签到子形态) */
   function openStatesOv() {
     var key = current ? current.status : 'notstarted';
+    // 待签到子形态(在途班他人已开、本人未签到,recordId 存在)→ 展示「待签到」列
+    if (key === 'notstarted' && current && current.recordId) key = 'notstarted-checkin';
     var target = null;
     Array.prototype.forEach.call(document.querySelectorAll('#states-ov .state-col'), function (col) {
       var on = col.getAttribute('data-col') === key;
@@ -762,7 +797,8 @@ textarea::placeholder{color:#bfbfbf}
     if (no) no.textContent = '记录编号:' + (d.recordNo || '-');
     var map = {
       '值班日期': d.date, '班次时间': d.shiftTime, '单位': d.org, '带班领导': d.leader,
-      '值班人员': d.members, '实际开始': d.actualStart, '实际交班': d.actualEnd, '摘要': d.summary || '-'
+      '值班人员': d.members, '我的签到': d.myCheckinAt,
+      '实际开始': d.actualStart, '实际交班': d.actualEnd, '摘要': d.summary || '-'
     };
     Array.prototype.forEach.call(col.querySelectorAll('.kv'), function (kv) {
       var k = kv.querySelector('.k').textContent;

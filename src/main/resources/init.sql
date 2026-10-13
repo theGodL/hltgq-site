@@ -440,3 +440,14 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_stocktake_attachmen
 );
 CREATE INDEX IF NOT EXISTS idx_stocktake_attachment_order
     ON "qixiao-apaas".t_auto_hltgq_water_stocktake_attachment(order_id);
+
+-- ========== 值班交接班：每人独立签到（2026-10 改造） ==========
+-- 原实现为班维度一次性签到（首人签到即全员「值班中」）；本改造签到按人落库、状态按人判定：
+-- 未签到 → 待签到（可去签到），已签到 → 值班中。带班领导签到落主表（领导不在人员关系表中），
+-- 值班人员签到落各自 rel 行；null=未签到，按人幂等（首签建记录、其余补签）。
+-- 独立执行版见根目录 duty-checkin-ddl.sql；历史数据说明：改造前在途 #2# 记录签到列为 NULL，
+-- 参与者各自补签一次即可，已交班（#3#）记录不受影响。
+ALTER TABLE "qixiao-apaas"."t_auto_hltgq_yn8cm_igahxz"
+    ADD COLUMN IF NOT EXISTS leader_checkin_at TIMESTAMP;
+ALTER TABLE "qixiao-apaas"."t_auto_hltgq_yn8cm_igahxz_ahygpx_rel"
+    ADD COLUMN IF NOT EXISTS checkin_at TIMESTAMP;
