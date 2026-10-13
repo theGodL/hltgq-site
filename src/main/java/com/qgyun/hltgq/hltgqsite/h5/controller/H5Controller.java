@@ -8,6 +8,7 @@ import com.qgyun.hltgq.hltgqsite.h5.service.H5StatService;
 import com.qgyun.hltgq.hltgqsite.h5.service.H5WaterResourceService;
 import com.qgyun.hltgq.hltgqsite.h5.service.MessageService;
 import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolSchedulePageVO;
+import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolStationVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.InspectionResultStatsVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessagePageVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessageReadRequest;
@@ -24,10 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * H5 移动端接口：巡查及问题统计 / 维修养护统计 / 消息中心 / 巡检计划列表 / 水资源概览。
+ * H5 移动端接口：巡查及问题统计 / 维修养护统计 / 消息中心 / 巡检计划列表与关联点位 / 水资源概览。
  * <p>全部接口需登录态（拦截器校验），当前登录人取自 {@link UserContextHolder}，
  * 消息中心未读与已读均为当前登录人视角。
  */
@@ -88,6 +90,19 @@ public class H5Controller {
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
         return patrolScheduleService.list(name, status, page, size);
+    }
+
+    /**
+     * 计划关联点位查询（添加巡检记录页点位选择）：入参巡检计划 id，返回该计划「巡查范围」内
+     * 设置的站点（id/名称/经纬度，按设置顺序）。替代低代码关系查询接口
+     * （{@code /ar/ZzrirqCf7oZ4cudrUOY/oiwlwRelQuery}，后者不按计划过滤、返回全部站点）。
+     *
+     * @param scheduleId 巡检计划 id（必填；空 400，计划不存在或无范围关系返回空数组）
+     */
+    @GetMapping("/patrol-schedule/stations")
+    public List<H5PatrolStationVO> patrolScheduleStations(
+            @RequestParam(required = false) String scheduleId) {
+        return patrolScheduleService.stations(scheduleId);
     }
 
     /**

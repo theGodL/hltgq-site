@@ -83,6 +83,21 @@ public class H5PatrolScheduleService {
     }
 
     /**
+     * 计划关联点位查询（添加巡检记录页点位选择）：按计划 id 返回该计划「巡查范围」设置的站点
+     * （id/名称/经纬度，按 nature_order 顺序）；计划不存在或无范围关系返回空数组。
+     *
+     * @param scheduleId 巡检计划 id（空 → 400）
+     */
+    public List<H5PatrolStationVO> stations(String scheduleId) {
+        String id = trimToNull(scheduleId);
+        if (id == null) {
+            throw new IllegalArgumentException("巡检计划 id 不能为空");
+        }
+        return queryStationsGrouped(Collections.singletonList(id))
+                .getOrDefault(id, Collections.emptyList());
+    }
+
+    /**
      * 关联点位装配：按当前页计划 id 一次 IN 批量查询（避免逐行 N+1），
      * 按 scheduleId 分组挂到各行；无范围关系的计划置空数组（与 rangeStationIds=null 对应）。
      */
@@ -94,19 +109,30 @@ public class H5PatrolScheduleService {
         for (H5PatrolScheduleVO row : rows) {
             scheduleIds.add(row.getId());
         }
-        Map<String, List<H5PatrolStationVO>> grouped = new LinkedHashMap<>();
-        for (H5PatrolScheduleMapper.ScheduleStationRow r : mapper.selectScheduleStations(scheduleIds)) {
-            H5PatrolStationVO station = new H5PatrolStationVO();
-            station.setId(r.getId());
-            station.setName(r.getName());
-            station.setLon(r.getLon());
-            station.setLat(r.getLat());
-            grouped.computeIfAbsent(r.getScheduleId(), k -> new ArrayList<>()).add(station);
-        }
+        Map<String, List<H5PatrolStationVO>> grouped = queryStationsGrouped(scheduleIds);
         for (H5PatrolScheduleVO row : rows) {
             List<H5PatrolStationVO> stations = grouped.get(row.getId());
             row.setStations(stations == null ? Collections.emptyList() : stations);
         }
+    }
+
+    /** 关系行批量查询并按 scheduleId 分组（一次 IN；分组内元素保持查询行序，即 nature_order 顺序）。 */
+    private Map<String, List<H5PatrolStationVO>> queryStationsGrouped(List<String> scheduleIds) {
+        Map<String, List<H5PatrolStationVO>> grouped = new LinkedHashMap<>();
+        for (H5PatrolScheduleMapper.ScheduleStationRow r : mapper.selectScheduleStations(scheduleIds)) {
+            grouped.computeIfAbsent(r.getScheduleId(), k -> new ArrayList<>()).add(toStation(r));
+        }
+        return grouped;
+    }
+
+    /** 关系行 → 对外点位 VO（id/名称/经纬度）。 */
+    private H5PatrolStationVO toStation(H5PatrolScheduleMapper.ScheduleStationRow r) {
+        H5PatrolStationVO station = new H5PatrolStationVO();
+        station.setId(r.getId());
+        station.setName(r.getName());
+        station.setLon(r.getLon());
+        station.setLat(r.getLat());
+        return station;
     }
 
     /** 单值编码 → 中文（未知编码原样返回） */
