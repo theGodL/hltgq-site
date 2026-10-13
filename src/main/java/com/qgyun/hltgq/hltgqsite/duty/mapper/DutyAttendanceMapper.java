@@ -72,7 +72,7 @@ public interface DutyAttendanceMapper {
             "LEFT JOIN " + T_USER + " u ON u.id = d.atfzxl " +
             "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#3#' " +
             "AND to_char(d.yuyitx, 'YYYY-MM-DD HH24:MI:SS') >= #{dayStart} " +
-            "AND to_char(d.yuyitx, 'YYYY-MM-DD HH24:MI:SS') &lt; #{dayEnd} " +
+            "AND to_char(d.yuyitx, 'YYYY-MM-DD HH24:MI:SS') < #{dayEnd} " +
             "AND (d.atfzxl = #{userId} OR EXISTS (SELECT 1 FROM " + T_RECORD_MEMBER_REL + " rel " +
             "     WHERE rel.biz_id = d.id AND rel.rel_id = #{userId})) " +
             "ORDER BY d.yuyitx DESC NULLS LAST, d.id DESC LIMIT 1")
@@ -249,7 +249,7 @@ public interface DutyAttendanceMapper {
             "FROM " + T_HANDOVER + " k " +
             "WHERE k.corp_code = 'hltgq' " +
             "AND to_char(k.qwiioz, 'YYYY-MM-DD HH24:MI:SS') >= #{dayStart} " +
-            "AND to_char(k.qwiioz, 'YYYY-MM-DD HH24:MI:SS') &lt; #{dayEnd} " +
+            "AND to_char(k.qwiioz, 'YYYY-MM-DD HH24:MI:SS') < #{dayEnd} " +
             "ORDER BY k.qwiioz ASC")
     List<HandoverTimelineRowVO> selectTimelineHandovers(@Param("dayStart") String dayStart,
                                                         @Param("dayEnd") String dayEnd);
@@ -266,7 +266,7 @@ public interface DutyAttendanceMapper {
             "FROM " + T_RECORD + " d " +
             "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' " +
             "AND to_char(d.yaaebo, 'YYYY-MM-DD') >= #{dayStart} " +
-            "AND to_char(d.yaaebo, 'YYYY-MM-DD') &lt; #{dayEnd} " +
+            "AND to_char(d.yaaebo, 'YYYY-MM-DD') < #{dayEnd} " +
             "ORDER BY d.jlailj ASC NULLS LAST")
     List<OngoingTimelineRowVO> selectTimelineOngoing(@Param("dayStart") String dayStart,
                                                      @Param("dayEnd") String dayEnd);
@@ -282,9 +282,9 @@ public interface DutyAttendanceMapper {
             "  WHERE rel.biz_id = s.id) AS membersRaw " +
             "FROM " + T_SCHEDULE + " s " +
             "WHERE s.corp_code = 'hltgq' " +
-            "AND (s.peuzwi = '#zzkl#' OR (s.peuzwi = '#1#' AND COALESCE(s.tneakp_min, s.owcvsv) &lt;= #{now})) " +
+            "AND (s.peuzwi = '#zzkl#' OR (s.peuzwi = '#1#' AND COALESCE(s.tneakp_min, s.owcvsv) <= #{now})) " +
             "AND to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD') >= #{dayStart} " +
-            "AND to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD') &lt; #{dayEnd} " +
+            "AND to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD') < #{dayEnd} " +
             "ORDER BY s.tneakp_min ASC NULLS LAST")
     List<PendingTimelineRowVO> selectTimelinePending(@Param("dayStart") String dayStart,
                                                      @Param("dayEnd") String dayEnd,

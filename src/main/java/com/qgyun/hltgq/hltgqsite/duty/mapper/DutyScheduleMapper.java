@@ -198,7 +198,7 @@ public interface DutyScheduleMapper {
             "     WHERE rel.biz_id = s.id AND rel.rel_id = #{userId})) " +
             "AND (s.peuzwi = '#cmiu#' OR " +
             "     (s.peuzwi IN ('#1#', '#zzkl#') " +
-            "      AND to_char(COALESCE(s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') &lt; #{dayEnd} " +
+            "      AND to_char(COALESCE(s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') < #{dayEnd} " +
             "      AND to_char(COALESCE(s.tneakp_max, s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') >= #{dayStart})) " +
             "ORDER BY CASE s.peuzwi WHEN '#cmiu#' THEN 0 WHEN '#zzkl#' THEN 1 ELSE 2 END, " +
             "COALESCE(s.tneakp_min, s.owcvsv) ASC NULLS LAST " +
@@ -233,7 +233,7 @@ public interface DutyScheduleMapper {
             "WHERE s.corp_code = 'hltgq' AND s.jepbhm = #{orgId} " +
             "AND s.peuzwi IN ('#cmiu#', '#zzkl#') " +
             "AND to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD') >= #{dayStart} " +
-            "AND to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD') &lt; #{dayEnd} " +
+            "AND to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD') < #{dayEnd} " +
             "ORDER BY CASE s.peuzwi WHEN '#cmiu#' THEN 0 ELSE 1 END, s.tneakp_min ASC NULLS LAST " +
             "LIMIT 1")
     ScheduleRowVO selectScheduleByFallback(@Param("orgId") String orgId,
