@@ -103,7 +103,7 @@ public interface DutyScheduleMapper {
             "to_char(s.tneakp_max, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMaxRaw, " +
             "s.fjyyhu AS shiftCode, s.peuzwi AS statusCode, " +
             "s.jepbhm AS orgId, o.name AS orgName, s.ihdflq AS legacyUnit, " +
-            "s.alidpq AS leaderId, u.name AS leaderName, " +
+            "s.alidpq AS leaderId, u.name AS leader, " +
             "(SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +
             "   FROM " + T_MEMBER_REL + " rel LEFT JOIN " + T_USER + " ru ON ru.id = rel.rel_id " +
             "  WHERE rel.biz_id = s.id) AS members, " +
