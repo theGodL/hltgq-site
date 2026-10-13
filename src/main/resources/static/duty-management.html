@@ -321,85 +321,79 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 (function () {
   'use strict';
 
-  /* ===================== Mock 数据区 =====================
-   * 后端接口就绪后:删除 MOCK_* 常量与各 mock 函数体,替换为真实请求:
-   *   今日值班判定   → GET    /hltgq-site/duty/today-status
-   *   排班列表       → GET    /hltgq-site/duty/list?page=1&size=20
-   *   保存(新增/编辑) → POST   /hltgq-site/duty/save
-   *   删除           → DELETE /hltgq-site/duty/{id}
-   * ====================================================== */
+  /* ===================== 接口区 =====================
+   * 接口文档 v1.0《值班交接班接口.md》:
+   *   今日值班判定   → GET    /duty/today-status
+   *   下拉选项       → GET    /duty/options
+   *   排班列表       → GET    /duty/schedule/list
+   *   排班详情       → GET    /duty/schedule/detail
+   *   保存(新增/编辑) → POST   /duty/schedule/save
+   *   删除           → DELETE /duty/schedule/{id}
+   * ================================================= */
 
-  var MOCK_DUTY_LIST = [
-    { id: 1, date: '2026-09-08', shift: '晚班(20:00-次日 08:00)', org: '防汛调度中心', leader: '赵海涛', members: '陈刚、刘洋', status: '已完成' },
-    { id: 2, date: '2026-09-09', shift: '白班(08:00-20:00)',      org: '河道管理处',   leader: '李卫东', members: '周强、孙丽', status: '已完成' },
-    { id: 3, date: '2026-09-09', shift: '晚班(20:00-次日 08:00)', org: '河道管理处',   leader: '王建国', members: '李华、陈刚', status: '未开始' },
-    { id: 4, date: '2026-09-10', shift: '白班(08:00-20:00)',      org: '防汛调度中心', leader: '赵海涛', members: '张明、刘洋', status: '值班中' },
-    { id: 5, date: '2026-09-10', shift: '晚班(20:00-次日 08:00)', org: '防汛调度中心', leader: '李卫东', members: '周强、孙丽', status: '待值班' }
-  ];
+  var API_BASE = '/hltgq-site/duty';
+  var OPTIONS = { shifts: [], orgs: [], users: [] }; // 下拉数据源(shifts/orgs/users)
+  var LIST_DATA = [];                                // 排班列表当前数据
+  var memberIdMap = {};                              // 值班人员姓名 → 用户 id
+  var redirected = false;
 
-  // 表单下拉候选(mock)
-  var MOCK_SHIFTS = ['白班', '中班', '夜班'];
-  var MOCK_UNITS = ['防汛调度中心', '河道管理处', '办公室', '工程管理科'];
-  var MOCK_LEADERS = ['赵海涛', '李卫东', '王建国', '刘建国', '张伟'];
-  var MOCK_MEMBERS = ['张安', '李璐', '陈刚', '刘洋', '周强', '孙丽', '李华', '张明'];
-  var MOCK_ADD_DEFAULT_MEMBERS = ['张安', '李璐']; // 新增打开时默认值班人员,对齐设计图
-
-  /** 模拟「今日是否我值班」接口 */
-  function fetchTodayDutyStatus() {
-    return new Promise(function (resolve) {
-      setTimeout(function () {
-        resolve({ onDuty: true, name: '张伟', shift: '白班', shiftTime: '8:00 - 20:00', leader: '刘建国' });
-      }, 300);
-    });
-  }
-
-  /** 模拟「排班列表」接口 */
-  function fetchDutyList() {
-    return new Promise(function (resolve) {
-      setTimeout(function () { resolve(MOCK_DUTY_LIST.slice()); }, 200);
-    });
-  }
-
-  var nextDutyId = 100;
-
-  /** 模拟「保存」接口:payload.id 有值 → 编辑,否则新增 */
-  function saveDuty(payload) {
-    return new Promise(function (resolve) {
-      setTimeout(function () {
-        if (payload.id != null) {
-          for (var i = 0; i < MOCK_DUTY_LIST.length; i++) {
-            if (MOCK_DUTY_LIST[i].id === payload.id) {
-              MOCK_DUTY_LIST[i].date = payload.date;
-              MOCK_DUTY_LIST[i].shift = payload.shift;
-              MOCK_DUTY_LIST[i].org = payload.org;
-              MOCK_DUTY_LIST[i].leader = payload.leader;
-              MOCK_DUTY_LIST[i].members = payload.members;
-              break;
-            }
+  /** 通用请求:同域自动带 Cookie;401 按 redirectUrl 跳登录;非 2xx 抛出 message */
+  function request(url, opt) {
+    var init = { method: (opt && opt.method) || 'GET', headers: {} };
+    if (opt && opt.body !== undefined) {
+      init.headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(opt.body);
+    }
+    return fetch(url, init).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (data) {
+        if (res.status === 401) {
+          // 未登录:跳同域登录页(redirectUrl 可能指向上游绝对地址,需改成本站路径,登录 Cookie 才会落在本站)
+          if (!redirected && data && data.redirectUrl) {
+            redirected = true;
+            var loginUrl = data.redirectUrl;
+            try { var u = new URL(loginUrl, location.origin); loginUrl = u.pathname + u.search; } catch (e) { /* 保持原值 */ }
+            location.href = loginUrl;
           }
-        } else {
-          MOCK_DUTY_LIST.unshift({
-            id: ++nextDutyId, date: payload.date, shift: payload.shift, org: payload.org,
-            leader: payload.leader, members: payload.members, status: '未开始'
-          });
+          throw new Error((data && data.message) || '未登录');
         }
-        resolve({ ok: true });
-      }, 200);
+        if (!res.ok) throw new Error((data && data.message) || ('请求失败(' + res.status + ')'));
+        return data;
+      });
     });
   }
 
-  /** 模拟「删除」接口 */
-  function deleteDuty(id) {
-    return new Promise(function (resolve) {
-      setTimeout(function () {
-        for (var i = 0; i < MOCK_DUTY_LIST.length; i++) {
-          if (MOCK_DUTY_LIST[i].id === id) { MOCK_DUTY_LIST.splice(i, 1); break; }
-        }
-        resolve({ ok: true });
-      }, 200);
+  /** 下拉选项:班次字典 / 单位 / 人员 */
+  function loadOptions() {
+    return request(API_BASE + '/options').then(function (d) {
+      OPTIONS.shifts = (d && d.shifts) || [];
+      OPTIONS.orgs = (d && d.orgs) || [];
+      OPTIONS.users = (d && d.users) || [];
+      OPTIONS.users.forEach(function (u) { memberIdMap[u.name] = u.id; });
     });
   }
-  /* ===================== Mock 数据区结束 ===================== */
+
+  /** 排班列表(演示页取一页 100 条) */
+  function loadList() {
+    return request(API_BASE + '/schedule/list?page=1&size=100').then(function (d) {
+      LIST_DATA = (d && d.records) || [];
+      renderList();
+    });
+  }
+
+  /** 保存排班(新增/编辑) */
+  function saveDuty(payload) {
+    return request(API_BASE + '/schedule/save', { method: 'POST', body: payload });
+  }
+
+  /** 删除排班 */
+  function deleteDuty(id) {
+    return request(API_BASE + '/schedule/' + encodeURIComponent(id), { method: 'DELETE' });
+  }
+
+  /** 今日值班判定(签到提醒) */
+  function fetchTodayDutyStatus() {
+    return request(API_BASE + '/today-status');
+  }
 
   // 排班状态 → 文字颜色
   var STATUS_COLORS = { '未开始': '#fa8c16', '待值班': '#8c8c8c', '值班中': '#52c41a', '已完成': '#52c41a' };
@@ -430,39 +424,45 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   }
 
   function findRow(id) {
-    for (var i = 0; i < MOCK_DUTY_LIST.length; i++) {
-      if (MOCK_DUTY_LIST[i].id === id) return MOCK_DUTY_LIST[i];
+    for (var i = 0; i < LIST_DATA.length; i++) {
+      if (String(LIST_DATA[i].id) === String(id)) return LIST_DATA[i];
     }
     return null;
   }
 
   function findFirstByStatus(status) {
-    for (var i = 0; i < MOCK_DUTY_LIST.length; i++) {
-      if (MOCK_DUTY_LIST[i].status === status) return MOCK_DUTY_LIST[i];
+    for (var i = 0; i < LIST_DATA.length; i++) {
+      if (LIST_DATA[i].status === status) return LIST_DATA[i];
     }
     return null;
   }
 
   /* ===== 列表渲染 ===== */
 
-  /** 操作列:未开始 → 查看/编辑/删除;其余状态仅查看 */
+  /** 操作列:未开始(statusCode=#1#)→ 查看/编辑/删除;其余状态仅查看 */
   function actionCell(row) {
-    var html = '<span class="act" data-action="view" data-id="' + row.id + '">查看</span>';
-    if (row.status === '未开始') {
-      html += '<span class="act" data-action="edit" data-id="' + row.id + '">编辑</span>'
-            + '<span class="act" data-action="delete" data-id="' + row.id + '">删除</span>';
+    var id = esc(row.id);
+    var html = '<span class="act" data-action="view" data-id="' + id + '">查看</span>';
+    if (row.statusCode === '#1#') {
+      html += '<span class="act" data-action="edit" data-id="' + id + '">编辑</span>'
+            + '<span class="act" data-action="delete" data-id="' + id + '">删除</span>';
     }
     return '<td>' + html + '</td>';
   }
 
-  function renderList(rows) {
-    $('duty-tbody').innerHTML = rows.map(function (row) {
+  function renderList() {
+    if (!LIST_DATA.length) {
+      $('duty-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bfbfbf;padding:32px 0">暂无数据</td></tr>';
+      return;
+    }
+    $('duty-tbody').innerHTML = LIST_DATA.map(function (row) {
+      var shiftText = row.shiftTime ? row.shift + '(' + row.shiftTime + ')' : (row.shift || '');
       return '<tr>'
         + '<td>' + esc(row.date) + '</td>'
-        + '<td>' + esc(row.shift) + '</td>'
-        + '<td>' + esc(row.org) + '</td>'
-        + '<td>' + esc(row.leader) + '</td>'
-        + '<td>' + esc(row.members) + '</td>'
+        + '<td>' + esc(shiftText) + '</td>'
+        + '<td>' + esc(row.org || '-') + '</td>'
+        + '<td>' + esc(row.leader || '-') + '</td>'
+        + '<td>' + esc(row.members || '-') + '</td>'
         + '<td style="color:' + (STATUS_COLORS[row.status] || '#333') + '">' + esc(row.status) + '</td>'
         + actionCell(row)
         + '</tr>';
@@ -499,8 +499,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     openDd = dd;
   }
 
-  /** 单选下拉绑定:options 支持数组或函数(函数形式在展开时求值) */
-  function bindSingleSelect(inputId, ddId, options) {
+  /** 单选下拉绑定:options 为 {value,label} 数组或返回该数组的函数;选中后回调 onPick(value) */
+  function bindSingleSelect(inputId, ddId, options, onPick) {
     var input = $(inputId);
     var dd = $(ddId);
     input.addEventListener('click', function () {
@@ -508,7 +508,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       if (openDd === dd) { closeDd(); return; }
       var opts = typeof options === 'function' ? options() : options;
       dd.innerHTML = opts.map(function (o) {
-        return '<div class="dd-opt"' + (input.value === o ? ' active' : '') + '>' + esc(o) + '</div>';
+        return '<div class="dd-opt"' + (input.value === o.label ? ' active' : '') + ' data-value="' + esc(o.value) + '">' + esc(o.label) + '</div>';
       }).join('');
       openDdPanel(dd);
     });
@@ -516,18 +516,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       var opt = e.target.closest('.dd-opt');
       if (!opt) return;
       input.value = opt.textContent;
+      input.dataset.value = opt.dataset.value || '';
       closeDd();
+      if (onPick) onPick(input.dataset.value);
     });
   }
 
-  bindSingleSelect('f-unit', 'unit-dd', MOCK_UNITS);
-  bindSingleSelect('f-leader', 'leader-dd', MOCK_LEADERS);
-  // 班次:固定选项 白班/中班/夜班;编辑其他班次名(如历史数据「晚班」)时并入选项,避免回显失配
+  bindSingleSelect('f-unit', 'unit-dd', function () {
+    return OPTIONS.orgs.map(function (o) { return { value: o.id, label: o.name }; });
+  });
+  bindSingleSelect('f-leader', 'leader-dd', function () {
+    return OPTIONS.users.map(function (u) { return { value: u.id, label: u.name }; });
+  });
+  // 班次:选项来自接口字典(白班/中班/夜班);选中后按字典预填时间;历史班次名不在字典时并入显示
   bindSingleSelect('f-shift', 'shift-dd', function () {
-    var opts = MOCK_SHIFTS.slice();
+    var opts = OPTIONS.shifts.map(function (s) { return { value: s.code, label: s.label }; });
     var cur = $('f-shift').value.trim();
-    if (cur && opts.indexOf(cur) < 0) opts.unshift(cur);
+    if (cur && !opts.some(function (o) { return o.label === cur; })) opts.unshift({ value: '', label: cur });
     return opts;
+  }, function (code) {
+    var s = null;
+    OPTIONS.shifts.forEach(function (x) { if (x.code === code) s = x; });
+    if (!s) return;
+    if (s.defaultStart) setField('f-time-start', s.defaultStart);
+    if (s.defaultEnd) setField('f-time-end', s.defaultEnd);
   });
 
   /* ===== 多选(值班人员) ===== */
@@ -544,10 +556,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   }
 
   function renderMemberDd() {
-    memberDd.innerHTML = MOCK_MEMBERS.map(function (m) {
-      var on = memberSel.indexOf(m) >= 0;
-      return '<div class="dd-opt' + (on ? ' multi-on' : '') + '" data-m="' + esc(m) + '">'
-        + esc(m)
+    memberDd.innerHTML = OPTIONS.users.map(function (u) {
+      var on = memberSel.indexOf(u.name) >= 0;
+      return '<div class="dd-opt' + (on ? ' multi-on' : '') + '" data-m="' + esc(u.name) + '">'
+        + esc(u.name)
         + (on ? '<svg class="dd-check" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2L4.8 9 10 3.4" stroke="#1677ff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '')
         + '</div>';
     }).join('');
@@ -595,47 +607,67 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   /* ===== 抽屉 ===== */
 
-  /** '晚班(20:00-次日 08:00)' → { name:'晚班', start:'20:00', end:'08:00' } */
-  function parseShift(shift) {
-    var m = /^(.*?)\((\d{1,2}:\d{2})-(?:次日 )?(\d{1,2}:\d{2})\)$/.exec(shift || '');
-    if (m) return { name: m[1], start: m[2], end: m[3] };
-    return { name: shift || '', start: '', end: '' };
+  /** 设置文本字段并同步对应原生 picker 的值(24:00 等非法值 picker 自动留空) */
+  function setField(id, v) {
+    $(id).value = v || '';
+    var p = document.querySelector('.native-picker[data-for="' + id + '"]');
+    if (p) { try { p.value = v || ''; } catch (e) { p.value = ''; } }
   }
 
-  /** '陈刚、刘洋' → ['陈刚','刘洋'] */
-  function splitMembers(s) {
-    if (!s) return [];
-    return String(s).split('、').filter(function (x) { return x; });
-  }
+  /** 'yyyy-MM-dd HH:mm' → 'HH:mm' */
+  function hhmm(s) { return s ? String(s).slice(11, 16) : ''; }
 
+  /** 打开抽屉:编辑/查看先取详情回显;新增直接空表单 */
   function openDrawer(mode, row) {
     drawerState.mode = mode;
     drawerState.id = row ? row.id : null;
-    resetPickers();
     closeDd();
 
     if (row) {
-      var p = parseShift(row.shift);
-      $('f-date').value = row.date || '';
-      $('f-shift').value = p.name;
-      $('f-time-start').value = p.start;
-      $('f-time-end').value = p.end;
-      $('f-unit').value = row.org || '';
-      $('f-leader').value = row.leader || '';
-      memberSel = splitMembers(row.members);
+      request(API_BASE + '/schedule/detail?id=' + encodeURIComponent(row.id)).then(function (d) {
+        fillForm(d);
+        openDrawerUI(mode);
+      }).catch(function (err) { toast(err.message); });
     } else {
-      $('f-date').value = '';
-      $('f-shift').value = '';
-      $('f-time-start').value = '';
-      $('f-time-end').value = '';
-      $('f-unit').value = '';
-      $('f-leader').value = '';
-      memberSel = MOCK_ADD_DEFAULT_MEMBERS.slice();
+      fillForm(null);
+      openDrawerUI(mode);
     }
+  }
 
-    drawer.classList.toggle('is-view', mode === 'view');
+  /** 表单回显:d=null 为空表单;d 为详情对象(§3.3) */
+  function fillForm(d) {
+    resetPickers();
+    if (d) {
+      setField('f-date', d.dutyDate);
+      setField('f-shift', d.shift);
+      $('f-shift').dataset.value = d.shiftCode || '';
+      setField('f-time-start', hhmm(d.timeStart));
+      setField('f-time-end', hhmm(d.timeEnd));
+      setField('f-unit', d.orgName);
+      $('f-unit').dataset.value = d.orgId || '';
+      setField('f-leader', d.leaderName);
+      $('f-leader').dataset.value = d.leaderId || '';
+      memberSel = (d.memberNames || []).slice();
+      (d.memberNames || []).forEach(function (n, i) {
+        if (d.memberIds && d.memberIds[i]) memberIdMap[n] = d.memberIds[i];
+      });
+    } else {
+      setField('f-date', '');
+      setField('f-shift', '');
+      $('f-shift').dataset.value = '';
+      setField('f-time-start', '');
+      setField('f-time-end', '');
+      setField('f-unit', '');
+      $('f-unit').dataset.value = '';
+      setField('f-leader', '');
+      $('f-leader').dataset.value = '';
+      memberSel = [];
+    }
     renderMemberBox();
+  }
 
+  function openDrawerUI(mode) {
+    drawer.classList.toggle('is-view', mode === 'view');
     if (mode === 'view') {
       $('btn-drawer-cancel').style.display = 'none';
       $('btn-drawer-confirm').textContent = '关闭';
@@ -643,7 +675,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       $('btn-drawer-cancel').style.display = '';
       $('btn-drawer-confirm').textContent = '确认交班';
     }
-
     drawerMask.classList.add('show');
     drawer.classList.add('show');
   }
@@ -670,21 +701,36 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     for (var i = 0; i < checks.length; i++) {
       if (!checks[i][1]) return checks[i][0];
     }
+    if (!$('f-shift').dataset.value) return '班次(请从下拉中重新选择)';
+    if (!$('f-unit').dataset.value) return '所在单位(请从下拉中重新选择)';
+    if (!$('f-leader').dataset.value) return '带班领导(请从下拉中重新选择)';
     return '';
   }
 
-  /** 表单 → 行数据(班次与时间区间拼为 '晚班(20:00-次日 08:00)' 形式,跨日自动加「次日」) */
+  /** 'yyyy-MM-dd' 加 n 天 */
+  function addDays(dateStr, n) {
+    var d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    var m = d.getMonth() + 1, day = d.getDate();
+    return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+  }
+
+  /** 表单 → 保存请求体(§3.5):时间为 'yyyy-MM-dd HH:mm';结束不晚于开始时自动顺延次日 */
   function collectForm() {
-    var name = $('f-shift').value.trim();
+    var date = $('f-date').value;
     var start = $('f-time-start').value;
     var end = $('f-time-end').value;
-    var shift = name + '(' + start + '-' + (end < start ? '次日 ' : '') + end + ')';
+    var endDate = date;
+    if (end === '24:00') { end = '00:00'; endDate = addDays(date, 1); }
+    else if (end <= start) { endDate = addDays(date, 1); }
     return {
-      date: $('f-date').value,
-      shift: shift,
-      org: $('f-unit').value,
-      leader: $('f-leader').value,
-      members: memberSel.length ? memberSel.join('、') : '—'
+      dutyDate: date,
+      shiftCode: $('f-shift').dataset.value,
+      timeStart: date + ' ' + start,
+      timeEnd: endDate + ' ' + end,
+      orgId: $('f-unit').dataset.value,
+      leaderId: $('f-leader').dataset.value,
+      memberIds: memberSel.map(function (n) { return memberIdMap[n]; }).filter(function (x) { return !!x; })
     };
   }
 
@@ -703,15 +749,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     saveDuty(payload).then(function () {
       btn.disabled = false;
       closeDrawer();
-      renderList(MOCK_DUTY_LIST);
+      loadList().catch(function (err) { toast(err.message); });
       toast(isEdit ? '保存成功' : '新增成功');
+    }).catch(function (err) {
+      btn.disabled = false;
+      toast(err.message);
     });
   });
 
   /* ===== 删除 ===== */
   function askDelete(row) {
     pendingDeleteId = row.id;
-    $('confirm-text').textContent = '确定删除「' + row.date + ' ' + row.shift + '」这条值班排班吗?删除后不可恢复。';
+    var shiftText = row.shiftTime ? row.shift + '(' + row.shiftTime + ')' : (row.shift || '');
+    $('confirm-text').textContent = '确定删除「' + row.date + ' ' + shiftText + '」这条值班排班吗?删除后不可恢复。';
     confirmOverlay.classList.add('show');
   }
 
@@ -727,8 +777,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       btn.disabled = false;
       confirmOverlay.classList.remove('show');
       pendingDeleteId = null;
-      renderList(MOCK_DUTY_LIST);
+      loadList().catch(function (err) { toast(err.message); });
       toast('删除成功');
+    }).catch(function (err) {
+      btn.disabled = false;
+      confirmOverlay.classList.remove('show');
+      pendingDeleteId = null;
+      toast(err.message);
     });
   });
 
@@ -746,7 +801,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   $('duty-tbody').addEventListener('click', function (e) {
     var el = e.target.closest('.act');
     if (!el) return;
-    handleAction(el.dataset.action, findRow(Number(el.dataset.id)));
+    handleAction(el.dataset.action, findRow(el.dataset.id));
   });
 
   // 状态说明表操作:作用于该状态下的第一条排班记录(无记录时轻提示)
@@ -759,11 +814,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     handleAction(el.dataset.action, row);
   });
 
-  /* ===== 初始化:渲染列表 → 判断今日是否值班 → 弹出签到提醒 ===== */
-  fetchDutyList().then(renderList);
+  /* ===== 初始化:加载下拉选项 / 列表 / 今日值班判定 → 弹出签到提醒 ===== */
+  loadOptions().catch(function (err) { toast(err.message); });
+  loadList().catch(function (err) { toast(err.message); });
   fetchTodayDutyStatus().then(function (duty) {
     if (duty && duty.onDuty) showSignModal(duty);
-  });
+  }).catch(function (err) { toast(err.message); });
 })();
 </script>
 </body>

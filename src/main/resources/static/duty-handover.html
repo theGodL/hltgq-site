@@ -55,7 +55,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tl-body{display:flex;align-items:center;justify-content:space-between;gap:14px}
 .person{display:flex;align-items:center;gap:10px;min-width:0}
 .person-r .p-info{text-align:right}
-.avatar{width:36px;height:36px;flex-shrink:0;display:inline-flex;border-radius:50%;overflow:hidden}
+.avatar{width:36px;height:36px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:#4a7dff;color:#fff;font-size:15px;font-weight:500;line-height:1;user-select:none}
 .p-info{display:flex;flex-direction:column;line-height:1.35;min-width:0}
 .p-info b{font-size:14px;font-weight:500;color:#333;white-space:nowrap}
 .p-info i{font-style:normal;font-size:12px;color:#8c8c8c;white-space:nowrap}
@@ -113,6 +113,7 @@ textarea::placeholder{color:#bfbfbf}
 .mini-note{font-size:12px;color:#8c8c8c;line-height:30px}
 .toast{position:fixed;top:24px;left:50%;z-index:1500;padding:9px 18px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;box-shadow:0 6px 16px rgba(0,0,0,.12);font-size:14px;color:#333;opacity:0;pointer-events:none;transform:translate(-50%,-16px);transition:opacity .25s,transform .25s;max-width:80vw}
 .toast.show{opacity:1;transform:translate(-50%,0)}
+.tl-empty{margin:16px 0;font-size:13px;color:#bfbfbf}
 </style>
 </head>
 <body>
@@ -133,55 +134,7 @@ textarea::placeholder{color:#bfbfbf}
     </aside>
     <section class="col-right">
       <h3 class="right-hd">今日交接班动态</h3>
-      <div class="timeline">
-        <div class="tl-item done">
-          <span class="tl-dot"><i class="dot dot-green"></i></span>
-          <div class="tl-card">
-            <div class="tl-top"><span class="tl-tag green">夜班→白班</span><span class="tl-time">08:00</span></div>
-            <div class="tl-body">
-              <span class="person">
-                <span class="avatar"><svg viewBox="0 0 40 40" width="36" height="36" aria-hidden="true"><circle cx="20" cy="20" r="20" fill="#f5b343"/><circle cx="20" cy="21.5" r="10.5" fill="#925c2b"/><circle cx="16.2" cy="19.5" r="1.5" fill="#3a2410"/><circle cx="23.8" cy="19.5" r="1.5" fill="#3a2410"/><path d="M16.5 25.5q3.5 2.4 7 0" stroke="#3a2410" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg></span>
-                <span class="p-info"><b>李静</b><i>交班人</i></span>
-              </span>
-              <span class="flow-icon"><span class="fi">🤝</span><i>交接</i></span>
-              <span class="person person-r">
-                <span class="p-info"><b>张伟<span class="crown">👑</span></b><i>接班人</i></span>
-                <span class="avatar"><svg viewBox="0 0 40 40" width="36" height="36" aria-hidden="true"><circle cx="20" cy="20" r="20" fill="#f5b343"/><circle cx="20" cy="21.5" r="10.5" fill="#925c2b"/><circle cx="16.2" cy="19.5" r="1.5" fill="#3a2410"/><circle cx="23.8" cy="19.5" r="1.5" fill="#3a2410"/><path d="M16.5 25.5q3.5 2.4 7 0" stroke="#3a2410" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg></span>
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="tl-item active">
-          <span class="tl-dot"><i class="dot dot-orange"></i></span>
-          <div class="tl-card">
-            <div class="tl-top"><span class="tl-tag orange">白班</span><span class="tl-time">10:24</span></div>
-            <div class="tl-body">
-              <span class="person">
-                <span class="avatar"><svg viewBox="0 0 40 40" width="36" height="36" aria-hidden="true"><circle cx="20" cy="20" r="20" fill="#f5b343"/><circle cx="20" cy="21.5" r="10.5" fill="#925c2b"/><circle cx="16.2" cy="19.5" r="1.5" fill="#3a2410"/><circle cx="23.8" cy="19.5" r="1.5" fill="#3a2410"/><path d="M16.5 25.5q3.5 2.4 7 0" stroke="#3a2410" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg></span>
-                <span class="p-info"><b>张伟(您)</b><i>正在值守 · 白班 08:00—16:00</i></span>
-              </span>
-              <span class="countdown">距交班 5h36m</span>
-            </div>
-          </div>
-        </div>
-        <div class="tl-item">
-          <span class="tl-dot"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8a6.2 6.2 0 1 1-6.2 6.2" fill="none" stroke="#fa8c16" stroke-width="1.6" stroke-linecap="round"/></svg></span>
-          <div class="tl-card">
-            <div class="tl-top"><span class="tl-tag orange">白班→中班</span><span class="tl-time">16:00</span></div>
-            <div class="tl-body">
-              <span class="person">
-                <span class="avatar"><svg viewBox="0 0 40 40" width="36" height="36" aria-hidden="true"><circle cx="20" cy="20" r="20" fill="#f5b343"/><circle cx="20" cy="21.5" r="10.5" fill="#925c2b"/><circle cx="16.2" cy="19.5" r="1.5" fill="#3a2410"/><circle cx="23.8" cy="19.5" r="1.5" fill="#3a2410"/><path d="M16.5 25.5q3.5 2.4 7 0" stroke="#3a2410" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg></span>
-                <span class="p-info"><b>张伟<span class="crown">👑</span></b><i>交班人</i></span>
-              </span>
-              <span class="flow-icon"><span class="fi">⏳</span><i>待交接</i></span>
-              <span class="person person-r">
-                <span class="p-info"><b>陈晓东</b><i>接班人</i></span>
-                <span class="avatar"><svg viewBox="0 0 40 40" width="36" height="36" aria-hidden="true"><circle cx="20" cy="20" r="20" fill="#35b98e"/><circle cx="20" cy="21.5" r="10.5" fill="#7a4a22"/><circle cx="16.2" cy="19.5" r="1.5" fill="#2a1808"/><circle cx="23.8" cy="19.5" r="1.5" fill="#2a1808"/><path d="M16.5 25.5q3.5 2.4 7 0" stroke="#2a1808" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg></span>
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div class="timeline" id="timeline"></div>
     </section>
   </div>
 </div>
@@ -238,7 +191,7 @@ textarea::placeholder{color:#bfbfbf}
       </div>
       <div class="form-item">
         <label>值班情况综述</label>
-        <textarea id="f-summary" placeholder="请输入本班值班重点工作、巡查发现、设备运行情况等总结"></textarea>
+        <textarea id="f-summary" maxlength="800" placeholder="请输入本班值班重点工作、巡查发现、设备运行情况等总结"></textarea>
       </div>
     </div>
     <div class="modal-ft">
@@ -282,16 +235,16 @@ textarea::placeholder{color:#bfbfbf}
     <div class="states-grid">
       <div class="state-col" data-col="notstarted">
         <div class="state-col-title">未开始值班</div>
-        <p class="state-desc">示例展示,仅保留待确认安排信息,不包含实际开始/交班时间。</p>
+        <p class="state-desc">仅保留待确认安排信息,不包含实际开始/交班时间。</p>
         <div class="mini-card">
           <div class="duty-card-hd"><h3>当前值班</h3><span class="badge notstarted">未开始</span></div>
-          <p class="record-no">记录编号:ZBJL-20260911-01</p>
-          <div class="kv"><span class="k">值班日期</span><span class="v">2026-09-11</span></div>
-          <div class="kv"><span class="k">班次时间</span><span class="v">08:00-20:00</span></div>
-          <div class="kv"><span class="k">单位</span><span class="v">防汛调度中心</span></div>
-          <div class="kv"><span class="k">带班领导</span><span class="v">赵海涛</span></div>
-          <div class="kv"><span class="k">值班人员</span><span class="v">张明、刘洋</span></div>
-          <div class="kv"><span class="k">摘要</span><span class="v">待开始值班</span></div>
+          <p class="record-no">记录编号:-</p>
+          <div class="kv"><span class="k">值班日期</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">班次时间</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">单位</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">带班领导</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">值班人员</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">摘要</span><span class="v">-</span></div>
         </div>
         <div class="mini-acts">
           <div class="mini-act-row"><button type="button" class="btn btn-primary btn-sm" style="width:104px;padding:0" data-act="start">开始值班</button><span class="mini-note">点击开始当前值班,生成实际开始时间。</span></div>
@@ -304,13 +257,13 @@ textarea::placeholder{color:#bfbfbf}
         <p class="state-desc">值班人员已经开始值班,可填写值班报告或向接班人员交班。</p>
         <div class="mini-card">
           <div class="duty-card-hd"><h3>当前值班</h3><span class="badge ongoing">值班中</span></div>
-          <p class="record-no">记录编号:ZBJL-20260910-01</p>
-          <div class="kv"><span class="k">值班日期</span><span class="v">2026-09-10</span></div>
-          <div class="kv"><span class="k">班次时间</span><span class="v">08:00-20:00</span></div>
-          <div class="kv"><span class="k">单位</span><span class="v">防汛调度中心</span></div>
-          <div class="kv"><span class="k">带班领导</span><span class="v">赵海涛</span></div>
-          <div class="kv"><span class="k">值班人员</span><span class="v">张明、刘洋</span></div>
-          <div class="kv"><span class="k">摘要</span><span class="v">持续关注3号闸门水位变化</span></div>
+          <p class="record-no">记录编号:-</p>
+          <div class="kv"><span class="k">值班日期</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">班次时间</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">单位</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">带班领导</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">值班人员</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">摘要</span><span class="v">-</span></div>
         </div>
         <div class="mini-acts">
           <div class="mini-act-row"><button type="button" class="btn act-disabled btn-sm" style="width:104px;padding:0" data-note="值班已开始,不可重复开始。">开始值班</button><span class="mini-note">值班已开始,不可重复开始。</span></div>
@@ -323,15 +276,15 @@ textarea::placeholder{color:#bfbfbf}
         <p class="state-desc">使用已有完成记录,仅支持查看,不可再开始或交班。</p>
         <div class="mini-card">
           <div class="duty-card-hd"><h3>当前值班</h3><span class="badge completed">已完成</span></div>
-          <p class="record-no">记录编号:ZBJL-20260909-02</p>
-          <div class="kv"><span class="k">值班日期</span><span class="v">2026-09-09</span></div>
-          <div class="kv"><span class="k">班次时间</span><span class="v">20:00-次日08:00</span></div>
-          <div class="kv"><span class="k">单位</span><span class="v">河道管理处</span></div>
-          <div class="kv"><span class="k">带班领导</span><span class="v">王建国</span></div>
-          <div class="kv"><span class="k">值班人员</span><span class="v">李华、陈刚</span></div>
-          <div class="kv"><span class="k">实际开始</span><span class="v">2026-09-09 19:55</span></div>
-          <div class="kv"><span class="k">实际交班</span><span class="v">2026-09-10 08:03</span></div>
-          <div class="kv"><span class="k">摘要</span><span class="v">监测设备短时掉线,处理后恢复</span></div>
+          <p class="record-no">记录编号:-</p>
+          <div class="kv"><span class="k">值班日期</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">班次时间</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">单位</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">带班领导</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">值班人员</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">实际开始</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">实际交班</span><span class="v">-</span></div>
+          <div class="kv"><span class="k">摘要</span><span class="v">-</span></div>
         </div>
         <div class="mini-acts">
           <div class="mini-act-row"><button type="button" class="btn act-disabled btn-sm" style="width:104px;padding:0" data-note="已完成值班,不可再开始。">开始值班</button><span class="mini-note">已完成值班,不可再开始。</span></div>
@@ -368,48 +321,70 @@ textarea::placeholder{color:#bfbfbf}
 (function () {
   'use strict';
 
-  /* ===================== Mock 数据区 =====================
-   * 后端接口就绪后替换为真实请求:
-   *   今日值班状态 → GET  /hltgq-site/attendance/today
-   *   开始值班     → POST /hltgq-site/attendance/start
-   *   提交值班报告 → POST /hltgq-site/attendance/report
-   *   交接班       → POST /hltgq-site/attendance/handover
-   * 演示:URL 加 ?state=notstarted|ongoing|completed|none 查看不同状态(默认 notstarted)
-   * ====================================================== */
+  /* ===================== 接口区 =====================
+   * 接口文档 v1.0《值班交接班接口.md》:
+   *   今日值班四态 → GET  /duty/attendance/today
+   *   开始值班     → POST /duty/attendance/start
+   *   提交值班报告 → POST /duty/attendance/report
+   *   交接班       → POST /duty/attendance/handover
+   * ================================================= */
 
-  var MOCK_STATES = {
-    notstarted: {
-      status: 'notstarted', badge: '未开始', recordNo: 'ZBJL-20260911-01',
-      date: '2026-09-11', shiftTime: '08:00-20:00', org: '防汛调度中心',
-      leader: '赵海涛', members: '张明、刘洋', summary: '待开始值班'
-    },
-    ongoing: {
-      status: 'ongoing', badge: '值班中', recordNo: 'ZBJL-20260910-01',
-      date: '2026-09-10', shiftTime: '08:00-20:00', org: '防汛调度中心',
-      leader: '赵海涛', members: '张明、刘洋', summary: '持续关注3号闸门水位变化'
-    },
-    completed: {
-      status: 'completed', badge: '已完成', recordNo: 'ZBJL-20260909-02',
-      date: '2026-09-09', shiftTime: '20:00-次日08:00', org: '河道管理处',
-      leader: '王建国', members: '李华、陈刚', summary: '监测设备短时掉线,处理后恢复',
-      actualStart: '2026-09-09 19:55', actualEnd: '2026-09-10 08:03'
-    },
-    none: { status: 'none', badge: '无安排' }
-  };
+  var API_BASE = '/hltgq-site/duty';
+  var redirected = false;
 
-  var MOCK_HANDOVER_USERS = ['张安', '李璐', '陈晓东', '陈刚', '刘洋', '周强'];
-
-  function delay(data) {
-    return new Promise(function (resolve) { setTimeout(function () { resolve(data); }, 200); });
+  /** 通用请求:同域自动带 Cookie;401 按 redirectUrl 跳登录;非 2xx 抛出 message */
+  function request(url, opt) {
+    var init = { method: (opt && opt.method) || 'GET', headers: {} };
+    if (opt && opt.body !== undefined) {
+      init.headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(opt.body);
+    }
+    return fetch(url, init).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (data) {
+        if (res.status === 401) {
+          // 未登录:跳同域登录页(redirectUrl 可能指向上游绝对地址,需改成本站路径,登录 Cookie 才会落在本站)
+          if (!redirected && data && data.redirectUrl) {
+            redirected = true;
+            var loginUrl = data.redirectUrl;
+            try { var u = new URL(loginUrl, location.origin); loginUrl = u.pathname + u.search; } catch (e) { /* 保持原值 */ }
+            location.href = loginUrl;
+          }
+          throw new Error((data && data.message) || '未登录');
+        }
+        if (!res.ok) throw new Error((data && data.message) || ('请求失败(' + res.status + ')'));
+        return data;
+      });
+    });
   }
+
+  /** 今日值班四态(ongoing/notstarted/completed/none) */
   function fetchTodayDuty() {
-    var key = new URLSearchParams(location.search).get('state') || 'notstarted';
-    var data = MOCK_STATES[key] || MOCK_STATES.notstarted;
-    return delay(JSON.parse(JSON.stringify(data)));
+    return request(API_BASE + '/attendance/today');
   }
-  function mockStartDuty() { return delay({ ok: true }); }
-  function mockSubmitReport(payload) { return delay({ ok: true }); }
-  function mockHandover(payload) { return delay({ ok: true }); }
+
+  /** 重新拉取今日值班并刷新卡片(同步刷新右栏动态) */
+  function refreshToday() {
+    return fetchTodayDuty().then(function (d) {
+      current = d;
+      renderDutyCard(current);
+      loadTimeline();
+    }).catch(function (err) { toast(err.message); });
+  }
+
+  /** 开始值班(签到):scheduleId 来自 today 响应 */
+  function startDuty(scheduleId) {
+    return request(API_BASE + '/attendance/start', { method: 'POST', body: { scheduleId: scheduleId } });
+  }
+
+  /** 提交值班报告 */
+  function submitReport(payload) {
+    return request(API_BASE + '/attendance/report', { method: 'POST', body: payload });
+  }
+
+  /** 交接班 */
+  function submitHandover(payload) {
+    return request(API_BASE + '/attendance/handover', { method: 'POST', body: payload });
+  }
 
   /* ===================== 基础工具 ===================== */
   function $(id) { return document.getElementById(id); }
@@ -488,9 +463,113 @@ textarea::placeholder{color:#bfbfbf}
     if (btn.classList.contains('act-disabled')) { toast(btn.dataset.note || '当前状态不可操作'); return; }
     var act = btn.dataset.act;
     if (act === 'start') openStartModal();
-    else if (act === 'report') showOv('report-ov');
+    else if (act === 'report') openReportModal();
     else if (act === 'handover') openHandoverModal();
   });
+
+  /* ===================== 右栏:今日交接班动态(GET /duty/attendance/timeline) ===================== */
+  var timelineOngoing = null; // 当前「值守中」行,用于倒计时刷新
+
+  /** 拉取并渲染今日交接班动态;失败时给出明确提示,避免误读为真实数据 */
+  function loadTimeline() {
+    return request(API_BASE + '/attendance/timeline').then(function (d) {
+      renderTimeline((d && d.items) || []);
+    }).catch(function (err) {
+      $('timeline').innerHTML = '<p class="tl-empty">' + esc(err.message || '动态加载失败') + '</p>';
+    });
+  }
+
+  /** 渲染三类节点:已交班(绿点)/值守中(橙点高亮+倒计时)/待交接(缺口环) */
+  function renderTimeline(items) {
+    timelineOngoing = null;
+    if (!items.length) {
+      $('timeline').innerHTML = '<p class="tl-empty">今日暂无交接班动态</p>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (it.type === 'ongoing') timelineOngoing = it;
+      html += it.type === 'handover' ? tlHandoverHtml(it) : (it.type === 'ongoing' ? tlOngoingHtml(it) : tlPendingHtml(it));
+    }
+    $('timeline').innerHTML = html;
+  }
+
+  /** 人员头像:取姓名最后一个字,蓝底圆形白字 */
+  function avatarHtml(name) {
+    var ch = String(name || '').trim();
+    return '<span class="avatar">' + esc(ch ? ch.slice(-1) : '?') + '</span>';
+  }
+
+  /** 时间线人员:左侧(头像在前) */
+  function tlPersonLeft(name, label) {
+    return '<span class="person">' + avatarHtml(name)
+      + '<span class="p-info"><b>' + esc(name) + '</b><i>' + label + '</i></span></span>';
+  }
+
+  /** 时间线人员:右侧(头像在后) */
+  function tlPersonRight(name, label) {
+    return '<span class="person person-r">'
+      + '<span class="p-info"><b>' + esc(name) + '</b><i>' + label + '</i></span>'
+      + avatarHtml(name) + '</span>';
+  }
+
+  function tlHandoverHtml(it) {
+    var from = (it.fromUsers || []).map(function (n) { return tlPersonLeft(n, '交班人'); }).join('');
+    var to = (it.toUsers || []).map(function (n) { return tlPersonRight(n, '接班人'); }).join('');
+    return '<div class="tl-item done">'
+      + '<span class="tl-dot"><i class="dot dot-green"></i></span>'
+      + '<div class="tl-card">'
+      + '<div class="tl-top"><span class="tl-tag green">' + esc(it.title) + '</span><span class="tl-time">' + esc(it.time || '') + '</span></div>'
+      + '<div class="tl-body">' + from
+      + '<span class="flow-icon"><span class="fi">🤝</span><i>交接</i></span>' + to
+      + '</div></div></div>';
+  }
+
+  function tlOngoingHtml(it) {
+    var shiftText = (it.shiftTime || '').replace('-', '—');
+    var persons = (it.dutyUsers || []).map(function (n) {
+      return '<span class="person">' + avatarHtml(n)
+        + '<span class="p-info"><b>' + esc(n) + '</b><i>正在值守 · ' + esc(it.title) + (shiftText ? ' ' + esc(shiftText) : '') + '</i></span></span>';
+    }).join('');
+    return '<div class="tl-item active">'
+      + '<span class="tl-dot"><i class="dot dot-orange"></i></span>'
+      + '<div class="tl-card">'
+      + '<div class="tl-top"><span class="tl-tag orange">' + esc(it.title) + '</span><span class="tl-time">' + esc(it.time || '') + '</span></div>'
+      + '<div class="tl-body">' + persons
+      + '<span class="countdown" id="tl-countdown">' + countdownText(it) + '</span>'
+      + '</div></div></div>';
+  }
+
+  function tlPendingHtml(it) {
+    var to = (it.toUsers || []).map(function (n) { return tlPersonRight(n, '接班人'); }).join('');
+    return '<div class="tl-item">'
+      + '<span class="tl-dot"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8a6.2 6.2 0 1 1-6.2 6.2" fill="none" stroke="#fa8c16" stroke-width="1.6" stroke-linecap="round"/></svg></span>'
+      + '<div class="tl-card">'
+      + '<div class="tl-top"><span class="tl-tag orange">' + esc(it.title) + '</span><span class="tl-time">' + esc(it.time || '') + '</span></div>'
+      + '<div class="tl-body"><span class="flow-icon"><span class="fi">⏳</span><i>待交接</i></span>' + to
+      + '</div></div></div>';
+  }
+
+  /** 距交班倒计时:根据 shiftTime(如 08:00-16:00 / 20:00-次日08:00)计算 */
+  function countdownText(it) {
+    var m = /(\d{1,2}:\d{2})\s*-\s*(次日)?\s*(\d{1,2}:\d{2})/.exec((it && it.shiftTime) || '');
+    if (!m) return '';
+    var now = new Date();
+    function at(hhmm, addDay) {
+      var parts = hhmm.split(':');
+      var d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(parts[0], 10), parseInt(parts[1], 10), 0);
+      if (addDay) d.setDate(d.getDate() + 1);
+      return d;
+    }
+    var start = at(m[1], false);
+    var end = at(m[3], !!m[2] || at(m[3], false) <= start);
+    var diff = end.getTime() - now.getTime();
+    if (diff <= 0) return '待交班';
+    var h = Math.floor(diff / 3600000);
+    var mm = Math.floor((diff % 3600000) / 60000);
+    return '距交班 ' + h + 'h' + mm + 'm';
+  }
 
   /* ===================== 开始值班(两阶段) ===================== */
   function openStartModal() {
@@ -514,24 +593,28 @@ textarea::placeholder{color:#bfbfbf}
   $('btn-start-ok').addEventListener('click', function () {
     var btn = this;
     if ($('start-stage-1').style.display !== 'none') {
-      // 阶段一:确认开始值班
+      // 阶段一:确认开始值班 → POST /duty/attendance/start
+      var scheduleId = current && current.scheduleId;
+      if (!scheduleId) { toast('缺少排班信息,无法开始值班'); return; }
       btn.disabled = true;
-      mockStartDuty().then(function () {
+      startDuty(scheduleId).then(function (res) {
         btn.disabled = false;
+        if (current) {
+          current.recordId = (res && res.recordId) || current.recordId;
+          current.recordNo = (res && res.recordNo) || current.recordNo;
+        }
         $('start-stage-1').style.display = 'none';
         $('start-stage-2').style.display = '';
         $('btn-start-cancel').style.display = 'none';
         btn.textContent = '知道了';
+      }).catch(function (err) {
+        btn.disabled = false;
+        toast(err.message);
       });
     } else {
-      // 阶段二:签到成功,回到页面并进入值班中
+      // 阶段二:签到成功,刷新卡片进入值班中
       hideOv('start-ov');
-      if (current && current.status === 'notstarted') {
-        current.status = 'ongoing';
-        current.badge = '值班中';
-        current.summary = '持续关注3号闸门水位变化';
-        renderDutyCard(current);
-      }
+      refreshToday();
     }
   });
 
@@ -546,58 +629,81 @@ textarea::placeholder{color:#bfbfbf}
   $('btn-info-ok').addEventListener('click', function () { hideOv('info-ov'); });
 
   /* ===================== 填写值班报告 ===================== */
+  /** 打开报告弹窗:回显已填综述 */
+  function openReportModal() {
+    $('f-summary').value = (current && current.summary) || '';
+    showOv('report-ov');
+  }
+
   $('btn-report-submit').addEventListener('click', function () {
     var events = $('f-events').value.trim();
     var summary = $('f-summary').value.trim();
     if (!events && !summary) { toast('请填写值班报告内容'); return; }
+    var recordId = current && current.recordId;
+    if (!recordId) { toast('缺少值班记录,无法提交报告'); return; }
     var btn = this;
     btn.disabled = true;
-    mockSubmitReport({ events: events, summary: summary }).then(function () {
+    submitReport({ recordId: recordId, events: events, summary: summary }).then(function () {
       btn.disabled = false;
       hideOv('report-ov');
-      $('f-events').value = '';
-      $('f-summary').value = '';
+      if (current) current.summary = summary || current.summary;
       toast('值班报告已提交');
+    }).catch(function (err) {
+      btn.disabled = false;
+      toast(err.message);
     });
   });
 
   /* ===================== 交接班(接班人员多选) ===================== */
-  var handoverSel = [];
+  var handoverSel = [];      // 已选接班人员 id 数组
+  var handoverOpts = [];     // 候选项 [{id,name}]
 
   function openHandoverModal() {
-    handoverSel = ['张安']; // 默认接班候选(图四);接入真实接口后按排班返回
+    // 默认选中 today 的下一班候选(receiverCandidates);为空时用 /duty/options 的人员兜底
+    handoverOpts = ((current && current.receiverCandidates) || []).slice();
+    handoverSel = handoverOpts.map(function (u) { return u.id; });
     $('f-matters').value = '';
     renderHandoverBox();
     $('handover-dd').classList.remove('open');
     showOv('handover-ov');
+    if (!handoverOpts.length) {
+      request(API_BASE + '/options').then(function (d) {
+        handoverOpts = ((d && d.users) || []).map(function (u) { return { id: u.id, name: u.name }; });
+        if ($('handover-dd').classList.contains('open')) renderHandoverDd();
+      }).catch(function () {});
+    }
+  }
+  function nameOfHandover(id) {
+    for (var i = 0; i < handoverOpts.length; i++) { if (handoverOpts[i].id === id) return handoverOpts[i].name; }
+    return id;
   }
   function renderHandoverBox() {
     $('handover-box').innerHTML = handoverSel.length
-      ? handoverSel.map(function (m) {
-          return '<span class="m-tag">' + esc(m) + '<i class="m-x" data-m="' + esc(m) + '">&times;</i></span>';
+      ? handoverSel.map(function (id) {
+          return '<span class="m-tag">' + esc(nameOfHandover(id)) + '<i class="m-x" data-id="' + esc(id) + '">&times;</i></span>';
         }).join('')
       : '<span class="m-placeholder">请选择接班人员</span>';
   }
   function renderHandoverDd() {
-    $('handover-dd').innerHTML = MOCK_HANDOVER_USERS.map(function (m) {
-      var on = handoverSel.indexOf(m) >= 0;
-      return '<div class="dd-opt' + (on ? ' multi-on' : '') + '" data-m="' + esc(m) + '">' + esc(m)
+    $('handover-dd').innerHTML = handoverOpts.map(function (u) {
+      var on = handoverSel.indexOf(u.id) >= 0;
+      return '<div class="dd-opt' + (on ? ' multi-on' : '') + '" data-id="' + esc(u.id) + '">' + esc(u.name)
         + (on ? '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2L4.8 9 10 3.4" stroke="#1677ff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '')
         + '</div>';
     }).join('');
   }
-  function toggleHandover(m) {
-    var i = handoverSel.indexOf(m);
-    if (i >= 0) handoverSel.splice(i, 1); else handoverSel.push(m);
+  function toggleHandover(id) {
+    var i = handoverSel.indexOf(id);
+    if (i >= 0) handoverSel.splice(i, 1); else handoverSel.push(id);
     renderHandoverBox();
     renderHandoverDd();
   }
 
   $('handover-wrap').addEventListener('click', function (e) {
     var x = e.target.closest('.m-x');
-    if (x) { toggleHandover(x.dataset.m); return; }
+    if (x) { toggleHandover(x.dataset.id); return; }
     var opt = e.target.closest('.dd-opt');
-    if (opt) { toggleHandover(opt.dataset.m); return; }
+    if (opt) { toggleHandover(opt.dataset.id); return; }
     var dd = $('handover-dd');
     if (dd.classList.contains('open')) { dd.classList.remove('open'); }
     else { renderHandoverDd(); dd.classList.add('open'); }
@@ -608,24 +714,62 @@ textarea::placeholder{color:#bfbfbf}
 
   $('btn-handover-ok').addEventListener('click', function () {
     if (!handoverSel.length) { toast('请选择接班人员'); return; }
+    var recordId = current && current.recordId;
+    if (!recordId) { toast('缺少值班记录,无法交班'); return; }
     var btn = this;
     btn.disabled = true;
-    mockHandover({ receiver: handoverSel.join('、'), matters: $('f-matters').value.trim() }).then(function () {
+    submitHandover({ recordId: recordId, receiverIds: handoverSel.slice(), matters: $('f-matters').value.trim() }).then(function () {
       btn.disabled = false;
       hideOv('handover-ov');
       toast('交接班已确认');
+      refreshToday();
+    }).catch(function (err) {
+      btn.disabled = false;
+      toast(err.message);
     });
   });
 
   /* ===================== 状态显示说明 ===================== */
-  // 「点击查看各状态显示」:按当前状态只展示对应的一列(未开始/值班中/已值过班/无安排)
+  // 「点击查看各状态显示」:点击时先拉取最新值班状态(会发请求),再按当前状态只展示对应的一列(未开始/值班中/已值过班/无安排)
   $('state-link').addEventListener('click', function () {
-    var key = current ? current.status : 'notstarted';
-    Array.prototype.forEach.call(document.querySelectorAll('#states-ov .state-col'), function (col) {
-      col.style.display = col.getAttribute('data-col') === key ? '' : 'none';
+    fetchTodayDuty().then(function (d) {
+      current = d;
+      renderDutyCard(current);
+      openStatesOv();
+    }).catch(function (err) {
+      toast(err.message);
+      if (current) openStatesOv();
     });
-    showOv('states-ov');
   });
+
+  /** 渲染状态说明浮层:按 current.status 显示对应列并用当前数据填充 */
+  function openStatesOv() {
+    var key = current ? current.status : 'notstarted';
+    var target = null;
+    Array.prototype.forEach.call(document.querySelectorAll('#states-ov .state-col'), function (col) {
+      var on = col.getAttribute('data-col') === key;
+      col.style.display = on ? '' : 'none';
+      if (on) target = col;
+    });
+    if (target && key !== 'none') fillStateCol(target);
+    showOv('states-ov');
+  }
+
+  /** 用当前值班数据填充说明列中的卡片,保证与左侧卡片一致 */
+  function fillStateCol(col) {
+    var d = current || {};
+    var no = col.querySelector('.record-no');
+    if (no) no.textContent = '记录编号:' + (d.recordNo || '-');
+    var map = {
+      '值班日期': d.date, '班次时间': d.shiftTime, '单位': d.org, '带班领导': d.leader,
+      '值班人员': d.members, '实际开始': d.actualStart, '实际交班': d.actualEnd, '摘要': d.summary || '-'
+    };
+    Array.prototype.forEach.call(col.querySelectorAll('.kv'), function (kv) {
+      var k = kv.querySelector('.k').textContent;
+      if (map.hasOwnProperty(k)) kv.querySelector('.v').textContent = map[k] || '-';
+    });
+  }
+
   // 浮层内:可用按钮(开始值班/交班/填写值班报告)与页面功能一致;禁用按钮点击仅提示原因
   $('states-ov').addEventListener('click', function (e) {
     var actBtn = e.target.closest('button[data-act]');
@@ -633,7 +777,7 @@ textarea::placeholder{color:#bfbfbf}
       hideOv('states-ov');
       var act = actBtn.dataset.act;
       if (act === 'start') openStartModal();
-      else if (act === 'report') showOv('report-ov');
+      else if (act === 'report') openReportModal();
       else if (act === 'handover') openHandoverModal();
       return;
     }
@@ -641,7 +785,7 @@ textarea::placeholder{color:#bfbfbf}
     if (noteBtn) toast(noteBtn.dataset.note);
   });
 
-  /* ===================== 初始化:渲染卡片 → 按状态弹窗 ===================== */
+  /* ===================== 初始化:拉取今日值班 → 渲染卡片 → 按状态弹窗 ===================== */
   fetchTodayDuty().then(function (data) {
     current = data;
     renderDutyCard(current);
@@ -653,7 +797,15 @@ textarea::placeholder{color:#bfbfbf}
       openInfoModal('今日暂无值班安排', '您今日暂无值班安排,可前往值班管理查看排班情况。', 'info');
     }
     // ongoing:不弹窗,直接进入值班中页面
-  });
+  }).catch(function (err) { toast(err.message); });
+
+  // 右栏「今日交接班动态」独立加载
+  loadTimeline();
+  // 倒计时每分钟刷新一次
+  setInterval(function () {
+    var el = $('tl-countdown');
+    if (el && timelineOngoing) el.textContent = countdownText(timelineOngoing);
+  }, 60000);
 })();
 </script>
 </body>
