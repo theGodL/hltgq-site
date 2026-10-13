@@ -174,11 +174,49 @@ public interface DutyScheduleMapper {
     ScheduleRowVO selectScheduleRow(@Param("id") String id);
 
     /**
-     * 今日与我相关的排班（今日值班判定 / 交接班页未开始态判定，两处共用）：
+     * 人员时间冲突校验（保存排班用）：查找与候选时间区间 [startRaw, endRaw) 重叠、
+     * 且候选人员（带班领导或值班人员）在其中出现的其他排班（编辑时经 excludeId 排除自身）；
+     * 命中返回冲突行（含 conflictNamesRaw 重叠人员姓名聚合），未命中返回 null。
+     * <p>时间重叠判定：候选开始 &lt; 对方结束 且 对方开始 &lt; 候选结束（首尾相接不算重叠）；
+     * 无时间的历史排班不参与；多条命中取开始时间最早一条。
+     */
+    @Select("<script>" +
+            "SELECT s.id, " +
+            "to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') AS dutyDateRaw, " +
+            "s.fjyyhu AS shiftCode, " +
+            "to_char(s.tneakp_min, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMinRaw, " +
+            "to_char(s.tneakp_max, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMaxRaw, " +
+            "COALESCE(o.name, s.ihdflq) AS orgName, " +
+            "(SELECT string_agg(x.name, '、') FROM " + T_USER + " x " +
+            "  WHERE x.corp_code = 'hltgq' AND x.id IN " +
+            "<foreach collection='userIds' item='uid' open='(' separator=',' close=')'>#{uid}</foreach>" +
+            "  AND (x.id = s.alidpq OR EXISTS (SELECT 1 FROM " + T_MEMBER_REL + " rc " +
+            "       WHERE rc.biz_id = s.id AND rc.rel_id = x.id))) AS conflictNamesRaw " +
+            "FROM " + T_SCHEDULE + " s " +
+            "LEFT JOIN " + T_ORG + " o ON o.id = s.jepbhm " +
+            "WHERE s.corp_code = 'hltgq' " +
+            "<if test='excludeId != null'>AND s.id != #{excludeId} </if>" +
+            "AND to_char(COALESCE(s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') &lt; #{endRaw} " +
+            "AND #{startRaw} &lt; to_char(COALESCE(s.tneakp_max, s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') " +
+            "AND (s.alidpq IN " +
+            "<foreach collection='userIds' item='lid' open='(' separator=',' close=')'>#{lid}</foreach>" +
+            "OR EXISTS (SELECT 1 FROM " + T_MEMBER_REL + " r WHERE r.biz_id = s.id AND r.rel_id IN " +
+            "<foreach collection='userIds' item='mid' open='(' separator=',' close=')'>#{mid}</foreach>)) " +
+            "ORDER BY to_char(COALESCE(s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') ASC NULLS LAST " +
+            "LIMIT 1" +
+            "</script>")
+    ScheduleRowVO selectScheduleConflict(@Param("excludeId") String excludeId,
+                                         @Param("startRaw") String startRaw,
+                                         @Param("endRaw") String endRaw,
+                                         @Param("userIds") List<String> userIds);
+
+    /**
+     * 今日与我相关的排班（今日值班判定 / 值班管理页签到提醒）：
      * 我参与（带班领导或值班人员）且满足其一 ——
-     * ① 值班中（#cmiu#，不限时间）；② 未开始/待值班且班次时间与今日相交
+     * ① 未开始/待值班且班次时间与今日相交；② 值班中（#cmiu#，不限时间，兜底）。
      * （start &lt; 明日零点 且 end ≧ 今日零点；coalesce 兜底历史数据，无时间行不判定）。
-     * 排序：值班中优先 → 待值班 → 未开始，再按开始时间升序（先开班的先命中）。
+     * 排序：待值班（#zzkl#）→ 未开始（#1#）→ 值班中（#cmiu# 兜底），再按开始时间升序
+     * （同一天多条并存时，提醒优先指向待签到的班）。
      * <p>附 memberNamesRaw（成员姓名聚合，交接班页未开始卡片直接展示，免二次查询）。
      */
     @Select("SELECT s.id, s.peuzwi AS statusCode, s.fjyyhu AS shiftCode, " +
@@ -200,12 +238,45 @@ public interface DutyScheduleMapper {
             "     (s.peuzwi IN ('#1#', '#zzkl#') " +
             "      AND to_char(COALESCE(s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') < #{dayEnd} " +
             "      AND to_char(COALESCE(s.tneakp_max, s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') >= #{dayStart})) " +
-            "ORDER BY CASE s.peuzwi WHEN '#cmiu#' THEN 0 WHEN '#zzkl#' THEN 1 ELSE 2 END, " +
+            "ORDER BY CASE s.peuzwi WHEN '#zzkl#' THEN 0 WHEN '#1#' THEN 1 ELSE 2 END, " +
             "COALESCE(s.tneakp_min, s.owcvsv) ASC NULLS LAST " +
             "LIMIT 1")
     ScheduleRowVO selectMyTodaySchedule(@Param("userId") String userId,
                                         @Param("dayStart") String dayStart,
                                         @Param("dayEnd") String dayEnd);
+
+    /**
+     * 今日待签到排班（登录提醒「待签到优先」判定：交接班卡片/登录提醒的 notstarted 态来源）：
+     * 我参与（带班领导或值班人员）且未开始/待值班、班次时间与今日相交
+     * （start &lt; 明日零点 且 end ≧ 今日零点；无时间行不判定）。
+     * 排序：待值班（#zzkl#，上一班交班指定接班）→ 未开始（#1#），按开始时间升序取一条。
+     * <p>与 {@link #selectMyTodaySchedule} 的区别：不含「值班中兜底」分支，
+     * 保证同一天多条并存时待签到的班优先返回、不被值班中的班遮挡。
+     */
+    @Select("SELECT s.id, s.peuzwi AS statusCode, s.fjyyhu AS shiftCode, " +
+            "s.jepbhm AS orgId, o.name AS orgName, s.ihdflq AS legacyUnit, " +
+            "s.alidpq AS leaderId, u.name AS leaderName, " +
+            "to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') AS dutyDateRaw, " +
+            "to_char(s.tneakp_min, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMinRaw, " +
+            "to_char(s.tneakp_max, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMaxRaw, " +
+            "(SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +
+            "   FROM " + T_MEMBER_REL + " rel LEFT JOIN " + T_USER + " ru ON ru.id = rel.rel_id " +
+            "  WHERE rel.biz_id = s.id) AS memberNamesRaw " +
+            "FROM " + T_SCHEDULE + " s " +
+            "LEFT JOIN " + T_ORG + " o ON o.id = s.jepbhm " +
+            "LEFT JOIN " + T_USER + " u ON u.id = s.alidpq " +
+            "WHERE s.corp_code = 'hltgq' " +
+            "AND (s.alidpq = #{userId} OR EXISTS (SELECT 1 FROM " + T_MEMBER_REL + " rel " +
+            "     WHERE rel.biz_id = s.id AND rel.rel_id = #{userId})) " +
+            "AND s.peuzwi IN ('#1#', '#zzkl#') " +
+            "AND to_char(COALESCE(s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') < #{dayEnd} " +
+            "AND to_char(COALESCE(s.tneakp_max, s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') >= #{dayStart} " +
+            "ORDER BY CASE s.peuzwi WHEN '#zzkl#' THEN 0 ELSE 1 END, " +
+            "COALESCE(s.tneakp_min, s.owcvsv) ASC NULLS LAST " +
+            "LIMIT 1")
+    ScheduleRowVO selectMyPendingTodaySchedule(@Param("userId") String userId,
+                                               @Param("dayStart") String dayStart,
+                                               @Param("dayEnd") String dayEnd);
 
     /** 排班的值班人员 id（nature_order 序；开始值班时复制到值班记录）。 */
     @Select("SELECT rel.rel_id FROM " + T_MEMBER_REL + " rel WHERE rel.biz_id = #{bizId} ORDER BY rel.nature_order")
@@ -283,7 +354,7 @@ public interface DutyScheduleMapper {
                        @Param("shiftTimeText") String shiftTimeText,
                        @Param("orgName") String orgName);
 
-    /** 编辑排班（仅未开始可编辑，状态不动；同步刷新兼容双写旧列）。 */
+    /** 编辑排班（仅未开始/待值班可编辑，服务层校验；状态不动；同步刷新兼容双写旧列）。 */
     @Update("UPDATE " + T_SCHEDULE + " SET updated_at = #{now}, updated_by = #{operator}, " +
             "idjwlq = #{dutyDate}, tneakp_min = #{timeStart}, tneakp_max = #{timeEnd}, " +
             "fjyyhu = #{shiftCode}, jepbhm = #{orgId}, alidpq = #{leaderId}, " +
@@ -301,7 +372,7 @@ public interface DutyScheduleMapper {
                        @Param("shiftTimeText") String shiftTimeText,
                        @Param("orgName") String orgName);
 
-    /** 删除排班（仅未开始可删除；关系数据由调用方同事务清理）。 */
+    /** 删除排班（仅未开始/待值班可删除，服务层校验；关系数据由调用方同事务清理）。 */
     @Delete("DELETE FROM " + T_SCHEDULE + " WHERE id = #{id} AND corp_code = 'hltgq'")
     int deleteSchedule(@Param("id") String id);
 

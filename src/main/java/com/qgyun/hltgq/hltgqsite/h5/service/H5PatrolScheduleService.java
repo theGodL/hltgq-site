@@ -3,9 +3,11 @@ package com.qgyun.hltgq.hltgqsite.h5.service;
 import com.qgyun.hltgq.hltgqsite.h5.mapper.H5PatrolScheduleMapper;
 import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolSchedulePageVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolScheduleVO;
+import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolStationVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +17,8 @@ import java.util.Map;
  * H5 巡检计划查询服务：仅「进行中 #2# / 已完成 #3#」两类计划，分页返回。
  * <p>任务名称模糊；状态筛选支持中文与编码双写法（进行中/已完成，未知值原样下传
  * 命中空结果）；计划类型/状态返回编码 + 权威中文双字段。
+ * <p>关联点位（stations）：当前页计划一次 IN 批量查询巡查范围关系表 + 站点档案表
+ * （名称/经纬度实时关联），按 nature_order 分组；无范围关系为空数组。
  * <p>分页：page 从 1 起（非正按 1）、size 默认 10 上限 100（非正按默认），
  * total 与列表同条件，空结果跳过明细查询。
  */
@@ -73,8 +77,36 @@ public class H5PatrolScheduleService {
             row.setPlanTypeLabel(label(PLAN_TYPE_LABELS, row.getPlanType()));
             row.setStatusLabel(label(STATUS_LABELS, row.getStatusCode()));
         }
+        attachStations(rows);
         result.setRecords(rows);
         return result;
+    }
+
+    /**
+     * 关联点位装配：按当前页计划 id 一次 IN 批量查询（避免逐行 N+1），
+     * 按 scheduleId 分组挂到各行；无范围关系的计划置空数组（与 rangeStationIds=null 对应）。
+     */
+    private void attachStations(List<H5PatrolScheduleVO> rows) {
+        if (rows.isEmpty()) {
+            return;
+        }
+        List<String> scheduleIds = new ArrayList<>(rows.size());
+        for (H5PatrolScheduleVO row : rows) {
+            scheduleIds.add(row.getId());
+        }
+        Map<String, List<H5PatrolStationVO>> grouped = new LinkedHashMap<>();
+        for (H5PatrolScheduleMapper.ScheduleStationRow r : mapper.selectScheduleStations(scheduleIds)) {
+            H5PatrolStationVO station = new H5PatrolStationVO();
+            station.setId(r.getId());
+            station.setName(r.getName());
+            station.setLon(r.getLon());
+            station.setLat(r.getLat());
+            grouped.computeIfAbsent(r.getScheduleId(), k -> new ArrayList<>()).add(station);
+        }
+        for (H5PatrolScheduleVO row : rows) {
+            List<H5PatrolStationVO> stations = grouped.get(row.getId());
+            row.setStations(stations == null ? Collections.emptyList() : stations);
+        }
     }
 
     /** 单值编码 → 中文（未知编码原样返回） */

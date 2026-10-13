@@ -56,6 +56,9 @@ public final class DutySupport {
     /** 时刻格式（子串定长口径：yyyy-MM-dd HH:mm） */
     private static final DateTimeFormatter MINUTE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
+    /** 时刻格式（秒级定长口径：yyyy-MM-dd HH:mm:ss，与 SQL to_char 输出对齐） */
+    private static final DateTimeFormatter SECOND_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     static {
         SHIFT_LABELS.put("#1#", "白班");
         SHIFT_LABELS.put("#jhyu#", "中班");
@@ -167,6 +170,11 @@ public final class DutySupport {
             return hhmm(start) + "-次日" + hhmm(end);
         }
         return hhmm(start) + "-" + hhmm(end);
+    }
+
+    /** LocalDateTime → yyyy-MM-dd HH:mm:ss 定长文本（与 SQL to_char 输出对齐；null 透传） */
+    public static String fmtSecond(LocalDateTime time) {
+        return time == null ? null : SECOND_FMT.format(time);
     }
 
     /** 时间戳文本解析：兼容定长时间戳、分钟级文本与纯日期（补 0 点）；不可解析返回 null */

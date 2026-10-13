@@ -35,7 +35,7 @@ public class DutyAttendanceController {
     }
 
     /**
-     * 开始值班（签到）：依据排班 id 创建值班记录（幂等，重复点击复用已有值班中记录）。
+     * 开始值班（签到）：依据排班 id 创建值班记录（仅本班带班领导/值班人员可签；幂等，重复点击复用已有值班中记录）。
      *
      * @return {ok:true, recordId, recordNo}
      */

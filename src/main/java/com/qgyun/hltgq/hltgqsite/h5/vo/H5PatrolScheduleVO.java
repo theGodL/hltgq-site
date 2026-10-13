@@ -3,6 +3,7 @@ package com.qgyun.hltgq.hltgqsite.h5.vo;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * H5 巡检计划列表行（/h5/patrol-schedule/list）。
@@ -47,4 +48,7 @@ public class H5PatrolScheduleVO {
 
     /** 巡检范围关联的站点ID（多值逗号分隔，按展示顺序；无范围关系时为 null） */
     private String rangeStationIds;
+
+    /** 巡查范围关联点位（站点档案实时关联）：id/名称/经纬度，按展示顺序；无范围关系时为空数组 */
+    private List<H5PatrolStationVO> stations;
 }

@@ -1,9 +1,11 @@
 package com.qgyun.hltgq.hltgqsite.h5.mapper;
 
 import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolScheduleVO;
+import lombok.Data;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -59,4 +61,36 @@ public interface H5PatrolScheduleMapper {
                                                 @Param("statusCode") String statusCode,
                                                 @Param("limit") long limit,
                                                 @Param("offset") long offset);
+
+    /**
+     * 计划关联点位批量查询（巡查范围）：当前页计划 id 一次 IN 取回全部关系行，Service 按 scheduleId 分组。
+     * <p>点位信息（名称/经纬度）左联站点档案表实时取（关系存在但站点已删时仅 id 可用，名称/坐标为 null）；
+     * 行序 biz_id + nature_order（与 rangeStationIds 聚合顺序一致）。
+     */
+    @Select("<script>" +
+            "SELECT rx.biz_id AS scheduleId, rx.rel_id AS id, " +
+            "s.zzkaec AS name, s.bviiio_x AS lon, s.bviiio_y AS lat " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_nlbdju_tkwovk_rel\" rx " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s " +
+            "ON s.id = rx.rel_id AND s.corp_code = 'hltgq' " +
+            "WHERE rx.corp_code = 'hltgq' AND rx.biz_id IN " +
+            "<foreach collection='scheduleIds' item='sid' open='(' separator=',' close=')'>#{sid}</foreach> " +
+            "ORDER BY rx.biz_id, rx.nature_order NULLS LAST" +
+            "</script>")
+    List<ScheduleStationRow> selectScheduleStations(@Param("scheduleIds") List<String> scheduleIds);
+
+    /** 计划-站点关系行（关联点位查询专用，Service 转换分组后即弃） */
+    @Data
+    class ScheduleStationRow {
+        /** 计划 id（biz_id，Service 分组键） */
+        private String scheduleId;
+        /** 站点档案主键（rel_id） */
+        private String id;
+        /** 站点名称（站点档案 zzkaec；站点已删为 null） */
+        private String name;
+        /** 经度（站点档案 bviiio_x；未填坐标为 null） */
+        private BigDecimal lon;
+        /** 纬度（站点档案 bviiio_y；未填坐标为 null） */
+        private BigDecimal lat;
+    }
 }

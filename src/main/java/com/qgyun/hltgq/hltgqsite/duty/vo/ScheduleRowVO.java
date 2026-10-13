@@ -45,4 +45,7 @@ public class ScheduleRowVO {
 
     /** 值班人员姓名聚合（rel 表顿号连接；selectMyTodaySchedule 专用，其他查询为 null） */
     private String memberNamesRaw;
+
+    /** 冲突人员姓名聚合（候选人员与冲突班领导/人员名单交集的顿号连接；selectScheduleConflict 专用，其他查询为 null） */
+    private String conflictNamesRaw;
 }

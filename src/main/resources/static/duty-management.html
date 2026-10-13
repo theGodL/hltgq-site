@@ -439,11 +439,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   /* ===== 列表渲染 ===== */
 
-  /** 操作列:未开始(statusCode=#1#)→ 查看/编辑/删除;其余状态仅查看 */
+  /** 操作列:未开始类(#1# 未开始 / #zzkl# 待值班)→ 查看/编辑/删除;其余状态仅查看 */
   function actionCell(row) {
     var id = esc(row.id);
     var html = '<span class="act" data-action="view" data-id="' + id + '">查看</span>';
-    if (row.statusCode === '#1#') {
+    if (row.statusCode === '#1#' || row.statusCode === '#zzkl#') {
       html += '<span class="act" data-action="edit" data-id="' + id + '">编辑</span>'
             + '<span class="act" data-action="delete" data-id="' + id + '">删除</span>';
     }
@@ -818,7 +818,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   loadOptions().catch(function (err) { toast(err.message); });
   loadList().catch(function (err) { toast(err.message); });
   fetchTodayDutyStatus().then(function (duty) {
-    if (duty && duty.onDuty) showSignModal(duty);
+    // 签到提醒仅在待签到态弹出(#1# 未开始 / #zzkl# 待值班;#cmiu# 为值班中兜底,不再弹签到)
+    if (duty && duty.onDuty && (duty.statusCode === '#1#' || duty.statusCode === '#zzkl#')) showSignModal(duty);
   }).catch(function (err) { toast(err.message); });
 })();
 </script>

@@ -28,4 +28,7 @@ public class HandoverTimelineRowVO {
 
     /** 接班人员姓名聚合文本（顿号连接，kwzwga_igkyeu_rel） */
     private String toNamesRaw;
+
+    /** 待办移交事项（gdtjny） */
+    private String matters;
 }

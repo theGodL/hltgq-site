@@ -88,13 +88,16 @@ public interface DutyAttendanceMapper {
     AttendanceRecordRowVO selectRecordRow(@Param("id") String id);
 
     /**
-     * 幂等检查：该排班已存在的「值班中」记录 id（开始值班重复点击时直接复用，不重复创建）。
+     * 幂等检查：该排班已存在的、且我参与的「值班中」记录 id（开始值班重复点击时直接复用，不重复创建）。
      * <p>正常路径按单位 + 班次起止时间精确匹配（记录值从排班复制、to_char 到秒必然相等）；
-     * 排班无班次时间（历史数据）时退化为「同单位 + 值班日期相同」。
+     * 排班无班次时间（历史数据）时退化为「同单位 + 值班日期相同」；
+     * 参与人条件防同段双班（人员时间唯一、两班人员不重叠）时复用到他人记录。
      */
     @Select("<script>" +
             "SELECT d.id FROM " + T_RECORD + " d " +
             "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' AND d.cfszln = #{orgId} " +
+            "AND (d.atfzxl = #{operator} OR EXISTS (SELECT 1 FROM " + T_RECORD_MEMBER_REL + " mr " +
+            "     WHERE mr.biz_id = d.id AND mr.rel_id = #{operator})) " +
             "<choose>" +
             "<when test='startRaw != null and endRaw != null'>" +
             "AND to_char(d.egkivk_min, 'YYYY-MM-DD HH24:MI:SS') = #{startRaw} " +
@@ -109,9 +112,18 @@ public interface DutyAttendanceMapper {
     String selectOngoingIdBySchedule(@Param("orgId") String orgId,
                                      @Param("startRaw") String startRaw,
                                      @Param("endRaw") String endRaw,
-                                     @Param("dutyDate") String dutyDate);
+                                     @Param("dutyDate") String dutyDate,
+                                     @Param("operator") String operator);
 
     // ==================== 编号生成（LIKE 当日前缀 + Java 解析最大序号） ====================
+
+    /**
+     * 编号取号互斥锁（KingbaseES 事务级建议锁，key=86199613 固定常量）：
+     * 在「查最大序号 → 插入」前调用，锁随所在事务提交/回滚自动释放（无事务时瞬时释放）；
+     * 并发签到/交班在数据库层串行化，防跨实例重号。
+     */
+    @Select("SELECT 1 FROM (SELECT pg_advisory_xact_lock(86199613)) t")
+    int lockDutyNoSerial();
 
     /** 值班记录编号前缀查询（ZBJL-yyyyMMdd-%）。 */
     @Select("SELECT d.pttmxx FROM " + T_RECORD + " d " +
@@ -235,11 +247,12 @@ public interface DutyAttendanceMapper {
 
     // ==================== 今日交接班动态（timeline） ====================
 
-    /** 今日已交班行（qwiioz 当天；按交班时间升序）。 */
+    /** 今日已交班行（qwiioz 当天；按交班时间升序；含待办移交事项 gdtjny）。 */
     @Select("SELECT k.id AS id, k.nizxsv AS handoverNo, " +
             "to_char(k.qwiioz, 'YYYY-MM-DD HH24:MI:SS') AS handoverTimeRaw, " +
             "to_char(k.tavpmi_min, 'YYYY-MM-DD HH24:MI:SS') AS shiftMinRaw, " +
             "to_char(k.tavpmi_max, 'YYYY-MM-DD HH24:MI:SS') AS shiftMaxRaw, " +
+            "k.gdtjny AS matters, " +
             "(SELECT string_agg(COALESCE(fu.name, frel.rel_id), '、' ORDER BY frel.nature_order) " +
             "   FROM " + T_HANDOVER_FROM_REL + " frel LEFT JOIN " + T_USER + " fu ON fu.id = frel.rel_id " +
             "  WHERE frel.biz_id = k.id) AS fromNamesRaw, " +
