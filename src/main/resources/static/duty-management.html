@@ -72,11 +72,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .cal-cell.sel{background:#1677ff;color:#fff}
 .cal-cell.sel:hover{background:#1677ff}
 .cal-ft{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:10px;border-top:1px solid #f0f0f0}
-.cal-time{display:flex;align-items:center;gap:5px;font-size:13px;color:#666}
+.cal-time{display:flex;align-items:center;gap:4px;font-size:13px;color:#666}
 .cal-time i{color:#bbb;font-style:normal;font-size:12px}
 .cal-step{width:22px;height:22px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;color:#666;font-size:13px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
 .cal-step:hover{border-color:#1677ff;color:#1677ff}
-.cal-hm{min-width:20px;text-align:center;font-weight:600;color:#333;font-size:13px}
+.cal-hm{width:30px;height:24px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;text-align:center;font-weight:600;color:#333;font-size:13px;font-family:inherit;outline:none;padding:0}
+.cal-hm:focus{border-color:#1677ff}
 .cal-today-btn{border:0;background:transparent;color:#1677ff;font-size:13px;cursor:pointer;padding:3px 8px;border-radius:6px}
 .cal-today-btn:hover{background:#e6f4ff}
 .select-wrap{position:relative}
@@ -98,6 +99,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .m-tag{display:inline-flex;align-items:center;gap:2px;height:24px;max-width:100%;padding:0 3px 0 8px;border-radius:4px;background:#f5f5f5;color:#333;font-size:13px;line-height:24px}
 .m-x{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;color:#999;font-size:14px;line-height:1;cursor:pointer;font-style:normal}
 .m-x:hover{color:#595959;background:#e6e6e6}
+.m-input{flex:1;min-width:70px;height:24px;border:0;outline:none;background:transparent;font-size:14px;font-family:inherit;color:#333;padding:0 2px}
+.m-input::placeholder{color:#bfbfbf}
 .drawer.is-view .range-wrap,.drawer.is-view .select-wrap{pointer-events:none}
 .drawer.is-view .range-wrap,.drawer.is-view .sel-input,.drawer.is-view .multi-box{background:#fafafa}
 
@@ -183,7 +186,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     <div class="form-item">
       <label>所在单位 <i class="req">*</i></label>
       <div class="select-wrap">
-        <input type="text" class="sel-input" id="f-unit" placeholder="请选择" readonly>
+        <input type="text" class="sel-input" id="f-unit" placeholder="输入单位名称搜索">
         <span class="chev">
           <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
             <path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -398,7 +401,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   /* ===== 下拉通用 ===== */
   function closeDd() {
-    if (openDd) { openDd.classList.remove('open'); openDd = null; }
+    if (openDd) {
+      var wasMember = openDd === memberDd;
+      openDd.classList.remove('open');
+      openDd = null;
+      // 收起值班人员面板时清空搜索词,输入框回到初始态
+      if (wasMember) {
+        memberKw = '';
+        if (drawerState.mode !== 'view') renderMemberBox();
+      }
+    }
   }
   document.addEventListener('click', function (e) {
     if (!e.target.closest('.select-wrap')) closeDd();
@@ -434,12 +446,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     });
   }
 
-  bindSingleSelect('f-unit', 'unit-dd', function () {
-    return OPTIONS.orgs.map(function (o) { return { value: o.id, label: o.name }; });
-  });
-
-  /** 可搜索单选(带班领导):点击或输入关键字过滤人员,选中回填姓名并记录 id */
-  function bindSearchSelect(inputId, ddId, optionsFn) {
+  /** 可搜索单选(带班领导/所在单位):点击展开全量(当前项高亮),输入关键字过滤,选中回填并记录 id */
+  function bindSearchSelect(inputId, ddId, optionsFn, emptyText) {
     var input = $(inputId);
     var dd = $(ddId);
     function renderDd(kw) {
@@ -448,11 +456,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         ? opts.map(function (o) {
             return '<div class="dd-opt' + (input.dataset.value === o.value ? ' active' : '') + '" data-value="' + esc(o.value) + '">' + esc(o.label) + '</div>';
           }).join('')
-        : '<div class="dd-empty">无匹配人员</div>';
+        : '<div class="dd-empty">' + (emptyText || '无匹配人员') + '</div>';
     }
     input.addEventListener('click', function () {
       if (drawerState.mode === 'view' || openDd === dd) return;
-      renderDd(input.value.trim());
+      // 已选中值时点击展开全量(当前项高亮);手输未选择时按输入内容过滤
+      renderDd(input.dataset.value ? '' : input.value.trim());
       openDdPanel(dd);
     });
     input.addEventListener('input', function () {
@@ -470,6 +479,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     });
   }
 
+  // 所在单位:数据较多,支持输入关键字过滤(空态文案"无匹配单位")
+  bindSearchSelect('f-unit', 'unit-dd', function () {
+    return OPTIONS.orgs.map(function (o) { return { value: o.id, label: o.name }; });
+  }, '无匹配单位');
   bindSearchSelect('f-leader', 'leader-dd', function () {
     return OPTIONS.users.map(function (u) { return { value: u.id, label: u.name }; });
   });
@@ -494,49 +507,84 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     }
   });
 
-  /* ===== 多选(值班人员) ===== */
+  /* ===== 多选(值班人员,框内直接输入搜索) ===== */
   var memberBox = $('f-members');
   var memberDd = $('member-dd');
+  var memberKw = '';         // 搜索关键字
 
   function renderMemberBox() {
     var canEdit = drawerState.mode !== 'view';
-    memberBox.innerHTML = memberSel.map(function (m) {
-      return '<span class="m-tag">' + esc(m)
-        + (canEdit ? '<i class="m-x" data-m="' + esc(m) + '" title="移除">&times;</i>' : '')
-        + '</span>';
-    }).join('') || '<span class="m-placeholder">请选择</span>';
+    if (canEdit) {
+      // 标签 + 内嵌搜索输入框(样式与带班领导一致);面板展开时重建后保持输入框焦点
+      memberBox.innerHTML = memberSel.map(function (m) {
+        return '<span class="m-tag">' + esc(m)
+          + '<i class="m-x" data-m="' + esc(m) + '" title="移除">&times;</i>'
+          + '</span>';
+      }).join('')
+        + '<input id="member-input" class="m-input" type="text" placeholder="' + (memberSel.length ? '' : '输入姓名搜索') + '" value="' + esc(memberKw) + '">';
+      if (openDd === memberDd) {
+        var mi = $('member-input');
+        if (mi) { mi.focus(); mi.setSelectionRange(mi.value.length, mi.value.length); }
+      }
+    } else {
+      memberBox.innerHTML = memberSel.map(function (m) {
+        return '<span class="m-tag">' + esc(m) + '</span>';
+      }).join('') || '<span class="m-placeholder">请选择</span>';
+    }
   }
 
-  function renderMemberDd() {
-    memberDd.innerHTML = OPTIONS.users.map(function (u) {
-      var on = memberSel.indexOf(u.name) >= 0;
-      return '<div class="dd-opt' + (on ? ' multi-on' : '') + '" data-m="' + esc(u.name) + '">'
-        + esc(u.name)
-        + (on ? '<svg class="dd-check" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2L4.8 9 10 3.4" stroke="#1677ff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '')
-        + '</div>';
-    }).join('');
+  /** 人员列表:按关键字过滤渲染到面板(已选中行高亮勾选) */
+  function renderMemberList() {
+    var kw = memberKw.trim();
+    var users = kw ? OPTIONS.users.filter(function (u) { return u.name.indexOf(kw) >= 0; }) : OPTIONS.users;
+    memberDd.innerHTML = users.length
+      ? users.map(function (u) {
+          var on = memberSel.indexOf(u.name) >= 0;
+          return '<div class="dd-opt' + (on ? ' multi-on' : '') + '" data-m="' + esc(u.name) + '">'
+            + esc(u.name)
+            + (on ? '<svg class="dd-check" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2L4.8 9 10 3.4" stroke="#1677ff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '')
+            + '</div>';
+        }).join('')
+      : '<div class="dd-empty">无匹配人员</div>';
   }
 
   function toggleMember(m) {
     var i = memberSel.indexOf(m);
     if (i >= 0) memberSel.splice(i, 1); else memberSel.push(m);
     renderMemberBox();
-    if (openDd === memberDd) renderMemberDd();
+    if (openDd === memberDd) renderMemberList();
   }
 
   memberBox.parentNode.addEventListener('click', function (e) {
     if (drawerState.mode === 'view') return;
     var x = e.target.closest('.m-x');
     if (x) { e.stopPropagation(); toggleMember(x.dataset.m); return; }
+    if (e.target.closest('#member-input')) {
+      // 点输入框:未展开则展开;已展开保持(不切换关闭,允许移动光标)
+      if (openDd !== memberDd) { renderMemberList(); openDdPanel(memberDd); }
+      return;
+    }
+    if (e.target.closest('.sel-dd')) return; // 面板内点击(选项/空白)不触发开合,保持展开便于连续多选
     if (openDd === memberDd) { closeDd(); return; }
-    renderMemberDd();
+    renderMemberList();
     openDdPanel(memberDd);
+    var mi = $('member-input');
+    if (mi) mi.focus();
   });
 
+  memberDd.addEventListener('mousedown', function (e) {
+    if (e.target.closest('.dd-opt')) e.preventDefault(); // 点选不抢走输入框焦点,便于连续多选
+  });
   memberDd.addEventListener('click', function (e) {
     var opt = e.target.closest('.dd-opt');
     if (!opt) return;
     toggleMember(opt.dataset.m);
+  });
+  memberBox.addEventListener('input', function (e) {
+    if (e.target.id !== 'member-input') return;
+    memberKw = e.target.value;
+    renderMemberList();
+    if (openDd !== memberDd) openDdPanel(memberDd);
   });
 
   /* ===== 值班时间选择(自绘日历面板) ===== */
@@ -587,9 +635,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     html += '</div>'
       + '<div class="cal-ft">'
       + '<span class="cal-time">时间'
-      + '<button type="button" class="cal-step" data-step="hh" data-d="-1">−</button><b class="cal-hm">' + calHh + '</b><button type="button" class="cal-step" data-step="hh" data-d="1">+</button>'
+      + '<button type="button" class="cal-step" data-step="hh" data-d="-1">−</button><input class="cal-hm" type="text" inputmode="numeric" maxlength="2" data-kind="hh" value="' + calHh + '"><button type="button" class="cal-step" data-step="hh" data-d="1">+</button>'
       + '<i>:</i>'
-      + '<button type="button" class="cal-step" data-step="mm" data-d="-1">−</button><b class="cal-hm">' + calMm + '</b><button type="button" class="cal-step" data-step="mm" data-d="1">+</button>'
+      + '<button type="button" class="cal-step" data-step="mm" data-d="-1">−</button><input class="cal-hm" type="text" inputmode="numeric" maxlength="2" data-kind="mm" value="' + calMm + '"><button type="button" class="cal-step" data-step="mm" data-d="1">+</button>'
       + '</span>'
       + '<button type="button" class="cal-today-btn" data-today="1">今天</button>'
       + '</div>';
@@ -625,6 +673,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       calM = +calDate.slice(5, 7);
       commitCal(); renderCal();
     }
+  });
+
+  // 时间输入框:支持键盘输入时分;非数字即时剔除、超范围收敛(23/59),实时写回;失焦补零/恢复,回车确认
+  calPanel.addEventListener('input', function (e) {
+    var inp = e.target.closest('input.cal-hm');
+    if (!inp) return;
+    var v = inp.value.replace(/\D/g, '').slice(0, 2);
+    if (inp.value !== v) inp.value = v;
+    if (!v) return; // 清空时等失焦恢复为当前值
+    var n = +v;
+    if (inp.dataset.kind === 'hh') calHh = pad2(n > 23 ? 23 : n);
+    else calMm = pad2(n > 59 ? 59 : n);
+    commitCal();
+  });
+  calPanel.addEventListener('focusout', function (e) {
+    var inp = e.target.closest('input.cal-hm');
+    if (!inp) return;
+    inp.value = inp.dataset.kind === 'hh' ? calHh : calMm;
+  });
+  calPanel.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.closest('input.cal-hm')) e.target.blur();
   });
 
   // 点击输入框打开面板;点击面板外关闭
