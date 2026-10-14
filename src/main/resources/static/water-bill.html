@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>水费台账与账单</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f5f7fa;color:#333;font-size:14px;-webkit-font-smoothing:antialiased}
+.page-wrap{padding:16px 20px 48px}
+.hide{display:none!important}
+
+/* 顶部头部条:标题/说明 + 右侧三个视图切换按钮 */
+.page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:14px 20px;margin-bottom:14px}
+.head-left{display:flex;align-items:baseline;gap:10px;min-width:0;flex-wrap:wrap}
+.page-title{font-size:16px;font-weight:600;color:#1f1f1f}
+.head-sub{font-size:12.5px;color:#8c8c8c}
+.view-tabs{display:flex;gap:8px;flex-shrink:0}
+.vtab{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:8px;border:1px solid transparent;background:transparent;color:#595959;font-size:13px;font-family:inherit;cursor:pointer;transition:all .2s}
+.vtab:hover{color:#1677ff}
+.vtab.active{background:#fff;border-color:#d9d9d9;color:#1677ff;font-weight:500;box-shadow:0 2px 6px rgba(0,0,0,.06)}
+
+/* 深青渐变统计条(5~6 格) */
+.stat-bar{display:flex;background:linear-gradient(120deg,#0c3350 0%,#0e4258 45%,#0d5e63 100%);border-radius:10px;padding:16px 22px;color:#fff;margin-bottom:14px}
+.stat-item{flex:1;border-left:1px solid rgba(255,255,255,.16);padding-left:20px;min-width:0}
+.stat-item:first-child{border-left:none;padding-left:0}
+.stat-label{font-size:12px;color:rgba(255,255,255,.62);margin-bottom:6px;white-space:nowrap}
+.stat-value{font-size:20px;font-weight:600;letter-spacing:.3px;white-space:nowrap}
+.stat-value .stat-unit{font-size:12px;font-weight:400;margin-left:2px;color:rgba(255,255,255,.72)}
+.stat-value .stat-sub{font-size:12px;font-weight:400;color:rgba(255,255,255,.62);margin-left:8px}
+
+/* 台账说明条 */
+.notice-bar{display:flex;align-items:flex-start;gap:8px;background:#e8f3fe;border:1px solid #b9d9f7;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#1c4f8a;line-height:20px}
+.notice-bar svg{flex-shrink:0;margin-top:2px}
+
+/* 卡片容器 */
+.card{background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:16px 20px 20px;margin-bottom:14px}
+.card-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card-title{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;color:#1f1f1f}
+.card-title .count{font-size:13px;font-weight:400;color:#8c8c8c}
+.card-hd-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sel-info{font-size:13px;color:#595959}
+.sel-info b{color:#1677ff;font-weight:600}
+
+/* 按钮 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border:1px solid transparent;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .2s;text-decoration:none}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff;border-color:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn-danger{background:#ff4d4f;color:#fff;border-color:#ff4d4f}
+.btn-danger:hover{background:#ff7875;border-color:#ff7875}
+.btn-green{background:#52c41a;color:#fff;border-color:#52c41a}
+.btn-green:hover{background:#73d13d;border-color:#73d13d}
+.btn-dark{background:#1f2d3d;color:#fff;border-color:#1f2d3d}
+.btn-dark:hover{background:#31445c;border-color:#31445c}
+.btn:disabled{opacity:.55;cursor:not-allowed;pointer-events:none}
+.btn svg{display:block;flex-shrink:0}
+.btn-sm{height:32px;padding:0 12px;font-size:13px;border-radius:6px}
+.btn-xs{height:26px;padding:0 10px;font-size:12px;border-radius:6px}
+
+/* 工具栏:搜索 + 下拉 + (重置) */
+.toolbar{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.search-wrap{position:relative;width:280px}
+.srch-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);display:inline-flex;color:#bfbfbf;pointer-events:none}
+.search-input{width:100%;height:34px;border:1px solid #d9d9d9;border-radius:6px;padding:0 12px 0 32px;font-size:13.5px;font-family:inherit;color:#333;outline:none;transition:border-color .2s,box-shadow .2s;background:#fff}
+.search-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.search-input::placeholder{color:#bfbfbf}
+.filter-sel{width:220px}
+
+/* 过滤小 tab(全部用水户 / 有待出账方案 / 存在异常方案) */
+.filter-tabs{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.ftab{height:32px;padding:0 14px;border:1px solid #d9d9d9;background:#fff;border-radius:6px;font-size:13px;font-family:inherit;color:#333;cursor:pointer;transition:all .2s}
+.ftab:hover{color:#1677ff;border-color:#1677ff}
+.ftab.active{background:#1f2d3d;border-color:#1f2d3d;color:#fff}
+
+/* 明细工具行 */
+.tools-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
+.tools-row .grow{flex:1}
+.ck-label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#333;cursor:pointer;user-select:none}
+input[type="checkbox"]{width:15px;height:15px;accent-color:#1677ff;cursor:pointer}
+
+/* 表格 */
+.tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13.5px;margin-top:12px}
+.tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:11px 12px;border:1px solid #f0f0f0;white-space:nowrap;font-size:13px}
+.tbl td{padding:11px 12px;border:1px solid #f0f0f0;color:#333;line-height:20px;vertical-align:middle;overflow-wrap:break-word}
+.cell-main{display:block;font-weight:600;color:#1f1f1f;line-height:21px}
+.cell-sub{display:block;margin-top:2px;font-size:12px;color:#8c8c8c;line-height:17px}
+.amt{font-weight:600;color:#1f1f1f}
+.amt .unit{margin-left:2px;font-size:12px;color:#8c8c8c;font-weight:400}
+.num-orange{font-weight:600;color:#fa8c16}
+.num-red{font-weight:600;color:#ff4d4f}
+.num-green{font-weight:600;color:#52c41a}
+.pos{color:#52c41a;font-weight:600}
+.empty-cell{text-align:center;color:#bfbfbf;padding:32px 0}
+
+/* 标签族:策略/周期/校验/状态 */
+.tag{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:11px;font-size:12px;line-height:1;white-space:nowrap;font-weight:500}
+.tag-blue{background:#e6f4ff;color:#1677ff}
+.tag-purple{background:#f9f0ff;color:#722ed1}
+.tag-orange{background:#fff7e6;color:#fa8c16}
+.tag-green{background:#f6ffed;color:#52c41a}
+.tag-gray{background:#f0f0f0;color:#8c8c8c}
+.st-tag{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;font-size:12px;font-weight:500;line-height:1;white-space:nowrap}
+.st-tag::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.st-tag.done{background:#f6ffed;color:#52c41a}
+.st-tag.billed{background:#e6f4ff;color:#1677ff}
+.st-tag.unbilled{background:#fff7e6;color:#fa8c16}
+.st-tag.generated{background:#e6f4ff;color:#1677ff}
+.st-tag.paid{background:#f6ffed;color:#52c41a}
+/* 明细分期头行 */
+.period-row td{background:#f2f7fc!important;border-color:#e2ecf6!important;padding:9px 12px!important}
+.period-line{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:13px}
+.p-name{font-weight:600;color:#1f1f1f;display:inline-flex;align-items:center;gap:6px}
+.p-range{color:#8c8c8c;font-size:12.5px}
+.p-qty{color:#333}
+.p-count{color:#8c8c8c;font-size:12.5px}
+.p-status{color:#fa8c16;font-size:12.5px}
+.p-billno{color:#1677ff;font-size:12.5px}
+.p-right{margin-left:auto}
+
+/* 操作链接 */
+.act{color:#1677ff;cursor:pointer;transition:color .2s;white-space:nowrap}
+.act:hover{color:#4096ff}
+.act.del{color:#ff4d4f}
+.act.del:hover{color:#ff7875}
+.tbl td .act + .act{margin-left:12px}
+
+/* 分页栏 */
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:14px 0 0;gap:8px;flex-wrap:wrap}
+.pg-info{color:#333;font-size:13px;margin-right:4px}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-btn{min-width:32px;height:32px;padding:0 6px;border:1px solid #d9d9d9;background:#fff;border-radius:6px;cursor:pointer;font-size:13px;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{border-color:#1677ff;color:#1677ff}
+.pg-btn[disabled]{color:#bfbfbf;cursor:not-allowed}
+.pg-btn[data-pg="prev"],.pg-btn[data-pg="next"]{border-color:transparent;background:transparent;font-size:16px;color:#8c8c8c}
+.pg-btn[data-pg="prev"]:hover:not([disabled]),.pg-btn[data-pg="next"]:hover:not([disabled]){border-color:transparent;background:transparent;color:#1677ff}
+.pg-ellipsis{min-width:20px;height:32px;display:inline-flex;align-items:center;justify-content:center;color:#8c8c8c;font-size:13px;user-select:none;letter-spacing:1px}
+.pg-size{height:32px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px;color:#333;background:#fff;padding:0 8px;outline:none}
+.pg-jump{display:flex;align-items:center;gap:6px;font-size:13px;color:#333}
+.pg-jump input{width:52px;height:32px;border:1px solid #d9d9d9;border-radius:6px;text-align:center;font-size:13px;color:#333;background:#fff;outline:none;padding:0 8px}
+.pg-jump input:focus{border-color:#1677ff}
+
+/* 弹窗 */
+.ov{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto}
+.ov.show{display:flex}
+.modal{position:relative;background:#fff;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.16);width:100%}
+.modal-sm{max-width:460px;margin-top:16vh}
+.modal-md{max-width:600px;margin-top:10vh}
+.modal-lg{max-width:760px;margin-top:6vh}
+.modal-x{position:absolute;top:16px;right:16px;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:4px;background:none;color:#595959;cursor:pointer;transition:color .2s,background .2s}
+.modal-x:hover{color:#262626;background:#f5f5f5}
+.modal-hd{padding:20px 24px 0;font-size:17px;font-weight:600;color:#1f1f1f}
+.modal-sub{margin-top:4px;font-size:13px;color:#8c8c8c;font-weight:400}
+.modal-bd{padding:16px 24px 0}
+.modal-ft{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px 20px;border-top:1px solid #f0f0f0;margin-top:18px}
+.modal-ft .btn{height:36px;padding:0 18px}
+.confirm-text{font-size:14px;color:#333;line-height:22px;word-break:break-all}
+
+/* 表单 */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+.form-grid .span2{grid-column:span 2}
+.form-item{margin-bottom:18px}
+.form-item > label{display:block;margin-bottom:8px;font-size:13.5px;color:#333}
+.req{color:#ff4d4f;font-style:normal;margin-left:2px}
+.ipt{width:100%;height:36px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 12px;font-size:14px;font-family:inherit;color:#333;outline:none;transition:border-color .2s,box-shadow .2s}
+.ipt:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.ipt::placeholder{color:#bfbfbf}
+.ipt[readonly]{background:#f5f5f5;color:#8c8c8c;cursor:not-allowed}
+textarea.ipt{height:auto;min-height:76px;padding:8px 12px;line-height:22px;resize:vertical}
+input[type="datetime-local"].ipt{cursor:pointer}
+input[type="number"].ipt::-webkit-outer-spin-button,input[type="number"].ipt::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
+.f-tip{margin-top:6px;font-size:12px;color:#8c8c8c;line-height:18px}
+
+/* 下拉(支持输入模糊搜索) */
+.select-wrap{position:relative}
+.sel-input{width:100%;height:34px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 32px 0 12px;font-size:13.5px;font-family:inherit;color:#333;outline:none;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+.sel-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.sel-input::placeholder{color:#bfbfbf}
+.chev{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:inline-flex;pointer-events:none}
+.sel-dd{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;max-height:224px;overflow-y:auto;background:#fff;border:1px solid #f0f0f0;border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.08);padding:4px}
+.sel-dd.open{display:block}
+.dd-opt{padding:8px 12px;border-radius:4px;cursor:pointer;color:#333;font-size:13.5px;line-height:20px}
+.dd-opt:hover{background:#f5f5f5}
+.dd-opt.active{background:#e6f4ff;color:#1677ff;font-weight:500}
+.dd-empty{padding:10px 12px;font-size:13px;color:#bfbfbf;text-align:center}
+
+/* 青色信息提示条(弹窗内) */
+.plan-tip{display:none;margin-bottom:14px;padding:9px 12px;border:1px solid #87e8de;border-radius:6px;background:#e6fffb;color:#08979c;font-size:12.5px;line-height:20px}
+.plan-tip.show{display:flex;align-items:flex-start;gap:8px}
+.plan-tip svg{flex-shrink:0;margin-top:3px}
+
+/* 账单明细 kv 列表 */
+.kv-list{padding:4px 2px}
+.kv-row{display:flex;justify-content:space-between;gap:20px;padding:7px 0;font-size:13.5px;line-height:22px}
+.kv-row .kv-k{color:#8c8c8c;flex-shrink:0}
+.kv-row .kv-v{color:#333;text-align:right;word-break:break-all}
+
+/* 弹窗内小表格 */
+.tbl.mini{margin-top:14px;font-size:13px}
+.tbl.mini th{padding:9px 10px;font-size:12.5px}
+.tbl.mini td{padding:9px 10px;line-height:19px}
+.plus-dot{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#f6ffed;color:#52c41a;font-size:13px;font-weight:600}
+
+/* 轻提示 */
+.toast{position:fixed;top:24px;left:50%;z-index:1500;padding:10px 20px;border-radius:6px;background:#2b7a3f;color:#fff;box-shadow:0 6px 16px rgba(0,0,0,.18);font-size:13.5px;line-height:20px;opacity:0;pointer-events:none;transform:translate(-50%,-16px);transition:opacity .25s,transform .25s;max-width:82vw}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+<script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
+</head>
+<body>
+<div class="page-wrap">
+  <!-- 顶部头部条:标题 + 三个视图切换 -->
+  <div class="page-head">
+    <div class="head-left">
+      <h1 class="page-title">水费台账与账单</h1>
+      <span class="head-sub">台账按用水户维度归集调度方案 → 勾选方案批量生成账单 → 账单管理收缴</span>
+    </div>
+    <div class="view-tabs">
+      <button type="button" class="vtab active" data-view="ledger">水费台账</button>
+      <button type="button" class="vtab" data-view="bills">水费账单</button>
+      <button type="button" class="vtab" data-view="summary">用水户水费汇总</button>
+    </div>
+  </div>
+
+  <!-- ==================== 视图一:水费台账 ==================== -->
+  <div id="view-ledger">
+    <!-- 统计条 -->
+    <div class="stat-bar" id="ledger-stat"></div>
+    <!-- 台账说明 -->
+    <div class="notice-bar">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.6" stroke="#1c4f8a" stroke-width="1.3"/><path d="M7 6.4v3.2M7 4.2v.6" stroke="#1c4f8a" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <span>台账说明：台账以用水户为维度归集其调度方案，按用水户设定的统计周期自动分期；「闸口差额计量」策略下扣减闸口方案以负值参与水量计算。点击「明细」在当前页查看该用水户各周期方案明细，勾选后点击「生成账单」批量生成水费账单。</span>
+    </div>
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-title">用水户水费台账<span class="count" id="ledger-count">共 0 户</span></div>
+        <button type="button" class="btn btn-default btn-sm" id="btn-export-ledger">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>导出台账
+        </button>
+      </div>
+      <div class="toolbar">
+        <div class="search-wrap">
+          <span class="srch-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+          <input type="text" class="search-input" id="ledger-kw" placeholder="搜索用水户名称 / 编号" autocomplete="off">
+        </div>
+        <div class="filter-sel">
+          <div class="select-wrap">
+            <input type="text" class="sel-input" id="f-ledger-cycle" placeholder="全部统计周期" autocomplete="off">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="sel-dd" id="ledger-cycle-dd"></div>
+          </div>
+        </div>
+      </div>
+      <div class="filter-tabs">
+        <button type="button" class="ftab active" data-lf="all">全部用水户</button>
+        <button type="button" class="ftab" data-lf="pending">有待出账方案</button>
+        <button type="button" class="ftab" data-lf="abnormal">存在异常方案</button>
+      </div>
+      <table class="tbl">
+        <colgroup>
+          <col style="width:11%"><col style="width:15%"><col style="width:10%"><col style="width:8%"><col style="width:8%">
+          <col style="width:9%"><col style="width:10%"><col style="width:8%"><col style="width:7%"><col style="width:14%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>用水户</th><th>用水计算策略 / 闸口</th><th>统计周期</th><th>水价</th><th>本期水量（万m³）</th>
+            <th>待出账水量（万m³）</th><th>待出账金额</th><th>已出账水量（万m³）</th><th>数据校验</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="ledger-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== 视图二:台账明细(第二层) ==================== -->
+  <div id="view-detail" class="hide">
+    <!-- 用水户汇总条 -->
+    <div class="stat-bar" id="detail-bar"></div>
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-title">调度方案明细 / 待出账数据<span class="count" id="detail-count"></span></div>
+        <div class="card-hd-right">
+          <span class="sel-info" id="detail-sel">已选 0 个</span>
+          <button type="button" class="btn btn-default btn-sm" id="btn-detail-clear">取消选择</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-detail-gen">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="1.5" y="2" width="9" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M4 1v2M8 1v2M1.5 5h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>生成账单
+          </button>
+          <button type="button" class="btn btn-default btn-sm" id="btn-detail-back">返回台账</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="filter-sel">
+          <div class="select-wrap">
+            <input type="text" class="sel-input" id="f-detail-cycle" placeholder="全部统计周期" autocomplete="off">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="sel-dd" id="detail-cycle-dd"></div>
+          </div>
+        </div>
+        <div class="filter-sel">
+          <div class="select-wrap">
+            <input type="text" class="sel-input" id="f-detail-billed" placeholder="全部计费状态" autocomplete="off">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="sel-dd" id="detail-billed-dd"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tools-row">
+        <span class="grow"></span>
+        <label class="ck-label"><input type="checkbox" id="ck-select-page">全选本页待出账方案</label>
+        <a class="btn btn-default btn-sm" href="water-dispatch-plan.html">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>新增调度方案
+        </a>
+        <button type="button" class="btn btn-default btn-sm" id="btn-export-detail">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>导出明细
+        </button>
+      </div>
+      <table class="tbl">
+        <colgroup>
+          <col style="width:3%"><col style="width:19%"><col style="width:10%"><col style="width:12%"><col style="width:8%">
+          <col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:15%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th></th><th>方案编号 / 关联计划</th><th>调度闸口</th><th>执行时段</th><th>计划放水量（万m³）</th>
+            <th>计入水量（万m³）</th><th>测算金额</th><th>执行状态</th><th>计费状态</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="detail-body"></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- ==================== 视图三:水费账单 ==================== -->
+  <div id="view-bills" class="hide">
+    <div class="stat-bar" id="bill-stat"></div>
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-title">水费账单列表<span class="count">由台账方案明细批量生成，可管理收缴</span></div>
+        <div class="card-hd-right">
+          <button type="button" class="btn btn-default btn-sm" id="btn-export-bills">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>导出账单
+          </button>
+          <button type="button" class="btn btn-dark btn-sm" id="btn-go-ledger">去台账出账</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="search-wrap">
+          <span class="srch-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+          <input type="text" class="search-input" id="bill-kw" placeholder="搜索账单号 / 用水户 / 周期" autocomplete="off">
+        </div>
+        <div class="filter-sel">
+          <div class="select-wrap">
+            <input type="text" class="sel-input" id="f-bill-status" placeholder="全部状态" autocomplete="off">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="sel-dd" id="bill-status-dd"></div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-default btn-sm" id="btn-bill-reset">重置</button>
+      </div>
+      <table class="tbl">
+        <colgroup>
+          <col style="width:13%"><col style="width:10%"><col style="width:11%"><col style="width:11%"><col style="width:9%">
+          <col style="width:8%"><col style="width:10%"><col style="width:10%"><col style="width:8%"><col style="width:10%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>账单编号</th><th>用水户</th><th>统计周期</th><th>账期区间</th><th>计费水量（万m³）</th>
+            <th>水价</th><th>应收金额</th><th>已收金额</th><th>状态</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="bill-body"></tbody>
+      </table>
+      <div class="pg-bar" id="bill-pg"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 视图四:用水户水费汇总 ==================== -->
+  <div id="view-summary" class="hide">
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-title">用水户水费汇总<span class="count" id="sum-count">共 0 户</span></div>
+        <button type="button" class="btn btn-default btn-sm" id="btn-export-sum">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>导出
+        </button>
+      </div>
+      <table class="tbl">
+        <colgroup>
+          <col style="width:12%"><col style="width:12%"><col style="width:8%"><col style="width:7%"><col style="width:7%">
+          <col style="width:10%"><col style="width:9%"><col style="width:9%"><col style="width:7%"><col style="width:13%"><col style="width:6%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>用水户</th><th>策略 / 周期</th><th>年度计划（万m³）</th><th>水价</th><th>账单数</th>
+            <th>应收金额</th><th>已收金额</th><th>欠缴金额</th><th>收缴率</th><th>待出账</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="sum-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 调整方案计划水量弹窗 -->
+<div class="ov" id="adjust-ov">
+  <div class="modal modal-md" role="dialog" aria-label="调整方案计划水量">
+    <button type="button" class="modal-x" data-close="adjust-ov" aria-label="关闭">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <div class="modal-hd">
+      <div>调整方案计划水量</div>
+      <div class="modal-sub" id="adjust-sub"></div>
+    </div>
+    <div class="modal-bd">
+      <div class="plan-tip show">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="2.5" width="9" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 5h9M4 1.5v2M8 1.5v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span>调整后水费台账与待出账金额将实时重算；账期归属按开始时间所在月度确定。</span>
+      </div>
+      <div class="form-grid">
+        <div class="form-item">
+          <label>原计划放水量（万m³）</label>
+          <input type="text" class="ipt" id="adj-old" readonly>
+        </div>
+        <div class="form-item">
+          <label>调整后计划放水量（万m³） <i class="req">*</i></label>
+          <input type="number" class="ipt" id="adj-new" min="0" step="0.01" placeholder="0">
+        </div>
+        <div class="form-item">
+          <label>开始时间 <i class="req">*</i></label>
+          <input type="datetime-local" class="ipt" id="adj-start">
+        </div>
+        <div class="form-item">
+          <label>结束时间</label>
+          <input type="datetime-local" class="ipt" id="adj-end">
+        </div>
+        <div class="form-item span2">
+          <label>备注</label>
+          <textarea class="ipt" id="adj-remark" placeholder="选填"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button type="button" class="btn btn-default" data-close="adjust-ov">取消</button>
+      <button type="button" class="btn btn-primary" id="btn-adjust-save">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2L4.8 9 10 3.4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>保存调整
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 账单明细弹窗 -->
+<div class="ov" id="bill-ov">
+  <div class="modal modal-lg" role="dialog" aria-label="账单明细">
+    <button type="button" class="modal-x" data-close="bill-ov" aria-label="关闭">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <div class="modal-hd">
+      <div id="bill-modal-title">账单明细</div>
+      <div class="modal-sub" id="bill-modal-sub"></div>
+    </div>
+    <div class="modal-bd">
+      <div class="kv-list" id="bill-kv"></div>
+      <table class="tbl mini" id="bill-plans">
+        <colgroup><col style="width:14%"><col style="width:13%"><col style="width:7%"><col style="width:21%"><col style="width:15%"><col style="width:15%"><col style="width:15%"></colgroup>
+        <thead>
+          <tr><th>方案编号</th><th>闸口</th><th>计入</th><th>执行时段</th><th>计划水量（万m³）</th><th>计入水量（万m³）</th><th>金额</th></tr>
+        </thead>
+        <tbody id="bill-plans-body"></tbody>
+      </table>
+    </div>
+    <div class="modal-ft">
+      <button type="button" class="btn btn-default" data-close="bill-ov">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用确认弹窗(删除/收款) -->
+<div class="ov" id="confirm-ov">
+  <div class="modal modal-sm" role="dialog" aria-label="确认操作">
+    <button type="button" class="modal-x" data-close="confirm-ov" aria-label="关闭">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <div class="modal-hd" id="confirm-title">删除账单</div>
+    <div class="modal-bd">
+      <p class="confirm-text" id="confirm-text"></p>
+    </div>
+    <div class="modal-ft">
+      <button type="button" class="btn btn-default" data-close="confirm-ov">取消</button>
+      <button type="button" class="btn btn-danger" id="confirm-ok">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 轻提示 -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ==================== Mock 数据区(后续可替换为真实接口) ==================== */
+
+  /** 演示基准日期:"本期"按该日所在的月/季/年计算 */
+  var BASE_DATE = new Date(2026, 9, 14); // 2026-10-14
+
+  var GATE_NAMES = {
+    GK001: '东干渠一号闸', GK002: '东干渠二号闸', GK003: '西干渠首闸', GK004: '西干渠分水闸',
+    GK005: '南支渠节制闸', GK006: '北干渠进水闸', GK007: '七号泄水闸'
+  };
+
+  /** 用水户台账配置(统计周期在新增用水户时设定) */
+  var LEDGERS = [
+    { code: 'YH001', name: '红星村民委员会', type: '农业', strategy: '指定闸口累加', gateText: '东干渠一号闸 + 东干渠二号闸', cycle: 'month', price: 0.350, yearPlan: 18 },
+    { code: 'YH002', name: '丰收农业合作社', type: '农业', strategy: '闸口差额计量', gateText: '西干渠首闸 - 七号泄水闸', cycle: 'quarter', price: 0.350, yearPlan: 12 },
+    { code: 'YH003', name: '县工业园区管委会', type: '工业', strategy: '指定闸口累加', gateText: '北干渠进水闸', cycle: 'month', price: 1.200, yearPlan: 30 },
+    { code: 'YH004', name: '城南自来水厂', type: '生活', strategy: '指定闸口累加', gateText: '南支渠节制闸', cycle: 'month', price: 1.600, yearPlan: 95 },
+    { code: 'YH005', name: '湿地公园生态补水', type: '生态', strategy: '闸口差额计量', gateText: '西干渠分水闸 - 七号泄水闸', cycle: 'year', price: 0.200, yearPlan: 40 },
+    { code: 'YH006', name: '绿源家庭农场', type: '农业', strategy: '指定闸口累加', gateText: '东干渠二号闸', cycle: 'quarter', price: 0.380, yearPlan: 4.5 }
+  ];
+
+  /** 调度方案列表(台账归集对象; billNo 为空表示未计费) */
+  var PLANS = [
+    { id: 'DD0014', farmerCode: 'YH001', gateCode: 'GK002', amount: 1.98, startTime: '2026-10-08 08:00', endTime: '2026-10-15 18:00', planName: '2026年10月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0010', farmerCode: 'YH001', gateCode: 'GK001', amount: 2.2, startTime: '2026-09-06 08:00', endTime: '2026-09-12 18:00', planName: '2026年9月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0003', farmerCode: 'YH001', gateCode: 'GK002', amount: 1.85, startTime: '2026-06-11 08:00', endTime: '2026-06-16 18:00', planName: '2026年6月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0002', farmerCode: 'YH001', gateCode: 'GK001', amount: 2.6, startTime: '2026-05-08 08:00', endTime: '2026-05-14 18:00', planName: '2026年5月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0005', farmerCode: 'YH002', gateCode: 'GK003', amount: 3.1, startTime: '2026-07-05 08:00', endTime: '2026-07-20 18:00', planName: '2026年第3季度灌溉供水计划', trail: 2, billNo: '' },
+    { id: 'DD0011', farmerCode: 'YH002', gateCode: 'GK003', amount: 2.75, startTime: '2026-09-10 08:00', endTime: '2026-09-18 18:00', planName: '2026年第3季度灌溉供水计划', trail: 4, billNo: '' },
+    { id: 'DD0015', farmerCode: 'YH003', gateCode: 'GK006', amount: 4.1, startTime: '2026-10-01 08:00', endTime: '2026-10-31 18:00', planName: '2026年10月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0013', farmerCode: 'YH003', gateCode: 'GK006', amount: 4.3, startTime: '2026-09-01 08:00', endTime: '2026-09-30 18:00', planName: '2026年9月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0007', farmerCode: 'YH003', gateCode: 'GK006', amount: 3.5, startTime: '2026-08-02 08:00', endTime: '2026-08-15 18:00', planName: '2026年8月月度供水计划', trail: 2, billNo: '' },
+    { id: 'DD0009', farmerCode: 'YH003', gateCode: 'GK006', amount: 5.2, startTime: '2026-07-05 08:00', endTime: '2026-07-31 18:00', planName: '2026年7月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0016', farmerCode: 'YH004', gateCode: 'GK005', amount: 7.9, startTime: '2026-10-01 08:00', endTime: '2026-10-31 18:00', planName: '2026年10月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0004', farmerCode: 'YH004', gateCode: 'GK005', amount: 8.4, startTime: '2026-09-01 08:00', endTime: '2026-09-30 18:00', planName: '2026年9月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0006', farmerCode: 'YH004', gateCode: 'GK005', amount: 9.6, startTime: '2026-08-01 08:00', endTime: '2026-08-31 18:00', planName: '2026年8月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0008', farmerCode: 'YH004', gateCode: 'GK005', amount: 7.8, startTime: '2026-07-03 08:00', endTime: '2026-07-28 18:00', planName: '2026年7月月度供水计划', trail: 3, billNo: '' },
+    { id: 'DD0017', farmerCode: 'YH005', gateCode: 'GK004', amount: 4.6, startTime: '2026-06-15 08:00', endTime: '2026-06-30 18:00', planName: '2026年度生态补水计划', trail: 2, billNo: '' },
+    { id: 'DD0001', farmerCode: 'YH005', gateCode: 'GK004', amount: 4.4, startTime: '2026-03-10 08:00', endTime: '2026-03-25 18:00', planName: '2026年度生态补水计划', trail: 2, billNo: '' },
+    { id: 'DD0018', farmerCode: 'YH006', gateCode: 'GK002', amount: 0.98, startTime: '2026-09-28 08:00', endTime: '2026-10-06 18:00', planName: '2026年第3季度灌溉供水计划', trail: 1, billNo: '' }
+  ];
+
+  /** 水费账单列表(初始为空,由台账出账生成) */
+  var BILLS = [];
+
+  /* ==================== 基础工具 ==================== */
+
+  function $(id) { return document.getElementById(id); }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function round2(n) { return Math.round(n * 100) / 100; }
+
+  /** 水量格式化:保留2位去掉尾零 */
+  function fmtQty(n) { return String(round2(Number(n))); }
+
+  /** 金额格式化:千分位 + 2位小数 */
+  function fmtMoney(n) {
+    var s = round2(Number(n)).toFixed(2);
+    var parts = s.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return '¥' + parts[0] + '.' + parts[1];
+  }
+
+  /** 水价格式化:3位小数 */
+  function fmtPrice(n) { return Number(n).toFixed(3); }
+
+  function nowStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  var toastTimer = null;
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2800);
+  }
+
+  function openModal(id) { $(id).classList.add('show'); }
+  function closeModal(id) { $(id).classList.remove('show'); }
+
+  function findLedger(code) {
+    for (var i = 0; i < LEDGERS.length; i++) { if (LEDGERS[i].code === code) return LEDGERS[i]; }
+    return null;
+  }
+  function findPlan(id) {
+    for (var i = 0; i < PLANS.length; i++) { if (PLANS[i].id === id) return PLANS[i]; }
+    return null;
+  }
+  function findBill(no) {
+    for (var i = 0; i < BILLS.length; i++) { if (BILLS[i].billNo === no) return BILLS[i]; }
+    return null;
+  }
+  function gateName(code) { return GATE_NAMES[code] || '-'; }
+
+  /* ==================== 统计周期计算 ==================== */
+
+  var CYCLE_NAME = { month: '月度结算', quarter: '季度结算', year: '年度结算' };
+  var CYCLE_TAG = { month: 'tag-blue', quarter: 'tag-orange', year: 'tag-green' };
+
+  /** 方案开始时间 → 其所属分期 key(月:'2026-10' / 季:'2026-Q3' / 年:'2026') */
+  function cycleKeyOf(startTime, cycle) {
+    var y = +startTime.slice(0, 4);
+    var m = +startTime.slice(5, 7);
+    if (cycle === 'month') return y + '-' + pad2(m);
+    if (cycle === 'quarter') return y + '-Q' + Math.ceil(m / 3);
+    return String(y);
+  }
+
+  /** 基准日所在的分期 key(用于"本期"统计) */
+  function currentCycleKey(cycle) {
+    var y = BASE_DATE.getFullYear();
+    var m = BASE_DATE.getMonth() + 1;
+    if (cycle === 'month') return y + '-' + pad2(m);
+    if (cycle === 'quarter') return y + '-Q' + Math.ceil(m / 3);
+    return String(y);
+  }
+
+  /** 分期 key → 中文标签 */
+  function cycleLabel(key) {
+    if (key.indexOf('-Q') !== -1) {
+      var parts = key.split('-Q');
+      return parts[0] + '年第' + parts[1] + '季度';
+    }
+    if (key.indexOf('-') !== -1) {
+      var mp = key.split('-');
+      return mp[0] + '年' + (+mp[1]) + '月';
+    }
+    return key + '年度';
+  }
+
+  /** 分期 key → 账期区间 ['2026-10-01','2026-10-31'] */
+  function cycleRange(key) {
+    function monthEnd(y, m) { return new Date(y, m, 0).getDate(); }
+    if (key.indexOf('-Q') !== -1) {
+      var qp = key.split('-Q');
+      var y = +qp[0], q = +qp[1];
+      var sm = q * 3 - 2, em = q * 3;
+      return [y + '-' + pad2(sm) + '-01', y + '-' + pad2(em) + '-' + monthEnd(y, em)];
+    }
+    if (key.indexOf('-') !== -1) {
+      var mp = key.split('-');
+      var yy = +mp[0], mm = +mp[1];
+      return [yy + '-' + pad2(mm) + '-01', yy + '-' + pad2(mm) + '-' + monthEnd(yy, mm)];
+    }
+    return [key + '-01-01', key + '-12-31'];
+  }
+
+  /** 分期 key → 账单号期间码(月:'202610' / 季:'2026Q3' / 年:'2026') */
+  function cycleCode(key) { return key.replace('-', ''); }
+
+  /* ==================== 台账/账单统计 ==================== */
+
+  function plansOf(farmerCode) {
+    return PLANS.filter(function (p) { return p.farmerCode === farmerCode; });
+  }
+
+  /** 单户台账统计 */
+  function ledgerStats(farmerCode) {
+    var led = findLedger(farmerCode);
+    var all = plansOf(farmerCode);
+    var pending = all.filter(function (p) { return !p.billNo; });
+    var billed = all.filter(function (p) { return !!p.billNo; });
+    var cur = currentCycleKey(led.cycle);
+    var thisPeriod = all.filter(function (p) { return cycleKeyOf(p.startTime, led.cycle) === cur; });
+    return {
+      pending: pending, billed: billed,
+      pendingQty: round2(pending.reduce(function (s, p) { return s + p.amount; }, 0)),
+      pendingAmount: round2(pending.reduce(function (s, p) { return s + p.amount; }, 0) * led.price * 10000),
+      billedQty: round2(billed.reduce(function (s, p) { return s + p.amount; }, 0)),
+      billedAmount: round2(billed.reduce(function (s, p) { return s + p.amount; }, 0) * led.price * 10000),
+      thisQty: round2(thisPeriod.reduce(function (s, p) { return s + p.amount; }, 0)),
+      thisCount: thisPeriod.length
+    };
+  }
+
+  /** 全台账汇总 */
+  function overallStats() {
+    var pendingPlans = PLANS.filter(function (p) { return !p.billNo; });
+    var qty = 0, amount = 0;
+    pendingPlans.forEach(function (p) {
+      var led = findLedger(p.farmerCode);
+      qty += p.amount;
+      amount += p.amount * led.price * 10000;
+    });
+    var billedTotal = BILLS.reduce(function (s, b) { return s + b.amount; }, 0);
+    return { farmerCount: LEDGERS.length, pendingCount: pendingPlans.length, pendingQty: round2(qty), pendingAmount: round2(amount), billedTotal: round2(billedTotal) };
+  }
+
+  /* ==================== 账单生成(核心) ==================== */
+
+  /** 账单序号:扫描现有账单取最大值+1 */
+  function nextBillSeq() {
+    var max = 0;
+    BILLS.forEach(function (b) {
+      var n = parseInt(b.billNo.slice(-4), 10);
+      if (n > max) max = n;
+    });
+    return max + 1;
+  }
+
+  /**
+   * 为指定方案批量生成账单
+   * 月度结算:跨月勾选自动拆分为多个独立月份账单; 季度/年度结算:同期合并为一张
+   * 返回生成的账单数组
+   */
+  function createBills(farmerCode, planIds) {
+    var led = findLedger(farmerCode);
+    var plans = PLANS.filter(function (p) {
+      return p.farmerCode === farmerCode && !p.billNo && planIds.indexOf(p.id) !== -1;
+    });
+    if (!plans.length) return [];
+
+    // 按统计周期分组
+    var groups = {};
+    var order = [];
+    plans.forEach(function (p) {
+      var key = cycleKeyOf(p.startTime, led.cycle);
+      if (!groups[key]) { groups[key] = []; order.push(key); }
+      groups[key].push(p);
+    });
+
+    var created = [];
+    order.forEach(function (key) {
+      var g = groups[key];
+      var qty = round2(g.reduce(function (s, p) { return s + p.amount; }, 0));
+      var range = cycleRange(key);
+      var bill = {
+        billNo: 'SF' + cycleCode(key) + '-' + farmerCode + ('0000' + nextBillSeq()).slice(-4),
+        farmerCode: farmerCode,
+        cycle: led.cycle,
+        cycleKey: key,
+        startDate: range[0],
+        endDate: range[1],
+        quantity: qty,
+        price: led.price,
+        amount: round2(qty * led.price * 10000),
+        paid: 0,
+        status: 'generated',
+        createTime: nowStr(),
+        payTime: '',
+        planIds: g.map(function (p) { return p.id; })
+      };
+      BILLS.unshift(bill);
+      g.forEach(function (p) { p.billNo = bill.billNo; p.billTime = bill.createTime; });
+      created.push(bill);
+    });
+    return created;
+  }
+
+  /** 出账成功提示(单张:账单号+算式;多张:拆分张数+合计) */
+  function toastCreated(created) {
+    if (!created.length) return;
+    if (created.length === 1) {
+      var b = created[0];
+      toast('账单 ' + b.billNo + ' 已生成：' + fmtQty(b.quantity) + ' 万m³ × ' + fmtPrice(b.price) + ' 元/m³ = ' + fmtMoney(b.amount));
+    } else {
+      var total = round2(created.reduce(function (s, b) { return s + b.amount; }, 0));
+      toast('已按统计周期自动拆分生成 ' + created.length + ' 张账单，合计 ' + fmtMoney(total));
+    }
+  }
+
+  /* ==================== 模糊搜索下拉(与项目其他页面一致) ==================== */
+  function bindSearchSelect(inputId, ddId, getOptions, onPick) {
+    var input = $(inputId), dd = $(ddId);
+    var shown = [];
+    function render(kw) {
+      var list = getOptions() || [];
+      var lower = (kw || '').toLowerCase();
+      shown = list.filter(function (o) {
+        if (!lower) return true;
+        return (o.label + ' ' + (o.value || '')).toLowerCase().indexOf(lower) !== -1;
+      });
+      if (!shown.length) { dd.innerHTML = '<div class="dd-empty">无匹配选项</div>'; return; }
+      var html = '';
+      shown.forEach(function (o, i) {
+        var active = (input.dataset.value || '') === (o.value || '');
+        html += '<div class="dd-opt' + (active ? ' active' : '') + '" data-i="' + i + '">' + esc(o.label) + '</div>';
+      });
+      dd.innerHTML = html;
+    }
+    function open() { dd.classList.add('open'); }
+    function close() { dd.classList.remove('open'); }
+    input.addEventListener('focus', function () { render(''); open(); });
+    input.addEventListener('click', function () { render(''); open(); });
+    input.addEventListener('input', function () { render(input.value); open(); });
+    input.addEventListener('blur', function () { setTimeout(close, 160); });
+    dd.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    dd.addEventListener('click', function (e) {
+      var opt = e.target.closest('.dd-opt');
+      if (!opt) return;
+      var o = shown[+opt.dataset.i];
+      if (!o) return;
+      input.value = o.label;
+      input.dataset.value = o.value || '';
+      close();
+      if (onPick) onPick(o.value || '', o);
+    });
+  }
+
+  var CYCLE_SHORT = { month: '月度', quarter: '季度', year: '年度' };
+
+  /** 分期 key 排序值(用于倒序排列) */
+  function cycleSort(key) {
+    if (key.indexOf('-Q') !== -1) { var q = key.split('-Q'); return (+q[0]) * 100 + (+q[1]) * 3; }
+    if (key.indexOf('-') !== -1) { var m = key.split('-'); return (+m[0]) * 100 + (+m[1]); }
+    return (+key) * 100 + 13;
+  }
+
+  /* ==================== 视图切换 ==================== */
+  function setActiveTab(view) {
+    document.querySelectorAll('.vtab').forEach(function (t) {
+      t.classList.toggle('active', t.dataset.view === view);
+    });
+    $('view-ledger').classList.toggle('hide', view !== 'ledger');
+    $('view-detail').classList.add('hide');
+    $('view-bills').classList.toggle('hide', view !== 'bills');
+    $('view-summary').classList.toggle('hide', view !== 'summary');
+  }
+
+  function statItem(label, value) {
+    return '<div class="stat-item"><div class="stat-label">' + label + '</div><div class="stat-value">' + value + '</div></div>';
+  }
+
+  /* ==================== 视图一:水费台账 ==================== */
+  var ledgerFilter = { kw: '', cycle: '', lf: 'all' };
+
+  /** 当前筛选条件下的用水户列表(渲染与导出共用) */
+  function ledgerList() {
+    var kw = ledgerFilter.kw.trim().toLowerCase();
+    return LEDGERS.filter(function (led) {
+      if (ledgerFilter.cycle && led.cycle !== ledgerFilter.cycle) return false;
+      if (ledgerFilter.lf === 'abnormal') return false;
+      if (ledgerFilter.lf === 'pending' && ledgerStats(led.code).pending.length === 0) return false;
+      if (kw) {
+        var hay = (led.name + ' ' + led.code + ' ' + led.gateText).toLowerCase();
+        if (hay.indexOf(kw) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderLedger() {
+    var o = overallStats();
+    $('ledger-stat').innerHTML =
+      statItem('台账用水户', o.farmerCount + ' <span class="stat-unit">户</span>') +
+      statItem('待出账方案', o.pendingCount + ' <span class="stat-unit">个</span>') +
+      statItem('待出账水量', fmtQty(o.pendingQty) + ' <span class="stat-unit">万m³</span>') +
+      statItem('待出账金额', fmtMoney(o.pendingAmount)) +
+      statItem('累计已出账', fmtMoney(o.billedTotal));
+
+    var list = ledgerList();
+    $('ledger-count').textContent = '共 ' + list.length + ' 户';
+    if (!list.length) {
+      $('ledger-body').innerHTML = '<tr><td colspan="10" class="empty-cell">没有符合条件的用水户</td></tr>';
+      return;
+    }
+    var html = '';
+    list.forEach(function (led) {
+      var st = ledgerStats(led.code);
+      var hasPending = st.pending.length > 0;
+      html += '<tr>' +
+        '<td><span class="cell-main">' + esc(led.name) + '</span></td>' +
+        '<td><span class="tag ' + (led.strategy === '指定闸口累加' ? 'tag-blue' : 'tag-purple') + '">' + led.strategy + '</span></td>' +
+        '<td><span class="tag ' + CYCLE_TAG[led.cycle] + '">' + CYCLE_SHORT[led.cycle] + '</span></td>' +
+        '<td>' + fmtPrice(led.price) + ' 元/m³</td>' +
+        '<td>' + fmtQty(st.thisQty) + ' 万m³</td>' +
+        '<td>' + (hasPending
+          ? '<span class="num-orange">' + fmtQty(st.pendingQty) + ' 万m³</span>'
+          : '<span style="color:#bfbfbf">—</span>') + '</td>' +
+        '<td>' + (hasPending
+          ? '<span class="num-red">' + fmtMoney(st.pendingAmount) + '</span>'
+          : '<span style="color:#bfbfbf">¥0.00</span>') + '</td>' +
+        '<td>' + (st.billedQty > 0
+          ? fmtQty(st.billedQty) + ' 万m³'
+          : '<span style="color:#bfbfbf">0</span>') + '</td>' +
+        '<td><span class="st-tag done">正常</span></td>' +
+        '<td><span class="act" data-detail="' + led.code + '">明细</span>' +
+          (hasPending ? '<button type="button" class="btn btn-green btn-xs" style="margin-left:10px" data-billall="' + led.code + '">全部出账</button>' : '') +
+        '</td></tr>';
+    });
+    $('ledger-body').innerHTML = html;
+  }
+
+  /* ==================== 视图二:台账明细(第二层) ==================== */
+  var curFarmer = '';          // 当前查看明细的用水户
+  var selPlans = {};           // 勾选的待出账方案 id 集合
+  var detailFilter = { cycle: '', billed: '' };
+
+  function openDetail(code) {
+    curFarmer = code;
+    selPlans = {};
+    detailFilter = { cycle: '', billed: '' };
+    $('f-detail-cycle').value = ''; $('f-detail-cycle').dataset.value = '';
+    $('f-detail-billed').value = ''; $('f-detail-billed').dataset.value = '';
+    $('ck-select-page').checked = false;
+    setActiveTab('ledger');
+    $('view-ledger').classList.add('hide');
+    $('view-detail').classList.remove('hide');
+    renderDetail();
+  }
+
+  function renderDetail() {
+    var led = findLedger(curFarmer);
+    if (!led) return;
+    var all = plansOf(curFarmer);
+    var st = ledgerStats(curFarmer);
+    $('detail-count').textContent = '共 ' + all.length + ' 个方案 · 待出账 ' + st.pending.length + ' 个';
+    $('detail-bar').innerHTML =
+      statItem('用水户', esc(led.name) + '（' + led.code + '）') +
+      statItem('用水计算策略', led.strategy) +
+      statItem('统计周期', CYCLE_SHORT[led.cycle] + '结算') +
+      statItem('水价', fmtPrice(led.price) + ' <span class="stat-unit">元/m³</span>') +
+      statItem('待出账水量', fmtQty(st.pendingQty) + ' <span class="stat-unit">万m³</span>') +
+      statItem('待出账金额', fmtMoney(st.pendingAmount));
+
+    // 按统计周期分期分组
+    var groups = {}, order = [];
+    all.forEach(function (p) {
+      var key = cycleKeyOf(p.startTime, led.cycle);
+      if (!groups[key]) { groups[key] = []; order.push(key); }
+      groups[key].push(p);
+    });
+    order.sort(function (a, b) { return cycleSort(b) - cycleSort(a); });
+
+    var html = '';
+    order.forEach(function (key) {
+      if (detailFilter.cycle && detailFilter.cycle !== key) return;
+      var g = groups[key];
+      var gPending = g.filter(function (p) { return !p.billNo; });
+      var gBilled = g.filter(function (p) { return !!p.billNo; });
+      var rows = g.filter(function (p) {
+        if (detailFilter.billed === 'unbilled') return !p.billNo;
+        if (detailFilter.billed === 'billed') return !!p.billNo;
+        return true;
+      });
+      if (!rows.length) return;
+
+      var range = cycleRange(key);
+      var gQty = round2(g.reduce(function (s, p) { return s + p.amount; }, 0));
+      var pQty = round2(gPending.reduce(function (s, p) { return s + p.amount; }, 0));
+      var pAmt = round2(pQty * led.price * 10000);
+      var right = '';
+      if (gBilled.length) {
+        var nos = [];
+        gBilled.forEach(function (p) { if (nos.indexOf(p.billNo) === -1) nos.push(p.billNo); });
+        right += '<span class="p-billno" data-vbill="' + nos[0] + '">本期已出账 · 账单 ' + nos.join('、') + '</span>';
+      }
+      if (gPending.length) {
+        right += '<span class="p-status">待出账 ' + gPending.length + ' 个 · ' + fmtQty(pQty) + ' 万m³ · ' + fmtMoney(pAmt) + '</span>' +
+          '<button type="button" class="btn btn-green btn-xs" data-genkey="' + key + '">生成本期账单</button>';
+      }
+      html += '<tr class="period-row"><td colspan="10"><div class="period-line">' +
+        '<span class="p-name">' + cycleLabel(key) + '</span>' +
+        '<span class="p-range">' + range[0] + ' ~ ' + range[1] + '</span>' +
+        '<span class="p-qty">水量 ' + fmtQty(gQty) + ' 万m³</span>' +
+        '<span class="p-count">方案 ' + g.length + ' 个</span>' +
+        '<span class="p-right">' + right + '</span>' +
+        '</div></td></tr>';
+
+      rows.forEach(function (p) {
+        var billed = !!p.billNo;
+        var amt = round2(p.amount * led.price * 10000);
+        var ops = billed
+          ? '<span class="act del" data-delplan="' + p.id + '">删除</span>'
+          : '<span class="act" data-adj="' + p.id + '">编辑水量</span>' +
+            '<span class="act" data-gen="' + p.id + '">单独出账</span>' +
+            '<span class="act del" data-delplan="' + p.id + '">删除</span>';
+        html += '<tr>' +
+          '<td><input type="checkbox" class="ck-plan" data-id="' + p.id + '"' + (billed ? ' disabled' : '') + (selPlans[p.id] ? ' checked' : '') + '></td>' +
+          '<td><span class="cell-main">' + p.id + '</span></td>' +
+          '<td>' + gateName(p.gateCode) + '</td>' +
+          '<td><span style="font-size:12.5px;color:#595959">' + p.startTime + '<br>' + p.endTime + '</span></td>' +
+          '<td>' + fmtQty(p.amount) + '</td>' +
+          '<td>' + fmtQty(p.amount) + '</td>' +
+          '<td><span class="amt">' + fmtMoney(amt) + '</span></td>' +
+          '<td><span class="st-tag done">已完成</span></td>' +
+          '<td>' + (billed ? '<span class="st-tag billed">已计费</span>' : '<span class="st-tag unbilled">未计费</span>') + '</td>' +
+          '<td>' + ops + '</td></tr>';
+      });
+    });
+    $('detail-body').innerHTML = html || '<tr><td colspan="10" class="empty-cell">没有符合条件的方案</td></tr>';
+    updateSelInfo();
+  }
+
+  function updateSelInfo() {
+    var led = findLedger(curFarmer);
+    var qty = 0, amt = 0, count = 0;
+    for (var k in selPlans) {
+      if (!selPlans[k]) continue;
+      var p = findPlan(k);
+      if (p && !p.billNo && p.farmerCode === curFarmer) {
+        count++;
+        qty += p.amount;
+        amt += p.amount * (led ? led.price : 0) * 10000;
+      }
+    }
+    $('detail-sel').innerHTML = '已选 <b>' + count + '</b> 个 · 水量 <b>' + fmtQty(round2(qty)) + '</b> 万m³ · 金额 <b>' + fmtMoney(round2(amt)) + '</b>';
+    $('btn-detail-gen').disabled = count === 0;
+  }
+
+  /* ==================== 视图三:水费账单 ==================== */
+  var billFilter = { kw: '', status: '' };
+  var billPage = 1, billSize = 10;
+
+  /** 当前筛选条件下的账单列表(渲染与导出共用) */
+  function billList() {
+    var kw = billFilter.kw.trim().toLowerCase();
+    return BILLS.filter(function (b) {
+      if (billFilter.status && b.status !== billFilter.status) return false;
+      if (kw) {
+        var led = findLedger(b.farmerCode);
+        var hay = (b.billNo + ' ' + (led ? led.name + ' ' + led.code : '') + ' ' + cycleLabel(b.cycleKey)).toLowerCase();
+        if (hay.indexOf(kw) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderBills() {
+    var qty = 0, amount = 0, paid = 0;
+    BILLS.forEach(function (b) { qty += b.quantity; amount += b.amount; paid += b.paid; });
+    qty = round2(qty); amount = round2(amount); paid = round2(paid);
+    var rate = amount > 0 ? Math.round(paid / amount * 100) : 0;
+    $('bill-stat').innerHTML =
+      statItem('账单总数', BILLS.length + ' <span class="stat-unit">张</span>') +
+      statItem('计费总水量', fmtQty(qty) + ' <span class="stat-unit">万m³</span>') +
+      statItem('应收总额', fmtMoney(amount)) +
+      statItem('已收总额', fmtMoney(paid)) +
+      statItem('收缴率', rate + ' <span class="stat-unit">%</span>');
+
+    var list = billList();
+    var pages = Math.max(1, Math.ceil(list.length / billSize));
+    if (billPage > pages) billPage = pages;
+    var pageList = list.slice((billPage - 1) * billSize, billPage * billSize);
+    if (!pageList.length) {
+      $('bill-body').innerHTML = '<tr><td colspan="10" class="empty-cell">暂无账单，请先到「水费台账」勾选方案生成账单</td></tr>';
+    } else {
+      var html = '';
+      pageList.forEach(function (b) {
+        var led = findLedger(b.farmerCode);
+        html += '<tr>' +
+          '<td><span class="cell-main">' + b.billNo + '</span></td>' +
+          '<td><span class="cell-main">' + (led ? esc(led.name) : '-') + '</span></td>' +
+          '<td><span class="tag ' + CYCLE_TAG[b.cycle] + '">' + CYCLE_SHORT[b.cycle] + '</span></td>' +
+          '<td>' + b.startDate + ' ~ ' + b.endDate + '</td>' +
+          '<td>' + fmtQty(b.quantity) + ' 万m³</td>' +
+          '<td>' + fmtPrice(b.price) + ' 元/m³</td>' +
+          '<td><span class="amt">' + fmtMoney(b.amount) + '</span></td>' +
+          '<td>' + (b.paid > 0
+            ? '<span class="num-green">' + fmtMoney(b.paid) + '</span>'
+            : '<span style="color:#bfbfbf">¥0.00</span>') + '</td>' +
+          '<td>' + (b.status === 'paid' ? '<span class="st-tag paid">已缴清</span>' : '<span class="st-tag generated">已生成</span>') + '</td>' +
+          '<td><span class="act" data-vbill="' + b.billNo + '">明细</span>' +
+            (b.status !== 'paid' ? '<span class="act" data-pay="' + b.billNo + '">收款</span>' : '') +
+            '<span class="act del" data-delbill="' + b.billNo + '">删除</span></td>' +
+          '</tr>';
+      });
+      $('bill-body').innerHTML = html;
+    }
+    renderPager(list.length, billPage, billSize, function (p) { billPage = p; renderBills(); });
+  }
+
+  /** 分页栏渲染(共 N 条 / 页码 / 每页条数 / 跳页) */
+  function renderPager(total, page, size, onGo) {
+    var pages = Math.max(1, Math.ceil(total / size));
+    var el = $('bill-pg');
+    var html = '<span class="pg-info">共 ' + total + ' 条</span><div class="pg-btns">';
+    html += '<button type="button" class="pg-btn" data-pg="prev"' + (page <= 1 ? ' disabled' : '') + '>‹</button>';
+    var nums = [];
+    for (var i = 1; i <= pages; i++) {
+      if (i === 1 || i === pages || Math.abs(i - page) <= 1) nums.push(i);
+      else if (nums[nums.length - 1] !== 'e') nums.push('e');
+    }
+    nums.forEach(function (n) {
+      if (n === 'e') html += '<span class="pg-ellipsis">···</span>';
+      else html += '<button type="button" class="pg-btn' + (n === page ? ' active' : '') + '" data-page="' + n + '">' + n + '</button>';
+    });
+    html += '<button type="button" class="pg-btn" data-pg="next"' + (page >= pages ? ' disabled' : '') + '>›</button></div>';
+    html += '<select class="pg-size"><option value="10">10 条/页</option><option value="20">20 条/页</option><option value="50">50 条/页</option></select>';
+    html += '<div class="pg-jump">跳至 <input type="number" min="1" max="' + pages + '" value="' + page + '"> 页</div>';
+    el.innerHTML = html;
+    var sel = el.querySelector('.pg-size');
+    sel.value = String(size);
+    sel.addEventListener('change', function () { billSize = +sel.value; billPage = 1; onGo(1); });
+    el.querySelectorAll('[data-page]').forEach(function (b) {
+      b.addEventListener('click', function () { onGo(+b.dataset.page); });
+    });
+    var prev = el.querySelector('[data-pg="prev"]');
+    var next = el.querySelector('[data-pg="next"]');
+    if (prev) prev.addEventListener('click', function () { if (page > 1) onGo(page - 1); });
+    if (next) next.addEventListener('click', function () { if (page < pages) onGo(page + 1); });
+    var jump = el.querySelector('.pg-jump input');
+    jump.addEventListener('change', function () {
+      var v = parseInt(jump.value, 10);
+      if (v >= 1 && v <= pages) onGo(v); else jump.value = page;
+    });
+  }
+
+  /* ==================== 视图四:用水户水费汇总 ==================== */
+  function renderSummary() {
+    $('sum-count').textContent = '共 ' + LEDGERS.length + ' 户';
+    var html = '';
+    LEDGERS.forEach(function (led) {
+      var st = ledgerStats(led.code);
+      var bills = BILLS.filter(function (b) { return b.farmerCode === led.code; });
+      var paid = 0;
+      bills.forEach(function (b) { paid += b.paid; });
+      paid = round2(paid);
+      var receivable = st.billedAmount;
+      var owe = round2(receivable - paid);
+      var rate = receivable > 0 ? Math.round(paid / receivable * 100) : 0;
+      html += '<tr>' +
+        '<td><span class="cell-main">' + esc(led.name) + '</span></td>' +
+        '<td><span class="tag ' + (led.strategy === '指定闸口累加' ? 'tag-blue' : 'tag-purple') + '">' + led.strategy + '</span> <span class="tag ' + CYCLE_TAG[led.cycle] + '">' + CYCLE_SHORT[led.cycle] + '</span></td>' +
+        '<td>' + fmtQty(led.yearPlan) + '</td>' +
+        '<td>' + fmtPrice(led.price) + ' 元/m³</td>' +
+        '<td>' + bills.length + ' 张</td>' +
+        '<td><span class="amt">' + fmtMoney(receivable) + '</span></td>' +
+        '<td>' + (paid > 0 ? '<span class="num-green">' + fmtMoney(paid) + '</span>' : '<span style="color:#bfbfbf">¥0.00</span>') + '</td>' +
+        '<td>' + (owe > 0 ? '<span class="num-red">' + fmtMoney(owe) + '</span>' : '¥0.00') + '</td>' +
+        '<td>' + rate + '%</td>' +
+        '<td>' + (st.pending.length
+          ? '<span class="num-orange">' + fmtQty(st.pendingQty) + '</span> 万m³'
+          : '<span style="color:#bfbfbf">已全部出账</span>') + '</td>' +
+        '<td><span class="act" data-detail="' + led.code + '">台账明细</span></td>' +
+        '</tr>';
+    });
+    $('sum-body').innerHTML = html;
+  }
+
+  /* ==================== 弹窗:调整方案计划水量 ==================== */
+  var adjId = '';
+
+  function openAdjust(id) {
+    var p = findPlan(id);
+    if (!p) return;
+    if (p.billNo) { toast('已计费方案不可调整水量，如需修改请先删除关联账单'); return; }
+    adjId = id;
+    var led = findLedger(p.farmerCode);
+    $('adjust-sub').textContent = p.id + ' · ' + gateName(p.gateCode) + ' · ' + (led ? led.name : '');
+    $('adj-old').value = fmtQty(p.amount) + ' 万m³';
+    $('adj-new').value = p.amount;
+    $('adj-start').value = p.startTime.replace(' ', 'T');
+    $('adj-end').value = p.endTime ? p.endTime.replace(' ', 'T') : '';
+    $('adj-remark').value = '';
+    openModal('adjust-ov');
+  }
+
+  function saveAdjust() {
+    var p = findPlan(adjId);
+    if (!p) return;
+    var val = parseFloat($('adj-new').value);
+    if (!(val > 0)) { toast('请输入大于 0 的计划放水量'); return; }
+    if (!$('adj-start').value) { toast('请选择开始时间'); return; }
+    var oldQty = p.amount;
+    p.amount = round2(val);
+    p.startTime = $('adj-start').value.replace('T', ' ');
+    if ($('adj-end').value) p.endTime = $('adj-end').value.replace('T', ' ');
+    closeModal('adjust-ov');
+    refreshAll();
+    toast('已调整方案 ' + p.id + ' 计划放水量：' + fmtQty(oldQty) + ' → ' + fmtQty(p.amount) + ' 万m³，台账与待出账金额已重算');
+  }
+
+  /* ==================== 弹窗:账单明细 ==================== */
+  function kvRow(k, v) {
+    return '<div class="kv-row"><span class="kv-k">' + k + '</span><span class="kv-v">' + v + '</span></div>';
+  }
+
+  function openBillModal(no) {
+    var b = findBill(no);
+    if (!b) return;
+    var led = findLedger(b.farmerCode);
+    var owe = round2(b.amount - b.paid);
+    $('bill-modal-sub').textContent = b.billNo + ' · ' + (led ? led.name : '') + ' · ' + cycleLabel(b.cycleKey);
+    $('bill-kv').innerHTML =
+      kvRow('用水户', (led ? esc(led.name) : '-') + '（' + b.farmerCode + '）') +
+      kvRow('用水计算策略', led ? led.strategy + ' · ' + esc(led.gateText) : '-') +
+      kvRow('统计周期', cycleLabel(b.cycleKey) + '（' + CYCLE_NAME[b.cycle] + '）') +
+      kvRow('账期区间', b.startDate + ' ~ ' + b.endDate) +
+      kvRow('计费水量', fmtQty(b.quantity) + ' 万m³（含 ' + b.planIds.length + ' 个方案）') +
+      kvRow('水价', fmtPrice(b.price) + ' 元/m³') +
+      kvRow('应收金额', '<span class="num-red">' + fmtMoney(b.amount) + '</span>') +
+      kvRow('已收 / 欠缴', fmtMoney(b.paid) + ' / ' + (owe > 0 ? '<span class="num-red">' + fmtMoney(owe) + '</span>' : '¥0.00')) +
+      kvRow('账单状态', b.status === 'paid' ? '<span class="st-tag paid">已缴清</span>' : '<span class="st-tag generated">已生成</span>') +
+      kvRow('收款日期', b.payTime || '—');
+    var rows = '';
+    b.planIds.forEach(function (id) {
+      var p = findPlan(id);
+      if (!p) return;
+      rows += '<tr>' +
+        '<td><span class="cell-main">' + p.id + '</span></td>' +
+        '<td>' + gateName(p.gateCode) + '</td>' +
+        '<td><span class="plus-dot">+</span></td>' +
+        '<td style="font-size:12.5px;color:#595959">' + p.startTime + '<br>' + p.endTime + '</td>' +
+        '<td>' + fmtQty(p.amount) + '</td>' +
+        '<td>' + fmtQty(p.amount) + '</td>' +
+        '<td>' + fmtMoney(round2(p.amount * b.price * 10000)) + '</td></tr>';
+    });
+    $('bill-plans-body').innerHTML = rows;
+    openModal('bill-ov');
+  }
+
+  /* ==================== 通用确认弹窗 ==================== */
+  var confirmCb = null;
+
+  function askConfirm(title, text, okText, cb) {
+    confirmCb = cb;
+    $('confirm-title').textContent = title;
+    $('confirm-text').textContent = text;
+    $('confirm-ok').textContent = okText || '确认';
+    openModal('confirm-ov');
+  }
+
+  /* ==================== 出账 / 收款 / 删除 动作 ==================== */
+
+  /** 勾选后点「生成账单」:多选多周期时按周期自动拆分 */
+  function genSelected() {
+    var ids = [];
+    for (var k in selPlans) {
+      if (!selPlans[k]) continue;
+      var p = findPlan(k);
+      if (p && !p.billNo) ids.push(k);
+    }
+    if (!ids.length) { toast('请先勾选需要出账的方案'); return; }
+    var created = createBills(curFarmer, ids);
+    selPlans = {};
+    $('ck-select-page').checked = false;
+    refreshAll();
+    toastCreated(created);
+  }
+
+  /** 分期头行「生成本期账单」:将该期全部待出账方案一次出账 */
+  function genPeriod(key) {
+    var led = findLedger(curFarmer);
+    var ids = plansOf(curFarmer).filter(function (p) {
+      return !p.billNo && cycleKeyOf(p.startTime, led.cycle) === key;
+    }).map(function (p) { return p.id; });
+    if (!ids.length) { toast('该统计周期暂无待出账方案'); return; }
+    var created = createBills(curFarmer, ids);
+    ids.forEach(function (id) { delete selPlans[id]; });
+    $('ck-select-page').checked = false;
+    refreshAll();
+    toastCreated(created);
+  }
+
+  /** 行内「单独出账」 */
+  function genSingle(id) {
+    var p = findPlan(id);
+    if (!p || p.billNo) return;
+    var created = createBills(p.farmerCode, [id]);
+    delete selPlans[id];
+    refreshAll();
+    toastCreated(created);
+  }
+
+  /** 台账行「全部出账」:月度户跨月自动拆多张 / 季度户合并一张 */
+  function genAll(code) {
+    var st = ledgerStats(code);
+    var ids = st.pending.map(function (p) { return p.id; });
+    if (!ids.length) { toast('该用水户暂无待出账方案'); return; }
+    var created = createBills(code, ids);
+    for (var k in selPlans) { delete selPlans[k]; }
+    refreshAll();
+    toastCreated(created);
+  }
+
+  /** 确认收款:账单状态更新为「已缴清」 */
+  function askPay(no) {
+    var b = findBill(no);
+    if (!b) return;
+    askConfirm('确认收款', '确认收到账单 ' + b.billNo + ' 的水费 ' + fmtMoney(b.amount) + '？确认后账单状态将更新为「已缴清」。', '确认收款', function () {
+      payBill(no);
+    });
+  }
+
+  function payBill(no) {
+    var b = findBill(no);
+    if (!b || b.status === 'paid') return;
+    b.status = 'paid';
+    b.paid = b.amount;
+    b.payTime = nowStr();
+    refreshAll();
+    toast('账单 ' + b.billNo + ' 已确认收款 ' + fmtMoney(b.amount) + '，状态更新为「已缴清」');
+  }
+
+  /** 删除方案(仅未计费方案可直接删除) */
+  function deletePlan(id) {
+    var p = findPlan(id);
+    if (!p) return;
+    if (p.billNo) { toast('已计费方案需先删除关联账单，才能删除方案'); return; }
+    askConfirm('删除方案', '确定删除方案 ' + p.id + '（' + gateName(p.gateCode) + ' · ' + fmtQty(p.amount) + ' 万m³）？删除后该方案将不再参与出账。', '确认删除', function () {
+      var i = PLANS.indexOf(p);
+      if (i !== -1) PLANS.splice(i, 1);
+      delete selPlans[id];
+      refreshAll();
+      toast('方案 ' + id + ' 已删除');
+    });
+  }
+
+  /** 删除账单(关联方案恢复为未计费) */
+  function deleteBill(no) {
+    var b = findBill(no);
+    if (!b) return;
+    askConfirm('删除账单', '确定删除账单 ' + b.billNo + '（' + fmtMoney(b.amount) + '）？删除后其关联方案将恢复为「未计费」，可重新出账。', '确认删除', function () {
+      b.planIds.forEach(function (id) {
+        var p = findPlan(id);
+        if (p) { p.billNo = ''; p.billTime = ''; }
+      });
+      var i = BILLS.indexOf(b);
+      if (i !== -1) BILLS.splice(i, 1);
+      refreshAll();
+      toast('账单 ' + b.billNo + ' 已删除，关联方案已恢复为未计费');
+    });
+  }
+
+  function refreshAll() {
+    renderLedger();
+    if (curFarmer) renderDetail();
+    renderBills();
+    renderSummary();
+  }
+
+  /* ==================== 导出 Excel(复用项目通用 MonitorExport) ==================== */
+  function dateTag() { return nowStr().slice(0, 10); }
+
+  /** 导出台账:按当前筛选条件导出用水户台账 */
+  function exportLedger() {
+    var rows = ledgerList().map(function (led) {
+      var st = ledgerStats(led.code);
+      return {
+        name: led.name,
+        strategy: led.strategy,
+        gateText: led.gateText,
+        cycle: CYCLE_SHORT[led.cycle] + '结算',
+        price: led.price,
+        thisQty: st.thisQty,
+        pendingQty: st.pendingQty,
+        pendingAmount: st.pendingAmount,
+        billedQty: st.billedQty,
+        billedAmount: st.billedAmount
+      };
+    });
+    MonitorExport.download({
+      fields: [
+        { key: 'name', label: '用水户' },
+        { key: 'strategy', label: '用水计算策略' },
+        { key: 'gateText', label: '计量闸口' },
+        { key: 'cycle', label: '统计周期' },
+        { key: 'price', label: '水价（元/m³）' },
+        { key: 'thisQty', label: '本期水量（万m³）' },
+        { key: 'pendingQty', label: '待出账水量（万m³）' },
+        { key: 'pendingAmount', label: '待出账金额（元）' },
+        { key: 'billedQty', label: '已出账水量（万m³）' },
+        { key: 'billedAmount', label: '已出账金额（元）' }
+      ],
+      rows: rows,
+      filename: '水费台账_' + dateTag(),
+      sheetName: '水费台账'
+    });
+  }
+
+  /** 导出明细:按当前用水户与筛选条件导出方案明细 */
+  function exportDetail() {
+    var led = findLedger(curFarmer);
+    if (!led) { toast('请先进入用水户台账明细再导出'); return; }
+    var rows = [];
+    plansOf(curFarmer).forEach(function (p) {
+      var key = cycleKeyOf(p.startTime, led.cycle);
+      if (detailFilter.cycle && detailFilter.cycle !== key) return;
+      if (detailFilter.billed === 'unbilled' && p.billNo) return;
+      if (detailFilter.billed === 'billed' && !p.billNo) return;
+      rows.push({
+        period: cycleLabel(key),
+        id: p.id,
+        planName: p.planName,
+        gate: gateName(p.gateCode),
+        time: p.startTime + ' ~ ' + p.endTime,
+        amount: p.amount,
+        money: round2(p.amount * led.price * 10000),
+        exec: '已完成',
+        billed: p.billNo ? '已计费' : '未计费',
+        billNo: p.billNo || '-'
+      });
+    });
+    MonitorExport.download({
+      fields: [
+        { key: 'period', label: '统计周期' },
+        { key: 'id', label: '方案编号' },
+        { key: 'planName', label: '关联用水计划' },
+        { key: 'gate', label: '调度闸口' },
+        { key: 'time', label: '执行时段' },
+        { key: 'amount', label: '计划放水量（万m³）' },
+        { key: 'money', label: '测算金额（元）' },
+        { key: 'exec', label: '执行状态' },
+        { key: 'billed', label: '计费状态' },
+        { key: 'billNo', label: '账单编号' }
+      ],
+      rows: rows,
+      filename: '台账明细_' + led.name + '_' + dateTag(),
+      sheetName: '台账明细'
+    });
+  }
+
+  /** 导出账单:按当前筛选条件导出账单列表 */
+  function exportBills() {
+    var rows = billList().map(function (b) {
+      var led = findLedger(b.farmerCode);
+      return {
+        billNo: b.billNo,
+        farmer: led ? led.name : '-',
+        cycle: CYCLE_SHORT[b.cycle] + '结算',
+        period: cycleLabel(b.cycleKey),
+        range: b.startDate + ' ~ ' + b.endDate,
+        quantity: b.quantity,
+        price: b.price,
+        amount: b.amount,
+        paid: b.paid,
+        owe: round2(b.amount - b.paid),
+        status: b.status === 'paid' ? '已缴清' : '已生成',
+        createTime: b.createTime,
+        payTime: b.payTime || '-'
+      };
+    });
+    MonitorExport.download({
+      fields: [
+        { key: 'billNo', label: '账单编号' },
+        { key: 'farmer', label: '用水户' },
+        { key: 'cycle', label: '统计周期' },
+        { key: 'period', label: '账期' },
+        { key: 'range', label: '账期区间' },
+        { key: 'quantity', label: '计费水量（万m³）' },
+        { key: 'price', label: '水价（元/m³）' },
+        { key: 'amount', label: '应收金额（元）' },
+        { key: 'paid', label: '已收金额（元）' },
+        { key: 'owe', label: '欠缴金额（元）' },
+        { key: 'status', label: '状态' },
+        { key: 'createTime', label: '生成时间' },
+        { key: 'payTime', label: '收款日期' }
+      ],
+      rows: rows,
+      filename: '水费账单_' + dateTag(),
+      sheetName: '水费账单'
+    });
+  }
+
+  /** 导出汇总:用水户水费汇总表 */
+  function exportSummary() {
+    var rows = LEDGERS.map(function (led) {
+      var st = ledgerStats(led.code);
+      var bills = BILLS.filter(function (b) { return b.farmerCode === led.code; });
+      var paid = 0;
+      bills.forEach(function (b) { paid += b.paid; });
+      paid = round2(paid);
+      var receivable = st.billedAmount;
+      var owe = round2(receivable - paid);
+      return {
+        name: led.name,
+        strategy: led.strategy,
+        cycle: CYCLE_SHORT[led.cycle] + '结算',
+        yearPlan: led.yearPlan,
+        price: led.price,
+        billCount: bills.length,
+        receivable: receivable,
+        paid: paid,
+        owe: owe,
+        rate: (receivable > 0 ? Math.round(paid / receivable * 100) : 0) + '%',
+        pendingQty: st.pendingQty,
+        pendingCount: st.pending.length
+      };
+    });
+    MonitorExport.download({
+      fields: [
+        { key: 'name', label: '用水户' },
+        { key: 'strategy', label: '用水计算策略' },
+        { key: 'cycle', label: '统计周期' },
+        { key: 'yearPlan', label: '年度计划（万m³）' },
+        { key: 'price', label: '水价（元/m³）' },
+        { key: 'billCount', label: '账单数（张）' },
+        { key: 'receivable', label: '应收金额（元）' },
+        { key: 'paid', label: '已收金额（元）' },
+        { key: 'owe', label: '欠缴金额（元）' },
+        { key: 'rate', label: '收缴率' },
+        { key: 'pendingQty', label: '待出账水量（万m³）' },
+        { key: 'pendingCount', label: '待出账方案数' }
+      ],
+      rows: rows,
+      filename: '用水户水费汇总_' + dateTag(),
+      sheetName: '水费汇总'
+    });
+  }
+
+  /* ==================== 事件绑定与初始化 ==================== */
+  function bindEvents() {
+    // 顶部视图切换
+    document.querySelectorAll('.vtab').forEach(function (tab) {
+      tab.addEventListener('click', function () { setActiveTab(tab.dataset.view); });
+    });
+    // 弹窗关闭(✕ / 取消)
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-close]');
+      if (btn) closeModal(btn.dataset.close);
+    });
+
+    // 台账:搜索 / 周期筛选 / 状态小tab
+    $('ledger-kw').addEventListener('input', function () { ledgerFilter.kw = this.value; renderLedger(); });
+    bindSearchSelect('f-ledger-cycle', 'ledger-cycle-dd', function () {
+      return [
+        { label: '全部统计周期', value: '' },
+        { label: '月度结算', value: 'month' },
+        { label: '季度结算', value: 'quarter' },
+        { label: '年度结算', value: 'year' }
+      ];
+    }, function (v) { ledgerFilter.cycle = v; renderLedger(); });
+    document.querySelectorAll('.filter-tabs .ftab').forEach(function (t) {
+      t.addEventListener('click', function () {
+        document.querySelectorAll('.filter-tabs .ftab').forEach(function (x) { x.classList.remove('active'); });
+        t.classList.add('active');
+        ledgerFilter.lf = t.dataset.lf;
+        renderLedger();
+      });
+    });
+    // 台账行操作:明细 / 全部出账
+    $('ledger-body').addEventListener('click', function (e) {
+      var d = e.target.closest('[data-detail]');
+      if (d) { openDetail(d.dataset.detail); return; }
+      var b = e.target.closest('[data-billall]');
+      if (b) genAll(b.dataset.billall);
+    });
+    $('btn-export-ledger').addEventListener('click', exportLedger);
+
+    // 明细:返回 / 取消选择 / 生成账单 / 全选 / 导出
+    $('btn-detail-back').addEventListener('click', function () { setActiveTab('ledger'); renderLedger(); });
+    $('btn-detail-clear').addEventListener('click', function () {
+      selPlans = {};
+      $('ck-select-page').checked = false;
+      document.querySelectorAll('#detail-body .ck-plan').forEach(function (cb) { cb.checked = false; });
+      updateSelInfo();
+    });
+    $('btn-detail-gen').addEventListener('click', genSelected);
+    $('ck-select-page').addEventListener('change', function () {
+      var on = this.checked;
+      document.querySelectorAll('#detail-body .ck-plan:not(:disabled)').forEach(function (cb) {
+        cb.checked = on;
+        if (on) selPlans[cb.dataset.id] = true; else delete selPlans[cb.dataset.id];
+      });
+      updateSelInfo();
+    });
+    $('btn-export-detail').addEventListener('click', exportDetail);
+
+    // 明细:周期 / 计费状态筛选(选项随用水户动态生成)
+    bindSearchSelect('f-detail-cycle', 'detail-cycle-dd', function () {
+      var opts = [{ label: '全部统计周期', value: '' }];
+      if (!curFarmer) return opts;
+      var led = findLedger(curFarmer);
+      var seen = {}, keys = [];
+      plansOf(curFarmer).forEach(function (p) {
+        var k = cycleKeyOf(p.startTime, led.cycle);
+        if (!seen[k]) { seen[k] = 1; keys.push(k); }
+      });
+      keys.sort(function (a, b) { return cycleSort(b) - cycleSort(a); });
+      keys.forEach(function (k) { opts.push({ label: cycleLabel(k), value: k }); });
+      return opts;
+    }, function (v) { detailFilter.cycle = v; renderDetail(); });
+    bindSearchSelect('f-detail-billed', 'detail-billed-dd', function () {
+      return [
+        { label: '全部计费状态', value: '' },
+        { label: '未计费', value: 'unbilled' },
+        { label: '已计费', value: 'billed' }
+      ];
+    }, function (v) { detailFilter.billed = v; renderDetail(); });
+
+    // 明细行:勾选(事件委托)
+    $('detail-body').addEventListener('change', function (e) {
+      var cb = e.target.closest('.ck-plan');
+      if (!cb) return;
+      if (cb.checked) selPlans[cb.dataset.id] = true; else delete selPlans[cb.dataset.id];
+      updateSelInfo();
+    });
+    // 明细行:生成本期账单 / 账单号 / 行操作
+    $('detail-body').addEventListener('click', function (e) {
+      var gen = e.target.closest('[data-genkey]');
+      if (gen) { genPeriod(gen.dataset.genkey); return; }
+      var vb = e.target.closest('[data-vbill]');
+      if (vb) { openBillModal(vb.dataset.vbill); return; }
+      var act = e.target.closest('.act');
+      if (!act) return;
+      if (act.dataset.adj) openAdjust(act.dataset.adj);
+      else if (act.dataset.gen) genSingle(act.dataset.gen);
+      else if (act.dataset.delplan) deletePlan(act.dataset.delplan);
+    });
+
+    // 账单:搜索 / 状态筛选 / 重置
+    $('bill-kw').addEventListener('input', function () { billFilter.kw = this.value; billPage = 1; renderBills(); });
+    bindSearchSelect('f-bill-status', 'bill-status-dd', function () {
+      return [
+        { label: '全部状态', value: '' },
+        { label: '已生成', value: 'generated' },
+        { label: '已缴清', value: 'paid' }
+      ];
+    }, function (v) { billFilter.status = v; billPage = 1; renderBills(); });
+    $('btn-bill-reset').addEventListener('click', function () {
+      billFilter = { kw: '', status: '' };
+      billPage = 1;
+      $('bill-kw').value = '';
+      $('f-bill-status').value = '';
+      $('f-bill-status').dataset.value = '';
+      renderBills();
+    });
+    // 账单行操作:明细 / 收款 / 删除
+    $('bill-body').addEventListener('click', function (e) {
+      var act = e.target.closest('.act');
+      if (!act) return;
+      if (act.dataset.vbill) openBillModal(act.dataset.vbill);
+      else if (act.dataset.pay) askPay(act.dataset.pay);
+      else if (act.dataset.delbill) deleteBill(act.dataset.delbill);
+    });
+    $('btn-export-bills').addEventListener('click', exportBills);
+    $('btn-go-ledger').addEventListener('click', function () { setActiveTab('ledger'); renderLedger(); });
+
+    // 汇总:台账明细链接 / 导出
+    $('sum-body').addEventListener('click', function (e) {
+      var d = e.target.closest('[data-detail]');
+      if (d) openDetail(d.dataset.detail);
+    });
+    $('btn-export-sum').addEventListener('click', exportSummary);
+
+    // 弹窗内:保存调整水量 / 确认收款 / 通用确认确定
+    $('btn-adjust-save').addEventListener('click', saveAdjust);
+    $('confirm-ok').addEventListener('click', function () {
+      var cb = confirmCb;
+      confirmCb = null;
+      closeModal('confirm-ov');
+      if (cb) cb();
+    });
+  }
+
+  bindEvents();
+  renderLedger();
+  renderBills();
+  renderSummary();
+})();
+</script>
+</body>
+</html>

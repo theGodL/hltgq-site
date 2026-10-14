@@ -451,3 +451,226 @@ ALTER TABLE "qixiao-apaas"."t_auto_hltgq_yn8cm_igahxz"
     ADD COLUMN IF NOT EXISTS leader_checkin_at TIMESTAMP;
 ALTER TABLE "qixiao-apaas"."t_auto_hltgq_yn8cm_igahxz_ahygpx_rel"
     ADD COLUMN IF NOT EXISTS checkin_at TIMESTAMP;
+
+-- ========== 灌区用水管理（2026-10 新增，对应《水资源调度系统 · 三页面设计方案》二、数据模型） ==========
+-- 用水户管理 / 用水定额标准库 / 用水计划管理（主表+明细）四张表；独立执行版见根目录 water-usage-ddl.sql。
+-- 字典字段统一 "#N#" 文本编码（后端常量维护、前端经接口获取不写死）；水量单位 m³（NUMERIC 2 位小数，
+-- 展示层换算万m³ 1 位）；面积亩（2 位）；水价 元/m³（3 位）；编号（YH/YJ + 3 位序号）由应用层生成，
+-- 唯一索引兜底并发（生成冲突重试）。与平台既有用水台账表 hjwwcb、水费预留体系 gfiidm/quaxiq 等无耦合。
+
+-- 1.1 用水户：编号 YH+3位序号（YH001 起）
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_user (
+    id              VARCHAR(64)  PRIMARY KEY,
+    user_no         VARCHAR(32)  NOT NULL,          -- 编号：YH + 3 位序号（全局唯一）
+    name            VARCHAR(100) NOT NULL,          -- 名称（必填，全局唯一）
+    user_type       VARCHAR(16)  NOT NULL,          -- 用水类型：#1# 农业 / #2# 工业 / #3# 生活 / #4# 生态
+    contact_name    VARCHAR(50)  NOT NULL,          -- 联系人（必填）
+    contact_phone   VARCHAR(20),                    -- 联系电话（可空；填写须 11 位数字，应用层校验）
+    irrigation_area NUMERIC(12,2),                  -- 灌溉面积（亩；农业/生态必填，工业/生活可空）
+    water_price     NUMERIC(10,3) NOT NULL,         -- 水价（元/m³，>0）
+    calc_mode       VARCHAR(16)  NOT NULL,          -- 计算策略：#1# 指定闸口累加 / #2# 闸口差额计量
+    gate_config     TEXT         NOT NULL,          -- 关联闸口（JSON，闸站 id + 名称快照）：
+                                                    --   累加 {"mode":"SUM","gates":[{"id":"…","name":"…"},…]}
+                                                    --   差额 {"mode":"DIFF","main":{…},"deduct":[{…},…]}
+    settle_cycle    VARCHAR(16)  NOT NULL,          -- 统计周期：#1# 月度结算 / #2# 季度结算 / #3# 年度结算
+    status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 状态：#1# 正常 / #2# 停用
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_user_no
+    ON "qixiao-apaas".t_auto_hltgq_water_user(user_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_user_name
+    ON "qixiao-apaas".t_auto_hltgq_water_user(name);
+
+-- 1.2 用水定额标准：作物种类 × 灌溉方式 → 定额标准（m³/亩）
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_quota (
+    id                VARCHAR(64)  PRIMARY KEY,
+    crop_type         VARCHAR(100) NOT NULL,        -- 作物种类（水稻/冬小麦/…；亦含工业用水、城镇生活等行业类型）
+    irrigation_method VARCHAR(100),                 -- 灌溉方式（可空）
+    quota_value       NUMERIC(12,2) NOT NULL,       -- 定额标准（m³/亩，>0）
+    remark            VARCHAR(200),                 -- 备注（如"泡田+生育期全周期定额"）
+    corp_code         VARCHAR(64),
+    created_at        TIMESTAMP,
+    created_by        VARCHAR(64),
+    updated_at        TIMESTAMP,
+    updated_by        VARCHAR(64)
+);
+
+-- 1.3 用水计划主表：计划总水量为子表汇总（应用层维护）；编制中可删（主表+明细物理删除），其余状态终态保护
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_plan (
+    id              VARCHAR(64)  PRIMARY KEY,
+    plan_no         VARCHAR(32)  NOT NULL,          -- 编号：YJ + 3 位序号（YJ001 起，全局唯一）
+    plan_name       VARCHAR(200) NOT NULL,          -- 计划名称（必填，全局唯一；可自动生成如"2026年10月中旬旬度调度计划"）
+    plan_type       VARCHAR(16)  NOT NULL,          -- 类型：#1# 年度 / #2# 月度 / #3# 旬度
+    period_start    DATE         NOT NULL,          -- 计划周期起（按类型自动填充，不可修改）
+    period_end      DATE         NOT NULL,          -- 计划周期止（年度=12-31；旬度按自然月末计算）
+    total_water     NUMERIC(16,2) NOT NULL DEFAULT 0,  -- 计划总水量（m³，明细计划水量汇总，只读）
+    scheduled_qty   NUMERIC(16,2) NOT NULL DEFAULT 0,  -- 已调度水量（m³，默认 0；调度模块后续回写）
+    dispatch_ref_id VARCHAR(64),                    -- 调度方案关联引用（预留字段，本期不使用）
+    status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- #1# 编制中 / #2# 已生效 / #3# 已归档 / #4# 已作废
+    void_by         VARCHAR(64),                    -- 作废人（作废时记录）
+    void_at         TIMESTAMP,                      -- 作废时间
+    void_reason     VARCHAR(200),                   -- 作废原因
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_plan_no
+    ON "qixiao-apaas".t_auto_hltgq_water_plan(plan_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_plan_name
+    ON "qixiao-apaas".t_auto_hltgq_water_plan(plan_name);
+CREATE INDEX IF NOT EXISTS idx_water_plan_status
+    ON "qixiao-apaas".t_auto_hltgq_water_plan(status);
+CREATE INDEX IF NOT EXISTS idx_water_plan_type_period
+    ON "qixiao-apaas".t_auto_hltgq_water_plan(plan_type, period_start, period_end);
+
+-- 1.4 用水计划明细：行 = 用水户 × 定额（同一期可多行，区分春灌/夏灌等阶段）
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_plan_item (
+    id              VARCHAR(64)  PRIMARY KEY,
+    plan_id         VARCHAR(64)  NOT NULL,          -- 计划主表 ID（water_plan.id）
+    water_user_id   VARCHAR(64)  NOT NULL,          -- 用水户 ID（water_user.id）
+    irrigation_area NUMERIC(12,2) NOT NULL,         -- 灌溉面积（亩，选用水户带出的快照，编制中可改，不回写用水户）
+    quota_id        VARCHAR(64)  NOT NULL,          -- 适用定额 ID（water_quota.id）
+    calc_water      NUMERIC(16,2) NOT NULL,         -- 测算水量（m³，= 面积 × 定额，只读自动计算）
+    plan_water      NUMERIC(16,2) NOT NULL,         -- 计划水量（m³，核定填写，默认 = 测算水量）
+    override_reason VARCHAR(200),                   -- 超测算说明（计划水量 > 测算水量时必填）
+    stage_tag       VARCHAR(50),                    -- 阶段标签（春灌/夏灌等，可空）
+    sort_order      INTEGER      NOT NULL DEFAULT 0, -- 明细行序（页面展示顺序）
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_water_plan_item_plan
+    ON "qixiao-apaas".t_auto_hltgq_water_plan_item(plan_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_water_plan_item_user
+    ON "qixiao-apaas".t_auto_hltgq_water_plan_item(water_user_id);
+CREATE INDEX IF NOT EXISTS idx_water_plan_item_quota
+    ON "qixiao-apaas".t_auto_hltgq_water_plan_item(quota_id);
+
+-- ========== 灌区用水 · 调度与水费四页面（2026-10 新增） ==========
+-- 需水上报 / 调度方案 / 调度记录 / 水费账单四张表；独立执行版见根目录 water-dispatch-bill-ddl.sql。
+-- 字典字段统一 "#N#" 文本编码（接口对外映射前端英文码 wait/pass/reject、pending/running/done/canceled、
+-- up/down/adjust、generated/paid、month/quarter/year）；水量库内一律 m³（NUMERIC 2 位小数），
+-- 四页面接口对外输出万m³（÷10000，4 位小数）；金额 = 计入水量(m³) × 水价(元/m³)，元（2 位）。
+-- 计入水量口径（与流量监测/灌溉用水一致）：区间累计 = ttf(窗口内末行) − ttf(起点前最近一条 ttf 非空行)，
+-- 起点前无基准按 0，哨兵值 -999/-9991 视为缺失；差额策略（calc_mode=#2#）扣减闸口方案取负值。
+-- 编号由应用层 MAX+1 生成、唯一索引兜底并发：XS+4 位 / DD+4 位 / SF+期间码+'-'+户号+4 位；调度记录无编号。
+
+-- 2.1 需水上报：编号 XS+4 位序号；审核态 待审核(#1#)→已通过(#2#)/已驳回(#3#)
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_demand (
+    id              VARCHAR(64)  PRIMARY KEY,
+    demand_no       VARCHAR(32)  NOT NULL,          -- 编号：XS + 4 位序号（全局唯一）
+    water_user_id   VARCHAR(64)  NOT NULL,          -- 用水户 ID（water_user.id）
+    gate_id         VARCHAR(64),                    -- 申报拟用闸口（可空；编制方案时预填，须属于该户闸口组）
+    amount          NUMERIC(16,2) NOT NULL,         -- 申报计划水量（m³，>0；对外展示万m³）
+    start_date      DATE         NOT NULL,          -- 用水时段起
+    end_date        DATE         NOT NULL,          -- 用水时段止（>= start_date）
+    usage_desc      VARCHAR(200),                   -- 用途（如 冬灌前补水）
+    status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 审核状态：#1# 待审核 / #2# 已通过 / #3# 已驳回
+    audit_opinion   VARCHAR(200),                   -- 审核意见（驳回必填）
+    audit_by        VARCHAR(64),                    -- 审核人
+    audit_at        TIMESTAMP,                      -- 审核时间
+    remark          VARCHAR(200),                   -- 备注
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_demand_no
+    ON "qixiao-apaas".t_auto_hltgq_water_demand(demand_no);
+CREATE INDEX IF NOT EXISTS idx_water_demand_user
+    ON "qixiao-apaas".t_auto_hltgq_water_demand(water_user_id);
+CREATE INDEX IF NOT EXISTS idx_water_demand_status
+    ON "qixiao-apaas".t_auto_hltgq_water_demand(status);
+
+-- 2.2 调度方案：编号 DD+4 位序号；执行态 待执行(#1#)→执行中(#2#)→已完成(#3#)；待执行/执行中→已取消(#4#)
+--     行 = 闸口 × 时段的放水载体：计入水量 = 该闸口在 [start_time, end_time] 的实测累计流量（带符号）
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_dispatch (
+    id              VARCHAR(64)  PRIMARY KEY,
+    dispatch_no     VARCHAR(32)  NOT NULL,          -- 编号：DD + 4 位序号（全局唯一）
+    plan_id         VARCHAR(64),                    -- 关联用水计划（water_plan.id，可空；关联后受该计划该户配额约束）
+    demand_id       VARCHAR(64),                    -- 关联需水申请（water_demand.id，可空；须为已通过且同户）
+    water_user_id   VARCHAR(64)  NOT NULL,          -- 用水户 ID
+    gate_id         VARCHAR(64)  NOT NULL,          -- 调度闸口（须属于该户闸口组；计量取数锚点）
+    plan_amount     NUMERIC(16,2) NOT NULL,         -- 计划放水量（m³，>0；对外展示万m³）
+    start_time      TIMESTAMP    NOT NULL,          -- 执行时段起（计入水量取数窗口起点）
+    end_time        TIMESTAMP    NOT NULL,          -- 执行时段止（>= start_time）
+    owner           VARCHAR(50),                    -- 调度负责人
+    status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 执行状态：#1# 待执行 / #2# 执行中 / #3# 已完成 / #4# 已取消
+    bill_id         VARCHAR(64),                    -- 计费账单 ID（water_bill.id；非空=已计费，禁改禁删）
+    billed_qty      NUMERIC(16,2),                  -- 出账时"计入水量"快照（m³，带符号；账单删除时清空）
+    remark          VARCHAR(200),                   -- 备注
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_dispatch_no
+    ON "qixiao-apaas".t_auto_hltgq_water_dispatch(dispatch_no);
+CREATE INDEX IF NOT EXISTS idx_water_dispatch_user
+    ON "qixiao-apaas".t_auto_hltgq_water_dispatch(water_user_id);
+CREATE INDEX IF NOT EXISTS idx_water_dispatch_plan
+    ON "qixiao-apaas".t_auto_hltgq_water_dispatch(plan_id);
+CREATE INDEX IF NOT EXISTS idx_water_dispatch_bill
+    ON "qixiao-apaas".t_auto_hltgq_water_dispatch(bill_id);
+
+-- 2.3 调度记录：闸口操作留痕（不参与水量与费用计算）；无编号
+--     方案删除时 dispatch_id 置空（记录保留，历史留痕不随方案消失）
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_dispatch_record (
+    id              VARCHAR(64)  PRIMARY KEY,
+    dispatch_id     VARCHAR(64),                    -- 关联调度方案（water_dispatch.id，可空）
+    water_user_id   VARCHAR(64)  NOT NULL,          -- 用水户 ID（关联方案时须与方案一致）
+    gate_id         VARCHAR(64)  NOT NULL,          -- 操作闸口（关联方案时须与方案一致）
+    op_time         TIMESTAMP    NOT NULL,          -- 操作时间
+    op_type         VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 操作类型：#1# 闸门提升 / #2# 闸门下降 / #3# 流量调整
+    height          INTEGER,                        -- 升降高度（cm，0~999；可空）
+    operator        VARCHAR(50)  NOT NULL,          -- 操作人 / 闸管员
+    remark          VARCHAR(200),                   -- 备注（现场情况、指令依据等）
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_water_dispatch_record_time
+    ON "qixiao-apaas".t_auto_hltgq_water_dispatch_record(op_time);
+CREATE INDEX IF NOT EXISTS idx_water_dispatch_record_gate
+    ON "qixiao-apaas".t_auto_hltgq_water_dispatch_record(gate_id);
+CREATE INDEX IF NOT EXISTS idx_water_dispatch_record_dispatch
+    ON "qixiao-apaas".t_auto_hltgq_water_dispatch_record(dispatch_id);
+
+-- 2.4 水费账单：编号 SF+期间码+'-'+户号+4 位序号；状态 已生成(#1#)→已缴清(#2#)
+--     账期按用水户统计周期分期：月（2026-10）/ 季（2026-Q3）/ 年（2026）；一份账单可含多方案（bill_id 反向挂接）
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_bill (
+    id              VARCHAR(64)  PRIMARY KEY,
+    bill_no         VARCHAR(64)  NOT NULL,          -- 编号：SF + 期间码 + '-' + 户号 + 4 位序号（全局唯一）
+    water_user_id   VARCHAR(64)  NOT NULL,          -- 用水户 ID（台账维度）
+    settle_cycle    VARCHAR(16)  NOT NULL,          -- 统计周期快照：#1# 月度 / #2# 季度 / #3# 年度
+    cycle_key       VARCHAR(16)  NOT NULL,          -- 分期 key：月 2026-10 / 季 2026-Q3 / 年 2026
+    period_start    DATE         NOT NULL,          -- 账期区间起（cycle_key 推导）
+    period_end      DATE         NOT NULL,          -- 账期区间止
+    quantity        NUMERIC(16,2) NOT NULL,         -- 计费水量（m³，Σ方案计入水量快照，带符号；>0 才允许出账）
+    price           NUMERIC(10,3) NOT NULL,         -- 水价快照（元/m³，出账时刻用水户配置）
+    amount          NUMERIC(16,2) NOT NULL,         -- 应收金额（元 = quantity × price，2 位小数）
+    paid            NUMERIC(16,2) NOT NULL DEFAULT 0,  -- 已收金额（元；确认收款时 = amount）
+    status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 账单状态：#1# 已生成 / #2# 已缴清
+    pay_time        TIMESTAMP,                      -- 收款时间
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_bill_no
+    ON "qixiao-apaas".t_auto_hltgq_water_bill(bill_no);
+CREATE INDEX IF NOT EXISTS idx_water_bill_user
+    ON "qixiao-apaas".t_auto_hltgq_water_bill(water_user_id, cycle_key);

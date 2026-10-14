@@ -134,6 +134,9 @@ public class GlobalExceptionHandler {
      * 页面判重（LIKE 子串语义）与入库之间存在并发窗口：两个请求同时新增同一「站点+类型+指标」时，
      * 前者通过判重、后者被索引拒绝。此处把 DB 约束冲突翻译为与页面判重一致的提示，
      * 避免前端因无 message 回退为「请求失败（HTTP 500）」。
+     * <p>灌区用水（用水户/用水计划）同理：编号索引 uk_water_user_no / uk_water_plan_no 冲突
+     * 为编号并发生成撞号（应用层 MAX+1，冲突由 Controller 重试兜底，重试耗尽后落到此处）；
+     * 名称索引 uk_water_user_name / uk_water_plan_name 为并发同名。
      * <p>捕获父类是为了兼容不同驱动对 SQLState 23505 的翻译（DuplicateKeyException 为子类，同样命中）。
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -141,9 +144,19 @@ public class GlobalExceptionHandler {
     public Map<String, Object> handleDataIntegrity(DataIntegrityViolationException e) {
         String detail = e.getMessage() == null ? "" : e.getMessage();
         Map<String, Object> result = new HashMap<>();
-        result.put("message", detail.contains("uniq_hltgq_threshold_site_type_zb")
-                ? "该站点已配置该类型（指标）阈值，请刷新列表后直接编辑"
-                : "数据已存在或不满足约束，请刷新后重试");
+        String message;
+        if (detail.contains("uniq_hltgq_threshold_site_type_zb")) {
+            message = "该站点已配置该类型（指标）阈值，请刷新列表后直接编辑";
+        } else if (detail.contains("uk_water_user_no") || detail.contains("uk_water_plan_no")) {
+            message = "编号生成冲突，请重试";
+        } else if (detail.contains("uk_water_user_name")) {
+            message = "用水户名称已存在，请刷新列表后重试";
+        } else if (detail.contains("uk_water_plan_name")) {
+            message = "计划名称已存在，请刷新列表后重试";
+        } else {
+            message = "数据已存在或不满足约束，请刷新后重试";
+        }
+        result.put("message", message);
         return result;
     }
 }

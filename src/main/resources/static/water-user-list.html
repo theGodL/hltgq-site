@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用水户管理</title>
+<style>
+/* ===== 平台变量：对齐平台「告警管理」；色值/圆角/层级集中在此，规则里禁止硬编码 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-hover:#f78989;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-color-warning:#fa8c16;
+  --el-color-warning-light:rgba(250,140,22,.1);
+  --el-color-success:#52c41a;
+  --el-color-success-light:rgba(82,196,26,.1);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-tertiary:#8c8c8c;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-text-color-icon:#606266;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-fill-color-disabled:#f5f5f5;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height:40px;
+  --el-control-height-sm:36px;
+  --el-table-header-bg:#f5f7fa;
+  --el-table-stripe-bg:#fafafa;
+  --el-table-row-height:52px;
+  --el-table-border:#f0f0f0;
+  --el-tag-bg:#f0f0f0;
+  --el-tag-color:#666;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+  --el-drawer-width:720px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+
+/* ===== 页面骨架：筛选白卡 + 表格卡 ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%;overflow:hidden}
+.filter-card{flex-shrink:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 24px;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
+.filter-item{display:flex;align-items:center;gap:8px}
+.flt-label{font-size:14px;color:var(--el-text-color-title);text-align:right;white-space:nowrap}
+.filter-item .sel{width:170px}
+.filter-item .field{width:220px}
+.filter-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+.panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.panel-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px 0;flex-shrink:0}
+.panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
+.panel-hd .hd-acts{display:flex;align-items:center;gap:8px}
+.hd-tip{font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
+.panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
+
+/* ===== 控件 ===== */
+.field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%;font-family:inherit}
+.field::placeholder{color:var(--el-text-color-placeholder)}
+.field:hover{border-color:var(--el-border-color-hover)}
+.field:focus{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.field.is-err{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.field:disabled,.field.is-disabled{background:var(--el-fill-color-disabled);color:var(--el-text-color-disabled);border-color:var(--el-border-color-light);cursor:not-allowed}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height);padding:0 20px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative;font-family:inherit}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn-danger{background:var(--el-color-danger);border-color:var(--el-color-danger);color:#fff}
+.btn-danger:hover{background:var(--el-color-danger-hover);border-color:var(--el-color-danger-hover)}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn[hidden]{display:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+.btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== 表格 ===== */
+.tbl-wrap{flex:1;min-height:0;overflow:auto;max-width:100%}
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
+thead tr{background:var(--el-table-header-bg)}
+th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
+td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(--el-table-border);font-size:14px;color:var(--el-text-color-primary);text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th:first-child,td:first-child{padding-left:16px}
+tbody tr:nth-child(even) td{background:var(--el-table-stripe-bg)}
+tbody tr:hover td{background:var(--el-fill-color-light)}
+td.col-act{white-space:nowrap;overflow:visible}
+td .sub{margin-left:4px;font-size:12px;color:var(--el-text-color-secondary)}
+td .sub-line{display:block;margin-top:2px;font-size:12px;color:var(--el-text-color-secondary);overflow:hidden;text-overflow:ellipsis}
+td .tag{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-tag-bg);color:var(--el-tag-color);font-size:12px;line-height:1;border:none;vertical-align:middle}
+td .tag::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+td .tag.green{color:var(--el-color-success);background:var(--el-color-success-light)}
+td .tag.blue{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+td .tag.orange{color:var(--el-color-warning);background:var(--el-color-warning-light)}
+td .tag.red{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+td .tag.gray{color:var(--el-tag-color);background:var(--el-tag-bg)}
+.lnk{color:var(--el-color-primary);cursor:pointer}
+.lnk:hover{text-decoration:underline}
+tr.flash td{animation:flash 1s ease}
+@keyframes flash{0%{background:var(--el-color-primary-light)}100%{background:transparent}}
+.lnk-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:var(--el-radius);background:transparent;color:var(--el-color-primary);cursor:pointer;transition:background .2s;font-family:inherit;vertical-align:middle}
+.lnk-btn:hover{background:var(--el-color-primary-light)}
+.lnk-btn.danger{color:var(--el-text-color-secondary)}
+.lnk-btn.danger:hover{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+.lnk-btn::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;font-size:12px;line-height:18px;padding:5px 9px;border-radius:var(--el-radius);white-space:nowrap;opacity:0;visibility:hidden;transition:opacity .2s;pointer-events:none;z-index:6}
+.lnk-btn:last-child::after{left:auto;right:0;transform:none}
+.lnk-btn:hover::after{opacity:1;visibility:visible}
+td.empty{padding:0;color:var(--el-text-color-secondary)}
+td.empty:hover{background:transparent}
+.empty-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:64px 0;font-size:14px;line-height:22px;color:var(--el-text-color-secondary)}
+
+/* ===== 分页 ===== */
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:16px 0 0;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.pg-info{color:var(--el-text-color-primary);font-size:13px;margin-right:4px}
+.pg-size{height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);padding:0 8px;outline:none}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-btn{min-width:32px;height:32px;padding:0 6px;border:1px solid var(--el-border-color);background:var(--el-bg-color);border-radius:var(--el-radius);cursor:pointer;font-size:13px;color:var(--el-text-color-primary);transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-ellipsis{min-width:20px;height:32px;display:inline-flex;align-items:center;justify-content:center;color:var(--el-text-color-secondary);font-size:13px;user-select:none;letter-spacing:1px}
+.pg-btn:hover:not([disabled]):not(.active){border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn.active{background:var(--el-bg-color);border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn[disabled]{color:var(--el-text-color-disabled);cursor:not-allowed}
+.pg-btn[data-pg="prev"],.pg-btn[data-pg="next"]{border-color:transparent;background:transparent;font-size:16px;color:var(--el-text-color-tertiary)}
+.pg-btn[data-pg="prev"]:hover:not([disabled]),.pg-btn[data-pg="next"]:hover:not([disabled]){border-color:transparent;background:transparent;color:var(--el-color-primary)}
+.pg-jump{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--el-text-color-primary)}
+.pg-jump input{width:52px;height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);text-align:center;font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);outline:none;padding:0 8px}
+.pg-jump input:focus{border-color:var(--el-color-primary)}
+
+/* ===== 抽屉（新增/编辑/详情共用） ===== */
+.drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s}
+.drawer-mask.show{opacity:1;visibility:visible}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:var(--el-drawer-width);max-width:100%;background:var(--el-bg-color);z-index:2001;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s ease;border-radius:8px 0 0 8px;overflow:hidden}
+.drawer.show{transform:translateX(0)}
+.drawer-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.drawer-hd h3{font-size:16px;font-weight:500;color:var(--el-text-color-primary)}
+.hd-acts{display:flex;align-items:center;gap:4px}
+.icon-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-text-color-icon);cursor:pointer;transition:all .2s}
+.icon-btn:hover{color:var(--el-text-color-primary);background:var(--el-fill-color-light)}
+.drawer-bd{flex:1;min-height:0;overflow-y:auto;padding:24px}
+.drawer-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
+@keyframes spin2{to{transform:rotate(360deg)}}
+.drawer-bd .field,.drawer-bd .sel-box{height:var(--el-control-height-sm);border-radius:var(--el-radius)}
+.drawer-ft .btn,.mbox-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
+
+.sec-title{display:flex;align-items:center;justify-content:space-between;margin:24px 0 16px;padding-bottom:12px;border-bottom:1px solid var(--el-border-color-lighter);font-size:14px;font-weight:500;color:var(--el-text-color-title)}
+.sec-title:first-child{margin-top:0}
+.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;row-gap:20px}
+.form-grid .span2{grid-column:span 2}
+.form-grid .span3{grid-column:span 3}
+.form-grid .span4{grid-column:span 4}
+.f-label{display:block;font-size:14px;font-weight:400;color:var(--el-text-color-primary);margin-bottom:8px}
+.f-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
+.f-hint{margin-top:6px;font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
+.f-err{display:none;margin-top:4px;font-size:12px;color:var(--el-color-danger);align-items:center;gap:4px;line-height:16px}
+.f-err.show{display:flex}
+.view-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 24px}
+.view-grid .span2{grid-column:span 2}
+.view-row{display:flex;flex-direction:column;gap:2px}
+.view-row .k{font-size:14px;color:var(--el-text-color-secondary);line-height:22px}
+.view-row .v{font-size:14px;color:var(--el-text-color-primary);line-height:22px;word-break:break-word;white-space:pre-wrap}
+
+/* ===== 确认弹窗（.mbox，同雨量数据维护页） ===== */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2100;display:none;align-items:center;justify-content:center;padding:20px}
+.mask.show{display:flex}
+.mbox{width:520px;max-width:100%;background:var(--el-bg-color);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.12);overflow:hidden}
+.mbox-hd{padding:16px 20px 0;font-size:16px;font-weight:500;color:var(--el-text-color-primary)}
+.mbox-bd{padding:12px 20px 20px;font-size:14px;color:var(--el-text-color-regular);line-height:22px;white-space:pre-wrap;word-break:break-word;max-height:52vh;overflow:auto}
+.mbox-alert{margin:0 20px 12px;padding:10px 12px;border-radius:var(--el-radius);background:var(--el-color-warning-light);border:1px solid rgba(230,162,60,.35);color:#b88230;font-size:13px;line-height:20px;white-space:pre-wrap;max-height:30vh;overflow:auto}
+.mbox-alert[hidden]{display:none}
+.mbox-ft{padding:0 20px 16px;display:flex;justify-content:flex-end;gap:12px}
+
+/* ===== 下拉组件（单选/多选，筛选与表单共用） ===== */
+.sel{position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 12px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box:hover{border-color:var(--el-border-color-hover)}
+.sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sel.is-err .sel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.sel-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-text.placeholder{color:var(--el-text-color-placeholder)}
+.sel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.sel.open .sel-arrow{transform:rotate(180deg)}
+.sel.is-disabled .sel-box{background:var(--el-fill-color-disabled);border-color:var(--el-border-color-light);cursor:not-allowed}
+.sel.is-disabled .sel-text{color:var(--el-text-color-disabled)}
+.sel.is-disabled .sel-arrow{border-top-color:var(--el-text-color-disabled)}
+.sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.sel.open .sel-panel{display:block}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search[hidden]{display:none}
+.sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.sel-search input::placeholder{color:var(--el-text-color-placeholder)}
+.sel-list{max-height:274px;overflow-y:auto;padding:4px 0}
+.sel-opt{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt:hover{background:var(--el-fill-color-light)}
+.sel-opt.active{color:var(--el-color-primary)}
+.sel-opt .opt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{margin-left:auto;flex-shrink:0;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt .tick{flex-shrink:0;margin-left:auto;color:var(--el-color-primary)}
+.sel-opt .opt-sub+.tick{margin-left:8px}
+.sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+
+/* 提示条 */
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
+.toast.show{opacity:1}
+.toast.err{color:var(--el-color-danger)}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <!-- 筛选白卡：关键字 / 计算策略 / 统计周期 / 状态 -->
+  <div class="filter-card">
+    <div class="filter-item">
+      <span class="flt-label">关键字</span>
+      <input class="field" id="f-keyword" placeholder="名称 / 编号 / 联系人" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">计算策略</span>
+      <div class="sel" id="f-calc-mode"></div>
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">统计周期</span>
+      <div class="sel" id="f-settle-cycle"></div>
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">状态</span>
+      <div class="sel" id="f-status"></div>
+    </div>
+    <div class="filter-acts">
+      <button class="btn btn-primary" id="flt-search">查询</button>
+      <button class="btn btn-default" id="flt-reset">重置</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd">
+      <span class="hd-tip">用水户档案：关联闸口决定用水量计量口径；被计划引用的用水户删除时需二次确认。</span>
+      <div class="hd-acts">
+        <button class="btn btn-primary" id="btn-add">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>新增用水户
+        </button>
+      </div>
+    </div>
+    <div class="panel-bd">
+      <div class="tbl-wrap">
+        <table>
+          <colgroup>
+            <col style="width:18%"><col style="width:10%"><col style="width:10%"><col style="width:14%">
+            <col style="width:10%"><col style="width:14%"><col style="width:9%"><col style="width:8%"><col style="width:7%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>用水户</th><th>联系人</th><th>灌溉面积</th><th>年度计划水量</th>
+              <th>水价</th><th>用水计算策略</th><th>统计周期</th><th>状态</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="pg-bar"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 抽屉：新增 / 编辑 / 详情 三态共用 -->
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3 id="drawer-title">新增用水户</h3>
+    <div class="hd-acts">
+      <button class="icon-btn" id="btn-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="drawer-bd">
+    <div id="form-box">
+      <div class="sec-title">基本信息</div>
+      <div class="form-grid">
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>用水户名称</label>
+          <input class="field" id="in-name" maxlength="100" placeholder="请输入用水户名称" autocomplete="off">
+          <div class="f-err" id="err-name"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>用水类型</label>
+          <div class="sel" id="sel-user-type"></div>
+          <div class="f-err" id="err-user-type"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>联系人</label>
+          <input class="field" id="in-contact" maxlength="50" placeholder="请输入联系人" autocomplete="off">
+          <div class="f-err" id="err-contact"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">联系电话</label>
+          <input class="field" id="in-phone" maxlength="20" inputmode="numeric" placeholder="11 位手机号（可空）" autocomplete="off">
+          <div class="f-err" id="err-phone"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label" id="lbl-area">灌溉面积（亩）</label>
+          <input class="field" id="in-area" inputmode="decimal" placeholder="如 1200.50" autocomplete="off">
+          <div class="f-hint" id="hint-area">农业 / 生态用水户必填</div>
+          <div class="f-err" id="err-area"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>水价（元/m³）</label>
+          <input class="field" id="in-price" inputmode="decimal" placeholder="如 0.320" autocomplete="off">
+          <div class="f-err" id="err-price"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>统计周期</label>
+          <div class="sel" id="sel-settle-cycle"></div>
+          <div class="f-err" id="err-settle-cycle"></div>
+        </div>
+      </div>
+      <div class="sec-title">计量配置</div>
+      <div class="form-grid">
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>计算策略</label>
+          <div class="sel" id="sel-calc-mode"></div>
+          <div class="f-hint">累加：所选闸口读数之和；差额：主闸口 − 扣减闸口</div>
+          <div class="f-err" id="err-calc-mode"></div>
+        </div>
+        <div class="f-item span3" id="fi-gates" hidden>
+          <label class="f-label"><i class="req">*</i>关联闸口（可多选）</label>
+          <div class="sel" id="sel-gates"></div>
+          <div class="f-err" id="err-gates"></div>
+        </div>
+        <div class="f-item span3" id="fi-main" hidden>
+          <label class="f-label"><i class="req">*</i>主闸口</label>
+          <div class="sel" id="sel-main"></div>
+          <div class="f-err" id="err-main"></div>
+        </div>
+        <div class="f-item span3" id="fi-deduct" hidden>
+          <label class="f-label"><i class="req">*</i>扣减闸口（可多选）</label>
+          <div class="sel" id="sel-deduct"></div>
+          <div class="f-err" id="err-deduct"></div>
+        </div>
+      </div>
+    </div>
+    <div id="view-box" hidden></div>
+  </div>
+  <div class="drawer-ft">
+    <button class="btn btn-default" id="btn-cancel">取消</button>
+    <button class="btn btn-primary" id="btn-save">保存</button>
+  </div>
+</aside>
+
+<!-- 确认弹窗（删除保护两级 / 无法删除提示） -->
+<div class="mask" id="dlg-mask">
+  <div class="mbox">
+    <div class="mbox-hd" id="dlg-title">删除确认</div>
+    <div class="mbox-bd" id="dlg-text"></div>
+    <div class="mbox-alert" id="dlg-alert" hidden></div>
+    <div class="mbox-ft">
+      <button class="btn btn-default" id="dlg-cancel">取消</button>
+      <button class="btn btn-danger" id="dlg-ok">删除</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+/* ============================ 常量与状态 ============================ */
+const API = '/hltgq-site';
+const ICON = {
+  search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  tick: '<svg class="tick" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  err: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.6v4.2M8 11.1v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  eye: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2.6 12S6.2 5.6 12 5.6 21.4 12 21.4 12 17.8 18.4 12 18.4 2.6 12 2.6 12z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.7"/></svg>',
+  pencil: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.6 9.4a2.12 2.12 0 0 0-3-3L5 17v3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.4 6.8l2.8 2.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.6 7V4.6h4.8V7M6.6 7l.9 12.3A1.6 1.6 0 0 0 9.1 20.8h5.8a1.6 1.6 0 0 0 1.6-1.5L17.4 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 10.8v5.6M13.6 10.8v5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+const S = {
+  meta: { userTypes: [], calcModes: [], settleCycles: [], gates: [], today: '' },
+  page: 1, size: 20, total: 0, records: [],
+  filter: { keyword: '', calcMode: '', settleCycle: '', status: '' },
+  mode: '',                      // 抽屉：create / edit / view
+  row: null,                     // 当前编辑/查看行
+  saving: false, seq: 0, listSeq: 0, flashKey: null
+};
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v === null || v === undefined ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+function showToast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/** 统一请求：非 2xx 抛出后端 message（后端 IllegalArgumentException → 400 + message） */
+async function api(path, opts) {
+  const init = Object.assign({ credentials: 'include' }, opts || {});
+  if (init.body && typeof init.body !== 'string') {
+    init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
+    init.body = JSON.stringify(init.body);
+  }
+  const res = await fetch(API + path, init);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+    throw new Error((data && (data.message || data.error)) || fallback);
+  }
+  return data;
+}
+
+function qs(obj) {
+  const p = new URLSearchParams();
+  Object.keys(obj).forEach(k => {
+    const v = obj[k];
+    if (v !== null && v !== undefined && String(v).trim() !== '') p.set(k, String(v).trim());
+  });
+  return p.toString();
+}
+
+/** m³ → 万m³（1 位小数；null 返回 null） */
+function fmtWan(m3) {
+  if (m3 === null || m3 === undefined || m3 === '') return null;
+  const n = Number(m3);
+  if (isNaN(n)) return null;
+  return (n / 10000).toFixed(1);
+}
+
+/* ============================ 下拉组件（单选 / 多选） ============================ */
+function selShell(el) {
+  el.innerHTML =
+    '<div class="sel-box" tabindex="0"><span class="sel-text placeholder"></span><span class="sel-arrow"></span></div>' +
+    '<div class="sel-panel"><div class="sel-search" hidden>' + ICON.search +
+    '<input type="text" placeholder="搜索" autocomplete="off"></div><div class="sel-list"></div></div>';
+  return {
+    el: el,
+    box: el.querySelector('.sel-box'),
+    textEl: el.querySelector('.sel-text'),
+    searchWrap: el.querySelector('.sel-search'),
+    searchInput: el.querySelector('.sel-search input'),
+    list: el.querySelector('.sel-list')
+  };
+}
+
+function optHtml(o, active) {
+  return '<div class="sel-opt' + (active ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+    '<span class="opt-name">' + esc(o.label) + '</span>' +
+    (o.sub ? '<span class="opt-sub">' + esc(o.sub) + '</span>' : '') +
+    (active ? ICON.tick : '') + '</div>';
+}
+
+function filterOpts(st, kw) {
+  if (!kw) return st.options;
+  const k = kw.trim().toLowerCase();
+  return st.options.filter(o => (o.label + ' ' + (o.sub || '')).toLowerCase().indexOf(k) >= 0);
+}
+
+function createSelect(el) {
+  const d = selShell(el);
+  const st = { value: '', label: '', options: [], placeholder: '请选择', emptyText: '无匹配数据', searchable: false, disabled: false, onChange: null };
+
+  function sync() {
+    const hit = st.options.filter(o => o.value === st.value)[0];
+    const label = st.value ? (hit ? hit.label : (st.label || st.value)) : '';
+    d.textEl.textContent = label || st.placeholder;
+    d.textEl.classList.toggle('placeholder', !label);
+  }
+  function render() {
+    const opts = filterOpts(st, st.searchable ? d.searchInput.value : '');
+    d.list.innerHTML = opts.length
+      ? opts.map(o => optHtml(o, o.value === st.value)).join('')
+      : '<div class="sel-empty">' + esc(st.emptyText) + '</div>';
+  }
+  function open() {
+    if (st.disabled) return;
+    closeAllSelects(el);
+    el.classList.add('open');
+    if (st.searchable) d.searchInput.value = '';
+    render();
+    if (st.searchable) setTimeout(() => { try { d.searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+  }
+  function close() { el.classList.remove('open'); }
+
+  d.box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  d.searchInput.addEventListener('input', render);
+  d.list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.sel-opt');
+    if (!opt) return;
+    e.preventDefault();
+    st.value = opt.dataset.value;
+    st.label = '';
+    sync(); render(); close();
+    if (st.onChange) st.onChange(st.value);
+  });
+  el._close = close;
+
+  return {
+    getValue: () => st.value,
+    setOptions(list) { st.options = list || []; sync(); render(); return this; },
+    setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
+    setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+    setEmptyText(t) { st.emptyText = t; render(); return this; },
+    setSearchable(on) { st.searchable = !!on; d.searchWrap.hidden = !on; return this; },
+    setDisabled(on) { st.disabled = !!on; el.classList.toggle('is-disabled', !!on); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+/** 多选下拉（关联闸口 / 扣减闸口；面板内勾选不关闭） */
+function createMultiSelect(el) {
+  const d = selShell(el);
+  const st = { values: [], options: [], placeholder: '请选择', emptyText: '无匹配数据', searchable: false, disabled: false, onChange: null };
+
+  function sync() {
+    const labels = st.values.map(v => {
+      const hit = st.options.filter(o => o.value === v)[0];
+      return hit ? hit.label : v;
+    });
+    d.textEl.textContent = labels.length ? labels.join('、') : st.placeholder;
+    d.textEl.classList.toggle('placeholder', !labels.length);
+  }
+  function render() {
+    const opts = filterOpts(st, st.searchable ? d.searchInput.value : '');
+    d.list.innerHTML = opts.length
+      ? opts.map(o => optHtml(o, st.values.indexOf(o.value) >= 0)).join('')
+      : '<div class="sel-empty">' + esc(st.emptyText) + '</div>';
+  }
+  function open() {
+    if (st.disabled) return;
+    closeAllSelects(el);
+    el.classList.add('open');
+    if (st.searchable) d.searchInput.value = '';
+    render();
+    if (st.searchable) setTimeout(() => { try { d.searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+  }
+  function close() { el.classList.remove('open'); }
+
+  d.box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  d.searchInput.addEventListener('input', render);
+  d.list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.sel-opt');
+    if (!opt || st.disabled) return;
+    e.preventDefault();
+    const v = opt.dataset.value;
+    const i = st.values.indexOf(v);
+    if (i >= 0) st.values.splice(i, 1); else st.values.push(v);
+    sync(); render();
+    if (st.onChange) st.onChange(st.values.slice());
+  });
+  el._close = close;
+
+  return {
+    getValue: () => st.values.slice(),
+    setOptions(list) { st.options = list || []; sync(); render(); return this; },
+    setValue(vals) { st.values = Array.isArray(vals) ? vals.slice() : []; sync(); render(); return this; },
+    setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+    setEmptyText(t) { st.emptyText = t; render(); return this; },
+    setSearchable(on) { st.searchable = !!on; d.searchWrap.hidden = !on; return this; },
+    setDisabled(on) { st.disabled = !!on; el.classList.toggle('is-disabled', !!on); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+function closeAllSelects(except) {
+  document.querySelectorAll('.sel.open').forEach(s => {
+    if (s !== except && typeof s._close === 'function') s._close();
+  });
+}
+
+/* ============================ 列表 ============================ */
+function filterParams() {
+  return { keyword: S.filter.keyword, calcMode: S.filter.calcMode, settleCycle: S.filter.settleCycle, status: S.filter.status };
+}
+
+function emptyRow(text, plain) {
+  return '<tr><td colspan="9" class="empty"><div class="empty-box">' +
+    (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
+}
+
+async function loadList() {
+  const seq = ++S.listSeq;
+  const params = new URLSearchParams(qs(filterParams()));
+  params.set('page', String(S.page));
+  params.set('size', String(S.size));
+  $('tbl-body').innerHTML = emptyRow('加载中...', true);
+  try {
+    const data = await api('/water-user/page?' + params.toString());
+    if (seq !== S.listSeq) return;
+    S.total = Number(data && data.total) || 0;
+    S.records = (data && Array.isArray(data.records)) ? data.records : [];
+    if (!S.records.length && S.page > 1) { S.page -= 1; return loadList(); }
+    renderTable();
+    renderPager();
+  } catch (e) {
+    if (seq !== S.listSeq) return;
+    S.records = []; S.total = 0;
+    $('tbl-body').innerHTML = emptyRow('数据加载失败');
+    renderPager();
+    showToast(e.message || '数据加载失败', true);
+  }
+}
+
+function calcTag(r) {
+  const cls = r.calcMode === '#1#' ? 'blue' : 'orange';
+  return '<span class="tag ' + cls + '">' + esc(r.calcModeName || '--') + '</span>';
+}
+
+function statusTag(r) {
+  const cls = r.status === '#1#' ? 'green' : 'gray';
+  return '<span class="tag ' + cls + '">' + esc(r.statusName || '--') + '</span>';
+}
+
+/** 年度计划水量列：万m³（1 位）+ 已调度进度辅助行 */
+function annualCell(r) {
+  const wan = fmtWan(r.annualPlanWater);
+  if (wan === null) return '<span class="sub">—</span>';
+  const scheduled = Number(r.annualScheduledQty) || 0;
+  const base = Number(r.annualPlanWater) || 0;
+  const pct = base > 0 ? Math.round(scheduled / base * 100) : 0;
+  return esc(wan) + ' 万m³<span class="sub-line">已调度 ' + pct + '%</span>';
+}
+
+function renderTable() {
+  const tb = $('tbl-body');
+  if (!S.records.length) {
+    tb.innerHTML = emptyRow('暂无数据');
+    return;
+  }
+  tb.innerHTML = S.records.map(r => {
+    const acts = '<button class="lnk-btn" data-act="edit" data-id="' + esc(r.id) + '" data-tip="编辑" aria-label="编辑">' + ICON.pencil + '</button>' +
+      '<button class="lnk-btn danger" data-act="del" data-id="' + esc(r.id) + '" data-tip="删除" aria-label="删除">' + ICON.trash + '</button>';
+    return '<tr data-key="' + esc(r.id) + '">' +
+      '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.name || '--') + '</span>' +
+      '<span class="sub">' + esc((r.userNo || '') + ' · ' + (r.userTypeName || '')) + '</span></td>' +
+      '<td>' + esc(r.contactName || '--') + '<span class="sub-line">' + esc(r.contactPhone || '') + '</span></td>' +
+      '<td>' + (r.irrigationArea === null || r.irrigationArea === undefined ? '--' : esc(String(r.irrigationArea)) + ' <span class="sub">亩</span>') + '</td>' +
+      '<td>' + annualCell(r) + '</td>' +
+      '<td>' + (r.waterPrice === null || r.waterPrice === undefined ? '--' : esc(String(r.waterPrice)) + ' <span class="sub">元/m³</span>') + '</td>' +
+      '<td>' + calcTag(r) + '<span class="sub-line" title="' + esc(r.gateText || '') + '">' + esc(r.gateText || '') + '</span></td>' +
+      '<td>' + esc(r.settleCycleName || '--') + '</td>' +
+      '<td>' + statusTag(r) + '</td>' +
+      '<td class="col-act">' + acts + '</td></tr>';
+  }).join('');
+
+  if (S.flashKey) {
+    const tr = tb.querySelector('tr[data-key="' + S.flashKey + '"]');
+    S.flashKey = null;
+    if (tr) {
+      tr.classList.add('flash');
+      setTimeout(() => tr.classList.remove('flash'), 1100);
+    }
+  }
+}
+
+function onTableClick(e) {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const id = el.dataset.id;
+  const act = el.dataset.act;
+  if (act === 'view') openView(id);
+  else if (act === 'edit') openEdit(id);
+  else if (act === 'del') askDelete(id);
+}
+
+/* ============================ 分页 ============================ */
+function pageNumbers(cur, total) {
+  if (total <= 7) {
+    const all = [];
+    for (let i = 1; i <= total; i++) all.push(i);
+    return all;
+  }
+  const out = [1];
+  const start = Math.max(2, cur - 1);
+  const end = Math.min(total - 1, cur + 1);
+  if (start > 2) out.push('...');
+  for (let p = start; p <= end; p++) out.push(p);
+  if (end < total - 1) out.push('...');
+  out.push(total);
+  return out;
+}
+
+function renderPager() {
+  const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+  const sizes = [10, 20, 50, 100];
+  let html = '<span class="pg-info">共 ' + S.total + ' 条</span><div class="pg-btns">' +
+    '<button class="pg-btn" data-pg="prev"' + (S.page <= 1 ? ' disabled' : '') + '>‹</button>';
+  pageNumbers(S.page, totalPages).forEach(p => {
+    html += p === '...'
+      ? '<span class="pg-ellipsis">···</span>'
+      : '<button class="pg-btn' + (p === S.page ? ' active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+  });
+  html += '<button class="pg-btn" data-pg="next"' + (S.page >= totalPages ? ' disabled' : '') + '>›</button></div>' +
+    '<select class="pg-size" id="pg-size">' +
+    sizes.map(n => '<option value="' + n + '"' + (n === S.size ? ' selected' : '') + '>' + n + ' 条/页</option>').join('') +
+    '</select>' +
+    '<span class="pg-jump">跳至<input type="text" id="pg-jump" inputmode="numeric" aria-label="跳至页码"' +
+    ' value="' + S.page + '" autocomplete="off">页</span>';
+  $('pg-bar').innerHTML = html;
+}
+
+function jumpToPage(val) {
+  const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+  const n = parseInt(String(val).trim(), 10);
+  const target = isNaN(n) ? S.page : Math.min(totalPages, Math.max(1, n));
+  const box = $('pg-jump');
+  if (box) box.value = String(target);
+  if (target === S.page) return;
+  S.page = target;
+  loadList();
+}
+
+function onPagerClick(e) {
+  const btn = e.target.closest('[data-pg]');
+  if (!btn || btn.disabled) return;
+  const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+  const v = btn.dataset.pg;
+  if (v === 'prev') S.page = Math.max(1, S.page - 1);
+  else if (v === 'next') S.page = Math.min(totalPages, S.page + 1);
+  else S.page = Number(v);
+  loadList();
+}
+
+/* ============================ 表单（抽屉） ============================ */
+let fltCalc = null; let fltCycle = null; let fltStatus = null;
+let selUserType = null; let selSettle = null; let selMode = null;
+let selGates = null; let selMain = null; let selDeduct = null;
+
+function gateOptions() {
+  return ((S.meta && S.meta.gates) || []).map(g => ({ value: g.id, label: g.name || g.id, sub: g.code || '' }));
+}
+
+function showDrawer() {
+  $('drawer-mask').classList.add('show');
+  $('drawer').classList.add('show');
+  $('drawer').setAttribute('aria-hidden', 'false');
+}
+
+function closeDrawer() {
+  $('drawer-mask').classList.remove('show');
+  $('drawer').classList.remove('show');
+  $('drawer').setAttribute('aria-hidden', 'true');
+  closeAllSelects(null);
+  S.row = null;
+  S.mode = '';
+}
+
+function setDrawerMode(mode) {
+  S.mode = mode;
+  const isView = mode === 'view';
+  $('form-box').hidden = isView;
+  $('view-box').hidden = !isView;
+  $('btn-save').hidden = isView;
+  $('btn-cancel').textContent = isView ? '关闭' : '取消';
+  clearFormErrors();
+}
+
+/** 计算策略切换：SUM 关联闸口多选；DIFF 主闸口 + 扣减闸口多选 */
+function applyGateRows(mode) {
+  $('fi-gates').hidden = mode !== '#1#';
+  $('fi-main').hidden = mode !== '#2#';
+  $('fi-deduct').hidden = mode !== '#2#';
+}
+
+function openCreate() {
+  $('drawer-title').textContent = '新增用水户';
+  setDrawerMode('create');
+  resetForm();
+  showDrawer();
+}
+
+async function openEdit(id) {
+  $('drawer-title').textContent = '编辑用水户';
+  setDrawerMode('edit');
+  resetForm();
+  showDrawer();
+  const seq = ++S.seq;
+  try {
+    const d = await api('/water-user/detail?' + qs({ id }));
+    if (seq !== S.seq || S.mode !== 'edit') return;
+    fillForm(d);
+  } catch (e) {
+    if (seq === S.seq && S.mode === 'edit') {
+      showToast(e.message || '加载失败', true);
+      closeDrawer();
+    }
+  }
+}
+
+async function openView(id) {
+  $('drawer-title').textContent = '用水户详情';
+  setDrawerMode('view');
+  $('view-box').innerHTML = '<div class="empty-box">加载中...</div>';
+  showDrawer();
+  const seq = ++S.seq;
+  try {
+    const d = await api('/water-user/detail?' + qs({ id }));
+    if (seq !== S.seq || S.mode !== 'view') return;
+    renderView(d);
+  } catch (e) {
+    if (seq === S.seq && S.mode === 'view') {
+      $('view-box').innerHTML = '<div class="empty-box">详情加载失败</div>';
+      showToast(e.message || '详情加载失败', true);
+    }
+  }
+}
+
+function resetForm() {
+  S.row = null;
+  ['in-name', 'in-contact', 'in-phone', 'in-area', 'in-price'].forEach(id => { $(id).value = ''; });
+  selUserType.setOptions((S.meta.userTypes || []).map(o => ({ value: o.value, label: o.label })));
+  selUserType.setPlaceholder('请选择用水类型').setValue('');
+  selSettle.setOptions((S.meta.settleCycles || []).map(o => ({ value: o.value, label: o.label })));
+  selSettle.setPlaceholder('请选择统计周期').setValue('');
+  selMode.setOptions((S.meta.calcModes || []).map(o => ({ value: o.value, label: o.label })));
+  selMode.setPlaceholder('请选择计算策略').setValue('');
+  selGates.setOptions(gateOptions()).setPlaceholder('请选择关联闸口（可多选）').setValue([]);
+  selMain.setOptions(gateOptions()).setPlaceholder('请选择主闸口').setValue('');
+  selDeduct.setOptions(gateOptions()).setPlaceholder('请选择扣减闸口（可多选）').setValue([]);
+  applyGateRows('');
+  clearFormErrors();
+}
+
+function fillForm(d) {
+  S.row = d;
+  $('in-name').value = d.name || '';
+  $('in-contact').value = d.contactName || '';
+  $('in-phone').value = d.contactPhone || '';
+  $('in-area').value = d.irrigationArea === null || d.irrigationArea === undefined ? '' : String(d.irrigationArea);
+  $('in-price').value = d.waterPrice === null || d.waterPrice === undefined ? '' : String(d.waterPrice);
+  selUserType.setValue(d.userType || '');
+  selSettle.setValue(d.settleCycle || '');
+  selMode.setValue(d.calcMode || '');
+  applyGateRows(d.calcMode);
+  const gc = d.gateConfig || {};
+  if (d.calcMode === '#1#') {
+    selGates.setValue(((gc.gates) || []).map(g => g.id));
+  } else if (d.calcMode === '#2#') {
+    selMain.setValue(gc.main ? gc.main.id : '');
+    selDeduct.setValue(((gc.deduct) || []).map(g => g.id));
+  }
+}
+
+/* ---------------- 表单校验 ---------------- */
+const FORM_ERR = {
+  name: { box: 'err-name', field: () => $('in-name') },
+  userType: { box: 'err-user-type', sel: () => selUserType },
+  contact: { box: 'err-contact', field: () => $('in-contact') },
+  phone: { box: 'err-phone', field: () => $('in-phone') },
+  area: { box: 'err-area', field: () => $('in-area') },
+  price: { box: 'err-price', field: () => $('in-price') },
+  settle: { box: 'err-settle-cycle', sel: () => selSettle },
+  mode: { box: 'err-calc-mode', sel: () => selMode },
+  gates: { box: 'err-gates', sel: () => selGates },
+  main: { box: 'err-main', sel: () => selMain },
+  deduct: { box: 'err-deduct', sel: () => selDeduct }
+};
+
+function setFormError(key, msg) {
+  const cfg = FORM_ERR[key];
+  if (!cfg) return;
+  if (cfg.sel) cfg.sel().setError(!!msg);
+  if (cfg.field) cfg.field().classList.toggle('is-err', !!msg);
+  const box = $(cfg.box);
+  box.innerHTML = msg ? ICON.err + '<span>' + esc(msg) + '</span>' : '';
+  box.classList.toggle('show', !!msg);
+}
+
+const clearFormError = key => setFormError(key, '');
+const clearFormErrors = () => Object.keys(FORM_ERR).forEach(clearFormError);
+
+/** 校验通过返回提交体；失败返回 null */
+function validateForm() {
+  clearFormErrors();
+  let bad = false;
+  const name = $('in-name').value.trim();
+  if (!name) { setFormError('name', '请输入用水户名称'); bad = true; }
+  if (!selUserType.getValue()) { setFormError('userType', '请选择用水类型'); bad = true; }
+  const contact = $('in-contact').value.trim();
+  if (!contact) { setFormError('contact', '请输入联系人'); bad = true; }
+  const phone = $('in-phone').value.trim();
+  if (phone && !/^\d{11}$/.test(phone)) { setFormError('phone', '联系电话须为 11 位数字'); bad = true; }
+  const areaRaw = $('in-area').value.trim();
+  const needArea = selUserType.getValue() === '#1#' || selUserType.getValue() === '#4#';
+  if (needArea && !areaRaw) { setFormError('area', '农业 / 生态用水户必须填写灌溉面积'); bad = true; }
+  if (areaRaw && !/^\d+(\.\d{1,2})?$/.test(areaRaw)) { setFormError('area', '灌溉面积最多保留 2 位小数'); bad = true; }
+  else if (areaRaw && Number(areaRaw) <= 0) { setFormError('area', '灌溉面积必须大于 0'); bad = true; }
+  const priceRaw = $('in-price').value.trim();
+  if (!priceRaw) { setFormError('price', '请输入水价'); bad = true; }
+  else if (!/^\d+(\.\d{1,3})?$/.test(priceRaw)) { setFormError('price', '水价最多保留 3 位小数'); bad = true; }
+  else if (Number(priceRaw) <= 0) { setFormError('price', '水价必须大于 0'); bad = true; }
+  if (!selSettle.getValue()) { setFormError('settle', '请选择统计周期'); bad = true; }
+  const mode = selMode.getValue();
+  if (!mode) { setFormError('mode', '请选择计算策略'); bad = true; }
+  let gateConfig = null;
+  if (mode === '#1#') {
+    const ids = selGates.getValue();
+    if (!ids.length) { setFormError('gates', '请至少选择一个关联闸口'); bad = true; }
+    gateConfig = { mode: 'SUM', gates: ids.map(id => ({ id })) };
+  } else if (mode === '#2#') {
+    const main = selMain.getValue();
+    const deducts = selDeduct.getValue();
+    if (!main) { setFormError('main', '请选择主闸口'); bad = true; }
+    if (!deducts.length) { setFormError('deduct', '请至少选择一个扣减闸口'); bad = true; }
+    if (main && deducts.indexOf(main) >= 0) { setFormError('deduct', '主闸口不能同时作为扣减闸口'); bad = true; }
+    gateConfig = { mode: 'DIFF', main: { id: main }, deduct: deducts.map(id => ({ id })) };
+  }
+  if (bad) return null;
+  return {
+    name,
+    userType: selUserType.getValue(),
+    contactName: contact,
+    contactPhone: phone || null,
+    irrigationArea: areaRaw ? Number(areaRaw) : null,
+    waterPrice: Number(priceRaw),
+    calcMode: mode,
+    gateConfig,
+    settleCycle: selSettle.getValue()
+  };
+}
+
+/* ---------------- 保存 ---------------- */
+function setSaving(on) {
+  S.saving = !!on;
+  const btn = $('btn-save');
+  btn.disabled = !!on;
+  btn.classList.toggle('is-loading', !!on);
+}
+
+async function save() {
+  if (S.saving) return;
+  const body = validateForm();
+  if (!body) return;
+  const isEdit = S.mode === 'edit' && S.row;
+  setSaving(true);
+  try {
+    const saved = isEdit
+      ? await api('/water-user/update?' + qs({ id: S.row.id }), { method: 'PUT', body })
+      : await api('/water-user/create', { method: 'POST', body });
+    S.flashKey = saved && saved.id ? String(saved.id) : null;
+    closeDrawer();
+    showToast('保存成功');
+    if (!isEdit) S.page = 1;
+    await loadList();
+  } catch (e) {
+    showToast(e.message || '保存失败', true);
+  } finally {
+    setSaving(false);
+  }
+}
+
+/* ============================ 详情（抽屉查看态） ============================ */
+function viewRow(k, v) {
+  return '<div class="view-row"><div class="k">' + esc(k) + '</div><div class="v">' +
+    (v === null || v === undefined || v === '' ? '--' : esc(v)) + '</div></div>';
+}
+
+function renderView(d) {
+  const wan = fmtWan(d.annualPlanWater);
+  const pairs = [
+    ['编号', d.userNo],
+    ['名称', d.name],
+    ['用水类型', d.userTypeName],
+    ['联系人', d.contactName],
+    ['联系电话', d.contactPhone],
+    ['灌溉面积', d.irrigationArea === null || d.irrigationArea === undefined ? null : d.irrigationArea + ' 亩'],
+    ['水价', d.waterPrice === null || d.waterPrice === undefined ? null : d.waterPrice + ' 元/m³'],
+    ['计算策略', d.calcModeName],
+    ['统计周期', d.settleCycleName],
+    ['状态', d.statusName],
+    ['年度计划水量', wan === null ? null : wan + ' 万m³'],
+    ['关联闸口', d.gateText]
+  ];
+  $('view-box').innerHTML = '<div class="view-grid">' + pairs.map(p => viewRow(p[0], p[1])).join('') + '</div>';
+}
+
+/* ============================ 删除（两级保护） ============================ */
+let dlgOnOk = null;
+
+function showDlg(opts) {
+  $('dlg-title').textContent = opts.title || '提示';
+  $('dlg-text').textContent = opts.text || '';
+  const alertBox = $('dlg-alert');
+  alertBox.hidden = !opts.alert;
+  alertBox.textContent = opts.alert || '';
+  const ok = $('dlg-ok');
+  ok.hidden = !!opts.hideOk;
+  ok.textContent = opts.okText || '确定';
+  ok.className = 'btn ' + (opts.okCls || 'btn-primary');
+  $('dlg-cancel').textContent = opts.cancelText || '取消';
+  dlgOnOk = opts.onOk || null;
+  $('dlg-mask').classList.add('show');
+}
+
+function closeDlg() {
+  $('dlg-mask').classList.remove('show');
+  dlgOnOk = null;
+  const ok = $('dlg-ok');
+  ok.disabled = false;
+  ok.classList.remove('is-loading');
+}
+
+async function onDlgOk() {
+  if (!dlgOnOk) { closeDlg(); return; }
+  const ok = $('dlg-ok');
+  ok.disabled = true;
+  ok.classList.add('is-loading');
+  try {
+    await dlgOnOk();
+    closeDlg();
+  } catch (e) {
+    showToast(e.message || '操作失败', true);
+    ok.disabled = false;
+    ok.classList.remove('is-loading');
+  }
+}
+
+function refLines(refs) {
+  return (refs || []).map(r => '· ' + (r.planNo || '') + ' ' + (r.planName || '') + '（' + (r.statusName || planStatusName(r.status)) + '）').join('\n');
+}
+
+function planStatusName(code) {
+  const dict = { '#1#': '编制中', '#2#': '已生效', '#3#': '已归档', '#4#': '已作废' };
+  return dict[code] || code || '';
+}
+
+/** 删除：先 delete-check 分流——存在业务数据（需水/调度/记录/账单）禁止；被非编制中计划引用禁止；仅编制中引用二次确认（force）；无引用直接确认 */
+async function askDelete(id) {
+  try {
+    const refs = await api('/water-user/delete-check?' + qs({ id }));
+    const biz = (refs && refs.refs) || {};
+    const bizCount = ['demands', 'dispatches', 'records', 'bills']
+      .reduce((n, k) => n + (Number(biz[k]) || 0), 0);
+    if (bizCount > 0) {
+      showDlg({
+        title: '无法删除',
+        text: '该用水户已存在业务数据：\n· 需水上报 ' + (Number(biz.demands) || 0) + ' 条' +
+          '\n· 调度方案 ' + (Number(biz.dispatches) || 0) + ' 条' +
+          '\n· 调度记录 ' + (Number(biz.records) || 0) + ' 条' +
+          '\n· 水费账单 ' + (Number(biz.bills) || 0) + ' 张' +
+          '\n\n删除会使业务与财务记录悬空，不可删除。',
+        cancelText: '知道了',
+        hideOk: true
+      });
+      return;
+    }
+    const blocked = (refs && refs.blocked) || [];
+    const pending = (refs && refs.pending) || [];
+    if (blocked.length) {
+      showDlg({
+        title: '无法删除',
+        text: '该用水户已被以下计划引用，不可删除：\n' + refLines(blocked) + '\n\n已生效 / 已归档 / 已作废计划不可连带修改，请先处理引用计划。',
+        cancelText: '知道了',
+        hideOk: true
+      });
+      return;
+    }
+    if (pending.length) {
+      showDlg({
+        title: '删除确认',
+        text: '该用水户被 ' + pending.length + ' 个编制中计划引用：\n' + refLines(pending) +
+          '\n\n删除后将移除对应 ' + pending.reduce((n, r) => n + (r.itemCount || 0), 0) + ' 行明细并重算计划总水量。',
+        alert: '删除后无法恢复，请确认。',
+        okText: '确认删除',
+        okCls: 'btn-danger',
+        onOk: async () => { await api('/water-user/delete?' + qs({ id, force: true }), { method: 'DELETE' }); afterDelete(); }
+      });
+      return;
+    }
+    showDlg({
+      title: '删除确认',
+      text: '确定删除该用水户？',
+      alert: '删除后无法恢复，请确认。',
+      okText: '确认删除',
+      okCls: 'btn-danger',
+      onOk: async () => { await api('/water-user/delete?' + qs({ id }), { method: 'DELETE' }); afterDelete(); }
+    });
+  } catch (e) {
+    showToast(e.message || '删除检查失败', true);
+  }
+}
+
+async function afterDelete() {
+  showToast('已删除');
+  await loadList();
+}
+
+/* ============================ 事件绑定与初始化 ============================ */
+function bindEvents() {
+  $('tbl-body').addEventListener('click', onTableClick);
+  $('pg-bar').addEventListener('click', onPagerClick);
+  $('pg-bar').addEventListener('change', e => {
+    if (e.target && e.target.id === 'pg-size') {
+      S.size = Number(e.target.value) || 20;
+      S.page = 1;
+      loadList();
+    }
+  });
+  $('pg-bar').addEventListener('keydown', e => {
+    if (e.target && e.target.id === 'pg-jump' && e.key === 'Enter') e.target.blur();
+  });
+  $('pg-bar').addEventListener('focusout', e => {
+    if (e.target && e.target.id === 'pg-jump') jumpToPage(e.target.value);
+  });
+
+  $('flt-search').addEventListener('click', () => {
+    S.filter.keyword = $('f-keyword').value.trim();
+    S.filter.calcMode = fltCalc.getValue() || '';
+    S.filter.settleCycle = fltCycle.getValue() || '';
+    S.filter.status = fltStatus.getValue() || '';
+    S.page = 1;
+    loadList();
+  });
+  $('flt-reset').addEventListener('click', () => {
+    $('f-keyword').value = '';
+    fltCalc.setValue(''); fltCycle.setValue(''); fltStatus.setValue('');
+    S.filter = { keyword: '', calcMode: '', settleCycle: '', status: '' };
+    S.page = 1;
+    loadList();
+  });
+  $('f-keyword').addEventListener('keydown', e => { if (e.key === 'Enter') $('flt-search').click(); });
+
+  $('btn-add').addEventListener('click', openCreate);
+  $('btn-close').addEventListener('click', closeDrawer);
+  $('btn-cancel').addEventListener('click', closeDrawer);
+  $('btn-save').addEventListener('click', save);
+  $('drawer-mask').addEventListener('click', closeDrawer);
+
+  $('in-name').addEventListener('input', () => clearFormError('name'));
+  $('in-contact').addEventListener('input', () => clearFormError('contact'));
+  $('in-phone').addEventListener('input', () => {
+    $('in-phone').value = $('in-phone').value.replace(/[^\d]/g, '').slice(0, 11);
+    clearFormError('phone');
+  });
+  $('in-area').addEventListener('input', () => clearFormError('area'));
+  $('in-price').addEventListener('input', () => clearFormError('price'));
+  selUserType.onChange(() => clearFormError('userType'));
+  selSettle.onChange(() => clearFormError('settle'));
+  selMode.onChange(v => { clearFormError('mode'); applyGateRows(v); });
+  selGates.onChange(() => clearFormError('gates'));
+  selMain.onChange(() => clearFormError('main'));
+  selDeduct.onChange(() => clearFormError('deduct'));
+
+  $('dlg-cancel').addEventListener('click', closeDlg);
+  $('dlg-ok').addEventListener('click', onDlgOk);
+  $('dlg-mask').addEventListener('click', e => { if (e.target === $('dlg-mask')) closeDlg(); });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.sel')) closeAllSelects(null);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if ($('dlg-mask').classList.contains('show')) { closeDlg(); return; }
+    if (document.querySelector('.sel.open')) { closeAllSelects(null); return; }
+    if ($('drawer').classList.contains('show')) closeDrawer();
+  });
+}
+
+(async function init() {
+  bindEvents();
+  try {
+    const meta = await api('/water-user/meta');
+    S.meta = Object.assign(S.meta, meta || {});
+  } catch (e) {
+    showToast(e.message || '基础数据加载失败', true);
+  }
+  fltCalc = createSelect($('f-calc-mode'));
+  fltCalc.setOptions([{ value: '', label: '全部策略' }].concat((S.meta.calcModes || []).map(o => ({ value: o.value, label: o.label }))));
+  fltCalc.setPlaceholder('全部策略');
+  fltCycle = createSelect($('f-settle-cycle'));
+  fltCycle.setOptions([{ value: '', label: '全部周期' }].concat((S.meta.settleCycles || []).map(o => ({ value: o.value, label: o.label }))));
+  fltCycle.setPlaceholder('全部周期');
+  fltStatus = createSelect($('f-status'));
+  fltStatus.setOptions([{ value: '', label: '全部状态' }, { value: '#1#', label: '正常' }, { value: '#2#', label: '停用' }]);
+  fltStatus.setPlaceholder('全部状态');
+
+  selUserType = createSelect($('sel-user-type'));
+  selSettle = createSelect($('sel-settle-cycle'));
+  selMode = createSelect($('sel-calc-mode'));
+  selGates = createMultiSelect($('sel-gates')).setSearchable(true);
+  selMain = createSelect($('sel-main')).setSearchable(true);
+  selDeduct = createMultiSelect($('sel-deduct')).setSearchable(true);
+
+  await loadList();
+})();
+</script>
+</body>
+</html>
