@@ -221,7 +221,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         <div class="form-item">
           <label>计划水量（万m³） <i class="req">*</i></label>
           <input type="number" class="ipt" id="f-amount" min="0" step="0.01" placeholder="0" autocomplete="off">
-          <div class="f-tip">填写本次申报量，单位为万m³。</div>
         </div>
         <div class="form-item">
           <label>用途</label>
@@ -286,6 +285,27 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       <button type="button" class="btn btn-primary" id="btn-audit-ok">
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2L4.8 9 10 3.4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>提交审核结果
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- 查看需水上报弹窗(只读详情) -->
+<div class="ov" id="view-ov">
+  <div class="modal modal-md" role="dialog" aria-label="查看需水上报">
+    <button type="button" class="modal-x" data-close="view-ov" aria-label="关闭">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+        <path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <div class="modal-hd">
+      <div>查看需水上报</div>
+      <div class="modal-sub" id="view-sub"></div>
+    </div>
+    <div class="modal-bd">
+      <div class="kv-list" id="view-kv"></div>
+    </div>
+    <div class="modal-ft">
+      <button type="button" class="btn btn-default" id="btn-view-close">关闭</button>
     </div>
   </div>
 </div>
@@ -560,10 +580,11 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  /** 操作列:待审核→审核/编辑/删除;已通过→编制方案/编辑/删除;已驳回→编辑/删除 */
+  /** 操作列:全状态可查看;待审核→审核/编辑/删除;已通过→编制方案/编辑/删除;已驳回→编辑/删除 */
   function actionCell(row) {
     var id = esc(row.id);
-    var html = '';
+    // 查看为只读操作,所有状态均可用
+    var html = '<span class="act" data-action="view" data-id="' + id + '">查看</span>';
     if (row.status === 'wait') {
       html += '<span class="act" data-action="audit" data-id="' + id + '">审核</span>';
     }
@@ -877,6 +898,38 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   });
 
+  /* ===================== 查看弹窗(只读详情,复用审核弹窗 KV 样式) ===================== */
+  var viewId = null;
+
+  /** 查看弹窗信息区(含审核状态与意见;水价异步回填,见 openViewModal) */
+  function viewKvHtml(row, priceText) {
+    var meta = STATUS_META[row.status] || { text: row.status };
+    return [
+      kvRow('用水户', row.waterUserName || '-'),
+      kvRow('计划水量', fmtAmount(row.amount) + ' 万m³'),
+      kvRow('用水时段', row.startDate + ' 至 ' + row.endDate),
+      kvRow('用途', row.usage || '-'),
+      kvRow('申请时间', row.applyTime || '-'),
+      kvRow('水价', priceText),
+      kvRow('审核状态', meta.text),
+      kvRow('审核意见', row.auditOpinion || '-')
+    ].join('');
+  }
+
+  function openViewModal(row) {
+    viewId = row.id;
+    $('view-sub').textContent = row.demandNo || '';
+    $('view-kv').innerHTML = viewKvHtml(row, '查询中…');
+    // 水价按户异步查询(/water-user/detail),弹窗未切换时回填
+    loadPrice(row.waterUserId, function (priceText) {
+      if (viewId !== row.id) return;
+      $('view-kv').innerHTML = viewKvHtml(row, priceText + ' 元/m³');
+    });
+    openModal('view-ov');
+  }
+
+  $('btn-view-close').addEventListener('click', function () { closeModal('view-ov'); });
+
   /* ===================== 编制方案弹窗(提交 /water-dispatch/create,5.7) ===================== */
 
   /** 关联需水申请下拉文案:XS0016 · 县工业园区管委会 · 4.1万m³ */
@@ -1105,14 +1158,15 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (e.target.id === 'pg-jump') jumpToPage(e.target.value);
   }, true);
 
-  // 表格操作:审核 / 编制方案 / 编辑 / 删除
+  // 表格操作:查看 / 审核 / 编制方案 / 编辑 / 删除
   $('tbl-body').addEventListener('click', function (e) {
     var el = e.target.closest('.act');
     if (!el) return;
     var row = findRow(el.dataset.id);
     if (!row) return;
     var action = el.dataset.action;
-    if (action === 'audit') openAuditModal(row);
+    if (action === 'view') openViewModal(row);
+    else if (action === 'audit') openAuditModal(row);
     else if (action === 'plan') openPlanModal(row);
     else if (action === 'edit') {
       if (row.status === 'pass') { toast('已通过的上报单不可编辑'); return; }

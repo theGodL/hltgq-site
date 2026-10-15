@@ -63,8 +63,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px 0;flex-shrink:0}
 .panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
-.panel-hd .hd-acts{display:flex;align-items:center;gap:8px}
-.hd-tip{font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
+.panel-hd .hd-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
 .panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
 
 /* ===== 控件 ===== */
@@ -228,7 +227,6 @@ td.empty:hover{background:transparent}
 
   <div class="panel">
     <div class="panel-hd">
-      <span class="hd-tip">测算水量 = 灌溉面积（亩）× 定额标准（m³/亩），界面以万m³展示；修改定额不回溯已有计划的测算快照。</span>
       <div class="hd-acts">
         <button class="btn btn-primary" id="btn-add">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>新增定额
@@ -327,6 +325,7 @@ const ICON = {
   err: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.6v4.2M8 11.1v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
   pencil: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.6 9.4a2.12 2.12 0 0 0-3-3L5 17v3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.4 6.8l2.8 2.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.6 7V4.6h4.8V7M6.6 7l.9 12.3A1.6 1.6 0 0 0 9.1 20.8h5.8a1.6 1.6 0 0 0 1.6-1.5L17.4 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 10.8v5.6M13.6 10.8v5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  eye: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2.6 12S6.2 5.6 12 5.6 21.4 12 21.4 12 17.8 18.4 12 18.4 2.6 12 2.6 12z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.7"/></svg>',
   empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
 
@@ -521,7 +520,8 @@ function renderTable() {
     return;
   }
   tb.innerHTML = S.records.map(r => {
-    const acts = '<button class="lnk-btn" data-act="edit" data-id="' + esc(r.id) + '" data-tip="编辑" aria-label="编辑">' + ICON.pencil + '</button>' +
+    const acts = '<button class="lnk-btn" data-act="view" data-id="' + esc(r.id) + '" data-tip="查看" aria-label="查看">' + ICON.eye + '</button>' +
+      '<button class="lnk-btn" data-act="edit" data-id="' + esc(r.id) + '" data-tip="编辑" aria-label="编辑">' + ICON.pencil + '</button>' +
       '<button class="lnk-btn danger" data-act="del" data-id="' + esc(r.id) + '" data-tip="删除" aria-label="删除">' + ICON.trash + '</button>';
     const quota = fmtNum(r.quotaValue, 2);
     return '<tr data-key="' + esc(r.id) + '">' +

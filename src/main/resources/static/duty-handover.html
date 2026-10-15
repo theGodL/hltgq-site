@@ -74,6 +74,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 textarea{width:100%;min-height:104px;border:1px solid #d9d9d9;border-radius:6px;padding:10px 12px;font-size:14px;font-family:inherit;color:#333;outline:none;resize:vertical;transition:border-color .2s,box-shadow .2s}
 textarea:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 textarea::placeholder{color:#bfbfbf}
+/* 必填校验错误态:红框 + 标签旁红字(与管理页错误态风格一致) */
+textarea.error,textarea.error:focus{border-color:#ff4d4f;box-shadow:0 0 0 2px rgba(255,77,79,.1)}
+.multi-box.error,.multi-box.error:hover{border-color:#ff4d4f;box-shadow:0 0 0 2px rgba(255,77,79,.1)}
+.field-error{display:none;margin-left:8px;font-size:12px;color:#ff4d4f}
+.field-error.show{display:inline}
 .tips-text{font-size:14px;color:#333;line-height:22px;margin-bottom:12px}
 .success-inner{padding:18px 0 6px;text-align:center}
 .success-title{font-size:16px;font-weight:600;color:#333;margin:12px 0 8px}
@@ -192,7 +197,7 @@ textarea::placeholder{color:#bfbfbf}
     <div class="modal-hd">交接班</div>
     <div class="modal-bd">
       <div class="form-item">
-        <label>接班人员</label>
+        <label>接班人员 <i class="req">*</i><span class="field-error" id="err-handover-users">请选择接班人员</span></label>
         <div class="select-wrap" id="handover-wrap">
           <div class="multi-box" id="handover-box"></div>
           <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -200,7 +205,7 @@ textarea::placeholder{color:#bfbfbf}
         </div>
       </div>
       <div class="form-item">
-        <label>待办移交事项</label>
+        <label>待办移交事项 <i class="req">*</i><span class="field-error" id="err-handover-matters">请填写待办移交事项</span></label>
         <textarea id="f-matters" placeholder="请输入需移交给下一班的待办事项、注意事项与跟进要求"></textarea>
       </div>
     </div>
@@ -421,7 +426,7 @@ textarea::placeholder{color:#bfbfbf}
     var shiftText = (it.shiftTime || '').replace('-', '—');
     var persons = (it.dutyUsers || []).map(function (n) {
       return '<span class="person">' + avatarHtml(n)
-        + '<span class="p-info"><b>' + esc(n) + '</b><i>正在值守 · ' + esc(it.title) + (shiftText ? ' ' + esc(shiftText) : '') + '</i></span></span>';
+        + '<span class="p-info"><b>' + esc(n) + '</b><i>正在值守<br>' + esc(it.title) + (shiftText ? ' ' + esc(shiftText) : '') + '</i></span></span>';
     }).join('');
     return '<div class="tl-item active">'
       + '<span class="tl-dot"><i class="dot dot-orange"></i></span>'
@@ -459,7 +464,7 @@ textarea::placeholder{color:#bfbfbf}
     if (diff <= 0) return '待交班';
     var h = Math.floor(diff / 3600000);
     var mm = Math.floor((diff % 3600000) / 60000);
-    return '距交班 ' + h + 'h' + mm + 'm';
+    return '距交班 ' + h + 'h' + mm + 'min';
   }
 
   /* ===================== 开始值班/待签到(两阶段) ===================== */
@@ -560,6 +565,20 @@ textarea::placeholder{color:#bfbfbf}
   var handoverSel = [];      // 已选接班人员 id 数组
   var handoverOpts = [];     // 候选项 [{id,name}]
   var handoverKw = '';       // 接班人员搜索关键字
+  var handoverTouched = false;    // 点过确认或改动过字段后才展示必填错误态(避免打开即红)
+  var handoverSubmitting = false; // 交班请求进行中(防联动解禁导致重复提交)
+
+  /** 交接班必填校验:接班人员与待办移交事项均不可为空;刷新红框红字并与确认按钮禁用强一致 */
+  function refreshHandoverErr() {
+    var noUsers = !handoverSel.length;
+    var noMatters = !$('f-matters').value.trim();
+    $('handover-box').classList.toggle('error', handoverTouched && noUsers);
+    $('err-handover-users').classList.toggle('show', handoverTouched && noUsers);
+    $('f-matters').classList.toggle('error', handoverTouched && noMatters);
+    $('err-handover-matters').classList.toggle('show', handoverTouched && noMatters);
+    $('btn-handover-ok').disabled = handoverSubmitting || (handoverTouched && (noUsers || noMatters));
+    return !noUsers && !noMatters;
+  }
 
   function openHandoverModal() {
     // 默认选中 today 的下一班候选(receiverCandidates);为空时用 /duty/options 的人员兜底
@@ -567,8 +586,10 @@ textarea::placeholder{color:#bfbfbf}
     handoverSel = handoverOpts.map(function (u) { return u.id; });
     $('f-matters').value = '';
     handoverKw = '';
+    handoverTouched = false; // 重置校验展示态:打开弹窗只展示初始值,点确认或改动后才提示
     renderHandoverBox();
     $('handover-dd').classList.remove('open');
+    refreshHandoverErr();
     showOv('handover-ov');
     if (!handoverOpts.length) {
       request(API_BASE + '/options').then(function (d) {
@@ -608,8 +629,10 @@ textarea::placeholder{color:#bfbfbf}
   function toggleHandover(id) {
     var i = handoverSel.indexOf(id);
     if (i >= 0) handoverSel.splice(i, 1); else handoverSel.push(id);
+    handoverTouched = true; // 已操作选择框:即时校验(选空立即提示,重新选中立即消除)
     renderHandoverBox();
     renderHandoverList();
+    refreshHandoverErr();
   }
 
   $('handover-wrap').addEventListener('click', function (e) {
@@ -656,19 +679,30 @@ textarea::placeholder{color:#bfbfbf}
     }
   });
 
+  // 待办移交事项:修改即进入即时校验(清空立即提示,补全立即消除)
+  $('f-matters').addEventListener('input', function () {
+    handoverTouched = true;
+    refreshHandoverErr();
+  });
+
   $('btn-handover-ok').addEventListener('click', function () {
-    if (!handoverSel.length) { toast('请选择接班人员'); return; }
+    handoverTouched = true; // 点确认即进入校验展示态
+    if (!refreshHandoverErr()) return; // 必填未过:红框红字已展示,拦截提交
     var recordId = current && current.recordId;
     if (!recordId) { toast('缺少值班记录,无法交班'); return; }
     var btn = this;
+    handoverSubmitting = true;
     btn.disabled = true;
     submitHandover({ recordId: recordId, receiverIds: handoverSel.slice(), matters: $('f-matters').value.trim() }).then(function () {
+      handoverSubmitting = false;
       btn.disabled = false;
       hideOv('handover-ov');
       toast('交接班已确认');
       refreshToday();
     }).catch(function (err) {
+      handoverSubmitting = false;
       btn.disabled = false;
+      refreshHandoverErr(); // 按最新字段值恢复红态与按钮禁用联动
       toast(err.message);
     });
   });

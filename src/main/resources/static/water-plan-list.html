@@ -73,8 +73,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px 0;flex-shrink:0}
 .panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
-.panel-hd .hd-acts{display:flex;align-items:center;gap:8px}
-.hd-tip{font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
+.panel-hd .hd-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
 .panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
 
 /* ===== 控件 ===== */
@@ -102,6 +101,9 @@ textarea.field{height:auto;min-height:88px;padding:8px 12px;line-height:22px;res
 
 /* ===== 表格 ===== */
 .tbl-wrap{flex:1;min-height:0;overflow:auto;max-width:100%}
+/* 隐藏竖直滚动条（仍支持滚轮滚动），仅保留横向滚动条 */
+.tbl-wrap::-webkit-scrollbar:vertical{width:0}
+/* 主表格宽度只增不减（脚本 initTblGrowOnlyWidth 控制）：铺满可用宽度；页面收窄时宽度保持不动（不跟随缩，无容忍区间），由 .tbl-wrap 立即出现横向滚动条 */
 table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
 thead tr{background:var(--el-table-header-bg)}
 th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
@@ -299,7 +301,6 @@ td.empty:hover{background:transparent}
 
   <div class="panel">
     <div class="panel-hd">
-      <span class="hd-tip">计划周期按类型自动推导；同一用水户在同一计划中仅可出现一次；同类型周期重叠在「生效」时拦截，月度 / 旬度超年度计划水量仅提示。灌溉进度 = 未取消调度方案的闸口实测放水量合计 ÷ 计划总水量 × 100%；缺读数时显示「待补计量数据」，不能认定为零供水。</span>
       <div class="hd-acts">
         <button class="btn btn-primary" id="btn-add">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>新增计划
@@ -430,6 +431,7 @@ const ICON = {
   check: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.6"/><path d="M8.2 12.3l2.7 2.7 5-5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   archive: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 7.6h15v3h-15z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 10.6v7.4c0 .8.6 1.4 1.4 1.4h9.2c.8 0 1.4-.6 1.4-1.4v-7.4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 12.6v3.6M9.9 14.4l2.1 2.2 2.1-2.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   ban: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.6"/><path d="M6.6 6.6l10.8 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  eye: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2.6 12S6.2 5.6 12 5.6 21.4 12 21.4 12 17.8 18.4 12 18.4 2.6 12 2.6 12z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.7"/></svg>',
   empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
 
@@ -685,17 +687,18 @@ function progressCell(r) {
 
 function actsCell(r) {
   const id = esc(r.id);
-  let html = '';
+  // 查看为只读操作,所有状态均可用
+  let html = '<button class="lnk-btn" data-act="view" data-id="' + id + '" data-tip="查看" aria-label="查看">' + ICON.eye + '</button>';
   if (r.status === '#1#') {
-    html = '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="编辑" aria-label="编辑">' + ICON.pencil + '</button>' +
+    html += '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="编辑" aria-label="编辑">' + ICON.pencil + '</button>' +
       '<button class="lnk-btn" data-act="activate" data-id="' + id + '" data-tip="生效" aria-label="生效">' + ICON.check + '</button>' +
       '<button class="lnk-btn danger" data-act="del" data-id="' + id + '" data-tip="删除" aria-label="删除">' + ICON.trash + '</button>';
   } else if (r.status === '#2#') {
-    html = '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="调整计划水量 / 备注" aria-label="编辑">' + ICON.pencil + '</button>' +
+    html += '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="调整计划水量 / 备注" aria-label="编辑">' + ICON.pencil + '</button>' +
       '<button class="lnk-btn" data-act="archive" data-id="' + id + '" data-tip="归档" aria-label="归档">' + ICON.archive + '</button>' +
       '<button class="lnk-btn danger" data-act="void" data-id="' + id + '" data-tip="作废" aria-label="作废">' + ICON.ban + '</button>';
   }
-  return html || '<span class="sub">—</span>';
+  return html;
 }
 
 function renderTable() {
@@ -705,8 +708,8 @@ function renderTable() {
     return;
   }
   tb.innerHTML = S.records.map(r => {
-    const wan = fmtWan(r.totalWater);
-    const doneWan = fmtWan(r.doneQty);
+    const wan = (r.totalWater === null || r.totalWater === undefined) ? null : fmtNum(Number(r.totalWater) / 10000, 2);
+    const doneWan = (r.doneQty === null || r.doneQty === undefined) ? null : fmtNum(Number(r.doneQty) / 10000, 2);
     return '<tr data-key="' + esc(r.id) + '">' +
       '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.planName || '--') + '</span>' +
       '<span class="sub-line">' + esc((r.planNo || '') + (r.createdAtText ? ' · ' + r.createdAtText : '')) + '</span></td>' +
@@ -1075,7 +1078,7 @@ function itemRowHtml(it, i) {
       '<td><div class="sel m-sel-quota"></div></td>' +
       '<td class="m-calc">' + calcText + '</td>' +
       '<td>' + wanInput + '</td>' +
-      '<td><input class="m-in m-stage" maxlength="50" placeholder="可选" value="' + esc(it.stage) + '"></td>' +
+      '<td><input class="m-in m-stage" maxlength="50" placeholder="选填" value="' + esc(it.stage) + '"></td>' +
       '<td>' + reasonCell + '</td>' +
       '<td><button class="lnk-btn danger m-del" data-tip="删除行" aria-label="删除行">' + ICON.trash + '</button></td>';
   } else {
@@ -1320,8 +1323,8 @@ function renderView(d) {
   const done = Number(d.doneQty) || 0;
   const missing = Number(d.missingCnt) > 0;
   const pct = total > 0 ? Math.round(done / total * 100) : 0;
-  const wan = fmtWan(d.totalWater);
-  const doneWan = fmtWan(d.doneQty);
+  const wan = (d.totalWater === null || d.totalWater === undefined) ? null : fmtNum(Number(d.totalWater) / 10000, 2);
+  const doneWan = (d.doneQty === null || d.doneQty === undefined) ? null : fmtNum(Number(d.doneQty) / 10000, 2);
   const pairs = [
     ['编号', d.planNo],
     ['计划名称', d.planName],
@@ -1626,6 +1629,24 @@ function bindEvents() {
   selXun.onChange(() => { selXun.setError(false); refreshPeriod(); });
 
   await Promise.all([loadList(), loadGuarantee()]);
+})();
+
+/* 主表格宽度只增不减：初始与变宽时铺满可用宽度；页面收窄时表格宽度保持不动（一个像素都不跟随缩），
+   由 .tbl-wrap 立即出现横向滚动条。 */
+(function initTblGrowOnlyWidth() {
+  const wrap = document.querySelector('.tbl-wrap');
+  const tbl = wrap && wrap.querySelector('table');
+  if (!wrap || !tbl) return;
+  let highW = 0; // 铺满基准：见过的最大可用宽度（只增不减）
+  const sync = () => {
+    const avail = wrap.clientWidth;
+    if (avail <= 0 || avail <= highW) return; // 未超过历史最大宽度：宽度保持不动，交由横向滚动条
+    highW = avail;
+    tbl.style.width = avail + 'px'; // 铺满当前可用宽度
+  };
+  sync();
+  if (window.ResizeObserver) new ResizeObserver(sync).observe(wrap);
+  else window.addEventListener('resize', sync);
 })();
 </script>
 </body>

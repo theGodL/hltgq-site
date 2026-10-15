@@ -241,7 +241,7 @@ td.empty:hover{background:transparent}
 
 /* ===== 下拉组件（筛选 / 表单共用） ===== */
 .sel{position:relative}
-.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 12px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 16px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
 .sel-box:hover{border-color:var(--el-border-color-hover)}
 .sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
 .sel.is-err .sel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
@@ -256,16 +256,16 @@ td.empty:hover{background:transparent}
 .sel.is-disabled .sel-arrow{border-top-color:var(--el-text-color-disabled)}
 .sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
 .sel.open .sel-panel{display:block}
-.sel-search{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 16px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
 .sel-search[hidden]{display:none}
 .sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
 .sel-search input::placeholder{color:var(--el-text-color-placeholder)}
 .sel-list{max-height:274px;overflow-y:auto;padding:4px 0}
-.sel-opt{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt{height:36px;padding:0 16px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
 .sel-opt:hover{background:var(--el-fill-color-light)}
-.sel-opt.active{color:var(--el-color-primary)}
-.sel-opt .opt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sel-opt .opt-sub{margin-left:auto;flex-shrink:0;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt.active{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+.sel-opt .opt-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{flex-shrink:0;font-size:12px;color:var(--el-text-color-secondary)}
 .sel-opt .tick{flex-shrink:0;color:var(--el-color-primary)}
 .sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
 
@@ -424,7 +424,7 @@ td.empty:hover{background:transparent}
         </div>
         <div class="f-item span4">
           <label class="f-label">备注</label>
-          <textarea class="field" id="in-remark" maxlength="500" placeholder="可选，最多 500 字"></textarea>
+          <textarea class="field" id="in-remark" maxlength="500" placeholder="最多 500 字"></textarea>
           <div class="counter"><span id="remark-count">0</span>/500</div>
         </div>
       </div>
@@ -1531,7 +1531,7 @@ async function loadPickers() {
   }
   fltWh = createSelect($('f-warehouse'));
   fltWh.setOptions([{ value: '', label: '全部仓库' }].concat(
-    ((S.meta && S.meta.warehouses) || []).map(w => ({ value: w.id, label: w.name, sub: w.code || '' }))));
+    ((S.meta && S.meta.warehouses) || []).map(w => ({ value: w.id, label: w.name }))));
   fltWh.setPlaceholder('全部仓库');
   await loadPickers();
   fltDep = createSelect($('f-department')).setSearchable(true);

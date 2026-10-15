@@ -51,6 +51,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .ipt-icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:inline-flex;pointer-events:none}
 .range-wrap{position:relative;display:flex;align-items:center;height:36px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 36px 0 12px;transition:border-color .2s,box-shadow .2s}
 .range-wrap:focus-within{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.range-wrap.error,.range-wrap.error:focus-within{border-color:#ff4d4f;box-shadow:0 0 0 2px rgba(255,77,79,.1)}
+.time-error{display:none;margin-left:8px;font-size:12px;color:#ff4d4f}
+.time-error.show{display:inline}
 .range-input{flex:1;min-width:0;height:100%;border:0;outline:none;background:transparent;font-size:14px;font-family:inherit;color:#333;padding:0;cursor:pointer}
 .range-input::placeholder{color:#bfbfbf}
 .range-sep{flex-shrink:0;color:#d9d9d9;margin:0 8px;font-size:13px}
@@ -116,6 +119,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 /* 轻提示 */
 .toast{position:fixed;top:24px;left:50%;z-index:1500;padding:9px 18px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;box-shadow:0 6px 16px rgba(0,0,0,.12);font-size:14px;color:#333;opacity:0;pointer-events:none;transform:translate(-50%,-16px);transition:opacity .25s,transform .25s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* 分页条(表格下方,右对齐;本地切片每页 10 条) */
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:16px 0 0;gap:8px;flex-wrap:wrap}
+.pg-info{color:#333;font-size:13px;margin-right:4px}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-btn{min-width:32px;height:32px;padding:0 6px;border:1px solid #d9d9d9;background:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-family:inherit;color:#333;transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-btn:hover:not([disabled]):not(.active){border-color:#1677ff;color:#1677ff}
+.pg-btn.active{background:#fff;border-color:#1677ff;color:#1677ff}
+.pg-btn[disabled]{color:#bfbfbf;cursor:not-allowed}
+.pg-btn[data-pg="prev"],.pg-btn[data-pg="next"]{border-color:transparent;background:transparent;font-size:22px;color:#8c8c8c}
+.pg-btn[data-pg="prev"]:hover:not([disabled]),.pg-btn[data-pg="next"]:hover:not([disabled]){border-color:transparent;background:transparent;color:#1677ff}
+.pg-ellipsis{color:#bfbfbf;padding:0 2px;font-size:13px}
+.pg-jump{display:flex;align-items:center;gap:6px;font-size:13px;color:#333}
+.pg-jump input{width:52px;height:32px;border:1px solid #d9d9d9;border-radius:6px;text-align:center;font-size:13px;color:#333;background:#fff;outline:none;padding:0 8px;font-family:inherit}
+.pg-jump input:focus{border-color:#1677ff}
 </style>
 </head>
 <body>
@@ -144,6 +162,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     <tbody id="duty-tbody"></tbody>
   </table>
 
+  <!-- 分页条(本地切片,每页 10 条) -->
+  <div class="pg-bar" id="pg-bar"></div>
+
 </div>
 
 <!-- 值班排班抽屉(新增/编辑/查看共用) -->
@@ -156,7 +177,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   </button>
   <div class="drawer-bd">
     <div class="form-item">
-      <label>值班时间 <i class="req">*</i></label>
+      <label>班次 <i class="req">*</i></label>
+      <div class="select-wrap">
+        <input type="text" class="sel-input" id="f-shift" placeholder="白班/中班/夜班" readonly>
+        <span class="chev">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="sel-dd" id="shift-dd"></div>
+      </div>
+    </div>
+    <div class="form-item">
+      <label>值班时间 <i class="req">*</i><span class="time-error" id="time-error">结束时间需晚于开始时间</span></label>
       <div class="range-wrap">
         <input type="text" class="range-input" id="f-time-start" placeholder="开始时间" readonly>
         <span class="range-sep">—</span>
@@ -169,18 +202,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
           </svg>
         </span>
         <div class="cal-panel" id="cal-panel"></div>
-      </div>
-    </div>
-    <div class="form-item">
-      <label>班次 <i class="req">*</i></label>
-      <div class="select-wrap">
-        <input type="text" class="sel-input" id="f-shift" placeholder="白班/中班/夜班" readonly>
-        <span class="chev">
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </span>
-        <div class="sel-dd" id="shift-dd"></div>
       </div>
     </div>
     <div class="form-item">
@@ -264,7 +285,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   var API_BASE = '/hltgq-site/duty';
   var OPTIONS = { shifts: [], orgs: [], users: [] }; // 下拉数据源(shifts/orgs/users)
-  var LIST_DATA = [];                                // 排班列表当前数据
+  var LIST_DATA = [];                                // 排班列表当前数据(一次拉取,本地分页)
+  var PAGE = { page: 1, size: 10 };                  // 分页状态(当前页/每页条数)
   var memberIdMap = {};                              // 值班人员姓名 → 用户 id
   var redirected = false;
 
@@ -303,10 +325,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     });
   }
 
-  /** 排班列表(演示页取一页 100 条) */
+  /** 排班列表(一次拉取 100 条,分页在本地按每页 10 条切片) */
   function loadList() {
     return request(API_BASE + '/schedule/list?page=1&size=100').then(function (d) {
       LIST_DATA = (d && d.records) || [];
+      // 数据变少(如删除)时当前页可能越界,回退到末页
+      var totalPages = Math.max(1, Math.ceil(LIST_DATA.length / PAGE.size));
+      if (PAGE.page > totalPages) PAGE.page = totalPages;
       renderList();
     });
   }
@@ -384,9 +409,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   function renderList() {
     if (!LIST_DATA.length) {
       $('duty-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bfbfbf;padding:32px 0">暂无数据</td></tr>';
+      renderPager();
       return;
     }
-    $('duty-tbody').innerHTML = LIST_DATA.map(function (row) {
+    // 仅渲染当前页(每页 10 条)
+    var start = (PAGE.page - 1) * PAGE.size;
+    var rows = LIST_DATA.slice(start, start + PAGE.size);
+    $('duty-tbody').innerHTML = rows.map(function (row) {
       return '<tr>'
         + '<td>' + esc(timeRangeText(row)) + '</td>'
         + '<td>' + esc(row.shift || '-') + '</td>'
@@ -397,6 +426,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         + actionCell(row)
         + '</tr>';
     }).join('');
+    renderPager();
   }
 
   /* ===== 下拉通用 ===== */
@@ -486,25 +516,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   bindSearchSelect('f-leader', 'leader-dd', function () {
     return OPTIONS.users.map(function (u) { return { value: u.id, label: u.name }; });
   });
-  // 班次:选项来自接口字典(白班/中班/夜班);选中后按字典预填时间;历史班次名不在字典时并入显示
+  // 班次:选项来自接口字典(白班/中班/夜班);历史班次名不在字典时并入显示;切换班次不改动已填时间
   bindSingleSelect('f-shift', 'shift-dd', function () {
     var opts = OPTIONS.shifts.map(function (s) { return { value: s.code, label: s.label }; });
     var cur = $('f-shift').value.trim();
     if (cur && !opts.some(function (o) { return o.label === cur; })) opts.unshift({ value: '', label: cur });
     return opts;
-  }, function (code) {
-    var s = null;
-    OPTIONS.shifts.forEach(function (x) { if (x.code === code) s = x; });
-    if (!s) return;
-    // 日期沿用已选时间的日期(均未选则默认今天);结束时间为 24:00 时折算为次日 00:00
-    var base = ($('f-time-start').value || '').slice(0, 10)
-            || ($('f-time-end').value || '').slice(0, 10)
-            || todayStr();
-    if (s.defaultStart) setField('f-time-start', base + ' ' + s.defaultStart);
-    if (s.defaultEnd) {
-      if (s.defaultEnd === '24:00') setField('f-time-end', addDays(base, 1) + ' 00:00');
-      else setField('f-time-end', base + ' ' + s.defaultEnd);
-    }
   });
 
   /* ===== 多选(值班人员,框内直接输入搜索) ===== */
@@ -589,18 +606,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   /* ===== 值班时间选择(自绘日历面板) ===== */
   var calPanel = $('cal-panel');
+  var rangeWrap = document.querySelector('.range-wrap'); // 值班时间输入行(错误态描红/清除)
   var calTarget = null;        // 绑定输入框:f-time-start / f-time-end
   var calY, calM;              // 面板显示年月
   var calDate, calHh, calMm;   // 当前选择日期与时刻
 
+  /** 开始/结束先后校验:非法时输入框描红+标签旁错误文案,并禁用保存按钮(合法则清除);返回是否合法 */
+  function checkTimeOrder() {
+    var s = $('f-time-start').value;
+    var e = $('f-time-end').value;
+    var bad = !!(s && e && e <= s);
+    rangeWrap.classList.toggle('error', bad);
+    $('time-error').classList.toggle('show', bad);
+    $('btn-drawer-confirm').disabled = bad; // 非法时保存按钮置灰不可点
+    return !bad;
+  }
+
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
-  /** 打开面板:按输入框现有值初始化,无值则顺延(结束→取开始值,开始→今天当前时刻) */
+  /** 打开面板:按输入框现值初始化,无值则取今天当前时刻(不代填其它字段值,时间由用户自己选) */
   function openCal(inputId) {
     closeDd();
     calTarget = inputId;
     var v = $(inputId).value;
-    if (!v && inputId === 'f-time-end') v = $('f-time-start').value;
     if (!v) {
       var now = new Date();
       v = todayStr() + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes());
@@ -659,19 +687,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       return;
     }
     var day = e.target.closest('[data-day]');
-    if (day) { calDate = day.dataset.day; commitCal(); renderCal(); return; }
+    if (day) { calDate = day.dataset.day; commitCal(); checkTimeOrder(); renderCal(); return; }
     var step = e.target.closest('[data-step]');
     if (step) {
       var d = +step.dataset.d;
       if (step.dataset.step === 'hh') calHh = pad2((+calHh + d + 24) % 24);
       else calMm = pad2((+calMm + d * 5 + 60) % 60);
-      commitCal(); renderCal(); return;
+      commitCal(); checkTimeOrder(); renderCal(); return;
     }
     if (e.target.closest('[data-today]')) {
       calDate = todayStr();
       calY = +calDate.slice(0, 4);
       calM = +calDate.slice(5, 7);
-      commitCal(); renderCal();
+      commitCal(); checkTimeOrder(); renderCal();
     }
   });
 
@@ -686,6 +714,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     if (inp.dataset.kind === 'hh') calHh = pad2(n > 23 ? 23 : n);
     else calMm = pad2(n > 59 ? 59 : n);
     commitCal();
+    checkTimeOrder(); // 键盘改值同样实时同步红框与按钮状态
   });
   calPanel.addEventListener('focusout', function (e) {
     var inp = e.target.closest('input.cal-hm');
@@ -705,7 +734,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   });
   // 面板内点击会重渲染(innerHTML),e.target 脱离 DOM 后 closest 会失效误关面板;故用捕获阶段判断外部点击
   document.addEventListener('click', function (e) {
-    if (!e.target.closest('.range-wrap')) calPanel.classList.remove('open');
+    if (e.target.closest('.range-wrap')) return;
+    if (calPanel.classList.contains('open')) checkTimeOrder(); // 关闭面板时同步校验状态
+    calPanel.classList.remove('open');
   }, true);
 
   /* ===== 抽屉 ===== */
@@ -735,6 +766,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   /** 表单回显:d=null 为空表单;d 为详情对象(§3.3) */
   function fillForm(d) {
     calPanel.classList.remove('open');
+    rangeWrap.classList.remove('error');
+    $('time-error').classList.remove('show');
+    $('btn-drawer-confirm').disabled = false; // 重置保存按钮,避免残留禁用
     if (d) {
       setField('f-shift', d.shift);
       $('f-shift').dataset.value = d.shiftCode || '';
@@ -839,8 +873,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     var missing = validateForm();
     if (missing) { toast('请填写「' + missing + '」'); return; }
 
-    // 时段校验:结束时间须晚于开始时间(跨天值班请在日历面板中选择次日日期)
-    if ($('f-time-end').value <= $('f-time-start').value) { toast('结束时间需晚于开始时间'); return; }
+    // 时段校验:结束时间须晚于开始时间(报红+轻提示;跨天值班请在日历面板中选择次日日期)
+    if (!checkTimeOrder()) { toast('结束时间需晚于开始时间'); return; }
 
     var isEdit = drawerState.mode === 'edit';
     var payload = collectForm();
@@ -903,6 +937,70 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     var el = e.target.closest('.act');
     if (!el) return;
     handleAction(el.dataset.action, findRow(el.dataset.id));
+  });
+
+  /* ===== 分页(本地切片,每页 10 条) ===== */
+  /** 页码序列:≤7 页全显,否则 首…当前±1…末 */
+  function pageNumbers(cur, total) {
+    if (total <= 7) {
+      var all = [];
+      for (var i = 1; i <= total; i++) all.push(i);
+      return all;
+    }
+    var out = [1];
+    var start = Math.max(2, cur - 1);
+    var end = Math.min(total - 1, cur + 1);
+    if (start > 2) out.push('...');
+    for (var p = start; p <= end; p++) out.push(p);
+    if (end < total - 1) out.push('...');
+    out.push(total);
+    return out;
+  }
+
+  /** 渲染分页条:共 N 条 / ‹ 页码 › / 跳至 X 页 */
+  function renderPager() {
+    var totalPages = Math.max(1, Math.ceil(LIST_DATA.length / PAGE.size));
+    var html = '<span class="pg-info">共 ' + LIST_DATA.length + ' 条</span><div class="pg-btns">' +
+      '<button type="button" class="pg-btn" data-pg="prev"' + (PAGE.page <= 1 ? ' disabled' : '') + '>‹</button>';
+    pageNumbers(PAGE.page, totalPages).forEach(function (p) {
+      html += p === '...'
+        ? '<span class="pg-ellipsis">···</span>'
+        : '<button type="button" class="pg-btn' + (p === PAGE.page ? ' active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+    });
+    html += '<button type="button" class="pg-btn" data-pg="next"' + (PAGE.page >= totalPages ? ' disabled' : '') + '>›</button></div>' +
+      '<span class="pg-jump">跳至<input type="text" id="pg-jump" inputmode="numeric" aria-label="跳至页码"' +
+      ' value="' + PAGE.page + '" autocomplete="off">页</span>';
+    $('pg-bar').innerHTML = html;
+  }
+
+  /** 跳页:解析输入并夹取到有效范围后重渲染;无效输入恢复当前页显示 */
+  function jumpToPage(val) {
+    var totalPages = Math.max(1, Math.ceil(LIST_DATA.length / PAGE.size));
+    var n = parseInt(String(val).trim(), 10);
+    var target = isNaN(n) ? PAGE.page : Math.min(totalPages, Math.max(1, n));
+    if (target !== PAGE.page) {
+      PAGE.page = target;
+      renderList();
+    } else {
+      renderPager(); // 恢复输入框显示为实际页码
+    }
+  }
+
+  $('pg-bar').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-pg]');
+    if (!btn || btn.disabled) return;
+    var totalPages = Math.max(1, Math.ceil(LIST_DATA.length / PAGE.size));
+    var v = btn.dataset.pg;
+    if (v === 'prev') PAGE.page = Math.max(1, PAGE.page - 1);
+    else if (v === 'next') PAGE.page = Math.min(totalPages, PAGE.page + 1);
+    else PAGE.page = Number(v);
+    renderList();
+  });
+  $('pg-bar').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target && e.target.id === 'pg-jump') {
+      e.preventDefault();
+      jumpToPage(e.target.value);
+    }
   });
 
   /* ===== 初始化:加载下拉选项 / 排班列表 ===== */
