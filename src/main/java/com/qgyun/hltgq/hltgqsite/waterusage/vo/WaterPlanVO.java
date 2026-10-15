@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * 用水计划（列表行 / 详情共用）。
- * <p>userCount（用水户数，明细 DISTINCT 用水户）由列表查询计算；
+ * <p>userCount（用水户数，明细 DISTINCT 用水户）由列表 / 详情同一表达式计算；
  * doneQty / missingCnt 为服务层按未取消调度方案的闸口实测计量装配（{@code WaterUsageMeter}）：
  * 灌溉进度 = doneQty ÷ totalWater（前端动态计算）；缺读数时不能认定为零供水（前端展示「待补计量数据」）。
  */
@@ -62,8 +62,11 @@ public class WaterPlanVO {
     /** 备注（可空；已生效计划受限编辑中仍可修改） */
     private String remark;
 
-    /** 作废人（作废时记录） */
+    /** 作废人（平台用户 id，审计追溯用；展示请读 {@link #voidByName}） */
     private String voidBy;
+
+    /** 作废人姓名（关联平台用户表解析；id 解析不到（已删用户 / 会话兜底账号）时为 null，前端退回展示 voidBy） */
+    private String voidByName;
 
     /** 作废时间（yyyy-MM-dd HH:mm） */
     private String voidAt;

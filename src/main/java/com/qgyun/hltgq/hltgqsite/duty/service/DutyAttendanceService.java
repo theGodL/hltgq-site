@@ -35,13 +35,15 @@ import java.util.Map;
 
 /**
  * 值班交接班服务（值班交接班页：#7 当前值班四态、#8 开始值班、#9 填写报告、#10 交班、#11 今日动态、#12 取号）。
- * <p>签到按人（2026-10 改造）：首位签到人创建班记录（本人签到位随首签落库），同班其余人各自补签；
- * 本人未签到不判定为值班中（显示待签到），领导签到落 leader_checkin_at、值班人员落本人 rel 行 checkin_at。
- * <p>判定顺序：在途未签到（待签到）→ 我的待值班排班（未开始）→ 我的已签到记录（值班中）→ 今日交班的已完成记录 → 无安排（在途查询限班次时间与今日相交的班）；
+ * <p>记录按人（2026-10 二次改造）：值班记录 = 一个人的值班记录——每人签到各自生成一条记录（归属人 ahygpx），
+ * 报告写各自的记录（互不可见互不覆盖）；一次交班全班记录一并收口（同班组批量置 #3# + 一条交接班记录）。
+ * 改造前历史记录（ahygpx 为空）不可报告/交班，其参与人按排班维度回到「待签到」各自签到生成自己的记录；
+ * 历史班组随任一收口一并关闭，展示回退 rel 人员。
+ * <p>判定顺序：我的在途记录（值班中）→ 我的在途排班（待签到）→ 我的待值班排班（未开始）→ 今日交班的已完成记录 → 无安排；
  * 记录与排班无外键，靠「单位 + 班次起止时间」精确匹配回查（失败降级同单位同日，再失败跳过联动 + warn）；
  * 编号生成：ZBJL-{值班日期}-{NN} / JJB-{交班当天}-{NN}（查当日前缀 + Java 解析最大序号；
  * 取号接口（契约 §3.8）与签到/交班同源，数据库事务级建议锁 + 进程内互斥防并发重号，
- * 签到并发幂等（双签双建记录）由同一事务级建议锁串行化）。
+ * 签到并发幂等（重复点击/双端并发）由同一事务级建议锁 + 归属人查重串行化）。
  */
 @Service
 public class DutyAttendanceService {
@@ -66,14 +68,14 @@ public class DutyAttendanceService {
     // ==================== #7 当前值班（四态） ====================
 
     /**
-     * 当前值班卡片（判定顺序，签到按人）：
-     * ① 在途班（班次时间与今日相交）已由同班他人开始、本人未签到 → notstarted（badge「待签到」，引导本人补签）；
-     * ② 我的待值班排班（#zzkl#/#1# 且班次时间与今日相交）→ notstarted；
-     * ③ 我的已签到 #2# 记录（与今日相交）→ ongoing（附 myCheckinAt 本人签到时间）；
-     * ④ 今日交班的我的 #3# 记录 → completed；⑤ none。
+     * 当前值班卡片（判定顺序，记录按人）：
+     * ① 我的在途 #2# 记录（归属人 = 我、班次时间与今日相交）→ ongoing（附 myCheckinAt = 本人签到时间，
+     *    即 jlailj）+ receiverCandidates（下一班接班人员候选，供交班弹窗默认选中）；
+     * ② 我的在途排班（#cmiu# 且班次时间与今日相交，我尚未生成自己的记录）→ notstarted（badge「待签到」，引导签到）；
+     * ③ 我的待值班排班（#zzkl#/#1# 且班次时间与今日相交）→ notstarted（badge「未开始」）；
+     * ④ 今日交班的我的 #3# 记录（含历史班记录回退匹配）→ completed；⑤ none。
      * <p>同一天多条并存（如白班在途未签 + 晚班待值班）时优先返回待签到，登录提醒先弹「去签到」；
-     * 本人未签到不显示「值班中」，签到后按判定顺序自然流转。
-     * <p>ongoing 额外返回 receiverCandidates（下一班接班人员候选，供交班弹窗默认选中）。
+     * 签到后按判定顺序自然流转为「值班中」。
      */
     public Map<String, Object> today() {
         UserContext user = UserContextHolder.currentUser();
@@ -84,21 +86,21 @@ public class DutyAttendanceService {
         LocalDate today = LocalDate.now();
         String dayStart = today.toString();
         String dayEnd = today.plusDays(1).toString();
-        AttendanceRecordRowVO unsigned = mapper.selectUnsignedOngoingRecord(userId, dayStart, dayEnd);
-        if (unsigned != null) {
-            return buildRecordCard(unsigned, "notstarted", "待签到", matchScheduleId(unsigned));
-        }
-        ScheduleRowVO pending = scheduleMapper.selectMyPendingTodaySchedule(userId, dayStart, dayEnd);
-        if (pending != null) {
-            return buildNotstarted(pending);
-        }
         AttendanceRecordRowVO ongoing = mapper.selectOngoingRecord(userId, dayStart, dayEnd);
         if (ongoing != null) {
             String scheduleId = matchScheduleId(ongoing);
             Map<String, Object> out = buildRecordCard(ongoing, "ongoing", "值班中", scheduleId);
-            out.put("myCheckinAt", DutySupport.fmtMinute(mapper.selectMyCheckinRaw(ongoing.getId(), userId)));
+            out.put("myCheckinAt", DutySupport.fmtMinute(ongoing.getActualStartRaw()));
             out.put("receiverCandidates", receiverCandidates(ongoing, scheduleId));
             return out;
+        }
+        ScheduleRowVO onDuty = scheduleMapper.selectMyOngoingSchedule(userId, dayStart, dayEnd);
+        if (onDuty != null) {
+            return buildNotstarted(onDuty, "待签到");
+        }
+        ScheduleRowVO pending = scheduleMapper.selectMyPendingTodaySchedule(userId, dayStart, dayEnd);
+        if (pending != null) {
+            return buildNotstarted(pending, "未开始");
         }
         AttendanceRecordRowVO completed = mapper.selectCompletedTodayRecord(userId, dayStart, dayEnd);
         if (completed != null) {
@@ -128,21 +130,15 @@ public class DutyAttendanceService {
     // ==================== #8 开始值班（签到） ====================
 
     /**
-     * 开始值班（签到）：传 recordId 时走记录维度补签（见 {@link #startByRecord}，待签到子形态排班不可反查时的直达入口）；
-     * 否则按排班开始——校验排班存在、<b>本人为本班带班领导或值班人员</b>（非本班人员 409）→
-     * 事务级建议锁内幂等检查（已有值班中记录则仅补写本人签到位，重复点击不重复创建、并发不双建）→
-     * 状态闸门（仅未开始/待值班可创建，已完成/已开始 409）→
-     * 生成 ZBJL 编号并创建记录（本人签到位随首签落库，其余成员待各自补签）→ 排班置值班中 + H5 提醒标记。
-     * <p>签到按人：领导落主表 leader_checkin_at、值班人员落本人 rel 行 checkin_at；
-     * 补签复用既有记录（幂等命中返回原编号），不区分“开始”与“补签”动作。
+     * 开始值班（签到）：校验排班存在、<b>本人为本班带班领导或值班人员</b>（非本班人员 409）→
+     * 事务级建议锁内签到幂等检查（本人已有该排班在途记录则直接复用返回，重复点击/并发不重复创建）→
+     * 状态闸门（仅已完成 #qavx# 拒绝；值班中 #cmiu# 允许同班后来者签到）→
+     * 生成 ZBJL 编号并为本人创建记录（归属人 = 本人；领导本人签到则带班领导 = 本人）→ 排班置值班中 + H5 提醒标记。
+     * <p>记录按人：同一排班内每人各签各的记录、各填各的报告，互不影响。
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> start(AttendanceStartRequest request) {
         String operator = DutySupport.requireOperator();
-        String startRecordId = DutySupport.trim(request == null ? null : request.getRecordId());
-        if (startRecordId != null) {
-            return startByRecord(startRecordId, operator);
-        }
         String scheduleId = DutySupport.requireText(request == null ? null : request.getScheduleId(),
                 "排班 id 不能为空");
         ScheduleRowVO row = scheduleMapper.selectScheduleRow(scheduleId);
@@ -152,30 +148,23 @@ public class DutyAttendanceService {
         List<String> memberIds = scheduleMapper.selectMemberIds(scheduleId);
         boolean isLeader = operator.equals(DutySupport.trim(row.getLeaderId()));
         if (!isLeader && !memberIds.contains(operator)) {
-            throw new DutyConflictException("仅本班带班领导或值班人员可开始值班");
+            throw new DutyConflictException("仅本班带班领导或值班人员可签到");
         }
         String dutyDate = DutySupport.fmtDate(row.getDutyDateRaw());
         String startRaw = DutySupport.trim(row.getTneakpMinRaw());
         String endRaw = DutySupport.trim(row.getTneakpMaxRaw());
         mapper.lockDutyNoSerial();
-        String existingId = mapper.selectOngoingIdBySchedule(row.getOrgId(), startRaw, endRaw, dutyDate,
+        String existingId = mapper.selectMyOngoingIdBySchedule(row.getOrgId(), startRaw, endRaw, dutyDate,
                 operator);
-        LocalDateTime now = LocalDateTime.now();
         if (existingId != null) {
-            // 同班补签：记录已由同班他人创建，仅补写本人签到位（领导列/成员 rel 行按条件更新，幂等无害）
-            mapper.updateLeaderCheckin(existingId, operator, now);
-            mapper.updateMemberCheckin(existingId, operator, now);
+            // 我已签到：幂等复用本人记录（重复点击/并发重复提交不重复创建）
             return startResult(mapper.selectRecordRow(existingId));
         }
         if (DutySupport.SCHEDULE_STATUS_COMPLETED.equals(row.getStatusCode())) {
-            throw new DutyConflictException("该排班已完成，无法开始值班");
-        }
-        if (row.getStatusCode() != null
-                && !DutySupport.SCHEDULE_STATUS_NOT_STARTED.equals(row.getStatusCode())
-                && !DutySupport.SCHEDULE_STATUS_WAITING.equals(row.getStatusCode())) {
-            throw new DutyConflictException("该排班已开始值班");
+            throw new DutyConflictException("该排班已完成，无法签到");
         }
 
+        LocalDateTime now = LocalDateTime.now();
         String recordNo = nextRecordNo(dutyDate);
         String recordId = shortIdGenerator.nextUUID(null);
         String shiftTimeText = DutySupport.fmtShiftTime(row.getTneakpMinRaw(), row.getTneakpMaxRaw());
@@ -184,14 +173,7 @@ public class DutyAttendanceService {
                 DutySupport.parseTs(row.getDutyDateRaw()),
                 DutySupport.parseTs(row.getTneakpMinRaw()),
                 DutySupport.parseTs(row.getTneakpMaxRaw()),
-                row.getOrgId(), row.getLeaderId(), now, shiftTimeText, orgName,
-                isLeader ? now : null);
-        int order = 1;
-        for (String memberId : memberIds) {
-            mapper.insertRecordMember(shortIdGenerator.nextUUID(null), recordId, memberId,
-                    String.valueOf(order++), corpCode, now, operator,
-                    memberId.equals(operator) ? now : null);
-        }
+                row.getOrgId(), row.getLeaderId(), operator, now, shiftTimeText, orgName);
         scheduleMapper.markScheduleOnDuty(scheduleId, operator, now);
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -201,33 +183,11 @@ public class DutyAttendanceService {
         return out;
     }
 
-    /**
-     * 记录维度补签（recordId 直达）：待签到子形态无排班可反查（历史记录单位/时间新列为空）时的补签兜底。
-     * 校验记录存在（400）、本人为本班参与人（409）、记录处于值班中（409）；
-     * 仅幂等补写本人签到位（领导列/成员 rel 行按条件更新），不生成编号、不改排班状态。
-     */
-    private Map<String, Object> startByRecord(String recordId, String operator) {
-        AttendanceRecordRowVO rec = mapper.selectRecordRow(recordId);
-        if (rec == null) {
-            throw new IllegalArgumentException("值班记录不存在");
-        }
-        if (!isRecordParticipant(rec, operator)) {
-            throw new DutyConflictException("仅本班带班领导或值班人员可开始值班");
-        }
-        if (!DutySupport.RECORD_STATUS_ON_DUTY.equals(rec.getStatusCode())) {
-            throw new DutyConflictException("当前记录不在值班中，无法签到");
-        }
-        LocalDateTime now = LocalDateTime.now();
-        mapper.updateLeaderCheckin(recordId, operator, now);
-        mapper.updateMemberCheckin(recordId, operator, now);
-        return startResult(mapper.selectRecordRow(recordId));
-    }
-
     // ==================== #9 填写值班报告 ====================
 
     /**
-     * 填写报告（提交字段更新：未提交或为空的字段保持原值；<b>本人为本班带班领导或值班人员</b>（非本班 409）；
-     * 记录非值班中 409；events/summary 至少一项非空、综述 ≤800 字）。
+     * 填写报告（提交字段更新：个人记录版——<b>仅记录归属人（ahygpx）可写本人报告</b>，
+     * 各人报告互不可见互不覆盖；非归属人 409）；记录非值班中 409；events/summary 至少一项非空、综述 ≤800 字。
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> report(AttendanceReportRequest request) {
@@ -238,8 +198,8 @@ public class DutyAttendanceService {
         if (row == null) {
             throw new IllegalArgumentException("值班记录不存在");
         }
-        if (!isRecordParticipant(row, operator)) {
-            throw new DutyConflictException("仅本班带班领导或值班人员可填写值班报告");
+        if (!operator.equals(DutySupport.trim(row.getMemberId()))) {
+            throw new DutyConflictException("仅记录归属人可填写本人值班报告");
         }
         if (!DutySupport.RECORD_STATUS_ON_DUTY.equals(row.getStatusCode())) {
             throw new DutyConflictException("当前记录不在值班中，无法填写报告");
@@ -264,10 +224,11 @@ public class DutyAttendanceService {
     // ==================== #10 交班（核心事务） ====================
 
     /**
-     * 交班（单事务）：① 校验本人为本班带班领导或值班人员（非本班 409）、接班人员存在性（400）；
-     * ② 记录写实际交班时间 + #3#；
-     * ③ 生成 JJB 编号并创建交接班记录（原班次时间/单位取自记录，交班人员=本班值班人员，
-     * 接班人员=receiverIds，待办=matters）；④ 本班排班置已完成；
+     * 交班（单事务）：① 校验本人为记录归属人（ahygpx；非归属人 409）、记录在途（#2#）、接班人员存在性（400）；
+     * ② 全班收口：同单位 + 班次起止时间的在途记录组（排班无班次时间降级同单位 + 值班日期）
+     * 一并置 #3#、写同一交班时间（含改造前历史班记录；任一人发起即全班收口，其余人再交班 409）；
+     * ③ 生成 JJB 编号并创建交接班记录（原班次时间/单位取自记录，交班人员 = 组内各记录归属人
+     * （历史记录回退 rel 人员），接班人员 = receiverIds，待办 = matters）；④ 本班排班置已完成；
      * ⑤ 同单位下一班未开始排班置待值班（无下一班跳过）。
      */
     @Transactional(rollbackFor = Exception.class)
@@ -279,8 +240,8 @@ public class DutyAttendanceService {
         if (rec == null) {
             throw new IllegalArgumentException("值班记录不存在");
         }
-        if (!isRecordParticipant(rec, operator)) {
-            throw new DutyConflictException("仅本班带班领导或值班人员可交班");
+        if (!operator.equals(DutySupport.trim(rec.getMemberId()))) {
+            throw new DutyConflictException("仅记录归属人可发起交班");
         }
         if (DutySupport.RECORD_STATUS_COMPLETED.equals(rec.getStatusCode())) {
             throw new DutyConflictException("该记录已完成交班");
@@ -296,8 +257,25 @@ public class DutyAttendanceService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        int updated = mapper.updateRecordHandover(recordId, operator, now);
-        if (updated == 0) {
+        String orgId = DutySupport.trim(rec.getOrgId());
+        String startRaw = DutySupport.trim(rec.getShiftMinRaw());
+        String endRaw = DutySupport.trim(rec.getShiftMaxRaw());
+        String dutyDate = DutySupport.fmtDate(rec.getDutyDateRaw());
+        List<String> fromIds;
+        int closed;
+        if (orgId == null) {
+            // 记录无单位信息无法按班组收口：单条兜底（历史脏数据场景）
+            fromIds = new ArrayList<>();
+            String owner = DutySupport.trim(rec.getMemberId());
+            if (owner != null) {
+                fromIds.add(owner);
+            }
+            closed = mapper.updateRecordHandover(recordId, operator, now);
+        } else {
+            fromIds = mapper.selectGroupMemberIds(orgId, startRaw, endRaw, dutyDate);
+            closed = mapper.updateGroupHandover(orgId, startRaw, endRaw, dutyDate, operator, now);
+        }
+        if (closed == 0) {
             throw new DutyConflictException("该记录已完成交班");
         }
         String handoverNo = nextHandoverNo(now.toLocalDate());
@@ -305,9 +283,9 @@ public class DutyAttendanceService {
         String matters = DutySupport.trim(request.getMatters());
         mapper.insertHandover(handoverId, corpCode, operator, now, handoverNo,
                 DutySupport.parseTs(rec.getShiftMinRaw()), DutySupport.parseTs(rec.getShiftMaxRaw()),
-                DutySupport.trim(rec.getOrgId()), now, matters);
+                orgId, now, matters);
         int fromOrder = 1;
-        for (String fromId : mapper.selectRecordMemberIds(recordId)) {
+        for (String fromId : fromIds) {
             mapper.insertHandoverFromMember(shortIdGenerator.nextUUID(null), handoverId, fromId,
                     String.valueOf(fromOrder++), corpCode, now, operator);
         }
@@ -350,7 +328,7 @@ public class DutyAttendanceService {
     // ==================== #11 今日交接班动态（时间线） ====================
 
     /**
-     * 今日动态时间线：已交班（当日 kwzwga）+ 值守中（当日 #2# 记录）+ 待交接（当日 #zzkl#
+     * 今日动态时间线：已交班（当日 kwzwga）+ 值守中（当日 #2# 记录按班组聚合一行）+ 待交接（当日 #zzkl#
      * 或已到点未开始 #1# 排班），合并后按时刻升序（同刻保持类型收集序）。
      */
     public Map<String, Object> timeline(String date) {
@@ -446,7 +424,7 @@ public class DutyAttendanceService {
         return out;
     }
 
-    /** 记录卡片（ongoing/completed 共用）：展示字段 + 反查排班 id。 */
+    /** 记录卡片（ongoing/completed 共用）：展示字段 + 反查排班 id；成员展示优先归属人（新记录），历史记录回退 rel 聚合。 */
     private Map<String, Object> buildRecordCard(AttendanceRecordRowVO rec, String status, String badge,
                                                 String scheduleId) {
         String shiftCode = null;
@@ -466,18 +444,22 @@ public class DutyAttendanceService {
         out.put("shiftTime", shiftTimeText(rec.getShiftMinRaw(), rec.getShiftMaxRaw(), rec.getLegacyShift()));
         out.put("org", rec.getOrgName() != null ? rec.getOrgName() : rec.getLegacyUnit());
         out.put("leader", rec.getLeaderName());
-        out.put("members", rec.getMembersRaw());
+        out.put("members", rec.getMemberName() != null ? rec.getMemberName() : rec.getMembersRaw());
+        out.put("events", rec.getEvents());
         out.put("summary", rec.getSummary());
         out.put("actualStart", DutySupport.fmtMinute(rec.getActualStartRaw()));
         out.put("actualEnd", DutySupport.fmtMinute(rec.getActualEndRaw()));
         return out;
     }
 
-    /** 未开始卡片（我的排班；scheduleId 供「开始值班」使用）。 */
-    private Map<String, Object> buildNotstarted(ScheduleRowVO sched) {
+    /**
+     * 未开始卡片（我的排班；scheduleId 供签到使用）：badge「未开始」（待值班→开始值班）/
+     * 「待签到」（排班已在途、我尚未签到→去签到）。
+     */
+    private Map<String, Object> buildNotstarted(ScheduleRowVO sched, String badge) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("status", "notstarted");
-        out.put("badge", "未开始");
+        out.put("badge", badge);
         out.put("scheduleId", sched.getId());
         out.put("date", DutySupport.fmtDate(sched.getDutyDateRaw()));
         out.put("shift", DutySupport.shiftLabel(sched.getShiftCode()));
@@ -565,14 +547,6 @@ public class DutyAttendanceService {
             }
         }
         return nameById;
-    }
-
-    /** 是否为记录参与人（带班领导或值班人员；报告/交班操作权限校验用）。 */
-    private boolean isRecordParticipant(AttendanceRecordRowVO rec, String operator) {
-        if (operator.equals(DutySupport.trim(rec.getLeaderId()))) {
-            return true;
-        }
-        return mapper.selectRecordMemberIds(rec.getId()).contains(operator);
     }
 
     /**

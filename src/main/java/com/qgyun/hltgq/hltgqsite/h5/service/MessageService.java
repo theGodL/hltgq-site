@@ -18,6 +18,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,11 +29,13 @@ import java.util.stream.Collectors;
  * <p>同步模型（无定时任务）：summary/page 被调用时按规则把当前登录人可见消息补建为接收记录
  * （未读 #1#，NOT EXISTS 幂等绝不重复），阅读后 UPDATE 已读 #2#；
  * 可见性规则：前三类按规则表（无规则全员可见，有规则任一命中即可见，#user# 匹配 login_name，
- * #org#/#position#/#role# 匹配用户所属编码，角色仅直接指派）；
- * 值班提醒（#4#）不走规则表，定向同步：带班领导（alidpq）= 当前登录人 或 值班人员多选列（cogxjx）命中当前登录人，
- * 且排班已进入「值班中」（peuzwi=#cmiu#，即已点击开始值班）、提醒状态未提醒、值班日期不早于昨日；
- * 模型计算（#5#）不走规则表，定向同步：方案提交人 created_by = 当前登录人且已完成的方案
- * （系统预跑/恢复任务 created_by 为固定账号，天然不产生消息）。
+ * #org#/#position#/#role# 匹配用户所属编码，角色仅直接指派）；告警再叠加站点范围（规则 site_id 空=不限站点，
+ * 命中多条规则合并站点、任一为空即不限）；
+ * 值班提醒（#4#）定向同步 + 规则附加接收人：带班领导（alidpq）= 当前登录人 或 值班人员（关系表 cogxjx_rel）
+ * 命中当前登录人，且排班已进入「值班中」（peuzwi=#cmiu#，即已点击开始值班）、提醒状态未提醒、值班日期不早于昨日；
+ * 命中值班规则的配置对象额外收到近两日值班中的排班提醒（非本人班次，列表 dutyRole=receiver）；
+ * 模型计算（#5#）定向同步 + 规则附加接收人：方案提交人 created_by = 当前登录人且已完成的方案
+ * （系统预跑/恢复任务 created_by 为固定账号，天然不产生消息）；命中模型规则的配置对象额外收到近 7 天完成的方案通知。
  * <p>已读口径：接收记录 is_read=#2#；告警类再叠加业务状态过滤（已关闭告警不计未读）。
  */
 @Service
@@ -66,9 +69,9 @@ public class MessageService {
             {"#1#", "未开始"}, {"#zzkl#", "待值班"}, {"#cmiu#", "值班中"}, {"#qavx#", "已完成"}
     };
 
-    /** 值班角色编码 → 权威名称（本人在该班次中的身份） */
+    /** 值班角色编码 → 权威名称（本人在该班次中的身份；receiver 为规则附加接收人） */
     private static final String[][] DUTY_ROLE_LABELS = {
-            {"leader", "带班领导"}, {"staff", "值班人员"}
+            {"leader", "带班领导"}, {"staff", "值班人员"}, {"receiver", "接收人"}
     };
 
     /** 模型计算模块编码 → 权威名称（消息行 module/moduleLabel） */
@@ -198,8 +201,8 @@ public class MessageService {
     }
 
     /**
-     * 按需同步：把当前登录人可见的三类消息补建为未读接收记录。
-     * <p>Redis SETNX 防抖（窗口内重复调用跳过）；可见性规则命中才补建；
+     * 按需同步：把当前登录人可见的消息补建为未读接收记录（前三类按规则可见；值班/模型原有定向 + 规则附加接收人）。
+     * <p>Redis SETNX 防抖（窗口内重复调用跳过）；规则命中或定向条件命中才补建；
      * NOT EXISTS 幂等保证已建记录（含已读过的）绝不重复、绝不回滚。
      * <p>维度按需查询：仅查询规则实际涉及的维度（无岗位规则不查岗位表，避免无关 SQL 报错影响同步）；
      * 同步异常降级为日志（消息接口可用性优先），并释放防抖 key 允许下次调用立即重试。
@@ -234,26 +237,36 @@ public class MessageService {
             List<String> positionCodes = ruleDims.contains("#position#") ? queryMapper.selectPositionCodesByUserId(userId) : null;
             List<String> roleCodes = ruleDims.contains("#role#") ? queryMapper.selectRoleCodesByUserId(userId) : null;
 
-            boolean alertVisible = visible(rulesByType.get("#1#"), loginName, deptCodes, positionCodes, roleCodes);
+            // 告警：可见性与站点范围一次解析（该类无规则=全员可见且不限站点）
+            AlertScope alertScope = resolveAlertScope(rulesByType.get("#1#"), loginName, deptCodes, positionCodes, roleCodes);
             boolean complaintVisible = visible(rulesByType.get("#2#"), loginName, deptCodes, positionCodes, roleCodes);
             boolean suggestionVisible = visible(rulesByType.get("#3#"), loginName, deptCodes, positionCodes, roleCodes);
-            int alertRows = alertVisible ? queryMapper.syncAlertReceives(userId) : 0;
+            int alertRows = alertScope.visible ? queryMapper.syncAlertReceives(userId, alertScope.siteIds) : 0;
             int complaintRows = complaintVisible ? queryMapper.syncComplaintReceives(userId) : 0;
             int suggestionRows = suggestionVisible ? queryMapper.syncSuggestionReceives(userId) : 0;
-            // 值班提醒不走规则表：带班领导（alidpq）与值班人员（cogxjx）两条定向；
+            // 值班提醒：带班领导（alidpq）与值班人员（关系表）两条原有定向；
             // 仅排班已进入「值班中」（点击开始值班后）才提醒；日期下限取昨日，覆盖跨天夜班
             String since = LocalDate.now().minusDays(1).toString();
             int dutyRows = queryMapper.syncDutyReceives(userId, since);
             // 值班人员侧两种可选存储形态（主表多选列 / 关系中间表），命中哪种由日志判别
             int dutyStaffColRows = syncDutyStaffByColumn(userId, since);
             int dutyStaffRelRows = syncDutyStaffByRel(userId, since);
-            if (dutyRows == 0 && dutyStaffColRows == 0 && dutyStaffRelRows == 0) {
+            // 值班规则附加接收人：命中规则的对象额外收到近两日值班中的排班提醒（非本人班次）
+            boolean dutyExtra = anyRuleHit(rulesByType.get("#4#"), loginName, deptCodes, positionCodes, roleCodes);
+            int dutyRuleRows = dutyExtra ? queryMapper.syncDutyRuleReceives(userId, since) : 0;
+            if (dutyRows == 0 && dutyStaffColRows == 0 && dutyStaffRelRows == 0 && dutyRuleRows == 0) {
                 logDutyDiag(userId);
             }
-            // 模型计算定向到方案提交人本人，不走规则表；仅已完成方案（系统预跑/恢复任务天然不匹配）
+            // 模型计算：方案提交人本人原有定向；仅已完成方案（系统预跑/恢复任务天然不匹配）
             int modelCalcRows = queryMapper.syncModelCalcReceives(userId);
-            log.info("h5 message sync done: userId={}, loginName={}, alertVisible={} rows={}, complaintVisible={} rows={}, suggestionVisible={} rows={}, duty leader={}, duty staffCol={}, duty staffRel={}, modelCalc={}",
-                    userId, loginName, alertVisible, alertRows, complaintVisible, complaintRows, suggestionVisible, suggestionRows, dutyRows, dutyStaffColRows, dutyStaffRelRows, modelCalcRows);
+            // 模型规则附加接收人：命中规则的对象额外收到近 7 天完成的方案通知
+            boolean modelExtra = anyRuleHit(rulesByType.get("#5#"), loginName, deptCodes, positionCodes, roleCodes);
+            int modelRuleRows = modelExtra
+                    ? queryMapper.syncModelCalcRuleReceives(userId, LocalDate.now().minusDays(7).toString()) : 0;
+            log.info("h5 message sync done: userId={}, loginName={}, alertVisible={} sites={} rows={}, complaintVisible={} rows={}, suggestionVisible={} rows={}, duty leader={}, duty staffCol={}, duty staffRel={}, duty rule={}, modelCalc={}, modelCalcRule={}",
+                    userId, loginName, alertScope.visible, alertScope.siteIds == null ? "不限" : alertScope.siteIds.size(),
+                    alertRows, complaintVisible, complaintRows, suggestionVisible, suggestionRows,
+                    dutyRows, dutyStaffColRows, dutyStaffRelRows, dutyRuleRows, modelCalcRows, modelRuleRows);
         } catch (Exception e) {
             log.error("h5 message sync failed: userId={}", userId, e);
             try {
@@ -281,7 +294,8 @@ public class MessageService {
 
     /**
      * 值班人员侧补建·关系中间表形态（独立降级）：关系表 rel_id = 当前登录人时补建。
-     * <p>表名按同型关系表命名规律推得，未经库实测；不存在时仅告警（不影响其它定向）。
+     * <p>2026-10 值班管理读写实证该关系表为本系统实际存储形态（分页 dutyRole 判定同源）；
+     * 异常时仅告警（不影响其它定向）。
      */
     private int syncDutyStaffByRel(String userId, String since) {
         try {
@@ -310,41 +324,81 @@ public class MessageService {
         if (typeRules == null || typeRules.isEmpty()) {
             return true;
         }
+        return anyRuleHit(typeRules, loginName, deptCodes, positionCodes, roleCodes);
+    }
+
+    /** 任一规则命中（附加接收人语义：无规则=false，与 visible 的「无规则=全员」相反） */
+    private boolean anyRuleHit(List<MessageRule> typeRules, String loginName,
+                               List<String> deptCodes, List<String> positionCodes, List<String> roleCodes) {
+        if (typeRules == null || typeRules.isEmpty()) {
+            return false;
+        }
         for (MessageRule rule : typeRules) {
-            List<String> targets = splitTargets(rule.getTargetId());
-            if (targets.isEmpty()) {
-                continue;
-            }
-            String targetType = rule.getTargetType();
-            if (targetType == null) {
-                continue;
-            }
-            switch (targetType) {
-                case "#user#":
-                    if (loginName != null && targets.contains(loginName)) {
-                        return true;
-                    }
-                    break;
-                case "#org#":
-                    if (intersects(targets, deptCodes)) {
-                        return true;
-                    }
-                    break;
-                case "#position#":
-                    if (intersects(targets, positionCodes)) {
-                        return true;
-                    }
-                    break;
-                case "#role#":
-                    if (intersects(targets, roleCodes)) {
-                        return true;
-                    }
-                    break;
-                default:
-                    break;
+            if (hitRule(rule, loginName, deptCodes, positionCodes, roleCodes)) {
+                return true;
             }
         }
         return false;
+    }
+
+    /** 单条规则是否命中当前用户（#user# 匹配登录名；#org#/#position#/#role# 匹配所属编码；维度/目标为空不命中） */
+    private boolean hitRule(MessageRule rule, String loginName,
+                            List<String> deptCodes, List<String> positionCodes, List<String> roleCodes) {
+        List<String> targets = splitTargets(rule.getTargetId());
+        if (targets.isEmpty()) {
+            return false;
+        }
+        String targetType = rule.getTargetType();
+        if (targetType == null) {
+            return false;
+        }
+        switch (targetType) {
+            case "#user#":
+                return loginName != null && targets.contains(loginName);
+            case "#org#":
+                return intersects(targets, deptCodes);
+            case "#position#":
+                return intersects(targets, positionCodes);
+            case "#role#":
+                return intersects(targets, roleCodes);
+            default:
+                return false;
+        }
+    }
+
+    /** 告警可见性与站点范围（一次遍历合并判定；siteIds=null 表示不限站点） */
+    private static class AlertScope {
+        private boolean visible;
+        private List<String> siteIds;
+    }
+
+    /**
+     * 告警规则解析：无规则=全员可见且不限站点；命中规则合并站点范围，
+     * 任一命中规则的 site_id 为空 = 不限站点；未命中任何规则则不可见（不补建）。
+     */
+    private AlertScope resolveAlertScope(List<MessageRule> typeRules, String loginName,
+                                         List<String> deptCodes, List<String> positionCodes, List<String> roleCodes) {
+        AlertScope scope = new AlertScope();
+        if (typeRules == null || typeRules.isEmpty()) {
+            scope.visible = true;
+            return scope;
+        }
+        Set<String> sites = new LinkedHashSet<>();
+        boolean unlimited = false;
+        for (MessageRule rule : typeRules) {
+            if (!hitRule(rule, loginName, deptCodes, positionCodes, roleCodes)) {
+                continue;
+            }
+            scope.visible = true;
+            List<String> ruleSites = splitTargets(rule.getSiteId());
+            if (ruleSites.isEmpty()) {
+                unlimited = true;
+            } else {
+                sites.addAll(ruleSites);
+            }
+        }
+        scope.siteIds = (!scope.visible || unlimited) ? null : new ArrayList<>(sites);
+        return scope;
     }
 
     /** 两集合交集非空 */

@@ -26,6 +26,8 @@ public interface WaterPlanMapper {
     String T_ITEM = "\"qixiao-apaas\".\"t_auto_hltgq_water_plan_item\"";
     String T_USER = "\"qixiao-apaas\".\"t_auto_hltgq_water_user\"";
     String T_QUOTA = "\"qixiao-apaas\".\"t_auto_hltgq_water_quota\"";
+    /** 平台用户表（人员列解析姓名，与库存模块 {@code InventoryLedgerMapper#selectUserName} 同源） */
+    String T_UC_USER = "\"qixiao-apaas\".\"t_apaas_uc_user\"";
 
     /** 列表条件（page/count 共用，作用于别名 p） */
     String LIST_CONDITIONS =
@@ -34,20 +36,28 @@ public interface WaterPlanMapper {
             "<if test='planType != null and planType != \"\"'>AND p.plan_type = #{planType} </if>" +
             "<if test='status != null and status != \"\"'>AND p.status = #{status} </if>";
 
-    /** 主表列（列表/详情共用；别名 p） */
+    /** 主表列（列表/详情共用；别名 p，**依赖 {@link #VOID_BY_JOIN}**） */
     String BASE_COLS = "p.id AS id, p.plan_no AS planNo, p.plan_name AS planName, " +
             "p.plan_type AS planType, to_char(p.period_start, 'YYYY-MM-DD') AS periodStart, " +
             "to_char(p.period_end, 'YYYY-MM-DD') AS periodEnd, " +
             "to_char(p.created_at, 'YYYY-MM-DD HH24:MI') AS createdAtText, " +
             "p.total_water AS totalWater, p.scheduled_qty AS scheduledQty, p.status AS status, " +
             "p.remark AS remark, " +
-            "p.void_by AS voidBy, to_char(p.void_at, 'YYYY-MM-DD HH24:MI') AS voidAt, " +
+            // 作废人：void_by 存平台用户 id（审计语义不变），voidByName 给对外展示的姓名
+            "p.void_by AS voidBy, vb.name AS voidByName, " +
+            "to_char(p.void_at, 'YYYY-MM-DD HH24:MI') AS voidAt, " +
             "p.void_reason AS voidReason";
 
+    /** 作废人姓名关联（使用 {@code BASE_COLS} 的查询必须带本 JOIN） */
+    String VOID_BY_JOIN = " LEFT JOIN " + T_UC_USER + " vb ON vb.id = p.void_by AND vb.corp_code = 'hltgq' ";
+
+    /** 用水户数（明细 DISTINCT 用水户；别名 p，**列表 / 详情共用同一表达式**，避免两处口径漂移） */
+    String USER_COUNT_COL = "(SELECT COUNT(DISTINCT i.water_user_id) FROM " + T_ITEM +
+            " i WHERE i.plan_id = p.id) AS userCount";
+
     /** 列表分页（用水户数 = 明细 DISTINCT 用水户；编号倒序） */
-    @Select("<script>SELECT " + BASE_COLS + ", " +
-            "(SELECT COUNT(DISTINCT i.water_user_id) FROM " + T_ITEM + " i WHERE i.plan_id = p.id) AS userCount " +
-            "FROM " + T_PLAN + " p WHERE p.corp_code = 'hltgq' " + LIST_CONDITIONS +
+    @Select("<script>SELECT " + BASE_COLS + ", " + USER_COUNT_COL +
+            " FROM " + T_PLAN + " p" + VOID_BY_JOIN + "WHERE p.corp_code = 'hltgq' " + LIST_CONDITIONS +
             "ORDER BY p.plan_no DESC LIMIT #{size} OFFSET #{offset}</script>")
     List<WaterPlanVO> selectPlanPage(@Param("keyword") String keyword,
                                      @Param("planType") String planType,
@@ -62,8 +72,9 @@ public interface WaterPlanMapper {
                     @Param("planType") String planType,
                     @Param("status") String status);
 
-    /** 按 ID 查（详情/状态流转前置校验共用） */
-    @Select("SELECT " + BASE_COLS + " FROM " + T_PLAN + " p WHERE p.id = #{id} AND p.corp_code = 'hltgq'")
+    /** 按 ID 查（详情 / 状态流转前置校验共用；同样返回 userCount，保证详情与列表用水户数一致） */
+    @Select("SELECT " + BASE_COLS + ", " + USER_COUNT_COL +
+            " FROM " + T_PLAN + " p" + VOID_BY_JOIN + "WHERE p.id = #{id} AND p.corp_code = 'hltgq'")
     WaterPlanVO selectPlanById(@Param("id") String id);
 
     /** 明细行（含用水户/定额关联名与值；行序） */

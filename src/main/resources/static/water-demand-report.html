@@ -335,11 +335,11 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         <div class="form-item">
           <label>调度闸口 <i class="req">*</i></label>
           <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-p-gate" placeholder="输入名称/编号搜索" autocomplete="off">
+            <input type="text" class="sel-input" id="f-p-gate" placeholder="选择该用水户的关联闸口" autocomplete="off">
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="p-gate-dd"></div>
           </div>
-          <div class="f-tip">指定闸口：按正位归集</div>
+          <div class="f-tip">闸口候选随用水户收敛：仅该户已配置的关联闸口可选</div>
         </div>
         <div class="form-item">
           <label>计划放水量（万m³） <i class="req">*</i></label>
@@ -357,7 +357,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         <div class="form-item">
           <label>调度负责人</label>
           <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-p-owner" placeholder="如 调度中心-周敏" autocomplete="off">
+            <input type="text" class="sel-input" id="f-p-owner" placeholder="搜索并选择调度负责人" autocomplete="off">
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="p-owner-dd"></div>
           </div>
@@ -438,9 +438,9 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   /* 下拉/字典数据源(初始化时自接口加载,前端不写死) */
   var USERS = [];      // 用水户 4.5 /water-demand/users: {id,name,userNo,irrigationArea}
-  var GATES = [];      // 闸口池 1.1 /water-user/meta gates: {id,code,name}
+  var GATES = [];      // 调度闸口(按户收敛) 1.4 /water-user/gates?userId: {id,name};该户未配置=空数组
   var USAGES = [];     // 用途联想 4.1 /water-demand/meta
-  var OPERATORS = [];  // 负责人联想 6.1 /water-dispatch-record/meta operators
+  var OWNERS = [];     // 调度负责人 5.1 /water-dispatch/meta owners: {id,name}(平台用户;与调度方案模块同源)
   var PLANS = [];      // 已生效计划 5.5 /water-dispatch/plans(选中用水户后带配额字段)
   var APPLIES = [];    // 已通过需水 5.6 /water-dispatch/demands
   var PRICE_CACHE = {}; // 户水价缓存(审核弹窗展示,来源 /water-user/detail)
@@ -713,9 +713,19 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   /* 各下拉选项数据源(数据均来自接口,不写死) */
   function userOptions() { return USERS.map(function (u) { return { value: u.id, label: userLabel(u) }; }); }
+  /** 闸口候选:仅当前所选用水户的关联闸口组(1.4 收敛;与 5.8 保存校验同口径,不用 1.1 全量池) */
   function gateOptions() { return GATES.map(function (g) { return { value: g.id, label: g.name }; }); }
+  function findGate(id) {
+    for (var i = 0; i < GATES.length; i++) { if (GATES[i].id === id) return GATES[i]; }
+    return null;
+  }
   function usageOptions() { return USAGES.map(function (u) { return { value: u, label: u }; }); }
-  function ownerOptions() { return OPERATORS.map(function (o) { return { value: o, label: o }; }); }
+  /** 负责人候选:平台用户(5.1 owners),value=用户 id、label=姓名 */
+  function ownerOptions() { return OWNERS.map(function (o) { return { value: o.id, label: o.name }; }); }
+  function ownerNameOf(id) {
+    for (var i = 0; i < OWNERS.length; i++) { if (OWNERS[i].id === id) return OWNERS[i].name; }
+    return '';
+  }
   function planOptions() { return PLANS.map(function (p) { return { value: p.id, label: p.planNo + ' · ' + p.planName }; }); }
   /** 关联需水申请:仅已通过的上报单可选(4.6,选中用水户后按户过滤) */
   function applyOptions() {
@@ -898,15 +908,34 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  /** 按需水申请带出用水户/闸口/放水量/起止时间,并刷新该户配额下拉 */
+  /** 闸口下拉按户收敛(1.4):仅该户关联闸口组;空数组=该户未配置,提示先去用水户管理配置 */
+  var gateSeq = 0;
+  function loadFormGates(userId, cb) {
+    var seq = ++gateSeq;
+    GATES = [];
+    if (!userId) { if (cb) cb(); return; }
+    api('GET', '/water-user/gates?userId=' + encodeURIComponent(userId), null, function (err, arr) {
+      if (seq !== gateSeq) return;
+      if (!err) GATES = Array.isArray(arr) ? arr : [];
+      if (!err && !GATES.length) toast('该用水户未配置关联闸口，请先配置');
+      if (cb) cb();
+    });
+  }
+
+  /** 按需水申请带出用水户/放水量/起止时间,并按户刷新配额下拉与闸口下拉 */
   function fillPlanByApply(row) {
     setSel('f-plan', '', '');
     setSel('f-p-farmer', rowUserLabel(row), row.waterUserId);
-    if (row.gateId) setSel('f-p-gate', (row.gateName || ''), row.gateId);
+    setSel('f-p-gate', '', '');
     $('f-p-amount').value = fmtAmount(row.amount);
     $('f-p-start').value = row.startDate + 'T08:00';
     $('f-p-end').value = row.endDate + 'T18:00';
     loadPlansAndApplies(row.waterUserId);
+    // 申报闸口落在该户闸口组内才回填,否则留空要求重选(避免带着非法值提交后被 5.8 拦)
+    loadFormGates(row.waterUserId, function () {
+      var g = row.gateId ? findGate(row.gateId) : null;
+      if (g) setSel('f-p-gate', row.gateName || g.name, g.id);
+    });
   }
 
   /** 选中用水计划后展示该用水户的配额提示条(5.5:userPlanWater/userScheduledQty,单位 m³) */
@@ -927,6 +956,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   /** 手动更换弹窗内用水户:刷新下拉,且已选需水单不属于新户时清空(5.7 一致性) */
   function onPlanFarmerPick(userId) {
     setSel('f-plan', '', '');
+    setSel('f-p-gate', '', ''); // 换户:闸口候选按新户收敛,原选择作废重选
+    loadFormGates(userId);
     loadPlansAndApplies(userId, function () {
       var sel = $('f-apply').dataset.value;
       if (sel && !findApply(sel)) {
@@ -972,7 +1003,15 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     };
     if ($('f-plan').dataset.value) payload.planId = $('f-plan').dataset.value;
     if ($('f-apply').dataset.value) payload.demandId = $('f-apply').dataset.value;
-    if ($('f-p-owner').value.trim()) payload.owner = $('f-p-owner').value.trim();
+    // 负责人:下拉选中传 id(后端按 id 回查固化姓名快照,不信任文本);仅手填时按文本入库
+    var ownerId = $('f-p-owner').dataset.value;
+    var ownerText = $('f-p-owner').value.trim();
+    if (ownerId) {
+      payload.ownerUserId = ownerId;
+      payload.owner = ownerNameOf(ownerId) || ownerText;
+    } else if (ownerText) {
+      payload.owner = ownerText;
+    }
     if ($('f-p-remark').value.trim()) payload.remark = $('f-p-remark').value.trim();
 
     var btn = this;
@@ -1091,7 +1130,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (row) fillPlanByApply(row);
   });
   bindSearchSelect('f-p-farmer', 'p-farmer-dd', userOptions, '无匹配用水户', onPlanFarmerPick);
-  bindSearchSelect('f-p-gate', 'p-gate-dd', gateOptions, '无匹配闸口');
+  bindSearchSelect('f-p-gate', 'p-gate-dd', gateOptions, '请先选用水户(闸口仅限该户关联闸口组)');
   bindSearchSelect('f-p-owner', 'p-owner-dd', ownerOptions, '无匹配负责人');
 
   // 4.1 表单元数据(用途联想 + 服务器当天)
@@ -1105,14 +1144,11 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   api('GET', '/water-demand/users', null, function (err, d) {
     if (!err) USERS = Array.isArray(d) ? d : [];
   });
-  // 1.1 闸口池(用水户/需水/调度的闸口只能从该池选择)
-  api('GET', '/water-user/meta', null, function (err, d) {
-    if (!err && d) GATES = d.gates || [];
+  // 5.1 调度负责人候选(平台用户;与调度方案模块同源同口径)
+  api('GET', '/water-dispatch/meta', null, function (err, d) {
+    if (!err && d) OWNERS = d.owners || [];
   });
-  // 6.1 负责人联想
-  api('GET', '/water-dispatch-record/meta', null, function (err, d) {
-    if (!err && d) OPERATORS = d.operators || [];
-  });
+  // 调度闸口不预拉全量池:选用水户后按户收敛(1.4,与保存校验同口径)
 
   renderAll();
 })();

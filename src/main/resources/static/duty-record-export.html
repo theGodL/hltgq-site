@@ -379,10 +379,10 @@ body{
   function exportRows(rows) {
     if (!rows.length) return toast('暂无数据可导出');
     if (!window.XLSX) return toast('导出组件未加载');
-    var header = ['值班日期', '班次时间', '所在单位', '带班领导', '实际开始时间', '实际交班时间', '值班内容摘要', '状态'];
+    var header = ['值班日期', '班次时间', '所在单位', '带班领导', '值班人员', '实际开始时间', '实际交班时间', '值班内容摘要', '状态'];
     var data = rows.map(function (r) {
       return [
-        cell(r.dutyDate), cell(r.shift), cell(r.unit), cell(r.leader),
+        cell(r.dutyDate), cell(r.shift), cell(r.unit), cell(r.leader), cell(r.member),
         cell(r.actualStart), cell(r.actualEnd), cell(r.summary), cell(r.status)
       ];
     });

@@ -167,12 +167,14 @@ CREATE INDEX IF NOT EXISTS idx_decision_record_by_status ON t_auto_hltgq_water_d
 -- 接收表分页第一段：按收信人+类型过滤、按同步写入的方案完成时间倒序
 CREATE INDEX IF NOT EXISTS idx_message_receive_user_type_created ON t_auto_hltgq_water_message_receive(user_id, message_type, created_at DESC);
 
--- 消息接收规则表：message_type × 接收维度（部门/岗位/角色/人员编码，多个逗号分隔）
+-- 消息接收规则表：message_type × 接收维度（部门/岗位/角色/人员编码，多个逗号分隔）；site_id 仅告警可用
+-- 2026-10 消息发送设置：增加 site_id（站点范围，仅 #1# 告警生效；空=不限站点；命中多条规则合并范围）
 CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_rule (
     id           VARCHAR(64) PRIMARY KEY,
-    message_type VARCHAR(32) NOT NULL,     -- 消息类型：#1# 告警 / #2# 举报投诉 / #3# 意见征集
+    message_type VARCHAR(32) NOT NULL,     -- 消息类型：#1# 告警 / #2# 举报投诉 / #3# 意见征集 / #4# 值班提醒 / #5# 模型计算
     target_type  VARCHAR(16) NOT NULL,     -- 接收维度：#org# 部门 / #position# 岗位 / #role# 角色 / #user# 人员
     target_id    VARCHAR(1024) NOT NULL,   -- 目标编码，多个以英文逗号分隔
+    site_id      VARCHAR,                  -- 站点范围（仅告警 #1# 生效）：站点档案主键，多个逗号分隔；空=不限站点
     corp_code    VARCHAR(64),
     created_at   TIMESTAMP,
     created_by   VARCHAR(64),
@@ -180,6 +182,8 @@ CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_rule (
     updated_by   VARCHAR(64),
     CONSTRAINT uk_message_rule UNIQUE (message_type, target_type, target_id)
 );
+-- 列兜底（表已建但缺 2026-10 新增列时补齐，幂等；独立执行版见项目根 message-rule-ddl.sql）
+ALTER TABLE t_auto_hltgq_water_message_rule ADD COLUMN IF NOT EXISTS site_id VARCHAR;
 
 -- ========== 系统资源监控（2026-09 新增，页面 system-monitor.html） ==========
 -- 故障记录：软件故障（GlobalExceptionHandler 上游依赖异常埋点）+ 系统故障（服务重启/依赖中断/资源越限）
@@ -441,12 +445,18 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_stocktake_attachmen
 CREATE INDEX IF NOT EXISTS idx_stocktake_attachment_order
     ON "qixiao-apaas".t_auto_hltgq_water_stocktake_attachment(order_id);
 
--- ========== 值班交接班：每人独立签到（2026-10 改造） ==========
--- 原实现为班维度一次性签到（首人签到即全员「值班中」）；本改造签到按人落库、状态按人判定：
--- 未签到 → 待签到（可去签到），已签到 → 值班中。带班领导签到落主表（领导不在人员关系表中），
--- 值班人员签到落各自 rel 行；null=未签到，按人幂等（首签建记录、其余补签）。
--- 独立执行版见根目录 duty-checkin-ddl.sql；历史数据说明：改造前在途 #2# 记录签到列为 NULL，
--- 参与者各自补签一次即可，已交班（#3#）记录不受影响。
+-- ========== 值班交接班：值班记录按人（2026-10 二次改造，替代首版「班维度签到」） ==========
+-- 业务定义：值班记录 = 一个人的值班记录。每人签到各自生成一条 igahxz 记录（ahygpx = 本人，
+-- 领导记录同时 atfzxl = 本人）；同一班排班 N 人签到 → N 条记录（报告各自独立互不覆盖）；
+-- 一次交班 → 全班记录一并收口（同一实际交班时间 + 一条交接班记录）。
+-- 变更：主表新增 ahygpx（值班人员，单关联用户；类型对齐平台单关联列 atfzxl/alidpq：varchar 无长度）；
+-- 判定（我的在途记录）/签到幂等/报告归属/交班权限/收口范围均以 ahygpx 为准。
+-- 历史数据：改造前记录 ahygpx 为 NULL（历史班记录，人员体现在 rel 表）；按人判定后历史在途记录参与者
+-- 回到「待签到」各自签到生成自己的记录即可，无需回填；列表中历史记录的值班人员列自动回退显示 rel 聚合。
+-- 独立执行版见根目录 duty-checkin-ddl.sql。
+ALTER TABLE "qixiao-apaas"."t_auto_hltgq_yn8cm_igahxz"
+    ADD COLUMN IF NOT EXISTS ahygpx varchar;
+-- 首版已废列（保留不删、新代码不再读写，兼容历史环境与旧版回滚；全新环境可不执行）：
 ALTER TABLE "qixiao-apaas"."t_auto_hltgq_yn8cm_igahxz"
     ADD COLUMN IF NOT EXISTS leader_checkin_at TIMESTAMP;
 ALTER TABLE "qixiao-apaas"."t_auto_hltgq_yn8cm_igahxz_ahygpx_rel"

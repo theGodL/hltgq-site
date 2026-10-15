@@ -16,9 +16,10 @@ public interface DutyRecordMapper {
      * <p>读侧新列优先 + 旧列兜底：班次时间 egkivk_min/max 格式化为 HH:mm-HH:mm（跨天加「次日」前缀），
      * 空则回落 lzcjgq 旧文本；单位 cfszln 联单位表取名称，空则回落 sdcgli 旧文本。
      * 值班日期过滤用 to_char 定长文本 [当日, 次日) 半开区间比较（不依赖金仓跨类型隐式转换）。
-     * 人员过滤三通道：值班人员关系表 rel_id 命中（新记录）、多选旧列 _d_10233_ahygpx 双路 LIKE
-     * （原文 + 解析出的用户 id，兼容 ID/姓名两种存储形态；personId 非空才拼，避免 PG CONCAT
-     * 忽略 NULL 导致 LIKE '%%' 恒真）、带班领导 atfzxl。
+     * 值班人员展示：归属人 ahygpx（新记录 = 一个人的值班记录）；历史记录（ahygpx 为空）回退 rel 人员聚合。
+     * 人员过滤四通道：归属人 ahygpx 命中（新记录）、值班人员关系表 rel_id 命中（历史记录）、
+     * 多选旧列 _d_10233_ahygpx 双路 LIKE（原文 + 解析出的用户 id，兼容 ID/姓名两种存储形态；
+     * personId 非空才拼，避免 PG CONCAT 忽略 NULL 导致 LIKE '%%' 恒真）、带班领导 atfzxl。
      */
     @Select("<script>" +
             "SELECT d.id AS id, d.yaaebo AS dutyDateRaw, " +
@@ -29,9 +30,15 @@ public interface DutyRecordMapper {
             "ELSE d.lzcjgq END AS shift, " +
             "COALESCE(o.name, d.sdcgli) AS unit, " +
             "d.atfzxl AS leaderId, u.name AS leader, d.jlailj AS actualStart, d.yuyitx AS actualEnd, " +
+            "CASE WHEN d.ahygpx IS NOT NULL THEN COALESCE(mu.name, d.ahygpx) " +
+            "ELSE (SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +
+            "        FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_igahxz_ahygpx_rel\" rel " +
+            "        LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" ru ON ru.id = rel.rel_id " +
+            "       WHERE rel.biz_id = d.id) END AS member, " +
             "d.rdammr AS summary, d.ylncfw AS statusCode " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_igahxz\" d " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" u ON d.atfzxl = u.id " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" mu ON d.ahygpx = mu.id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_org\" o ON o.id = d.cfszln " +
             "WHERE d.corp_code = 'hltgq' " +
             "<if test='dayStart != null'>AND to_char(d.yaaebo, 'YYYY-MM-DD') &gt;= #{dayStart} " +
@@ -45,7 +52,8 @@ public interface DutyRecordMapper {
             "<if test='person != null and person != \"\"'>AND (d._d_10233_ahygpx LIKE CONCAT('%', #{person}, '%') " +
             "<if test='personId != null'>OR d._d_10233_ahygpx LIKE CONCAT('%', #{personId}, '%') " +
             "OR EXISTS (SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_igahxz_ahygpx_rel\" rel " +
-            "WHERE rel.biz_id = d.id AND rel.rel_id = #{personId}) </if>" +
+            "WHERE rel.biz_id = d.id AND rel.rel_id = #{personId}) " +
+            "OR d.ahygpx = #{personId} </if>" +
             "OR d.atfzxl = #{person} " +
             "<if test='personId != null'>OR d.atfzxl = #{personId} </if>" +
             ") </if>" +

@@ -267,7 +267,7 @@ textarea::placeholder{color:#bfbfbf}
     }).catch(function (err) { toast(err.message); });
   }
 
-  /** 开始值班(签到):body 传 {recordId}(待签到子形态按记录直达补签) 或 {scheduleId}(未开始子形态按排班开始) */
+  /** 开始值班(签到):body 传 {scheduleId}(按排班签到,服务端为当前登录人生成/复用本人的值班记录;同班每人各签各的记录) */
   function startDuty(payload) {
     return request(API_BASE + '/attendance/start', { method: 'POST', body: payload });
   }
@@ -341,8 +341,8 @@ textarea::placeholder{color:#bfbfbf}
       html = '<button type="button" class="btn btn-primary" data-act="report">填写值班报告</button>'
            + '<button type="button" class="btn btn-primary" data-act="handover">交班</button>';
     } else if (data.status === 'notstarted') {
-      // 「未开始」两子形态:无 recordId=我的待值班排班(开始值班);有 recordId=在途班他人已开、本人未签到(去签到补记)
-      var startLabel = data.recordId ? '去签到' : '开始值班';
+      // 「未开始」两子形态:badge「待签到」=班次已在途、本人尚未签到(去签到,签到后生成自己的记录);badge「未开始」=我的待值班排班(开始值班)
+      var startLabel = data.badge === '待签到' ? '去签到' : '开始值班';
       html = '<button type="button" class="btn btn-primary" data-act="start">' + startLabel + '</button>';
     }
     $('duty-acts').innerHTML = html;
@@ -464,14 +464,14 @@ textarea::placeholder{color:#bfbfbf}
 
   /* ===================== 开始值班/待签到(两阶段) ===================== */
   function openStartModal() {
-    // 待签到子形态(在途班他人已开、本人未签到,recordId 存在):弹窗按补签语义展示;否则为开始值班
-    var isCheckin = !!(current && current.status === 'notstarted' && current.recordId);
+    // 待签到子形态(班次已在途、本人尚未签到,badge=待签到):弹窗按签到语义展示;否则为开始值班
+    var isCheckin = !!(current && current.status === 'notstarted' && current.badge === '待签到');
     $('start-stage-1').style.display = '';
     $('start-stage-2').style.display = 'none';
     $('btn-start-cancel').style.display = '';
     $('start-hd').textContent = isCheckin ? '值班签到' : '开始值班';
     $('start-tips').textContent = isCheckin
-      ? '当前班次已由同班人员开始,您尚未签到。确认后将补记您的签到时间。'
+      ? '当前班次已在值班中,您尚未签到。确认后将为您签到并生成您自己的值班记录。'
       : '今日您有值班安排,确认后开始值班并记录实际开始时间。';
     $('btn-start-ok').textContent = isCheckin ? '确认签到' : '开始值班';
     $('btn-start-ok').disabled = false;
@@ -490,13 +490,11 @@ textarea::placeholder{color:#bfbfbf}
   $('btn-start-ok').addEventListener('click', function () {
     var btn = this;
     if ($('start-stage-1').style.display !== 'none') {
-      // 阶段一:确认开始值班 → POST /duty/attendance/start
-      // 待签到子形态(recordId 存在)按记录直达补签(排班可能反查不到);未开始子形态按排班开始
+      // 阶段一:确认开始值班 → POST /duty/attendance/start(按排班签到,服务端为登录人生成/复用本人记录)
       var scheduleId = current && current.scheduleId;
-      var recordId = current && current.recordId;
-      if (!scheduleId && !recordId) { toast('缺少排班信息,无法开始值班'); return; }
+      if (!scheduleId) { toast('缺少排班信息,无法开始值班'); return; }
       btn.disabled = true;
-      startDuty(recordId ? { recordId: recordId } : { scheduleId: scheduleId }).then(function (res) {
+      startDuty({ scheduleId: scheduleId }).then(function (res) {
         btn.disabled = false;
         if (current) {
           current.recordId = (res && res.recordId) || current.recordId;
@@ -528,8 +526,9 @@ textarea::placeholder{color:#bfbfbf}
   $('btn-info-ok').addEventListener('click', function () { hideOv('info-ov'); });
 
   /* ===================== 填写值班报告 ===================== */
-  /** 打开报告弹窗:回显已填综述 */
+  /** 打开报告弹窗:回显本人已填报告(重大事件/综述均回显;各人报告独立,互不可见互不覆盖) */
   function openReportModal() {
+    $('f-events').value = (current && current.events) || '';
     $('f-summary').value = (current && current.summary) || '';
     showOv('report-ov');
   }
@@ -546,7 +545,10 @@ textarea::placeholder{color:#bfbfbf}
     submitReport({ recordId: recordId, events: events, summary: summary }).then(function () {
       btn.disabled = false;
       hideOv('report-ov');
-      if (current) current.summary = summary || current.summary;
+      if (current) {
+        current.summary = summary || current.summary;
+        current.events = events || current.events;
+      }
       toast('值班报告已提交');
     }).catch(function (err) {
       btn.disabled = false;

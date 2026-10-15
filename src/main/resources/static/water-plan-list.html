@@ -1335,7 +1335,8 @@ function renderView(d) {
     ['备注', d.remark]
   ];
   if (d.status === '#4#' && (d.voidBy || d.voidReason)) {
-    pairs.push(['作废人', d.voidBy]);
+    // 作废人展示姓名（voidByName 由后端关联平台用户表解析）；解析不到时退回原值，不留空
+    pairs.push(['作废人', d.voidByName || d.voidBy]);
     pairs.push(['作废时间', d.voidAt]);
     pairs.push(['作废原因', d.voidReason]);
   }

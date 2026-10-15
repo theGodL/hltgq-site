@@ -29,6 +29,9 @@ public class DutyRecordVO {
     /** 带班领导姓名（JOIN 用户表 name，未匹配为 null） */
     private String leader;
 
+    /** 值班人员（归属人姓名，ahygpx；改造前历史记录回退 rel 人员聚合，均无则 null） */
+    private String member;
+
     /** 实际开始时间（jlailj，文本原样） */
     private String actualStart;
 

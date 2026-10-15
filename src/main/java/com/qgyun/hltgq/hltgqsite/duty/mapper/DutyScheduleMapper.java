@@ -278,6 +278,38 @@ public interface DutyScheduleMapper {
                                                @Param("dayStart") String dayStart,
                                                @Param("dayEnd") String dayEnd);
 
+    /**
+     * 我的在途排班（值班中 #cmiu#，交接班页「待签到」数据源）：
+     * 我参与（带班领导或值班人员）且排班已置值班中、班次时间与今日相交
+     * （start &lt; 明日零点 且 end ≧ 今日零点；无时间行不判定）。
+     * <p>服务层在「我尚未生成自己的个人记录」时据此展示「待签到」卡片（同班他人已建记录或已签到，
+     * 引导本人签到生成自己的记录）；已签到者由记录维度判定（我的 #2# 记录），不走本查询。
+     * 按开始时间升序取一条。
+     */
+    @Select("SELECT s.id, s.peuzwi AS statusCode, s.fjyyhu AS shiftCode, " +
+            "s.jepbhm AS orgId, o.name AS orgName, s.ihdflq AS legacyUnit, " +
+            "s.alidpq AS leaderId, u.name AS leaderName, " +
+            "to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') AS dutyDateRaw, " +
+            "to_char(s.tneakp_min, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMinRaw, " +
+            "to_char(s.tneakp_max, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMaxRaw, " +
+            "(SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +
+            "   FROM " + T_MEMBER_REL + " rel LEFT JOIN " + T_USER + " ru ON ru.id = rel.rel_id " +
+            "  WHERE rel.biz_id = s.id) AS memberNamesRaw " +
+            "FROM " + T_SCHEDULE + " s " +
+            "LEFT JOIN " + T_ORG + " o ON o.id = s.jepbhm " +
+            "LEFT JOIN " + T_USER + " u ON u.id = s.alidpq " +
+            "WHERE s.corp_code = 'hltgq' " +
+            "AND (s.alidpq = #{userId} OR EXISTS (SELECT 1 FROM " + T_MEMBER_REL + " rel " +
+            "     WHERE rel.biz_id = s.id AND rel.rel_id = #{userId})) " +
+            "AND s.peuzwi = '#cmiu#' " +
+            "AND to_char(COALESCE(s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') < #{dayEnd} " +
+            "AND to_char(COALESCE(s.tneakp_max, s.tneakp_min, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') >= #{dayStart} " +
+            "ORDER BY COALESCE(s.tneakp_min, s.owcvsv) ASC NULLS LAST " +
+            "LIMIT 1")
+    ScheduleRowVO selectMyOngoingSchedule(@Param("userId") String userId,
+                                          @Param("dayStart") String dayStart,
+                                          @Param("dayEnd") String dayEnd);
+
     /** 排班的值班人员 id（nature_order 序；开始值班时复制到值班记录）。 */
     @Select("SELECT rel.rel_id FROM " + T_MEMBER_REL + " rel WHERE rel.biz_id = #{bizId} ORDER BY rel.nature_order")
     List<String> selectMemberIds(@Param("bizId") String bizId);

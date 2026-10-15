@@ -121,7 +121,7 @@ public class MessagePageVO {
         private Boolean isRead;
     }
 
-    /** 值班提醒消息行（接收表 JOIN 值班排班表，带班领导/值班人员双侧定向） */
+    /** 值班提醒消息行（接收表 JOIN 值班排班表；带班领导/值班人员原有定向 + 规则附加接收人） */
     @Data
     public static class DutyMessage {
 
@@ -143,17 +143,17 @@ public class MessagePageVO {
         /** 排班状态名称（权威映射） */
         private String scheduleStatusLabel;
 
-        /** 本人在该班次中的角色编码：leader 带班领导 / staff 值班人员 */
+        /** 本人在该班次中的角色编码：leader 带班领导 / staff 值班人员 / receiver 规则附加接收人 */
         private String dutyRole;
 
-        /** 角色名称（权威映射：带班领导 / 值班人员） */
+        /** 角色名称（权威映射：带班领导 / 值班人员 / 接收人） */
         private String dutyRoleLabel;
 
         /** 当前登录人是否已读 */
         private Boolean isRead;
     }
 
-    /** 模型计算消息行（提交人定向：接收表按模块前缀反查方案主表） */
+    /** 模型计算消息行（提交人原有定向 + 规则附加接收人：接收表按模块前缀反查方案主表） */
     @Data
     public static class ModelCalcMessage {
 

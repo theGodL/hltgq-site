@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import com.qgyun.hltgq.hltgqsite.model.vo.FileDownloadVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.service.PlatformUserService;
 import com.qgyun.hltgq.hltgqsite.watersaving.SavingDict;
 import com.qgyun.hltgq.hltgqsite.watersaving.SavingSupport;
 import com.qgyun.hltgq.hltgqsite.watersaving.mapper.SavingAnnualMapper;
@@ -61,9 +62,6 @@ public class SavingSchemeService {
     /** 方案名称长度上限（DB VARCHAR(200)） */
     private static final int NAME_MAX_LENGTH = 200;
 
-    /** 负责人长度上限（DB VARCHAR(100)） */
-    private static final int OWNER_MAX_LENGTH = 100;
-
     /** 具体措施长度上限（TEXT，防御性） */
     private static final int MEASURE_MAX_LENGTH = 2000;
 
@@ -89,6 +87,9 @@ public class SavingSchemeService {
 
     private final ObjectMapper objectMapper;
 
+    /** 平台用户选人（负责人候选 + 保存回查固化姓名，复用用水模块唯一实现） */
+    private final PlatformUserService platformUsers;
+
     /** 操作人兜底（会话缺失时使用，审计列 NOT NULL） */
     @Value("${hltgq.created-by}")
     private String fallbackOperator;
@@ -101,12 +102,14 @@ public class SavingSchemeService {
                                SavingAnnualMapper annualMapper,
                                SavingIndicatorMapper indicatorMapper,
                                ShortIdGenerator shortIdGenerator,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               PlatformUserService platformUsers) {
         this.schemeMapper = schemeMapper;
         this.annualMapper = annualMapper;
         this.indicatorMapper = indicatorMapper;
         this.shortIdGenerator = shortIdGenerator;
         this.objectMapper = objectMapper;
+        this.platformUsers = platformUsers;
     }
 
     // ==================== 查询 ====================
@@ -146,8 +149,8 @@ public class SavingSchemeService {
         }
         String name = SavingSupport.maxLength(
                 SavingSupport.requireText(req.getName(), "请填写方案名称"), NAME_MAX_LENGTH, "方案名称");
-        String owner = SavingSupport.maxLength(
-                SavingSupport.requireText(req.getOwner(), "请填写负责人"), OWNER_MAX_LENGTH, "负责人");
+        // 负责人：传 ownerUserId 时按平台用户回查固化姓名快照（不信任前端文本）；仅回传姓名（未换人/存量值）时按文本入库
+        String owner = platformUsers.resolveName(req.getOwnerUserId(), req.getOwner(), "负责人", true);
         String measure = SavingSupport.maxLength(
                 SavingSupport.requireText(req.getMeasure(), "请填写具体措施"), MEASURE_MAX_LENGTH, "具体措施");
         BigDecimal target = SavingSupport.requirePositive(req.getTargetVolume(), "节水目标");
@@ -207,8 +210,8 @@ public class SavingSchemeService {
         SavingSchemeVO exist = requireScheme(id);
         String name = SavingSupport.maxLength(
                 SavingSupport.requireText(req.getName(), "请填写方案名称"), NAME_MAX_LENGTH, "方案名称");
-        String owner = SavingSupport.maxLength(
-                SavingSupport.requireText(req.getOwner(), "请填写负责人"), OWNER_MAX_LENGTH, "负责人");
+        // 负责人：传 ownerUserId 时按平台用户回查固化姓名快照（不信任前端文本）；仅回传姓名（未换人/存量值）时按文本入库
+        String owner = platformUsers.resolveName(req.getOwnerUserId(), req.getOwner(), "负责人", true);
         String measure = SavingSupport.maxLength(
                 SavingSupport.requireText(req.getMeasure(), "请填写具体措施"), MEASURE_MAX_LENGTH, "具体措施");
         BigDecimal target = SavingSupport.requirePositive(req.getTargetVolume(), "节水目标");

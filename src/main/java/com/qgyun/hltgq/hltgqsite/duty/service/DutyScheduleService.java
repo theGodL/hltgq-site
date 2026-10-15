@@ -208,8 +208,9 @@ public class DutyScheduleService {
     /**
      * 今日值班判定（签到提醒）：我参与、且「值班中（不限时间）或 未开始/待值班且班次时间与今日相交」的排班；
      * 未命中返回 {@code {"onDuty": false}}。
-     * <p>signed：签到按人——仅排班已置值班中（#cmiu#）时判定本人是否已签到（按记录匹配 + 本人签到位），
-     * 其余状态恒 false；弹签到提醒条件由此修订为 {@code #1#/#zzkl# 或（#cmiu# 且 signed=false）}（契约 §3.1）。
+     * <p>signed：签到按人——每条值班记录归属一个值班人员——仅排班已置值班中（#cmiu#）时
+     * 判定我已生成在途记录（按归属人 + 单位 + 班次匹配），其余状态恒 false；
+     * 弹签到提醒条件由此修订为 {@code #1#/#zzkl# 或（#cmiu# 且 signed=false）}（契约 §3.1）。
      */
     public Map<String, Object> todayStatus() {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -240,14 +241,15 @@ public class DutyScheduleService {
     }
 
     /**
-     * 本人是否已在本班签到：仅排班已置值班中（#cmiu#）时判定（按记录匹配 + 本人签到位），
+     * 本人是否已在本班签到（值班记录 = 一个人的值班记录：该排班我已生成在途 #2# 记录即已签到）：
+     * 仅排班已置值班中（#cmiu#）时判定（按归属人 + 单位 + 班次匹配记录），
      * 其余状态视为未签到（弹窗侧以 statusCode + signed 联合判断）。
      */
     private boolean signedOnDuty(ScheduleRowVO row, String userId) {
         if (!DutySupport.SCHEDULE_STATUS_ON_DUTY.equals(row.getStatusCode())) {
             return false;
         }
-        String signedId = attendanceMapper.selectSignedIdBySchedule(row.getOrgId(),
+        String signedId = attendanceMapper.selectMyOngoingIdBySchedule(row.getOrgId(),
                 DutySupport.trim(row.getTneakpMinRaw()), DutySupport.trim(row.getTneakpMaxRaw()),
                 DutySupport.fmtDate(row.getDutyDateRaw()), userId);
         return signedId != null;

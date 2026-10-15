@@ -275,7 +275,12 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         </div>
         <div class="form-item">
           <label>调度负责人</label>
-          <input type="text" class="ipt" id="f-p-owner" placeholder="如 调度中心-周敏" autocomplete="off" maxlength="50">
+          <div class="select-wrap">
+            <input type="text" class="sel-input" id="f-p-owner" placeholder="搜索并选择调度负责人" autocomplete="off" maxlength="50">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="sel-dd" id="p-owner-dd"></div>
+          </div>
+          <div class="f-tip">候选为平台用户（5.1 owners），与需水上报页「编制方案」同一池</div>
         </div>
         <div class="form-item span2">
           <label>备注</label>
@@ -350,6 +355,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   var FORM_PLANS = []; // 弹窗内计划(5.5:userId 非空仅该户明细内计划,含配额字段)
   var PLANS_USER = ''; // FORM_PLANS 配额字段对应的用水户 id
   var APPLIES = [];    // 已通过需水 5.6 /water-dispatch/demands
+  var OWNERS = [];     // 调度负责人候选 5.1 /water-dispatch/meta owners: {id,name}(平台用户)
   var STATUSES = [     // 筛选字典(5.1 meta.statuses 覆盖;默认与 0.4 一致)
     { value: 'pending', label: '待执行' },
     { value: 'running', label: '执行中' },
@@ -421,6 +427,20 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   }
 
   function gateOptions() { return GATES.map(function (g) { return { value: g.id, label: g.name }; }); }
+
+  /** 负责人候选:平台用户(5.1 owners),value=用户 id、label=姓名;与需水页「编制方案」同口径 */
+  function ownerOptions() { return OWNERS.map(function (o) { return { value: o.id, label: o.name }; }); }
+  function ownerNameOf(id) {
+    for (var i = 0; i < OWNERS.length; i++) { if (OWNERS[i].id === id) return OWNERS[i].name; }
+    return '';
+  }
+  /** 存量姓名回填:能在候选池命中时一并记录 id(重新保存即固化快照),否则仅按文本展示 */
+  function setSelOwnerByName(name) {
+    var text = name || '';
+    var id = '';
+    for (var i = 0; i < OWNERS.length; i++) { if (OWNERS[i].name === text) { id = OWNERS[i].id; break; } }
+    setSel('f-p-owner', text, id);
+  }
 
   function findPlan(id) {
     for (var i = 0; i < FORM_PLANS.length; i++) { if (FORM_PLANS[i].id === id) return FORM_PLANS[i]; }
@@ -791,7 +811,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       $('f-p-amount').value = fmtAmount(row.planAmount);
       $('f-p-start').value = String(row.startTime || '').replace(' ', 'T');
       $('f-p-end').value = String(row.endTime || '').replace(' ', 'T');
-      $('f-p-owner').value = row.owner || '';
+      setSelOwnerByName(row.owner);
       $('f-p-remark').value = row.remark || '';
 
       // 下拉数据按收敛规则回填:户=该计划内(关联计划时)/全量,计划=该户,闸口=该户,需水=该户
@@ -812,7 +832,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       $('f-p-amount').value = '';
       $('f-p-start').value = nowInputStr();
       $('f-p-end').value = nowInputStr();
-      $('f-p-owner').value = '';
+      setSel('f-p-owner', '', '');
       $('f-p-remark').value = '';
       loadFormUsers('');   // 全量正常状态户
       loadPlans('');       // 全部已生效计划
@@ -831,6 +851,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var start = $('f-p-start').value;
     var end = $('f-p-end').value;
     var owner = $('f-p-owner').value.trim();
+    var ownerId = $('f-p-owner').dataset.value;
     var remark = $('f-p-remark').value.trim();
 
     if (!userId) { toast('请选择「用水户」'); return; }
@@ -849,7 +870,13 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     };
     if (planId) payload.planId = planId;
     if (demandId) payload.demandId = demandId;
-    if (owner) payload.owner = owner;
+    // 负责人:下拉选中传 id(5.8 后端按 id 回查固化姓名快照,不信任文本);仅手填/存量值时按文本入库
+    if (ownerId) {
+      payload.ownerUserId = ownerId;
+      payload.owner = ownerNameOf(ownerId) || owner;
+    } else if (owner) {
+      payload.owner = owner;
+    }
     if (remark) payload.remark = remark;
 
     var btn = $('btn-form-save');
@@ -943,7 +970,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   bindSearchSelect('f-plan', 'plan-dd', planOptions, '无匹配计划', onPlanPick);
   bindSearchSelect('f-apply', 'apply-dd', demandOptions, '无匹配申请', fillByDemand);
   bindSearchSelect('f-p-farmer', 'p-farmer-dd', userOptions, '无匹配用水户', onFormUserPick);
-  bindSearchSelect('f-p-gate', 'p-gate-dd', gateOptions, '无匹配闸口', null);
+  bindSearchSelect('f-p-gate', 'p-gate-dd', gateOptions, '该户未配置关联闸口', null);
+  bindSearchSelect('f-p-owner', 'p-owner-dd', ownerOptions, '无匹配负责人');
 
   // 表单按钮
   $('btn-form-cancel').addEventListener('click', function () { closeModal('form-ov'); });
@@ -1015,9 +1043,11 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   setSel('f-flt-status', '全部状态', '');
   setSel('f-flt-plan', '全部关联计划', '');
 
-  // 5.1 表单元数据(状态字典)
+  // 5.1 表单元数据(状态字典 + 调度负责人候选)
   api('GET', '/water-dispatch/meta', null, function (err, d) {
-    if (!err && d && d.statuses && d.statuses.length) STATUSES = d.statuses;
+    if (err || !d) return;
+    if (d.statuses && d.statuses.length) STATUSES = d.statuses;
+    OWNERS = d.owners || [];
   });
 
   // 弹窗收敛下拉(用水户/计划/闸口)统一在打开弹窗时按规则加载,此处不预拉

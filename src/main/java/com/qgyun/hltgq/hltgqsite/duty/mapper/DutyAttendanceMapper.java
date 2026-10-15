@@ -14,11 +14,17 @@ import java.util.List;
 
 /**
  * 值班记录（igahxz）与交接班记录（kwzwga）读写 Mapper。
+ * <p>记录归属（2026-10 二次改造）：值班记录 = 一个人的值班记录——每人签到各自生成一条记录，
+ * 归属人落主表 ahygpx（单关联用户，与 atfzxl 同物理形态）；今日判定/签到幂等/报告归属/交班权限/
+ * 交班收口范围均以 ahygpx 为准。首版「班维度签到 + 按人补签」的 leader_checkin_at（主表）与
+ * rel.checkin_at 列已弃用（保留不删、不再读写）。
  * <p>读侧新列优先 + 旧列兜底：班次时间 egkivk_min/max 优先（lzcjgq 旧文本兜底）、
  * 单位 cfszln 联表（sdcgli 旧文本兜底）；时间列一律 to_char 定长文本进出（见 DutySupport），
  * 时间比较与匹配全部在文本层完成（不依赖金仓跨类型隐式转换）。
  * <p>写侧主写当前模型字段并兼容双写 igahxz 旧列（lzcjgq=班次时间文本、sdcgli=单位名称文本，
- * 未升级的旧列表 SQL 仍可显示新记录）；kwzwga 不双写（§3.2）。
+ * 未升级的旧列表 SQL 仍可显示新记录）；人员关系表（rel）不再写入（历史数据仅读）；kwzwga 不双写（§3.2）。
+ * <p>历史记录（ahygpx 为空）为改造前「班记录」形态：值班人员展示回退 rel 聚合；
+ * 多人在途记录并存时一次交班按班组批量收口（历史记录一并置 #3#），无需数据回填。
  */
 public interface DutyAttendanceMapper {
 
@@ -41,102 +47,69 @@ public interface DutyAttendanceMapper {
             "d.lzcjgq AS legacyShift, " +
             "d.cfszln AS orgId, o.name AS orgName, d.sdcgli AS legacyUnit, " +
             "d.atfzxl AS leaderId, u.name AS leaderName, " +
+            "d.ahygpx AS memberId, mu.name AS memberName, " +
             "to_char(d.jlailj, 'YYYY-MM-DD HH24:MI:SS') AS actualStartRaw, " +
             "to_char(d.yuyitx, 'YYYY-MM-DD HH24:MI:SS') AS actualEndRaw, " +
-            "d.rdammr AS summary, d.ylncfw AS statusCode, " +
+            "d.xggayo AS events, d.rdammr AS summary, d.ylncfw AS statusCode, " +
             "(SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +
             "   FROM " + T_RECORD_MEMBER_REL + " rel LEFT JOIN " + T_USER + " ru ON ru.id = rel.rel_id " +
-            "  WHERE rel.biz_id = d.id) AS membersRaw, " +
-            "(SELECT string_agg(rel.rel_id, ',' ORDER BY rel.nature_order) " +
-            "   FROM " + T_RECORD_MEMBER_REL + " rel WHERE rel.biz_id = d.id) AS memberIdsRaw ";
+            "  WHERE rel.biz_id = d.id) AS membersRaw ";
+
+    /** 记录行公共连表（RECORD_COLS 依赖：单位 / 带班领导 / 归属人三表 LEFT JOIN）。 */
+    String RECORD_JOINS =
+            "LEFT JOIN " + T_ORG + " o ON o.id = d.cfszln " +
+            "LEFT JOIN " + T_USER + " u ON u.id = d.atfzxl " +
+            "LEFT JOIN " + T_USER + " mu ON mu.id = d.ahygpx ";
 
     // ==================== 今日判定 / 校验（内部行） ====================
 
     /**
-     * 我的进行中记录（值班中 #2#）：带我参与（带班领导或值班人员）且本人已签到，
-     * 班次时间与今日相交（跨天班在结束日仍可见；陈旧跨日未交班记录不遮挡当日判定），
-     * 实际开始时间倒序取一条。
-     * <p>签到按人判定：领导看主表 leader_checkin_at，成员看本人 rel 行 checkin_at；
-     * 本人未签到的在途记录走 selectUnsignedOngoingRecord（待签到态）。
+     * 我的进行中记录（值班中 #2#）：归属人 = 我（ahygpx）、班次时间与今日相交
+     * （跨天班在结束日仍可见；陈旧跨日未交班记录不遮挡当日判定），实际开始时间倒序取一条。
+     * <p>改造前历史记录（ahygpx 为空）不命中——其参与人按排班维度回到「待签到」，
+     * 各自签到生成自己的记录后即恢复正常流转。
      */
-    @Select("SELECT " + RECORD_COLS + " FROM " + T_RECORD + " d " +
-            "LEFT JOIN " + T_ORG + " o ON o.id = d.cfszln " +
-            "LEFT JOIN " + T_USER + " u ON u.id = d.atfzxl " +
-            "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' " +
+    @Select("SELECT " + RECORD_COLS + " FROM " + T_RECORD + " d " + RECORD_JOINS +
+            "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' AND d.ahygpx = #{userId} " +
             "AND to_char(COALESCE(d.egkivk_min, d.yaaebo), 'YYYY-MM-DD HH24:MI:SS') < #{dayEnd} " +
             "AND to_char(COALESCE(d.egkivk_max, d.egkivk_min, d.yaaebo), 'YYYY-MM-DD HH24:MI:SS') >= #{dayStart} " +
-            "AND ((d.atfzxl = #{userId} AND d.leader_checkin_at IS NOT NULL) " +
-            "     OR EXISTS (SELECT 1 FROM " + T_RECORD_MEMBER_REL + " rel " +
-            "     WHERE rel.biz_id = d.id AND rel.rel_id = #{userId} AND rel.checkin_at IS NOT NULL)) " +
             "ORDER BY d.jlailj DESC NULLS LAST, d.id DESC LIMIT 1")
     AttendanceRecordRowVO selectOngoingRecord(@Param("userId") String userId,
                                               @Param("dayStart") String dayStart,
                                               @Param("dayEnd") String dayEnd);
 
     /**
-     * 我的进行中记录但本人尚未签到（#2# 记录已由同班他人创建、本人签到位为空、班次时间与今日相交）：
-     * 「待签到」态数据源——提示并引导本人前往值班交接班页补签，补签前不显示「值班中」。
-     * <p>时间窗与 {@link #selectOngoingRecord} 一致：陈旧跨日未交班记录不判为待签到。
-     */
-    @Select("SELECT " + RECORD_COLS + " FROM " + T_RECORD + " d " +
-            "LEFT JOIN " + T_ORG + " o ON o.id = d.cfszln " +
-            "LEFT JOIN " + T_USER + " u ON u.id = d.atfzxl " +
-            "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' " +
-            "AND to_char(COALESCE(d.egkivk_min, d.yaaebo), 'YYYY-MM-DD HH24:MI:SS') < #{dayEnd} " +
-            "AND to_char(COALESCE(d.egkivk_max, d.egkivk_min, d.yaaebo), 'YYYY-MM-DD HH24:MI:SS') >= #{dayStart} " +
-            "AND ((d.atfzxl = #{userId} AND d.leader_checkin_at IS NULL) " +
-            "     OR EXISTS (SELECT 1 FROM " + T_RECORD_MEMBER_REL + " rel " +
-            "     WHERE rel.biz_id = d.id AND rel.rel_id = #{userId} AND rel.checkin_at IS NULL)) " +
-            "ORDER BY d.jlailj DESC NULLS LAST, d.id DESC LIMIT 1")
-    AttendanceRecordRowVO selectUnsignedOngoingRecord(@Param("userId") String userId,
-                                                      @Param("dayStart") String dayStart,
-                                                      @Param("dayEnd") String dayEnd);
-
-    /**
      * 我的今日已完成记录（今日交班的 #3#）：yuyitx ∈ [dayStart, dayEnd)，倒序取一条。
+     * <p>归属匹配：优先本人记录（ahygpx = 我）；历史记录（ahygpx 为空）回退班参与人
+     * （带班领导或 rel 人员），保证改造前已交班的参与者仍可见「已完成」卡片（只读展示，无操作）。
      */
-    @Select("SELECT " + RECORD_COLS + " FROM " + T_RECORD + " d " +
-            "LEFT JOIN " + T_ORG + " o ON o.id = d.cfszln " +
-            "LEFT JOIN " + T_USER + " u ON u.id = d.atfzxl " +
+    @Select("SELECT " + RECORD_COLS + " FROM " + T_RECORD + " d " + RECORD_JOINS +
             "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#3#' " +
             "AND to_char(d.yuyitx, 'YYYY-MM-DD HH24:MI:SS') >= #{dayStart} " +
             "AND to_char(d.yuyitx, 'YYYY-MM-DD HH24:MI:SS') < #{dayEnd} " +
-            "AND (d.atfzxl = #{userId} OR EXISTS (SELECT 1 FROM " + T_RECORD_MEMBER_REL + " rel " +
-            "     WHERE rel.biz_id = d.id AND rel.rel_id = #{userId})) " +
+            "AND (d.ahygpx = #{userId} " +
+            "     OR (d.ahygpx IS NULL AND (d.atfzxl = #{userId} OR EXISTS (SELECT 1 FROM " + T_RECORD_MEMBER_REL + " rel " +
+            "     WHERE rel.biz_id = d.id AND rel.rel_id = #{userId})))) " +
             "ORDER BY d.yuyitx DESC NULLS LAST, d.id DESC LIMIT 1")
     AttendanceRecordRowVO selectCompletedTodayRecord(@Param("userId") String userId,
                                                      @Param("dayStart") String dayStart,
                                                      @Param("dayEnd") String dayEnd);
 
     /** 单条记录内部行（报告/交班校验与数据源；按 id 精确取）。 */
-    @Select("SELECT " + RECORD_COLS + " FROM " + T_RECORD + " d " +
-            "LEFT JOIN " + T_ORG + " o ON o.id = d.cfszln " +
-            "LEFT JOIN " + T_USER + " u ON u.id = d.atfzxl " +
+    @Select("SELECT " + RECORD_COLS + " FROM " + T_RECORD + " d " + RECORD_JOINS +
             "WHERE d.id = #{id} AND d.corp_code = 'hltgq'")
     AttendanceRecordRowVO selectRecordRow(@Param("id") String id);
 
     /**
-     * 本人在指定记录上的签到时间（to_char 定长文本；领导读主表列、成员读本人 rel 行；null=未签到）。
-     */
-    @Select("SELECT CASE WHEN d.atfzxl = #{userId} " +
-            "THEN to_char(d.leader_checkin_at, 'YYYY-MM-DD HH24:MI:SS') " +
-            "ELSE (SELECT to_char(rel.checkin_at, 'YYYY-MM-DD HH24:MI:SS') " +
-            "        FROM " + T_RECORD_MEMBER_REL + " rel " +
-            "       WHERE rel.biz_id = d.id AND rel.rel_id = #{userId}) END " +
-            "FROM " + T_RECORD + " d WHERE d.id = #{recordId}")
-    String selectMyCheckinRaw(@Param("recordId") String recordId, @Param("userId") String userId);
-
-    /**
-     * 幂等检查：该排班已存在的、且我参与的「值班中」记录 id（开始值班重复点击时直接复用，不重复创建）。
-     * <p>正常路径按单位 + 班次起止时间精确匹配（记录值从排班复制、to_char 到秒必然相等）；
-     * 排班无班次时间（历史数据）时退化为「同单位 + 值班日期相同」；
-     * 参与人条件防同段双班（人员时间唯一、两班人员不重叠）时复用到他人记录。
+     * 我的签到幂等检查：该排班我已生成的「值班中」记录 id（重复签到直接复用，不重复创建）。
+     * <p>按「归属人 + 单位 + 班次」匹配：正常路径按班次起止时间精确匹配（记录值从排班复制、
+     * to_char 到秒必然相等）；排班无班次时间（历史数据）时退化为「同单位 + 值班日期相同」。
+     * <p>与 DutyScheduleService 今日判定共用（该排班我已有记录 = 我已签到）。
      */
     @Select("<script>" +
             "SELECT d.id FROM " + T_RECORD + " d " +
-            "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' AND d.cfszln = #{orgId} " +
-            "AND (d.atfzxl = #{operator} OR EXISTS (SELECT 1 FROM " + T_RECORD_MEMBER_REL + " mr " +
-            "     WHERE mr.biz_id = d.id AND mr.rel_id = #{operator})) " +
+            "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' AND d.ahygpx = #{operator} " +
+            "AND d.cfszln = #{orgId} " +
             "<choose>" +
             "<when test='startRaw != null and endRaw != null'>" +
             "AND to_char(d.egkivk_min, 'YYYY-MM-DD HH24:MI:SS') = #{startRaw} " +
@@ -148,38 +121,11 @@ public interface DutyAttendanceMapper {
             "</choose>" +
             "LIMIT 1" +
             "</script>")
-    String selectOngoingIdBySchedule(@Param("orgId") String orgId,
-                                     @Param("startRaw") String startRaw,
-                                     @Param("endRaw") String endRaw,
-                                     @Param("dutyDate") String dutyDate,
-                                     @Param("operator") String operator);
-
-    /**
-     * 该排班已存在的、且本人已签到的「值班中」记录 id（today-status 的本人签到判定）。
-     * <p>匹配规则同 selectOngoingIdBySchedule，仅追加「本人已签到」条件。
-     */
-    @Select("<script>" +
-            "SELECT d.id FROM " + T_RECORD + " d " +
-            "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' AND d.cfszln = #{orgId} " +
-            "AND ((d.atfzxl = #{operator} AND d.leader_checkin_at IS NOT NULL) " +
-            "     OR EXISTS (SELECT 1 FROM " + T_RECORD_MEMBER_REL + " mr " +
-            "     WHERE mr.biz_id = d.id AND mr.rel_id = #{operator} AND mr.checkin_at IS NOT NULL)) " +
-            "<choose>" +
-            "<when test='startRaw != null and endRaw != null'>" +
-            "AND to_char(d.egkivk_min, 'YYYY-MM-DD HH24:MI:SS') = #{startRaw} " +
-            "AND to_char(d.egkivk_max, 'YYYY-MM-DD HH24:MI:SS') = #{endRaw} " +
-            "</when>" +
-            "<otherwise>" +
-            "AND to_char(d.yaaebo, 'YYYY-MM-DD') = #{dutyDate} " +
-            "</otherwise>" +
-            "</choose>" +
-            "LIMIT 1" +
-            "</script>")
-    String selectSignedIdBySchedule(@Param("orgId") String orgId,
-                                    @Param("startRaw") String startRaw,
-                                    @Param("endRaw") String endRaw,
-                                    @Param("dutyDate") String dutyDate,
-                                    @Param("operator") String operator);
+    String selectMyOngoingIdBySchedule(@Param("orgId") String orgId,
+                                       @Param("startRaw") String startRaw,
+                                       @Param("endRaw") String endRaw,
+                                       @Param("dutyDate") String dutyDate,
+                                       @Param("operator") String operator);
 
     // ==================== 编号生成（LIKE 当日前缀 + Java 解析最大序号） ====================
 
@@ -201,24 +147,20 @@ public interface DutyAttendanceMapper {
             "WHERE k.corp_code = 'hltgq' AND k.nizxsv LIKE #{prefix}")
     List<String> selectHandoverNosByPrefix(@Param("prefix") String prefix);
 
-    /** 记录的值班人员 id（nature_order 序；交班时复制为交接班记录的交班人员）。 */
-    @Select("SELECT rel.rel_id FROM " + T_RECORD_MEMBER_REL + " rel " +
-            "WHERE rel.biz_id = #{bizId} ORDER BY rel.nature_order")
-    List<String> selectRecordMemberIds(@Param("bizId") String bizId);
-
     // ==================== 写入（主写新列 + igahxz 兼容双写旧列） ====================
 
     /**
-     * 新建值班记录：写编号/值班日期/班次时间/单位/领导/实际开始/状态（#2#）；
-     * 兼容双写 lzcjgq（班次时间文本）/sdcgli（单位名称文本）；人员不写已弃用文本列，走 rel 表。
+     * 新建值班记录（签到）：写编号/值班日期/班次时间/单位/领导/归属人/实际开始/状态（#2#）；
+     * 兼容双写 lzcjgq（班次时间文本）/sdcgli（单位名称文本）；人员关系表（rel）不再写入
+     * （归属人落 ahygpx；历史 rel 数据仅用于展示兜底）。
      */
     @Insert("INSERT INTO " + T_RECORD + " " +
             "(id, corp_code, created_at, created_by, updated_at, updated_by, " +
-            " pttmxx, yaaebo, egkivk_min, egkivk_max, cfszln, atfzxl, jlailj, ylncfw, " +
-            " lzcjgq, sdcgli, leader_checkin_at) " +
+            " pttmxx, yaaebo, egkivk_min, egkivk_max, cfszln, atfzxl, ahygpx, jlailj, ylncfw, " +
+            " lzcjgq, sdcgli) " +
             "VALUES (#{id}, #{corpCode}, #{now}, #{operator}, #{now}, #{operator}, " +
-            " #{recordNo}, #{dutyDate}, #{shiftMin}, #{shiftMax}, #{orgId}, #{leaderId}, #{actualStart}, '#2#', " +
-            " #{shiftTimeText}, #{orgName}, #{leaderCheckinAt})")
+            " #{recordNo}, #{dutyDate}, #{shiftMin}, #{shiftMax}, #{orgId}, #{leaderId}, #{memberId}, #{actualStart}, '#2#', " +
+            " #{shiftTimeText}, #{orgName})")
     int insertRecord(@Param("id") String id,
                      @Param("corpCode") String corpCode,
                      @Param("operator") String operator,
@@ -229,39 +171,14 @@ public interface DutyAttendanceMapper {
                      @Param("shiftMax") LocalDateTime shiftMax,
                      @Param("orgId") String orgId,
                      @Param("leaderId") String leaderId,
+                     @Param("memberId") String memberId,
                      @Param("actualStart") LocalDateTime actualStart,
                      @Param("shiftTimeText") String shiftTimeText,
-                     @Param("orgName") String orgName,
-                     @Param("leaderCheckinAt") LocalDateTime leaderCheckinAt);
-
-    /**
-     * 带班领导签到写入（首签建记录时落 insertRecord，此处为同班补签）：
-     * 仅本人（atfzxl）且签到列为空的在途记录可写（行数 0 = 已签/非本人/已交班）。
-     */
-    @Update("UPDATE " + T_RECORD + " SET leader_checkin_at = #{now}, " +
-            "updated_at = #{now}, updated_by = #{operator} " +
-            "WHERE id = #{id} AND corp_code = 'hltgq' AND ylncfw = '#2#' " +
-            "AND atfzxl = #{operator} AND leader_checkin_at IS NULL")
-    int updateLeaderCheckin(@Param("id") String id,
-                            @Param("operator") String operator,
-                            @Param("now") LocalDateTime now);
-
-    /**
-     * 值班人员签到写入（首签建记录时落 insertRecordMember，此处为同班补签）：
-     * 仅本人 rel 行且签到列为空、记录仍在途（#2#）的行可写（行数 0 = 已签/不在名单/已交班）。
-     */
-    @Update("UPDATE " + T_RECORD_MEMBER_REL + " SET checkin_at = #{now}, " +
-            "updated_at = #{now}, updated_by = #{operator} " +
-            "WHERE biz_id = #{id} AND rel_id = #{operator} AND checkin_at IS NULL " +
-            "AND EXISTS (SELECT 1 FROM " + T_RECORD + " d " +
-            "     WHERE d.id = biz_id AND d.corp_code = 'hltgq' AND d.ylncfw = '#2#')")
-    int updateMemberCheckin(@Param("id") String id,
-                            @Param("operator") String operator,
-                            @Param("now") LocalDateTime now);
+                     @Param("orgName") String orgName);
 
     /**
      * 填写报告（提交字段更新：events/summary 非 null 才写，未提交或为空的字段保持原值；
-     * 仅值班中记录，行数 0 表示状态已变）。
+     * 仅值班中记录，行数 0 表示状态已变；归属校验见服务层）。
      */
     @Update("<script>UPDATE " + T_RECORD + " <set>" +
             "<if test='events != null'>xggayo = #{events}, </if>" +
@@ -274,13 +191,64 @@ public interface DutyAttendanceMapper {
                            @Param("operator") String operator,
                            @Param("now") LocalDateTime now);
 
-    /** 交班：写实际交班时间 yuyitx 与状态 #3#（仅值班中记录，行数 0 表示并发重复交班）。 */
+    /** 交班（单条记录兜底：记录无单位信息无法按班组收口时使用）：写实际交班时间 yuyitx 与状态 #3#。 */
     @Update("UPDATE " + T_RECORD + " SET yuyitx = #{now}, ylncfw = '#3#', " +
             "updated_at = #{now}, updated_by = #{operator} " +
             "WHERE id = #{id} AND corp_code = 'hltgq' AND ylncfw = '#2#'")
     int updateRecordHandover(@Param("id") String id,
                              @Param("operator") String operator,
                              @Param("now") LocalDateTime now);
+
+    /**
+     * 交班收口（班组批量）：同单位 + 班次起止时间（排班无班次时间降级同单位 + 值班日期）的
+     * 全部「值班中」记录一并置已完成、写同一实际交班时间——一次交班全班个人记录组一并收口
+     * （含改造前历史班记录，ahygpx 为空也一并收口）。行数 0 = 无可收口记录（并发已收口/条件不匹配）。
+     */
+    @Update("<script>" +
+            "UPDATE " + T_RECORD + " SET yuyitx = #{now}, ylncfw = '#3#', " +
+            "updated_at = #{now}, updated_by = #{operator} " +
+            "WHERE corp_code = 'hltgq' AND ylncfw = '#2#' AND cfszln = #{orgId} " +
+            "<choose>" +
+            "<when test='startRaw != null and endRaw != null'>" +
+            "AND to_char(egkivk_min, 'YYYY-MM-DD HH24:MI:SS') = #{startRaw} " +
+            "AND to_char(egkivk_max, 'YYYY-MM-DD HH24:MI:SS') = #{endRaw} " +
+            "</when>" +
+            "<otherwise>" +
+            "AND to_char(yaaebo, 'YYYY-MM-DD') = #{dutyDate} " +
+            "</otherwise>" +
+            "</choose>" +
+            "</script>")
+    int updateGroupHandover(@Param("orgId") String orgId,
+                            @Param("startRaw") String startRaw,
+                            @Param("endRaw") String endRaw,
+                            @Param("dutyDate") String dutyDate,
+                            @Param("operator") String operator,
+                            @Param("now") LocalDateTime now);
+
+    /**
+     * 交班人员取数（收口组内各记录归属人；改造前历史记录回退 rel 人员）：
+     * 交班收口前调用（记录仍在途态），用于交接班记录的交班人员关系写入。
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT COALESCE(d.ahygpx, rel.rel_id) AS memberId " +
+            "FROM " + T_RECORD + " d LEFT JOIN " + T_RECORD_MEMBER_REL + " rel ON rel.biz_id = d.id " +
+            "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' AND d.cfszln = #{orgId} " +
+            "<choose>" +
+            "<when test='startRaw != null and endRaw != null'>" +
+            "AND to_char(d.egkivk_min, 'YYYY-MM-DD HH24:MI:SS') = #{startRaw} " +
+            "AND to_char(d.egkivk_max, 'YYYY-MM-DD HH24:MI:SS') = #{endRaw} " +
+            "</when>" +
+            "<otherwise>" +
+            "AND to_char(d.yaaebo, 'YYYY-MM-DD') = #{dutyDate} " +
+            "</otherwise>" +
+            "</choose>" +
+            "AND COALESCE(d.ahygpx, rel.rel_id) IS NOT NULL " +
+            "ORDER BY memberId" +
+            "</script>")
+    List<String> selectGroupMemberIds(@Param("orgId") String orgId,
+                                      @Param("startRaw") String startRaw,
+                                      @Param("endRaw") String endRaw,
+                                      @Param("dutyDate") String dutyDate);
 
     /** 新建交接班记录（主写新列；无兼容双写，§3.2）。 */
     @Insert("INSERT INTO " + T_HANDOVER + " " +
@@ -301,23 +269,7 @@ public interface DutyAttendanceMapper {
 
     // ==================== 关系表写入（多选中间表：9 列通用结构） ====================
 
-    /**
-     * 值班记录人员关系写入（开始值班时从排班成员复制，nature_order 从 1 递增）。
-     * checkin_at：首签人本人那行落签到时间，其余为 null（待各自补签）。
-     */
-    @Insert("INSERT INTO " + T_RECORD_MEMBER_REL + " " +
-            "(id, corp_code, created_at, created_by, updated_at, updated_by, biz_id, rel_id, nature_order, checkin_at) " +
-            "VALUES (#{id}, #{corpCode}, #{now}, #{operator}, #{now}, #{operator}, #{bizId}, #{relId}, #{natureOrder}, #{checkinAt})")
-    int insertRecordMember(@Param("id") String id,
-                           @Param("bizId") String bizId,
-                           @Param("relId") String relId,
-                           @Param("natureOrder") String natureOrder,
-                           @Param("corpCode") String corpCode,
-                           @Param("now") LocalDateTime now,
-                           @Param("operator") String operator,
-                           @Param("checkinAt") LocalDateTime checkinAt);
-
-    /** 交接班·交班人员关系写入（biz_id = 交接班记录 id，rel_id = 本班值班人员）。 */
+    /** 交接班·交班人员关系写入（biz_id = 交接班记录 id，rel_id = 本班各记录归属人）。 */
     @Insert("INSERT INTO " + T_HANDOVER_FROM_REL + " " +
             "(id, corp_code, created_at, created_by, updated_at, updated_by, biz_id, rel_id, nature_order) " +
             "VALUES (#{id}, #{corpCode}, #{now}, #{operator}, #{now}, #{operator}, #{bizId}, #{relId}, #{natureOrder})")
@@ -363,20 +315,28 @@ public interface DutyAttendanceMapper {
     List<HandoverTimelineRowVO> selectTimelineHandovers(@Param("dayStart") String dayStart,
                                                         @Param("dayEnd") String dayEnd);
 
-    /** 今日值守中行（#2# 记录、值班日期当天；按实际开始时间升序）。 */
-    @Select("SELECT d.id AS id, " +
+    /**
+     * 今日值守中行（当日 #2# 记录，按班组聚合：同单位 + 同班次起止时间合并为一行，
+     * 人员 = 各记录归属人（历史记录回退 rel 人员聚合），按最早实际开始时间升序取组）。
+     */
+    @Select("SELECT min(x.id) AS id, min(x.actualStartRaw) AS actualStartRaw, " +
+            "x.shiftMinRaw AS shiftMinRaw, x.shiftMaxRaw AS shiftMaxRaw, " +
+            "min(x.legacyShift) AS legacyShift, " +
+            "string_agg(x.mem, '、' ORDER BY x.actualStartRaw NULLS LAST, x.id) AS membersRaw " +
+            "FROM (SELECT d.id AS id, " +
             "to_char(d.jlailj, 'YYYY-MM-DD HH24:MI:SS') AS actualStartRaw, " +
             "to_char(d.egkivk_min, 'YYYY-MM-DD HH24:MI:SS') AS shiftMinRaw, " +
             "to_char(d.egkivk_max, 'YYYY-MM-DD HH24:MI:SS') AS shiftMaxRaw, " +
-            "d.lzcjgq AS legacyShift, " +
-            "(SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +
+            "d.lzcjgq AS legacyShift, d.cfszln AS orgKey, " +
+            "COALESCE(u.name, (SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +
             "   FROM " + T_RECORD_MEMBER_REL + " rel LEFT JOIN " + T_USER + " ru ON ru.id = rel.rel_id " +
-            "  WHERE rel.biz_id = d.id) AS membersRaw " +
-            "FROM " + T_RECORD + " d " +
+            "  WHERE rel.biz_id = d.id)) AS mem " +
+            "FROM " + T_RECORD + " d LEFT JOIN " + T_USER + " u ON u.id = d.ahygpx " +
             "WHERE d.corp_code = 'hltgq' AND d.ylncfw = '#2#' " +
             "AND to_char(d.yaaebo, 'YYYY-MM-DD') >= #{dayStart} " +
-            "AND to_char(d.yaaebo, 'YYYY-MM-DD') < #{dayEnd} " +
-            "ORDER BY d.jlailj ASC NULLS LAST")
+            "AND to_char(d.yaaebo, 'YYYY-MM-DD') < #{dayEnd}) x " +
+            "GROUP BY x.orgKey, x.shiftMinRaw, x.shiftMaxRaw " +
+            "ORDER BY min(x.actualStartRaw) ASC NULLS LAST")
     List<OngoingTimelineRowVO> selectTimelineOngoing(@Param("dayStart") String dayStart,
                                                      @Param("dayEnd") String dayEnd);
 

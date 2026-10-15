@@ -218,7 +218,7 @@ td .ind-line .pend{color:var(--el-text-color-secondary)}
         </div>
         <div class="f-item">
           <label class="f-label"><i class="req">*</i>负责人</label>
-          <input class="field" id="in-owner" maxlength="100" placeholder="如「工程管理处 / 张工」" autocomplete="off">
+          <div class="sel" id="sel-owner"></div>
         </div>
         <div class="f-item">
           <label class="f-label">状态</label>
@@ -371,7 +371,7 @@ const ICON = {
 };
 
 const S = {
-  meta: { schemeStatuses: [], methods: [], sources: {}, flags: {}, recheckReasons: [] },
+  meta: { schemeStatuses: [], methods: [], sources: {}, flags: {}, recheckReasons: [], owners: [] },
   baseYear: new Date().getFullYear(),
   page: 1, size: 20, total: 0, records: [],
   filter: { year: '', name: '', owner: '', status: '' },
@@ -555,7 +555,7 @@ function onTableClick(e) {
 const DRAWER_TITLES = { create: '新增节水方案', edit: '编辑节水方案', view: '方案详情', verify: '方案核验' };
 const EV_HINT_DEFAULT = '实施年度取记录的潜力年度；建方案时固化实施前实际用水量快照';
 
-let selFYear, selFStatus, selEvidence, selStatus, selDemo, selComparable, selAYear, selADemo;
+let selFYear, selFStatus, selEvidence, selOwner, selStatus, selDemo, selComparable, selAYear, selADemo;
 let annualPlanId = null;      // 年度表单：auto_plan 带出的计划 id（手工录入时清空）
 let annualPlanSource = null;  // 年度表单：auto_plan / manual
 
@@ -575,9 +575,10 @@ function setDrawerMode(mode) {
 }
 
 function clearErrors() {
-  ['in-name', 'in-target', 'in-owner', 'in-measure', 'in-after', 'in-source'].forEach(id => $(id).classList.remove('is-err'));
+  ['in-name', 'in-target', 'in-measure', 'in-after', 'in-source'].forEach(id => $(id).classList.remove('is-err'));
   $('chk-indicators').classList.remove('is-err');
   if (selEvidence) selEvidence.setError(false);
+  if (selOwner) selOwner.setError(false);
   if (selStatus) selStatus.setError(false);
   if (selComparable) selComparable.setError(false);
 }
@@ -614,6 +615,7 @@ function initSelects() {
   selFYear = createSelect($('f-year')).setPlaceholder('全部年度');
   selFStatus = createSelect($('f-status')).setPlaceholder('全部状态');
   selEvidence = createSelect($('sel-evidence')).setPlaceholder('请选择年度水量记录').setSearchable(true);
+  selOwner = createSelect($('sel-owner')).setPlaceholder('请选择负责人').setSearchable(true);
   selStatus = createSelect($('sel-status')).setPlaceholder('请选择状态');
   selDemo = createSelect($('sel-demo')).setPlaceholder('请选择');
   selComparable = createSelect($('sel-comparable')).setPlaceholder('请选择是否确认');
@@ -640,6 +642,12 @@ function fillDemoOptions() {
   const opts = [{ value: '#2#', label: '正式' }, { value: '#1#', label: '虚拟演示' }];
   selDemo.setOptions(opts).setValue('#2#');
   selADemo.setOptions(opts.slice()).setValue('#2#');
+}
+
+/** 负责人候选（/water-saving/meta owners：平台用户 {id,name} → 下拉 {value,label}；值与库内姓名快照口径一致） */
+function fillOwnerOptions() {
+  const opts = (S.meta.owners || []).map(u => ({ value: u.name, label: u.name }));
+  selOwner.setOptions(opts);
 }
 
 function fillComparableOptions() {
@@ -725,7 +733,7 @@ function resetSchemeForm() {
   clearErrors();
   $('in-name').value = '';
   $('in-target').value = '';
-  $('in-owner').value = '';
+  selOwner.setValue('');
   $('in-measure').value = '';
   $('ev-hint').textContent = EV_HINT_DEFAULT;
   $('in-name').classList.remove('is-err');
@@ -757,9 +765,10 @@ function collectSchemeForm() {
     $('in-target').classList.add('is-err');
     throw new Error('节水目标不能超过潜力（' + fmtNum(potential) + ' 万m³）');
   }
-  const owner = $('in-owner').value.trim();
-  if (!owner) { $('in-owner').classList.add('is-err'); throw new Error('请填写负责人'); }
-  if (owner.length > 100) { $('in-owner').classList.add('is-err'); throw new Error('负责人不能超过 100 字'); }
+  const owner = String(selOwner.getValue() || '').trim();
+  if (!owner) { selOwner.setError(true); throw new Error('请选择负责人'); }
+  // 选中池内人员回传 id（后端按 id 回查固化姓名）；存量/手填文本无 id，按文本入库
+  const ownerHit = (S.meta.owners || []).filter(u => u.name === owner)[0];
   const measure = $('in-measure').value.trim();
   if (!measure) { $('in-measure').classList.add('is-err'); throw new Error('请填写具体措施'); }
   if (measure.length > 2000) { $('in-measure').classList.add('is-err'); throw new Error('具体措施不能超过 2000 字'); }
@@ -770,6 +779,7 @@ function collectSchemeForm() {
     evidenceId: evidenceId,
     targetVolume: target,
     owner: owner,
+    ownerUserId: ownerHit ? ownerHit.id : null,
     measure: measure,
     status: selStatus.getValue() || '#1#',
     indicatorIds: indicatorIds,
@@ -831,7 +841,7 @@ async function openEdit(id) {
   refreshEvidenceOptions(vo.evidenceId || '');
   $('in-name').value = vo.name || '';
   $('in-target').value = vo.targetVolume === null || vo.targetVolume === undefined ? '' : fmtNum(vo.targetVolume);
-  $('in-owner').value = vo.owner || '';
+  selOwner.setValue(vo.owner || '');
   $('in-measure').value = vo.measure || '';
   selStatus.setValue(vo.status || '#1#', vo.statusName || '');
   const hadVerify = vo.verifyAfterVolume !== null && vo.verifyAfterVolume !== undefined;
@@ -1564,6 +1574,7 @@ async function init() {
   initStatusFilter();
   fillFormStatusOptions();
   fillDemoOptions();
+  fillOwnerOptions();
   fillComparableOptions();
   renderAnnuals();
   fillYearFilter();

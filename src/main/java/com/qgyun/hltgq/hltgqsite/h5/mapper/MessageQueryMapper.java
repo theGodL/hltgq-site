@@ -117,20 +117,25 @@ public interface MessageQueryMapper {
 
     /**
      * 按需同步告警接收记录：仅已确认/处理中的告警，为当前登录人补建未读记录。
+     * <p>siteIds 非空时仅补建这些站点的告警（告警规则的站点范围）；空/null = 不限站点。
      * <p>NOT EXISTS 幂等（已建记录绝不重复）；可见性判定在 Service 层完成（规则命中才调用），
      * 故此处无规则条件；id 取 userId_messageId 确定性拼接（≤64 字符）。
      * <p>注意：线上 Kingbase 的 || 按逻辑 OR 语义处理（会产生布尔值），拼接必须用 CONCAT。
      */
-    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
+    @Insert("<script>" +
+            "INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
             "(id, user_id, message_type, message_id, is_read, corp_code, created_at, created_by) " +
             "SELECT CONCAT(#{userId}, '_', a.id), #{userId}, '#1#', a.id, '#1#', 'hltgq', CURRENT_TIMESTAMP, #{userId} " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_alert\" a " +
             "WHERE a.status IN ('#2#', '#3#') " +
+            "<if test='siteIds != null and siteIds.size() > 0'>AND a.site IN " +
+            "<foreach collection='siteIds' item='s' open='(' separator=',' close=')'>#{s}</foreach> </if>" +
             "AND NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "  WHERE r.user_id = #{userId} AND r.message_type = '#1#' AND r.message_id = a.id" +
-            ")")
-    int syncAlertReceives(@Param("userId") String userId);
+            ")" +
+            "</script>")
+    int syncAlertReceives(@Param("userId") String userId, @Param("siteIds") List<String> siteIds);
 
     /** 按需同步举报投诉接收记录（全量无状态过滤），NOT EXISTS 幂等 */
     @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
@@ -161,10 +166,17 @@ public interface MessageQueryMapper {
             "WHERE r.user_id = #{userId} AND r.message_type = '#4#'")
     long countDuty(@Param("userId") String userId);
 
-    /** 值班提醒分页：按值班日期倒序，id 兜底分页稳定 */
+    /**
+     * 值班提醒分页：按值班日期倒序，id 兜底分页稳定。
+     * <p>dutyRole 三态：leader 当班领导（alidpq）；staff 当班人员（关系表 cogxjx_rel 命中）；
+     * receiver 规则附加接收人（前两者都未命中，由消息发送设置配置的规则补建）。
+     */
     @Select("SELECT s.id AS messageId, s.owcvsv AS dutyDate, s.itxmyy AS shiftTime, " +
             "s.ihdflq AS dutyUnit, s.peuzwi AS scheduleStatus, " +
-            "CASE WHEN s.alidpq = #{userId} THEN 'leader' ELSE 'staff' END AS dutyRole, " +
+            "CASE WHEN s.alidpq = #{userId} THEN 'leader' " +
+            "WHEN EXISTS (SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd_cogxjx_rel\" rel " +
+            "WHERE rel.biz_id = s.id AND rel.rel_id = #{userId}) THEN 'staff' " +
+            "ELSE 'receiver' END AS dutyRole, " +
             "CASE WHEN r.is_read = '#2#' THEN true ELSE false END AS isRead " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "JOIN \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s ON r.message_id = s.id " +
@@ -252,6 +264,26 @@ public interface MessageQueryMapper {
     int syncDutyStaffRelReceives(@Param("userId") String userId, @Param("since") String since);
 
     /**
+     * 按需同步值班提醒接收记录（规则附加接收人）：消息发送设置配置的对象为附加接收人，
+     * 同步近两日处于值班中的排班（与领导/人员侧同条件：已进入值班中 + 未提醒 + 值班日期不早于昨日），
+     * 区别是不限 alidpq/cogxjx（非本人班次也提醒）；无规则时由 Service 层判定不调用本方法。
+     * <p>与既有两侧 NOT EXISTS 幂等去重（接收 id 一致），已建记录绝不重复、绝不回滚。
+     */
+    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
+            "(id, user_id, message_type, message_id, is_read, corp_code, created_at, created_by) " +
+            "SELECT CONCAT(#{userId}, '_', s.id), #{userId}, '#4#', s.id, '#1#', 'hltgq', CURRENT_TIMESTAMP, #{userId} " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hdbzyd\" s " +
+            "WHERE s.corp_code = 'hltgq' " +
+            "AND s.peuzwi = '#cmiu#' " +
+            "AND s.hfxuuk = '#papu#' " +
+            "AND s.owcvsv >= #{since} " +
+            "AND NOT EXISTS (" +
+            "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
+            "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
+            ")")
+    int syncDutyRuleReceives(@Param("userId") String userId, @Param("since") String since);
+
+    /**
      * 值班诊断（补建 0 条时调用）：取当前登录人作为带班领导的排班原值，
      * 用于核对 hfxuuk（提醒状态）/peuzwi（排班状态）字典与定向条件是否相符。
      */
@@ -262,7 +294,7 @@ public interface MessageQueryMapper {
             "ORDER BY s.owcvsv DESC LIMIT 5")
     List<Map<String, Object>> selectDutyDiag(@Param("userId") String userId);
 
-    // ==================== 模型计算消息（#5#，提交人定向） ====================
+    // ==================== 模型计算消息（#5#，提交人定向 + 规则附加接收人） ====================
 
     /** 模型计算消息总数：接收表纯计数不 JOIN 主表（方案软删不物理删，接收记录保留，与列表口径一致） */
     @Select("SELECT COUNT(*) " +
@@ -328,6 +360,51 @@ public interface MessageQueryMapper {
             "WHERE r.user_id = #{userId} AND r.message_type = '#5#' AND r.message_id = x.message_id" +
             ")")
     int syncModelCalcReceives(@Param("userId") String userId);
+
+    /**
+     * 按需同步模型计算接收记录（规则附加接收人）：消息发送设置配置的对象为附加接收人，
+     * 同步近 7 天完成的方案（since 为日期下限；不限 created_by，区别于提交人定向），
+     * 7 天时间窗防止首次同步把历史全量方案灌入；无规则时由 Service 层判定不调用本方法。
+     * <p>7 张主表 UNION ALL、message_id 带模块前缀、created_at 写方案完成时间，与提交人侧同口径；
+     * NOT EXISTS 幂等去重（接收 id 一致），已建记录绝不重复、绝不回滚。
+     */
+    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" " +
+            "(id, user_id, message_type, message_id, is_read, corp_code, created_at, created_by) " +
+            "SELECT CONCAT(#{userId}, '_', x.message_id), #{userId}, '#5#', x.message_id, '#1#', 'hltgq', x.finished_at, #{userId} " +
+            "FROM (" +
+            "SELECT CONCAT('short:', id) AS message_id, updated_at AS finished_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_short_forecast_record\" " +
+            "WHERE status = 'completed' AND del_flag = '#2#' AND updated_at >= #{since} " +
+            "UNION ALL " +
+            "SELECT CONCAT('long:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_long_predict_record\" " +
+            "WHERE status = 'completed' AND del_flag = '#2#' AND updated_at >= #{since} " +
+            "UNION ALL " +
+            "SELECT CONCAT('loss:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_loss_record\" " +
+            "WHERE status = 'completed' AND del_flag = '#2#' AND updated_at >= #{since} " +
+            "UNION ALL " +
+            "SELECT CONCAT('demand:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_demand_record\" " +
+            "WHERE status = 'completed' AND del_flag = '#2#' AND updated_at >= #{since} " +
+            "UNION ALL " +
+            "SELECT CONCAT('moisture:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_moisture_detail\" " +
+            "WHERE status = '#2#' AND del_flag = '#2#' AND updated_at >= #{since} " +
+            "UNION ALL " +
+            "SELECT CONCAT('allocation:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_allocate_record\" " +
+            "WHERE status = 'completed' AND del_flag = '#2#' AND updated_at >= #{since} " +
+            "UNION ALL " +
+            "SELECT CONCAT('decision:', id), updated_at " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_decision_record\" " +
+            "WHERE status = 'completed' AND del_flag = '#2#' AND updated_at >= #{since} " +
+            ") x " +
+            "WHERE NOT EXISTS (" +
+            "SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
+            "WHERE r.user_id = #{userId} AND r.message_type = '#5#' AND r.message_id = x.message_id" +
+            ")")
+    int syncModelCalcRuleReceives(@Param("userId") String userId, @Param("since") String since);
 
     /** 模型计算消息第二段反查：短期预报方案详情（主键 IN，每模块独立查询） */
     @Select("<script>SELECT CONCAT('short:', id) AS messageId, scheme_name AS schemeName, updated_at AS finishedAt " +

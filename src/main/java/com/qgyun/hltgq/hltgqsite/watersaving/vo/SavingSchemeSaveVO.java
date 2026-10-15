@@ -19,8 +19,11 @@ public class SavingSchemeSaveVO {
     /** 节水目标（万m³，必填 >0 且 ≤ 潜力） */
     private BigDecimal targetVolume;
 
-    /** 负责人（必填） */
+    /** 负责人（必填；平台用户姓名快照） */
     private String owner;
+
+    /** 负责人平台用户 id（选人下拉；非空时后端按 id 回查固化姓名，不信任前端文本） */
+    private String ownerUserId;
 
     /** 具体措施（必填） */
     private String measure;
@@ -64,6 +67,14 @@ public class SavingSchemeSaveVO {
 
     public void setOwner(String owner) {
         this.owner = owner;
+    }
+
+    public String getOwnerUserId() {
+        return ownerUserId;
+    }
+
+    public void setOwnerUserId(String ownerUserId) {
+        this.ownerUserId = ownerUserId;
     }
 
     public String getMeasure() {
