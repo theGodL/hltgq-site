@@ -61,6 +61,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .filter-item .field{width:220px}
 .filter-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
 
+/* ===== 保证率 KPI 卡片（设计 / 实际） ===== */
+.kpi-row{flex-shrink:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.kpi-card{background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:14px 24px;display:flex;flex-direction:column;gap:2px}
+.kpi-t{font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
+.kpi-v{font-size:26px;font-weight:600;color:var(--el-color-primary);line-height:38px;display:flex;align-items:baseline;gap:2px}
+.kpi-v .u{font-size:13px;font-weight:400;color:var(--el-text-color-secondary)}
+.kpi-v .txt{font-size:18px;font-weight:500;color:var(--el-text-color-primary)}
+.kpi-f{font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
+
 .panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px 0;flex-shrink:0}
 .panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
@@ -274,9 +283,23 @@ td.empty:hover{background:transparent}
     </div>
   </div>
 
+  <!-- 保证率 KPI：设计 90% / 实际（全部审核通过申请，不随筛选变化） -->
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-t">设计保证率</div>
+      <div class="kpi-v">90<span class="u">%</span></div>
+      <div class="kpi-f">固定设计指标</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-t">实际保证率 · 全部审核通过申请</div>
+      <div class="kpi-v" id="kpi-actual"><span class="txt">加载中...</span></div>
+      <div class="kpi-f" id="kpi-foot">--</div>
+    </div>
+  </div>
+
   <div class="panel">
     <div class="panel-hd">
-      <span class="hd-tip">计划周期按类型自动推导；同类型周期重叠在「生效」时拦截，月度 / 旬度超年度计划仅提示。</span>
+      <span class="hd-tip">计划周期按类型自动推导；同一用水户在同一计划中仅可出现一次；同类型周期重叠在「生效」时拦截，月度 / 旬度超年度计划水量仅提示。灌溉进度 = 未取消调度方案的闸口实测放水量合计 ÷ 计划总水量 × 100%；缺读数时显示「待补计量数据」，不能认定为零供水。</span>
       <div class="hd-acts">
         <button class="btn btn-primary" id="btn-add">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>新增计划
@@ -287,13 +310,14 @@ td.empty:hover{background:transparent}
       <div class="tbl-wrap">
         <table>
           <colgroup>
-            <col style="width:22%"><col style="width:8%"><col style="width:17%"><col style="width:7%">
-            <col style="width:11%"><col style="width:9%"><col style="width:9%"><col style="width:17%">
+            <col style="width:18%"><col style="width:8%"><col style="width:14%"><col style="width:7%">
+            <col style="width:11%"><col style="width:12%"><col style="width:10%"><col style="width:8%">
+            <col style="width:12%">
           </colgroup>
           <thead>
             <tr>
               <th>计划名称</th><th>类型</th><th>计划周期</th><th>用水户数</th>
-              <th>计划总水量</th><th>执行进度</th><th>状态</th><th>操作</th>
+              <th>计划总水量</th><th>已完成供水量</th><th>灌溉进度</th><th>状态</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="tbl-body"></tbody>
@@ -341,9 +365,13 @@ td.empty:hover{background:transparent}
           <div class="f-hint">按计划类型自动推导，不可修改</div>
         </div>
         <div class="f-item span2">
-          <label class="f-label">计划名称</label>
-          <input class="field" id="in-plan-name" maxlength="200" placeholder="留空时按周期自动生成" autocomplete="off">
-          <div class="f-hint">全局唯一；留空时按周期自动生成，如「2026年10月月度调度计划」</div>
+          <label class="f-label"><i class="req">*</i>计划名称</label>
+          <input class="field" id="in-plan-name" maxlength="200" placeholder="如「2026年10月月度调度计划」" autocomplete="off">
+          <div class="f-hint">必填，全局唯一</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">备注</label>
+          <input class="field" id="in-remark" maxlength="200" placeholder="选填，最多 200 字（已生效计划仍可修改）" autocomplete="off">
         </div>
       </div>
       <div class="sec-title">用水明细
@@ -389,6 +417,7 @@ td.empty:hover{background:transparent}
 </div>
 
 <div class="toast" id="toast"></div>
+<script src="./lib/rules.js"></script>
 <script>
 /* ============================ 常量与状态 ============================ */
 const API = '/hltgq-site';
@@ -405,14 +434,13 @@ const ICON = {
 };
 
 const S = {
-  meta: { planTypes: [], planStatuses: [], xuns: [], today: '' },
+  meta: { planTypes: [], planStatuses: [], xuns: [], today: '', rulesVersion: '' },
   baseYear: new Date().getFullYear(),
   page: 1, size: 20, total: 0, records: [],
   filter: { keyword: '', planType: '', status: '' },
   mode: '',                      // 抽屉：create / edit / view
   row: null,                     // 当前编辑/查看的计划
   locked: false,                 // 已生效受限编辑
-  nameDirty: false,              // 计划名称是否被手动修改
   items: [],                     // 明细行状态
   userOptions: [], quotaOptions: [], userMap: {}, quotaMap: {},
   saving: false, seq: 0, listSeq: 0, flashKey: null
@@ -461,12 +489,12 @@ function qs(obj) {
   return p.toString();
 }
 
-/** m³ → 万m³（1 位小数；空返回 null） */
+/** m³ → 万m³（1 位小数；空返回 null；与 lib/rules.js 同源） */
 function fmtWan(m3) {
   if (m3 === null || m3 === undefined || m3 === '') return null;
   const n = Number(m3);
   if (isNaN(n)) return null;
-  return (n / 10000).toFixed(1);
+  return WaterRules.fmtWan(n);
 }
 
 /** 数值格式化（固定小数位；空返回 null） */
@@ -498,17 +526,6 @@ function periodOf(type, year, month, xun) {
     if (xun === 3) return [year + '-' + mm + '-21', year + '-' + mm + '-' + last];
   }
   return null;
-}
-
-/** 计划名称自动生成（与后端同公式） */
-function autoName(type, year, month, xun) {
-  if (!type || !year) return '';
-  if (type === '#1#') return year + '年度调度计划';
-  if (!month) return '';
-  if (type === '#2#') return year + '年' + month + '月月度调度计划';
-  if (!xun) return '';
-  const xn = { 1: '上', 2: '中', 3: '下' }[xun] || '';
-  return year + '年' + month + '月' + xn + '旬旬度调度计划';
 }
 
 /* ============================ 下拉组件（单选） ============================ */
@@ -600,7 +617,7 @@ function closeAllSelects(except) {
 
 /* ============================ 列表 ============================ */
 function emptyRow(text, plain) {
-  return '<tr><td colspan="8" class="empty"><div class="empty-box">' +
+  return '<tr><td colspan="9" class="empty"><div class="empty-box">' +
     (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
 }
 
@@ -632,15 +649,38 @@ function typeTag(r) {
   return '<span class="tag ' + cls + '">' + esc(r.planTypeName || '--') + '</span>';
 }
 
+/* ============================ KPI：实际保证率 ============================ */
+/** 实际保证率（全部审核通过申请，不随列表筛选变化；need / actual 出口口径 m³） */
+async function loadGuarantee() {
+  const vEl = $('kpi-actual');
+  const fEl = $('kpi-foot');
+  try {
+    const g = await api('/water-plan/guarantee');
+    const need = Number(g && g.need) || 0;
+    const actual = Number(g && g.actual) || 0;
+    const missing = Number(g && g.missing) || 0;
+    if (!need) vEl.innerHTML = '<span class="txt">暂无审核通过需水</span>';
+    else if (g && g.overlap) vEl.innerHTML = '<span class="txt">申请时段重叠，待核对</span>';
+    else if (missing) vEl.innerHTML = '<span class="txt">待补计量数据</span>';
+    else vEl.innerHTML = esc(fmt2(actual / need * 100)) + '<span class="u">%</span>';
+    fEl.textContent = '应供 ' + fmtWan(need) + ' 万m³ · 已有计量 ' + fmtWan(actual) + ' 万m³ · ' + missing + ' 条待补';
+  } catch (e) {
+    vEl.innerHTML = '<span class="txt">加载失败</span>';
+    fEl.textContent = '';
+  }
+}
+
 function statusTag(r) {
   const map = { '#1#': 'blue', '#2#': 'green', '#3#': 'gray', '#4#': 'red' };
   return '<span class="tag ' + (map[r.status] || 'gray') + '">' + esc(r.statusName || '--') + '</span>';
 }
 
-function pctCell(r) {
+/** 灌溉进度：缺读数 → 待补计量数据（不能认定为零供水）；否则 = 已完成供水量 ÷ 计划总水量 */
+function progressCell(r) {
+  if (Number(r.missingCnt) > 0) return '<span class="sub">待补计量数据</span>';
   const total = Number(r.totalWater) || 0;
-  const sched = Number(r.scheduledQty) || 0;
-  return (total > 0 ? Math.round(sched / total * 100) : 0) + '%';
+  const done = Number(r.doneQty) || 0;
+  return (total > 0 ? Math.round(done / total * 100) : 0) + '%';
 }
 
 function actsCell(r) {
@@ -651,7 +691,7 @@ function actsCell(r) {
       '<button class="lnk-btn" data-act="activate" data-id="' + id + '" data-tip="生效" aria-label="生效">' + ICON.check + '</button>' +
       '<button class="lnk-btn danger" data-act="del" data-id="' + id + '" data-tip="删除" aria-label="删除">' + ICON.trash + '</button>';
   } else if (r.status === '#2#') {
-    html = '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="调整计划水量" aria-label="编辑">' + ICON.pencil + '</button>' +
+    html = '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="调整计划水量 / 备注" aria-label="编辑">' + ICON.pencil + '</button>' +
       '<button class="lnk-btn" data-act="archive" data-id="' + id + '" data-tip="归档" aria-label="归档">' + ICON.archive + '</button>' +
       '<button class="lnk-btn danger" data-act="void" data-id="' + id + '" data-tip="作废" aria-label="作废">' + ICON.ban + '</button>';
   }
@@ -666,6 +706,7 @@ function renderTable() {
   }
   tb.innerHTML = S.records.map(r => {
     const wan = fmtWan(r.totalWater);
+    const doneWan = fmtWan(r.doneQty);
     return '<tr data-key="' + esc(r.id) + '">' +
       '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.planName || '--') + '</span>' +
       '<span class="sub-line">' + esc((r.planNo || '') + (r.createdAtText ? ' · ' + r.createdAtText : '')) + '</span></td>' +
@@ -673,7 +714,8 @@ function renderTable() {
       '<td>' + esc((r.periodStart || '') + ' ~ ' + (r.periodEnd || '')) + '</td>' +
       '<td>' + esc(String(r.userCount === null || r.userCount === undefined ? 0 : r.userCount)) + ' <span class="sub">户</span></td>' +
       '<td>' + (wan === null ? '--' : esc(wan) + ' <span class="sub">万m³</span>') + '</td>' +
-      '<td>' + esc(pctCell(r)) + '</td>' +
+      '<td>' + (doneWan === null ? '--' : esc(doneWan) + ' <span class="sub">万m³</span>') + '</td>' +
+      '<td>' + progressCell(r) + '</td>' +
       '<td>' + statusTag(r) + '</td>' +
       '<td class="col-act">' + actsCell(r) + '</td></tr>';
   }).join('');
@@ -826,7 +868,6 @@ async function ensureOptions() {
 function resetForm() {
   S.row = null;
   S.locked = false;
-  S.nameDirty = false;
   S.items = [];
   selType.setOptions((S.meta.planTypes || []).map(o => ({ value: o.value, label: o.label })));
   selType.setPlaceholder('请选择计划类型').setValue('').setDisabled(false).setError(false);
@@ -838,11 +879,13 @@ function resetForm() {
   selXun.setPlaceholder('请选择旬').setValue('').setDisabled(false).setError(false);
   $('in-plan-name').value = '';
   $('in-plan-name').disabled = false;
+  $('in-plan-name').classList.remove('is-err');
+  $('in-remark').value = '';
   refreshPeriod();
   renderItems();
 }
 
-/** 周期 / 名称联动（周期纯推导只读展示；名称未手动修改时自动回填） */
+/** 周期推导（只读展示；名称必填不自动生成） */
 function refreshPeriod() {
   const type = selType ? selType.getValue() : '';
   const year = Number(selYear.getValue()) || S.baseYear;
@@ -852,10 +895,6 @@ function refreshPeriod() {
   $('fi-xun').hidden = type !== '#3#';
   const p = periodOf(type, year, type === '#1#' ? null : month, type === '#3#' ? xun : null);
   $('period-text').textContent = p ? (p[0] + ' ~ ' + p[1]) : '--';
-  const auto = autoName(type, year, month, xun);
-  const nameInput = $('in-plan-name');
-  nameInput.placeholder = auto || '留空时按周期自动生成';
-  if (!S.nameDirty) nameInput.value = auto || '';
 }
 
 async function openCreate() {
@@ -878,7 +917,7 @@ async function openEdit(id) {
     const results = await Promise.all([api('/water-plan/detail?' + qs({ id })), ensureOptions()]);
     if (seq !== S.seq || S.mode !== 'edit') return;
     const d = results[0];
-    $('drawer-title').textContent = d.status === '#2#' ? '调整计划水量' : '编辑用水计划';
+    $('drawer-title').textContent = d.status === '#2#' ? '调整计划水量 / 备注' : '编辑用水计划';
     fillForm(d);
   } catch (e) {
     if (seq === S.seq && S.mode === 'edit') {
@@ -923,13 +962,13 @@ function fillForm(d) {
   if (d.planType === '#3#') selXun.setValue(String(xun));
   $('in-plan-name').value = d.planName || '';
   $('in-plan-name').disabled = locked;
-  S.nameDirty = true;
+  $('in-remark').value = d.remark || '';
   refreshPeriod();
   S.items = (d.items || []).map(row => {
     const calc = row.calcWater === null || row.calcWater === undefined ? null : Number(row.calcWater);
     const pw = row.planWater === null || row.planWater === undefined ? null : Number(row.planWater);
     const auto = calc !== null && pw !== null && Math.abs(pw - calc) < 0.005;
-    const quotaSub = [(row.quotaIrrigationMethod || ''),
+    const quotaSub = [(row.quotaIrrigationMethodName || row.quotaIrrigationMethod || ''),
       (row.quotaValue === null || row.quotaValue === undefined ? '' : Number(row.quotaValue) + ' m³/亩')]
       .filter(Boolean).join(' · ');
     return {
@@ -1174,11 +1213,22 @@ function validateForm() {
       xun = Number(selXun.getValue());
       if (!xun) { selXun.setError(true); return failMsg('请选择旬'); }
     }
+    const nameEl = $('in-plan-name');
+    if (!nameEl.value.trim()) {
+      nameEl.classList.add('is-err');
+      return failMsg('请填写计划名称');
+    }
   }
+  const seenUsers = {};
   for (let i = 0; i < S.items.length; i++) {
     const it = S.items[i];
     if (!S.locked) {
       if (!it.userId) { if (it._userSel) it._userSel.setError(true); return failRow(i, '请选择用水户'); }
+      if (seenUsers[it.userId]) {
+        if (it._userSel) it._userSel.setError(true);
+        return failRow(i, '用水户「' + (it.userName || '') + '」在本计划中已存在，同一用水户仅可出现一次');
+      }
+      seenUsers[it.userId] = true;
       const areaStr = String(it.area === null || it.area === undefined ? '' : it.area).trim();
       if (!/^\d+(\.\d{1,2})?$/.test(areaStr) || Number(areaStr) <= 0) {
         return failRow(i, '灌溉面积须大于 0 且最多 2 位小数', '.m-area');
@@ -1203,6 +1253,7 @@ function validateForm() {
   };
   if (S.locked) {
     return {
+      remark: strOrNull($('in-remark').value),
       items: S.items.map(it => ({
         id: it.id,
         planWater: itemPlanWater(it),
@@ -1216,6 +1267,7 @@ function validateForm() {
     month: month,
     xun: xun,
     planName: strOrNull($('in-plan-name').value),
+    remark: strOrNull($('in-remark').value),
     items: S.items.map(it => ({
       waterUserId: it.userId,
       irrigationArea: Number(String(it.area).trim()),
@@ -1265,9 +1317,11 @@ function viewRow(k, v) {
 
 function renderView(d) {
   const total = Number(d.totalWater) || 0;
-  const sched = Number(d.scheduledQty) || 0;
-  const pct = total > 0 ? Math.round(sched / total * 100) : 0;
+  const done = Number(d.doneQty) || 0;
+  const missing = Number(d.missingCnt) > 0;
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
   const wan = fmtWan(d.totalWater);
+  const doneWan = fmtWan(d.doneQty);
   const pairs = [
     ['编号', d.planNo],
     ['计划名称', d.planName],
@@ -1277,7 +1331,8 @@ function renderView(d) {
     ['状态', d.statusName],
     ['用水户数', d.userCount === null || d.userCount === undefined ? '0 户' : d.userCount + ' 户'],
     ['计划总水量', wan === null ? null : wan + ' 万m³'],
-    ['执行进度', pct + '%']
+    ['已完成供水量', doneWan === null ? null : doneWan + ' 万m³ · 灌溉进度 ' + (missing ? '待补计量数据' : pct + '%')],
+    ['备注', d.remark]
   ];
   if (d.status === '#4#' && (d.voidBy || d.voidReason)) {
     pairs.push(['作废人', d.voidBy]);
@@ -1285,19 +1340,26 @@ function renderView(d) {
     pairs.push(['作废原因', d.voidReason]);
   }
   const items = d.items || [];
-  const rows = items.map((it, i) =>
-    '<tr><td class="m-idx">' + (i + 1) + '</td>' +
+  const rows = items.map((it, i) => {
+    const rowDone = (it.doneQty === null || it.doneQty === undefined) ? null : Number(it.doneQty);
+    const rowMissing = rowDone === null || Number(it.missingCnt) > 0;
+    const rowPlan = Number(it.planWater) || 0;
+    const rowRate = (rowDone === null || rowPlan <= 0) ? 0 : Math.round(Math.max(0, rowDone) / rowPlan * 100);
+    return '<tr><td class="m-idx">' + (i + 1) + '</td>' +
     '<td><div class="m-txt">' + esc(it.waterUserName || '--') + '</div><div class="m-sub">' + esc(it.waterUserNo || '') + '</div></td>' +
     '<td><div class="m-txt">' + (it.irrigationArea === null || it.irrigationArea === undefined ? '--' : esc(String(it.irrigationArea))) + '</div></td>' +
-    '<td><div class="m-txt">' + esc(it.quotaCropType || '--') + '</div><div class="m-sub">' + esc(it.quotaIrrigationMethod || '') + '</div></td>' +
+    '<td><div class="m-txt">' + esc(it.quotaCropType || '--') + '</div><div class="m-sub">' + esc(it.quotaIrrigationMethodName || it.quotaIrrigationMethod || '') + '</div></td>' +
     '<td class="m-calc">' + (it.calcWater === null || it.calcWater === undefined ? '--' : esc(fmtNum(it.calcWater, 2))) + '</td>' +
     '<td><div class="m-txt">' + (it.planWater === null || it.planWater === undefined ? '--' : esc(fmtNum(Number(it.planWater) / 10000, 2))) + '</div></td>' +
+    '<td class="m-calc">' + (rowDone === null ? '--' : esc(fmtNum(rowDone / 10000, 2))) + '</td>' +
+    '<td>' + (rowMissing ? '<span class="m-sub">待补计量数据</span>' : rowRate + '%') + '</td>' +
     '<td><div class="m-txt">' + esc(it.stageTag || '--') + '</div></td>' +
-    '<td><div class="m-txt">' + esc(it.overrideReason || '--') + '</div></td></tr>').join('');
+    '<td><div class="m-txt">' + esc(it.overrideReason || '--') + '</div></td></tr>';
+  }).join('');
   const itemsHtml = items.length
-    ? '<table class="m-tbl"><colgroup><col style="width:30px"><col style="width:150px"><col style="width:80px"><col style="width:140px">' +
-      '<col style="width:100px"><col style="width:110px"><col style="width:90px"><col style="width:150px"></colgroup>' +
-      '<thead><tr><th>#</th><th>用水户</th><th>面积(亩)</th><th>适用定额</th><th>测算水量(m³)</th><th>计划水量(万m³)</th><th>阶段</th><th>超测算说明</th></tr></thead>' +
+    ? '<table class="m-tbl"><colgroup><col style="width:28px"><col style="width:114px"><col style="width:62px"><col style="width:94px">' +
+      '<col style="width:94px"><col style="width:108px"><col style="width:124px"><col style="width:94px"><col style="width:54px"><col style="width:100px"></colgroup>' +
+      '<thead><tr><th>#</th><th>用水户</th><th>面积(亩)</th><th>适用定额</th><th>测算水量(m³)</th><th>计划水量(万m³)</th><th>已完成供水量(万m³)</th><th>灌溉进度</th><th>阶段</th><th>超测算说明</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table>' +
       '<div class="m-sum">计划总水量：<b>' + fmt2(total / 10000) + '</b> 万m³<span class="sub">合计 ' + items.length + ' 行</span></div>'
     : '<div class="empty-box">暂无明细</div>';
@@ -1474,7 +1536,7 @@ function bindEvents() {
   $('drawer-mask').addEventListener('click', closeDrawer);
   $('btn-add-item').addEventListener('click', addItem);
   $('in-plan-name').addEventListener('input', () => {
-    S.nameDirty = $('in-plan-name').value.trim().length > 0;
+    $('in-plan-name').classList.remove('is-err');
   });
 
   $('items-body').addEventListener('click', e => {
@@ -1531,6 +1593,7 @@ function bindEvents() {
   try {
     const meta = await api('/water-plan/meta');
     S.meta = Object.assign(S.meta, meta || {});
+    WaterRules.assertVersion(S.meta.rulesVersion);
   } catch (e) {
     showToast(e.message || '基础数据加载失败', true);
   }
@@ -1561,7 +1624,7 @@ function bindEvents() {
   selXun.setPlaceholder('请选择旬');
   selXun.onChange(() => { selXun.setError(false); refreshPeriod(); });
 
-  await loadList();
+  await Promise.all([loadList(), loadGuarantee()]);
 })();
 </script>
 </body>

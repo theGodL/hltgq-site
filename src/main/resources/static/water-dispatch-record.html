@@ -40,8 +40,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px}
 .tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:12px 16px;border:1px solid #f0f0f0;white-space:nowrap}
 .tbl td{padding:12px 16px;border:1px solid #f0f0f0;color:#333;line-height:22px;vertical-align:middle;overflow-wrap:break-word}
-.cell-main{display:block;font-weight:600;color:#1f1f1f;line-height:22px}
-.cell-sub{display:block;margin-top:2px;font-size:12px;color:#8c8c8c;line-height:18px}
+.cell-main{font-weight:600;color:#1f1f1f;line-height:22px}
 .amt{font-weight:600;color:#1f1f1f}
 .amt .unit{margin-left:2px;font-size:12px;color:#8c8c8c;font-weight:400}
 .empty-cell{text-align:center;color:#bfbfbf;padding:32px 0}
@@ -148,7 +147,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           <path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
       </span>
-      <input type="text" class="search-input" id="f-kw" placeholder="搜索操作人 / 备注" autocomplete="off">
+      <input type="text" class="search-input" id="f-kw" placeholder="搜索操作人 / 备注 / 方案编号" autocomplete="off">
     </div>
     <div class="filter-sel">
       <div class="select-wrap">
@@ -244,11 +243,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         </div>
         <div class="form-item">
           <label>操作人 / 闸管员 <i class="req">*</i></label>
-          <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-r-operator" placeholder="如 闸管-马强" autocomplete="off">
-            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <div class="sel-dd" id="r-operator-dd"></div>
-          </div>
+          <input type="text" class="ipt" id="f-r-operator" placeholder="如 闸管-马强" autocomplete="off" maxlength="50">
         </div>
         <div class="form-item span2">
           <label>备注</label>
@@ -293,94 +288,46 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 (function () {
   'use strict';
 
-  /* ==================== Mock 数据区(后续可替换为真实接口) ==================== */
+  /* ==================== 接口层(数据全部来自后端接口,经 dev-proxy 代理) ==================== */
 
-  /** 用水户 */
-  var FARMERS = [
-    { code: 'YH001', name: '红星村民委员会' },
-    { code: 'YH002', name: '丰收农业合作社' },
-    { code: 'YH003', name: '县工业园区管委会' },
-    { code: 'YH004', name: '城南自来水厂' },
-    { code: 'YH005', name: '湿地公园生态补水' },
-    { code: 'YH006', name: '绿源家庭农场' },
-    { code: 'YH007', name: '红旗灌区合作社' },
-    { code: 'YH008', name: '城北开发区管委会' }
+  var API_BASE = '/hltgq-site';
+
+  function api(method, url, body, cb) {
+    var opts = { method: method, headers: {} };
+    if (body != null) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    fetch(API_BASE + url, opts).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (res.status === 401) { toast(data.message || '未登录或会话已过期'); cb(new Error('unauthorized')); return; }
+        if (!res.ok) { toast(data.message || ('请求失败(' + res.status + ')')); cb(new Error(data.message || String(res.status))); return; }
+        cb(null, data);
+      });
+    }, function () {
+      /* 仅收拢 fetch 自身的网络故障;业务回调(渲染等)内的异常不再吞掉,直接冒泡到控制台便于排查 */
+      toast('网络异常，请稍后重试');
+      cb(new Error('network'));
+    });
+  }
+
+  /* 下拉/字典数据源(初始化或联动时自接口加载,前端不写死) */
+  var USERS = [];       // 用水户 4.5 /water-demand/users: {id,name,userNo}
+  var GATES = [];       // 闸口池 1.1 /water-user/meta: {id,code,name}
+
+  var LINK_PLANS = [];  // 未取消方案 6.4 /water-dispatch-record/plans
+  var OP_TYPE_LIST = [  // 操作类型下拉(6.1 meta.opTypes 覆盖;默认与 0.4 一致)
+    { value: 'up', label: '闸门提升' },
+    { value: 'down', label: '闸门下降' },
+    { value: 'adjust', label: '流量调整' }
   ];
 
-  /** 闸口 */
-  var GATES = [
-    { code: 'GK001', name: '东干渠一号闸' },
-    { code: 'GK002', name: '东干渠二号闸' },
-    { code: 'GK003', name: '西干渠首闸' },
-    { code: 'GK004', name: '西干渠分水闸' },
-    { code: 'GK005', name: '南支渠节制闸' },
-    { code: 'GK006', name: '北干渠进水闸' },
-    { code: 'GK007', name: '七号泄水闸' }
-  ];
-
-  /** 闸管员 */
-  var OPERATORS = ['闸管-马强', '闸管-何平', '闸管-郑凯', '闸管-刘洋', '闸管-吴倩', '闸管-陈静'];
-
-  /** 关联调度方案下拉数据(方案号 + 用水户 + 闸口) */
-  var LINK_PLANS = [
-    { id: 'DD0017', farmerCode: 'YH005', gateCode: 'GK004' },
-    { id: 'DD0016', farmerCode: 'YH004', gateCode: 'GK005' },
-    { id: 'DD0015', farmerCode: 'YH003', gateCode: 'GK006' },
-    { id: 'DD0014', farmerCode: 'YH001', gateCode: 'GK002' },
-    { id: 'DD0013', farmerCode: 'YH001', gateCode: 'GK001' },
-    { id: 'DD0012', farmerCode: 'YH006', gateCode: 'GK003' },
-    { id: 'DD0011', farmerCode: 'YH002', gateCode: 'GK003' },
-    { id: 'DD0010', farmerCode: 'YH007', gateCode: 'GK005' },
-    { id: 'DD0009', farmerCode: 'YH007', gateCode: 'GK005' },
-    { id: 'DD0008', farmerCode: 'YH006', gateCode: 'GK002' },
-    { id: 'DD0007', farmerCode: 'YH002', gateCode: 'GK003' },
-    { id: 'DD0006', farmerCode: 'YH001', gateCode: 'GK001' },
-    { id: 'DD0005', farmerCode: 'YH003', gateCode: 'GK006' },
-    { id: 'DD0004', farmerCode: 'YH004', gateCode: 'GK007' },
-    { id: 'DD0002', farmerCode: 'YH003', gateCode: 'GK006' },
-    { id: 'DD0001', farmerCode: 'YH004', gateCode: 'GK007' }
-  ];
-
-  /** 操作类型元信息 */
+  /** 操作类型徽标样式(英文码 → 文案/配色) */
   var OP_TYPES = {
     up: { text: '闸门提升', cls: 'up' },
     down: { text: '闸门下降', cls: 'down' },
     adjust: { text: '流量调整', cls: 'adjust' }
   };
-
-  /** 调度记录列表(按操作时间倒序) */
-  var RECORD_LIST = [
-    { gateCode: 'GK005', farmerCode: 'YH004', planId: 'DD0016', opTime: '2026-10-31 17:26', opType: 'down', height: 42, operator: '闸管-何平', remark: '本次调度结束，关闭闸门' },
-    { gateCode: 'GK006', farmerCode: 'YH003', planId: 'DD0015', opTime: '2026-10-31 17:25', opType: 'down', height: 35, operator: '闸管-马强', remark: '本次调度结束，关闭闸门' },
-    { gateCode: 'GK004', farmerCode: 'YH005', planId: 'DD0017', opTime: '2026-10-20 17:27', opType: 'down', height: 49, operator: '闸管-郑凯', remark: '本次调度结束，关闭闸门' },
-    { gateCode: 'GK006', farmerCode: 'YH003', planId: 'DD0015', opTime: '2026-10-16 10:20', opType: 'adjust', height: 10, operator: '闸管-马强', remark: '根据渠道水位微调开度' },
-    { gateCode: 'GK005', farmerCode: 'YH004', planId: 'DD0016', opTime: '2026-10-16 10:20', opType: 'adjust', height: 13, operator: '闸管-何平', remark: '根据渠道水位微调开度' },
-    { gateCode: 'GK002', farmerCode: 'YH001', planId: 'DD0014', opTime: '2026-10-15 17:24', opType: 'down', height: 53, operator: '闸管-郑凯', remark: '本次调度结束，关闭闸门' },
-    { gateCode: 'GK004', farmerCode: 'YH005', planId: 'DD0017', opTime: '2026-10-13 10:20', opType: 'adjust', height: 16, operator: '闸管-郑凯', remark: '根据渠道水位微调开度' },
-    { gateCode: 'GK002', farmerCode: 'YH001', planId: 'DD0014', opTime: '2026-10-12 10:20', opType: 'adjust', height: 22, operator: '闸管-郑凯', remark: '根据渠道水位微调开度' },
-    { gateCode: 'GK002', farmerCode: 'YH001', planId: 'DD0014', opTime: '2026-10-08 08:24', opType: 'up', height: 53, operator: '闸管-郑凯', remark: '按方案 DD0014 开闸放水' },
-    { gateCode: 'GK004', farmerCode: 'YH005', planId: 'DD0017', opTime: '2026-10-05 08:40', opType: 'up', height: 49, operator: '闸管-郑凯', remark: '按方案 DD0017 开闸放水' },
-    { gateCode: 'GK006', farmerCode: 'YH003', planId: 'DD0015', opTime: '2026-10-02 09:15', opType: 'up', height: 35, operator: '闸管-马强', remark: '按方案 DD0015 开闸放水' },
-    { gateCode: 'GK005', farmerCode: 'YH004', planId: 'DD0016', opTime: '2026-10-01 08:30', opType: 'up', height: 42, operator: '闸管-何平', remark: '按方案 DD0016 开闸放水' },
-    { gateCode: 'GK001', farmerCode: 'YH007', planId: '', opTime: '2026-09-28 14:05', opType: 'up', height: 28, operator: '闸管-刘洋', remark: '巡渠发现水位偏低，酌情抬闸' },
-    { gateCode: 'GK007', farmerCode: 'YH004', planId: '', opTime: '2026-09-25 16:30', opType: 'adjust', height: 8, operator: '闸管-何平', remark: '汛期预降渠道水位' },
-    { gateCode: 'GK003', farmerCode: 'YH002', planId: 'DD0007', opTime: '2026-09-18 18:05', opType: 'down', height: 46, operator: '闸管-马强', remark: '本次调度结束，关闭闸门' },
-    { gateCode: 'GK003', farmerCode: 'YH002', planId: 'DD0007', opTime: '2026-09-10 08:12', opType: 'up', height: 46, operator: '闸管-马强', remark: '按方案 DD0007 开闸放水' },
-    { gateCode: 'GK001', farmerCode: 'YH001', planId: 'DD0006', opTime: '2026-09-12 18:02', opType: 'down', height: 38, operator: '闸管-郑凯', remark: '本次调度结束，关闭闸门' },
-    { gateCode: 'GK001', farmerCode: 'YH001', planId: 'DD0006', opTime: '2026-09-06 08:10', opType: 'up', height: 38, operator: '闸管-郑凯', remark: '按方案 DD0006 开闸放水' },
-    { gateCode: 'GK006', farmerCode: 'YH003', planId: 'DD0005', opTime: '2026-09-01 08:15', opType: 'up', height: 55, operator: '闸管-马强', remark: '按方案 DD0005 开闸放水' },
-    { gateCode: 'GK007', farmerCode: 'YH004', planId: 'DD0004', opTime: '2026-09-01 08:40', opType: 'up', height: 62, operator: '闸管-何平', remark: '按方案 DD0004 开闸放水' },
-    { gateCode: 'GK006', farmerCode: 'YH003', planId: 'DD0002', opTime: '2026-08-12 08:20', opType: 'up', height: 47, operator: '闸管-马强', remark: '按方案 DD0002 开闸放水' },
-    { gateCode: 'GK007', farmerCode: 'YH004', planId: 'DD0001', opTime: '2026-08-05 08:30', opType: 'up', height: 58, operator: '闸管-何平', remark: '按方案 DD0001 开闸放水' },
-    { gateCode: 'GK005', farmerCode: 'YH007', planId: '', opTime: '2026-07-30 15:10', opType: 'down', height: 30, operator: '闸管-刘洋', remark: '用户申请暂停取水' },
-    { gateCode: 'GK002', farmerCode: 'YH006', planId: '', opTime: '2026-07-15 09:40', opType: 'up', height: 25, operator: '闸管-郑凯', remark: '旱情临时补水' },
-    { gateCode: 'GK001', farmerCode: 'YH007', planId: '', opTime: '2026-07-02 09:00', opType: 'adjust', height: 12, operator: '闸管-刘洋', remark: '根据渠道水位微调开度' },
-    { gateCode: 'GK004', farmerCode: 'YH005', planId: '', opTime: '2026-06-20 10:30', opType: 'up', height: 33, operator: '闸管-郑凯', remark: '生态补水开启' },
-    { gateCode: 'GK006', farmerCode: 'YH008', planId: '', opTime: '2026-06-10 14:20', opType: 'up', height: 40, operator: '闸管-马强', remark: '工业用水开闸' },
-    { gateCode: 'GK007', farmerCode: 'YH004', planId: '', opTime: '2026-05-28 08:50', opType: 'adjust', height: 15, operator: '闸管-何平', remark: '根据渠道水位微调开度' },
-    { gateCode: 'GK003', farmerCode: 'YH002', planId: '', opTime: '2026-05-12 11:05', opType: 'down', height: 44, operator: '闸管-马强', remark: '灌溉间歇期关闸' },
-    { gateCode: 'GK005', farmerCode: 'YH004', planId: '', opTime: '2026-04-30 16:40', opType: 'down', height: 42, operator: '闸管-何平', remark: '计划轮灌结束' }
-  ];
 
   /* ==================== 基础工具 ==================== */
 
@@ -416,50 +363,27 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200);
   }
 
-  function findFarmer(code) {
-    for (var i = 0; i < FARMERS.length; i++) { if (FARMERS[i].code === code) return FARMERS[i]; }
-    return null;
-  }
-  function farmerName(code) { var f = findFarmer(code); return f ? f.name : '-'; }
-  function farmerLabel(code) {
-    var f = findFarmer(code);
-    return f ? f.name + '（' + f.code + '）' : '';
-  }
-  function farmerOptions() {
-    return FARMERS.map(function (f) { return { value: f.code, label: f.name + '（' + f.code + '）' }; });
-  }
+  /** 用水户下拉回填文案:名称（户号） */
+  function userLabel(u) { return u.name + '（' + u.userNo + '）'; }
+  function rowUserLabel(r) { return (r.waterUserName || '-') + (r.waterUserNo ? '（' + r.waterUserNo + '）' : ''); }
+  function userOptions() { return USERS.map(function (u) { return { value: u.id, label: userLabel(u) }; }); }
 
-  function findGate(code) {
-    for (var i = 0; i < GATES.length; i++) { if (GATES[i].code === code) return GATES[i]; }
-    return null;
-  }
-  function gateName(code) { var g = findGate(code); return g ? g.name : '-'; }
-  function gateLabel(code) {
-    var g = findGate(code);
-    return g ? g.name + '（' + g.code + '）' : '';
-  }
-  function gateOptions() {
-    return GATES.map(function (g) { return { value: g.code, label: g.name + '（' + g.code + '）' }; });
-  }
+  function gateOptions() { return GATES.map(function (g) { return { value: g.id, label: g.name }; }); }
 
+  /** 关联方案下拉文案:方案编号 · 户名 · 闸口名(6.4) */
+  function linkPlanLabel(p) { return (p.dispatchNo || '') + ' · ' + (p.waterUserName || '') + ' · ' + (p.gateName || ''); }
+  function linkPlanOptions() {
+    return [{ value: '', label: '不关联（独立操作）' }].concat(LINK_PLANS.map(function (p) {
+      return { value: p.id, label: linkPlanLabel(p) };
+    }));
+  }
   function findLinkPlan(id) {
     for (var i = 0; i < LINK_PLANS.length; i++) { if (LINK_PLANS[i].id === id) return LINK_PLANS[i]; }
     return null;
   }
-  function linkPlanLabel(id) {
-    var p = findLinkPlan(id);
-    return p ? p.id + ' · ' + farmerName(p.farmerCode) + ' · ' + gateName(p.gateCode) : '';
-  }
-  function linkPlanOptions() {
-    return [{ value: '', label: '不关联（独立操作）' }].concat(LINK_PLANS.map(function (p) {
-      return { value: p.id, label: linkPlanLabel(p.id) };
-    }));
-  }
-  function opTypeOptions() {
-    return Object.keys(OP_TYPES).map(function (k) {
-      return { value: k, label: OP_TYPES[k].text };
-    });
-  }
+
+  /** 操作类型下拉(6.1 meta.opTypes) */
+  function opTypeOptions() { return OP_TYPE_LIST; }
 
   /* ==================== 通用模糊搜索下拉 ==================== */
 
@@ -522,50 +446,67 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   /* ==================== 列表渲染与筛选分页 ==================== */
 
-  var S = { kw: '', farmerCode: '', gateCode: '', page: 1, size: 10 };
+  /** 列表状态:筛选/分页参数 + 最近一次服务端响应(0.1 分页结构) */
+  var S = { kw: '', waterUserId: '', gateId: '', page: 1, size: 10, total: 0, pages: 1, rows: [] };
 
-  function filtered() {
-    var kw = S.kw.toLowerCase();
-    return RECORD_LIST.filter(function (r) {
-      if (S.farmerCode && r.farmerCode !== S.farmerCode) return false;
-      if (S.gateCode && r.gateCode !== S.gateCode) return false;
-      if (!kw) return true;
-      var text = (r.operator + ' ' + (r.remark || '')).toLowerCase();
-      return text.indexOf(kw) !== -1;
+  /** 按 id 从当前页行数据中找(操作列/弹窗用) */
+  function findRowById(id) {
+    for (var i = 0; i < S.rows.length; i++) {
+      if (S.rows[i].id === id) return S.rows[i];
+    }
+    return null;
+  }
+
+  /** 拉取列表(服务端筛选+分页,6.2) */
+  var listSeq = 0;
+  function loadList() {
+    var seq = ++listSeq;
+    var q = '?page=' + S.page + '&size=' + S.size;
+    if (S.kw) q += '&keyword=' + encodeURIComponent(S.kw);
+    if (S.waterUserId) q += '&waterUserId=' + encodeURIComponent(S.waterUserId);
+    if (S.gateId) q += '&gateId=' + encodeURIComponent(S.gateId);
+    api('GET', '/water-dispatch-record/page' + q, null, function (err, data) {
+      if (err || seq !== listSeq) return;
+      S.total = data.total || 0;
+      S.pages = Math.max(1, data.pages || 1);
+      S.rows = data.records || [];
+      if (S.page > S.pages) { S.page = S.pages; loadList(); return; }
+      renderRows(S.rows);
+      renderPager();
+      $('head-sub').textContent = '共 ' + S.total + ' 条 · 闸口操作留痕，不涉及水量与费用';
     });
   }
 
   function opTypeCell(r) {
-    var meta = OP_TYPES[r.opType] || { text: r.opType, cls: '' };
-    return '<td><span class="st-tag ' + meta.cls + '">' + esc(meta.text) + '</span></td>';
+    var meta = OP_TYPES[r.opType] || {};
+    return '<td><span class="st-tag ' + (meta.cls || '') + '">' + esc(r.opTypeName || meta.text || r.opType) + '</span></td>';
   }
 
-  function actionCell(idx) {
-    return '<td><span class="act" data-action="edit" data-idx="' + idx + '">编辑</span>'
-      + '<span class="act del" data-action="delete" data-idx="' + idx + '">删除</span></td>';
+  function actionCell(r) {
+    var id = esc(r.id);
+    return '<td><span class="act" data-action="edit" data-id="' + id + '">编辑</span>'
+      + '<span class="act del" data-action="delete" data-id="' + id + '">删除</span></td>';
   }
 
-  function renderRows(records) {
-    var start = (S.page - 1) * S.size;
-    var pageRows = records.slice(start, start + S.size);
-    if (!pageRows.length) {
+  function renderRows(rows) {
+    if (!rows.length) {
       $('tbl-body').innerHTML = '<tr><td class="empty-cell" colspan="9">暂无数据</td></tr>';
       return;
     }
-    $('tbl-body').innerHTML = pageRows.map(function (r) {
+    $('tbl-body').innerHTML = rows.map(function (r) {
       var heightHtml = (r.height || r.height === 0)
         ? '<span class="amt">' + esc(r.height) + '<span class="unit">cm</span></span>'
         : '-';
       return '<tr>'
-        + '<td><span class="cell-main">' + esc(gateName(r.gateCode)) + '</span><span class="cell-sub">' + esc(r.gateCode) + '</span></td>'
-        + '<td>' + esc(farmerName(r.farmerCode)) + '</td>'
-        + '<td>' + esc(r.planId || '-') + '</td>'
+        + '<td><span class="cell-main">' + esc(r.gateName || '-') + (r.gateCode ? '（' + esc(r.gateCode) + '）' : '') + '</span></td>'
+        + '<td>' + esc(r.waterUserName || '-') + '</td>'
+        + '<td>' + esc(r.dispatchNo || '-') + '</td>'
         + '<td>' + esc(r.opTime) + '</td>'
         + opTypeCell(r)
         + '<td>' + heightHtml + '</td>'
         + '<td>' + esc(r.operator || '-') + '</td>'
         + '<td>' + esc(r.remark || '-') + '</td>'
-        + actionCell(RECORD_LIST.indexOf(r))
+        + actionCell(r)
         + '</tr>';
     }).join('');
   }
@@ -582,8 +523,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return [1, '...', cur - 1, cur, cur + 1, '...', total];
   }
 
-  function renderPager(total) {
-    var pages = Math.max(1, Math.ceil(total / S.size));
+  function renderPager() {
+    var pages = S.pages;
     if (S.page > pages) S.page = pages;
     var nums = pageNumbers(pages, S.page);
     var btns = nums.map(function (n) {
@@ -591,7 +532,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       return '<button type="button" class="pg-btn' + (n === S.page ? ' active' : '') + '" data-pg="page" data-num="' + n + '">' + n + '</button>';
     }).join('');
     $('pg-bar').innerHTML =
-      '<span class="pg-info">共 ' + total + ' 条</span>'
+      '<span class="pg-info">共 ' + S.total + ' 条</span>'
       + '<span class="pg-btns">'
       + '<button type="button" class="pg-btn" data-pg="prev"' + (S.page <= 1 ? ' disabled' : '') + '>‹</button>'
       + btns
@@ -604,17 +545,14 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   }
 
   function renderAll() {
-    var records = filtered();
-    renderRows(records);
-    renderPager(records.length);
-    $('head-sub').textContent = '共 ' + RECORD_LIST.length + ' 条 · 闸口操作留痕，不涉及水量与费用';
+    loadList();
   }
 
   /* ==================== 弹窗逻辑 ==================== */
 
   var formMode = 'add'; // add | edit
-  var editIdx = -1;
-  var delIdx = -1;
+  var editId = '';
+  var delId = '';
 
   function openModal(id) { $(id).classList.add('show'); }
   function closeModal(id) { $(id).classList.remove('show'); }
@@ -626,26 +564,27 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   }
 
   /** 选中关联调度方案后,自动带出用水户与操作闸口 */
+  /** 选中关联调度方案后,自动带出用水户与操作闸口(6.4;提交时后端仍校验一致性) */
   function fillByPlan() {
     var p = findLinkPlan($('f-r-plan').dataset.value);
     if (!p) return;
-    setSel('f-r-farmer', farmerLabel(p.farmerCode), p.farmerCode);
-    setSel('f-r-gate', gateLabel(p.gateCode), p.gateCode);
+    setSel('f-r-farmer', rowUserLabel(p), p.waterUserId || '');
+    setSel('f-r-gate', (p.gateName || '') + (p.gateCode ? '（' + p.gateCode + '）' : ''), p.gateId || '');
   }
 
-  function openFormModal(mode, row, idx) {
+  function openFormModal(mode, row) {
     formMode = mode;
-    editIdx = mode === 'edit' ? idx : -1;
+    editId = row ? row.id : '';
     $('form-title').textContent = mode === 'edit' ? '编辑调度记录' : '新增调度记录';
 
     if (mode === 'edit' && row) {
-      setSel('f-r-plan', row.planId ? linkPlanLabel(row.planId) : '不关联（独立操作）', row.planId || '');
-      setSel('f-r-farmer', farmerLabel(row.farmerCode), row.farmerCode);
-      setSel('f-r-gate', gateLabel(row.gateCode), row.gateCode);
+      setSel('f-r-plan', row.dispatchNo ? linkPlanLabel(row) : '不关联（独立操作）', row.dispatchId || '');
+      setSel('f-r-farmer', rowUserLabel(row), row.waterUserId);
+      setSel('f-r-gate', (row.gateName || '') + (row.gateCode ? '（' + row.gateCode + '）' : ''), row.gateId);
       $('f-r-time').value = String(row.opTime || '').replace(' ', 'T');
-      setSel('f-r-type', (OP_TYPES[row.opType] || {}).text || '闸门提升', row.opType || 'up');
+      setSel('f-r-type', row.opTypeName || (OP_TYPES[row.opType] || {}).text || '闸门提升', row.opType || 'up');
       $('f-r-height').value = (row.height === null || row.height === undefined) ? '' : row.height;
-      setSel('f-r-operator', row.operator || '', row.operator || '');
+      $('f-r-operator').value = row.operator || '';
       $('f-r-remark').value = row.remark || '';
     } else {
       setSel('f-r-plan', '不关联（独立操作）', '');
@@ -654,70 +593,73 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       $('f-r-time').value = nowInputStr();
       setSel('f-r-type', '闸门提升', 'up');
       $('f-r-height').value = '';
-      setSel('f-r-operator', '', '');
+      $('f-r-operator').value = '';
       $('f-r-remark').value = '';
     }
     openModal('form-ov');
   }
 
   function saveForm() {
-    var planId = $('f-r-plan').dataset.value;
-    var farmerCode = $('f-r-farmer').dataset.value;
-    var gateCode = $('f-r-gate').dataset.value;
-    var opTime = dtToText($('f-r-time').value);
+    var dispatchId = $('f-r-plan').dataset.value;
+    var userId = $('f-r-farmer').dataset.value;
+    var gateId = $('f-r-gate').dataset.value;
+    var opTime = $('f-r-time').value;
     var opType = $('f-r-type').dataset.value || 'up';
     var heightRaw = $('f-r-height').value.trim();
     var operator = $('f-r-operator').value.trim();
     var remark = $('f-r-remark').value.trim();
 
-    if (!farmerCode) { toast('请选择用水户'); return; }
-    if (!gateCode) { toast('请选择操作闸口'); return; }
-    if (!opTime) { toast('请选择操作时间'); return; }
-    if (!operator) { toast('请输入操作人 / 闸管员'); return; }
+    if (!userId) { toast('请选择「用水户」'); return; }
+    if (!gateId) { toast('请选择「操作闸口」'); return; }
+    if (!opTime) { toast('请选择「操作时间」'); return; }
+    if (!operator) { toast('请输入「操作人 / 闸管员」'); return; }
     var height = null;
     if (heightRaw !== '') {
       height = Number(heightRaw);
       if (!isFinite(height) || height < 0 || height > 999) { toast('请输入正确的升降高度（0-999 cm）'); return; }
     }
 
-    var data = {
-      gateCode: gateCode,
-      farmerCode: farmerCode,
-      planId: planId,
+    var payload = {
+      waterUserId: userId,
+      gateId: gateId,
       opTime: opTime,
       opType: opType,
-      height: height,
-      operator: operator,
-      remark: remark
+      operator: operator
     };
+    if (dispatchId) payload.dispatchId = dispatchId;
+    if (height != null) payload.height = height;
+    if (remark) payload.remark = remark;
 
-    if (formMode === 'edit') {
-      var row = RECORD_LIST[editIdx];
-      if (row) {
-        for (var k in data) { if (Object.prototype.hasOwnProperty.call(data, k)) row[k] = data[k]; }
-        toast('已保存');
-      }
-    } else {
-      RECORD_LIST.unshift(data);
-      S.page = 1;
-      toast('新增成功');
-    }
-    closeModal('form-ov');
-    renderAll();
+    var btn = $('btn-form-save');
+    btn.disabled = true;
+    var isEdit = formMode === 'edit';
+    var method = isEdit ? 'PUT' : 'POST';
+    var url = isEdit ? '/water-dispatch-record/update?id=' + encodeURIComponent(editId) : '/water-dispatch-record/create';
+    api(method, url, payload, function (err) {
+      btn.disabled = false;
+      if (err) return;
+      closeModal('form-ov');
+      toast(isEdit ? '已保存' : '新增成功');
+      renderAll();
+    });
   }
 
-  function askDelete(idx) {
-    delIdx = idx;
-    var row = RECORD_LIST[idx];
-    $('confirm-text').textContent = '确认删除该条调度记录（' + gateName(row.gateCode) + ' · ' + row.opTime + '）？删除后不可恢复。';
+  function askDelete(row) {
+    delId = row.id;
+    $('confirm-text').textContent = '确认删除该条调度记录（' + (row.gateName || '-') + ' · ' + row.opTime + '）？删除后不可恢复。';
     openModal('confirm-ov');
   }
 
   function doDelete() {
-    if (delIdx >= 0) RECORD_LIST.splice(delIdx, 1);
-    closeModal('confirm-ov');
-    toast('已删除');
-    renderAll();
+    var btn = $('btn-del-ok');
+    btn.disabled = true;
+    api('DELETE', '/water-dispatch-record/delete?id=' + encodeURIComponent(delId), null, function (err) {
+      btn.disabled = false;
+      if (err) return;
+      closeModal('confirm-ov');
+      toast('已删除');
+      renderAll();
+    });
   }
 
   /* ==================== 事件绑定 ==================== */
@@ -725,43 +667,45 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   // 顶部按钮
   $('btn-add').addEventListener('click', function () { openFormModal('add'); });
 
-  // 搜索(输入实时过滤)
+  // 搜索(300ms 防抖,服务端 keyword 匹配 操作人/备注/方案编号)
+  var kwTimer = null;
   $('f-kw').addEventListener('input', function () {
-    S.kw = this.value.trim();
-    S.page = 1;
-    renderAll();
+    var v = this.value.trim();
+    clearTimeout(kwTimer);
+    kwTimer = setTimeout(function () {
+      S.kw = v;
+      S.page = 1;
+      renderAll();
+    }, 300);
   });
 
   // 筛选下拉:全部用水户 / 全部闸口
   bindSearchSelect('f-flt-farmer', 'flt-farmer-dd', function () {
-    return [{ value: '', label: '全部用水户' }].concat(FARMERS.map(function (f) {
-      return { value: f.code, label: f.name };
+    return [{ value: '', label: '全部用水户' }].concat(USERS.map(function (u) {
+      return { value: u.id, label: userLabel(u) };
     }));
-  }, '无匹配用水户', function (v) { S.farmerCode = v; S.page = 1; renderAll(); });
+  }, '无匹配用水户', function (v) { S.waterUserId = v; S.page = 1; renderAll(); });
 
   bindSearchSelect('f-flt-gate', 'flt-gate-dd', function () {
     return [{ value: '', label: '全部闸口' }].concat(GATES.map(function (g) {
-      return { value: g.code, label: g.name };
+      return { value: g.id, label: g.name };
     }));
-  }, '无匹配闸口', function (v) { S.gateCode = v; S.page = 1; renderAll(); });
+  }, '无匹配闸口', function (v) { S.gateId = v; S.page = 1; renderAll(); });
 
   // 重置筛选
   $('btn-reset').addEventListener('click', function () {
     $('f-kw').value = '';
     setSel('f-flt-farmer', '全部用水户', '');
     setSel('f-flt-gate', '全部闸口', '');
-    S.kw = ''; S.farmerCode = ''; S.gateCode = ''; S.page = 1;
+    S.kw = ''; S.waterUserId = ''; S.gateId = ''; S.page = 1;
     renderAll();
   });
 
   // 表单弹窗内下拉
   bindSearchSelect('f-r-plan', 'r-plan-dd', linkPlanOptions, '无匹配方案', fillByPlan);
-  bindSearchSelect('f-r-farmer', 'r-farmer-dd', farmerOptions, '无匹配用水户', null);
+  bindSearchSelect('f-r-farmer', 'r-farmer-dd', userOptions, '无匹配用水户', null);
   bindSearchSelect('f-r-gate', 'r-gate-dd', gateOptions, '无匹配闸口', null);
   bindSearchSelect('f-r-type', 'r-type-dd', opTypeOptions, '无匹配类型', null);
-  bindSearchSelect('f-r-operator', 'r-operator-dd', function () {
-    return OPERATORS.map(function (o) { return { value: o, label: o }; });
-  }, '无匹配人员', null);
 
   // 表单按钮
   $('btn-form-cancel').addEventListener('click', function () { closeModal('form-ov'); });
@@ -781,11 +725,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   $('tbl-body').addEventListener('click', function (e) {
     var el = e.target.closest('.act');
     if (!el) return;
-    var idx = parseInt(el.dataset.idx, 10);
-    var row = RECORD_LIST[idx];
+    var row = findRowById(el.dataset.id);
     if (!row) return;
-    if (el.dataset.action === 'edit') openFormModal('edit', row, idx);
-    else if (el.dataset.action === 'delete') askDelete(idx);
+    if (el.dataset.action === 'edit') openFormModal('edit', row);
+    else if (el.dataset.action === 'delete') askDelete(row);
   });
 
   // 分页(事件委托)
@@ -793,7 +736,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var btn = e.target.closest('.pg-btn');
     if (!btn || btn.disabled) return;
     var type = btn.dataset.pg;
-    var pages = Math.max(1, Math.ceil(filtered().length / S.size));
+    var pages = S.pages;
     if (type === 'prev') S.page = Math.max(1, S.page - 1);
     else if (type === 'next') S.page = Math.min(pages, S.page + 1);
     else S.page = parseInt(btn.dataset.num, 10);
@@ -810,7 +753,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   $('pg-bar').addEventListener('keydown', function (e) {
     if (e.target.id === 'pg-jump' && e.key === 'Enter') {
-      var pages = Math.max(1, Math.ceil(filtered().length / S.size));
+      var pages = S.pages;
       var n = parseInt(e.target.value, 10);
       if (isFinite(n) && n >= 1) { S.page = Math.min(pages, n); renderAll(); }
     }
@@ -821,10 +764,28 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (!e.target.closest('.select-wrap')) closeDd();
   });
 
-  /* ==================== 初始化 ==================== */
+  /* ==================== 初始化:并行拉取字典/下拉(接口) + 首屏 ==================== */
 
   setSel('f-flt-farmer', '全部用水户', '');
   setSel('f-flt-gate', '全部闸口', '');
+
+  // 6.1 操作类型字典(操作人 / 闸管员为纯文本输入,不做联想)
+  api('GET', '/water-dispatch-record/meta', null, function (err, d) {
+    if (!err && d && d.opTypes && d.opTypes.length) OP_TYPE_LIST = d.opTypes;
+  });
+  // 1.1 闸口池(操作闸口只能从该池选择)
+  api('GET', '/water-user/meta', null, function (err, d) {
+    if (!err && d) GATES = d.gates || [];
+  });
+  // 4.5 用水户下拉
+  api('GET', '/water-demand/users', null, function (err, d) {
+    if (!err) USERS = Array.isArray(d) ? d : [];
+  });
+  // 6.4 关联调度方案下拉(未取消的全部方案)
+  api('GET', '/water-dispatch-record/plans', null, function (err, arr) {
+    if (!err) LINK_PLANS = arr || [];
+  });
+
   renderAll();
 })();
 </script>

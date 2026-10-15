@@ -49,6 +49,12 @@ public class WaterBillController {
         return billService.page(page, size, keyword, status);
     }
 
+    /** 账单列表统计条（全量汇总：账单总数/计费总水量/应收/已收/收缴率；无筛选参数） */
+    @GetMapping("/stats")
+    public Map<String, Object> stats() {
+        return billService.stats();
+    }
+
     /** 账单详情（含方案明细：计费快照） */
     @GetMapping("/detail")
     public WaterBillVO detail(@RequestParam String id) {

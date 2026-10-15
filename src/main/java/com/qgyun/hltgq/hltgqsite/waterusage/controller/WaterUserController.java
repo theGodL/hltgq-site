@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.waterusage.controller;
 
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport;
 import com.qgyun.hltgq.hltgqsite.waterusage.service.WaterUserService;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.GateOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterUserSaveVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterUserVO;
 import org.slf4j.Logger;
@@ -16,11 +17,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
  * 用水户管理（灌区用水模块页面一）。
- * <p>编号 YH + 3 位序号由服务端生成；新增遇编号唯一索引冲突（并发生成撞号）在 Controller 重试，
+ * <p>编号 YH + 3 位序号由服务端自动生成、不可填写（编辑保持原编号）；
+ * 新增遇编号唯一索引冲突（并发生成撞号）在 Controller 重试，
  * 名称冲突与其余约束冲突由 GlobalExceptionHandler 翻译为 409 文案。
  */
 @RestController
@@ -59,7 +62,13 @@ public class WaterUserController {
         return userService.detail(id);
     }
 
-    /** 新增（编号冲突最多重试 3 次，每次新事务重新取号） */
+    /** 该用水户关联闸口下拉（调度方案编制「调度闸口」收敛：仅该户配置的闸口组，按配置顺序；未配置返回空数组） */
+    @GetMapping("/gates")
+    public List<GateOptionVO> gates(@RequestParam String userId) {
+        return userService.userGates(userId);
+    }
+
+    /** 新增（编号服务端自动生成；编号冲突最多重试 3 次，每次新事务重新取号） */
     @PostMapping("/create")
     public WaterUserVO create(@RequestBody WaterUserSaveVO body) {
         log.info("收到用水户新增请求：name={}，type={}，calcMode={}",
@@ -69,10 +78,11 @@ public class WaterUserController {
                 () -> userService.create(body), log);
     }
 
-    /** 编辑（编号与状态不变） */
+    /** 编辑（编号不可改，保持原值；联系人由平台用户回查固化） */
     @PutMapping("/update")
     public WaterUserVO update(@RequestParam String id, @RequestBody WaterUserSaveVO body) {
-        log.info("收到用水户编辑请求：id={}，name={}", id, body == null ? null : body.getName());
+        log.info("收到用水户编辑请求：id={}，name={}", id,
+                body == null ? null : body.getName());
         return userService.update(id, body);
     }
 

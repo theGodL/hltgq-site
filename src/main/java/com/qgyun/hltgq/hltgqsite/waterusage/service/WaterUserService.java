@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageDict;
+import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageRules;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport.GateConfig;
 import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterPlanMapper;
@@ -32,10 +33,14 @@ import java.util.Set;
 /**
  * 用水户服务（列表/详情/新增/编辑/删除保护 + 表单元数据）。
  * <p>闸口配置由后端按站档回查固化名称快照（不信任前端传入的 name）；
+ * 差额策略保存时校验最新读数：主闸口读数 − 扣减闸口读数合计 ≤ 0 禁止保存（读数缺失跳过）；
  * 删除保护：存在四页业务引用（需水 / 调度方案 / 调度记录 / 账单）→ 禁止删除；
  * 否则按计划引用分级——被非编制中计划引用 → 禁止；仅被编制中计划引用 → 二次确认（force=true）
  * 后连带清理对应明细并重算计划总水量。
- * <p>编号 YH + 3 位序号由 MAX+1 生成，唯一索引兜底并发（冲突重试在 Controller 层）。
+ * <p>编号 YH + 3 位序号由服务端自动生成、不可填写（新增取最大值 +1，编辑保持不变），
+ * 唯一索引兜底并发（冲突重试在 Controller 层）。
+ * <p>联系人从平台用户（t_apaas_uc_user）下拉选择：保存时按 contactUserId 回查固化姓名/手机号快照
+ * （不信任前端传入）；编辑未换人时回传原快照保持（平台侧改名/离职后仍可编辑其他字段）。
  */
 @Service
 public class WaterUserService {
@@ -45,6 +50,8 @@ public class WaterUserService {
     private final WaterUserMapper userMapper;
 
     private final WaterPlanMapper planMapper;
+
+    private final WaterBillService billService;
 
     private final ShortIdGenerator shortIdGenerator;
 
@@ -56,28 +63,33 @@ public class WaterUserService {
 
     public WaterUserService(WaterUserMapper userMapper,
                             WaterPlanMapper planMapper,
+                            WaterBillService billService,
                             ShortIdGenerator shortIdGenerator,
                             ObjectMapper objectMapper) {
         this.userMapper = userMapper;
         this.planMapper = planMapper;
+        this.billService = billService;
         this.shortIdGenerator = shortIdGenerator;
         this.objectMapper = objectMapper;
     }
 
     // ==================== 列表 / 详情 / 元数据 ====================
 
-    /** 表单元数据（页面加载一次：字典 + 闸口下拉） */
+    /** 表单元数据（页面加载一次：字典 + 闸口下拉 + 联系人候选 + 规则版本） */
     public Map<String, Object> meta() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("userTypes", WaterUsageDict.userTypeOptions());
+        out.put("userStatuses", WaterUsageDict.userStatusOptions());
         out.put("calcModes", WaterUsageDict.calcModeOptions());
         out.put("settleCycles", WaterUsageDict.settleCycleOptions());
         out.put("gates", userMapper.selectGates(null));
+        out.put("contacts", userMapper.selectContactOptions());
         out.put("today", LocalDate.now().toString());
+        out.put("rulesVersion", WaterUsageRules.version());
         return out;
     }
 
-    /** 列表分页（年度计划水量/年度已调度为当年派生列） */
+    /** 列表分页（年度计划水量/年度已调度为当年派生列；待出账为账单口径实时装配） */
     public Map<String, Object> page(int page, int size, String keyword,
                                     String calcMode, String settleCycle, String status) {
         int p = WaterUsageSupport.clampPage(page);
@@ -92,6 +104,7 @@ public class WaterUserService {
         for (WaterUserVO row : records) {
             decorate(row);
         }
+        billService.fillPending(records);
         return WaterUsageSupport.pageResult(total, p, s, records);
     }
 
@@ -106,9 +119,38 @@ public class WaterUserService {
         return vo;
     }
 
+    /**
+     * 该用水户关联闸口选项（调度方案编制「调度闸口」下拉收敛：仅该户配置的闸口组）。
+     * <p>按配置顺序输出（差额模式主闸口在前、扣减闸口随后），与保存校验的 GateConfig.contains 同口径；
+     * 未配置 / 配置解析失败返回空数组（前端据此提示「请先在用水户管理中配置关联闸口」）。
+     */
+    public List<GateOptionVO> userGates(String userId) {
+        String key = WaterUsageSupport.requireText(userId, "用水户 id 不能为空");
+        WaterUserVO user = userMapper.selectUserById(key);
+        if (user == null) {
+            throw new IllegalArgumentException("用水户不存在");
+        }
+        GateConfig config = WaterUsageSupport.gateConfigOf(user.getGateConfigRaw(), objectMapper);
+        if (config == null || config.allIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Map<String, GateOptionVO> byId = new LinkedHashMap<>();
+        for (GateOptionVO row : userMapper.selectGateNamesByIds(config.allIds)) {
+            byId.put(row.getId(), row);
+        }
+        List<GateOptionVO> out = new ArrayList<>();
+        for (String gateId : config.allIds) {
+            GateOptionVO hit = byId.get(gateId);
+            if (hit != null) {
+                out.add(hit);
+            }
+        }
+        return out;
+    }
+
     // ==================== 新增 / 编辑 ====================
 
-    /** 新增（编号 YH + 3 位序号） */
+    /** 新增（编号由服务端自动生成 YH + 3 位序号，不可填写） */
     @Transactional(rollbackFor = Exception.class)
     public WaterUserVO create(WaterUserSaveVO req) {
         Map<String, Object> row = checkAndBuild(req, null);
@@ -122,14 +164,17 @@ public class WaterUserService {
         return detail((String) row.get("id"));
     }
 
-    /** 编辑（编号与状态不变） */
+    /** 编辑（编号不可改，保持原值；状态可改） */
     @Transactional(rollbackFor = Exception.class)
     public WaterUserVO update(String id, WaterUserSaveVO req) {
         String key = WaterUsageSupport.requireText(id, "用水户 id 不能为空");
-        if (userMapper.selectUserById(key) == null) {
+        WaterUserVO current = userMapper.selectUserById(key);
+        if (current == null) {
             throw new IllegalArgumentException("用水户不存在");
         }
         Map<String, Object> row = checkAndBuild(req, key);
+        // 编号不可修改，恒保持库内原值
+        row.put("user_no", current.getUserNo());
         row.put("id", key);
         row.put("now", LocalDateTime.now());
         row.put("operator", WaterUsageSupport.currentOperatorId(fallbackOperator));
@@ -202,11 +247,34 @@ public class WaterUserService {
         if (!WaterUsageDict.isValidUserType(userType)) {
             throw new IllegalArgumentException("用水类型无效");
         }
-        String contactName = WaterUsageSupport.requireText(req.getContactName(), "请填写联系人");
-        WaterUsageSupport.maxLength(contactName, 50, "联系人");
-        String contactPhone = WaterUsageSupport.trim(req.getContactPhone());
-        if (contactPhone != null && !contactPhone.matches("\\d{11}")) {
-            throw new IllegalArgumentException("联系电话须为 11 位数字");
+        String contactUserId = WaterUsageSupport.trim(req.getContactUserId());
+        String contactName;
+        String contactPhone;
+        if (contactUserId != null) {
+            // 联系人下拉选中：按 id 回查平台用户，固化姓名/手机号快照（不信任前端传入）
+            Map<String, Object> contact = userMapper.selectPlatformUserById(contactUserId);
+            if (contact == null) {
+                throw new IllegalArgumentException("联系人不存在，请重新选择");
+            }
+            contactName = WaterUsageSupport.requireText((String) contact.get("name"), "该联系人姓名为空，请重新选择");
+            WaterUsageSupport.maxLength(contactName, 50, "联系人");
+            contactPhone = WaterUsageSupport.trim((String) contact.get("mobile"));
+            if (contactPhone != null && !contactPhone.matches("\\d{11}")) {
+                // 平台手机号异常时快照置空（列表可空），不阻塞保存
+                contactPhone = null;
+            }
+        } else if (excludeId == null) {
+            // 新增必须从下拉选择联系人
+            throw new IllegalArgumentException("请选择联系人");
+        } else {
+            // 编辑未换人：保持原快照（平台侧改名/离职后下拉匹配不上时回传原值）
+            contactName = WaterUsageSupport.requireText(req.getContactName(), "请选择联系人");
+            WaterUsageSupport.maxLength(contactName, 50, "联系人");
+            contactPhone = WaterUsageSupport.trim(req.getContactPhone());
+            if (contactPhone != null && !contactPhone.matches("\\d{11}")) {
+                // 存量快照异常时置空（前端电话框只读，不能因历史值阻塞档案编辑）；口径与回查分支一致
+                contactPhone = null;
+            }
         }
         BigDecimal area = WaterUsageSupport.optionalPositive(req.getIrrigationArea(), "灌溉面积", 2);
         if (WaterUsageDict.requireIrrigationArea(userType) && area == null) {
@@ -221,18 +289,38 @@ public class WaterUserService {
         if (!WaterUsageDict.isValidSettleCycle(settleCycle)) {
             throw new IllegalArgumentException("统计周期无效");
         }
+        // 状态（不传默认正常）
+        String status = WaterUsageSupport.trim(req.getStatus());
+        if (status == null) {
+            status = WaterUsageDict.USER_STATUS_NORMAL;
+        }
+        if (!WaterUsageDict.isValidUserStatus(status)) {
+            throw new IllegalArgumentException("用水户状态无效");
+        }
+        BigDecimal lng = optionalRange(req.getLng(), "经度",
+                new BigDecimal("-180"), new BigDecimal("180"), 6);
+        BigDecimal lat = optionalRange(req.getLat(), "纬度",
+                new BigDecimal("-90"), new BigDecimal("90"), 6);
+        BigDecimal annualPlanWater = annualPlanWaterOf(req.getAnnualPlanWater());
+        String remark = WaterUsageSupport.trim(req.getRemark());
+        WaterUsageSupport.maxLength(remark, 200, "备注");
         String gateConfigJson = buildGateConfig(req.getGateConfig(), calcMode);
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("name", name);
         row.put("user_type", userType);
+        row.put("status", status);
         row.put("contact_name", contactName);
         row.put("contact_phone", contactPhone);
         row.put("irrigation_area", area);
+        row.put("lng", lng);
+        row.put("lat", lat);
+        row.put("annual_plan_water", annualPlanWater);
         row.put("water_price", waterPrice);
         row.put("calc_mode", calcMode);
         row.put("gate_config", gateConfigJson);
         row.put("settle_cycle", settleCycle);
+        row.put("remark", remark);
         return row;
     }
 
@@ -285,6 +373,7 @@ public class WaterUserService {
                 gate.put("id", gateId);
                 gate.put("name", names.get(gateId));
             }
+            checkDiffReadings(mainId, deductIds);
         }
         try {
             return objectMapper.writeValueAsString(root);
@@ -324,6 +413,69 @@ public class WaterUserService {
             }
         }
         return names;
+    }
+
+    /**
+     * 差额策略读数校验（设计方案 3.1）：主闸口读数 − 扣减闸口读数合计 ≤ 0 时禁止保存。
+     * <p>读数口径与账单计量一致（最新累计流量 ttf，哨兵/缺失视为无读数）：
+     * 主闸口无读数或任一扣减闸口无读数时无法判定，跳过校验（保存不被流量数据阻塞）。
+     */
+    private void checkDiffReadings(String mainId, List<String> deductIds) {
+        BigDecimal mainReading = usableReading(mainId);
+        if (mainReading == null) {
+            return;
+        }
+        BigDecimal deductSum = BigDecimal.ZERO;
+        for (String gateId : deductIds) {
+            BigDecimal reading = usableReading(gateId);
+            if (reading == null) {
+                return;
+            }
+            deductSum = deductSum.add(reading);
+        }
+        if (mainReading.subtract(deductSum).signum() <= 0) {
+            throw new IllegalArgumentException("差额策略保存失败：主闸口读数（"
+                    + WaterUsageSupport.scale2(mainReading).toPlainString() + " m³）未大于扣减闸口读数合计（"
+                    + WaterUsageSupport.scale2(deductSum).toPlainString() + " m³），请检查闸口选择或待流量数据更新后重试");
+        }
+    }
+
+    /** 闸口最新可用读数（ttf；缺失/哨兵返回 null） */
+    private BigDecimal usableReading(String gateId) {
+        return WaterUsageSupport.usableFlow(userMapper.selectLatestGateReading(gateId));
+    }
+
+    /** 选填数值 + 范围校验（null 放过；填写须在 [min, max] 且小数位 ≤ maxScale） */
+    private static BigDecimal optionalRange(BigDecimal value, String label,
+                                            BigDecimal min, BigDecimal max, int maxScale) {
+        if (value == null) {
+            return null;
+        }
+        if (value.scale() > maxScale) {
+            throw new IllegalArgumentException(label + "最多保留 " + maxScale + " 位小数");
+        }
+        if (value.compareTo(min) < 0 || value.compareTo(max) > 0) {
+            throw new IllegalArgumentException(label + "须在 " + min.toPlainString()
+                    + " ~ " + max.toPlainString() + " 之间");
+        }
+        return value;
+    }
+
+    /** 年度计划水量（万m³ 录入 ≤2 位小数 → m³ 存储；null/0 视为未设定；负数报错） */
+    private static BigDecimal annualPlanWaterOf(BigDecimal wan) {
+        if (wan == null) {
+            return null;
+        }
+        if (wan.scale() > 2) {
+            throw new IllegalArgumentException("年度计划水量最多保留 2 位小数");
+        }
+        if (wan.signum() < 0) {
+            throw new IllegalArgumentException("年度计划水量不能为负数");
+        }
+        if (wan.signum() == 0) {
+            return null;
+        }
+        return WaterUsageSupport.toM3(wan);
     }
 
     // ==================== 装饰 ====================

@@ -137,6 +137,9 @@ public class GlobalExceptionHandler {
      * <p>灌区用水（用水户/用水计划）同理：编号索引 uk_water_user_no / uk_water_plan_no 冲突
      * 为编号并发生成撞号（应用层 MAX+1，冲突由 Controller 重试兜底，重试耗尽后落到此处）；
      * 名称索引 uk_water_user_name / uk_water_plan_name 为并发同名。
+     * <p>节水管理（年度水量/方案/指标）同理：uk_water_saving_annual_year（潜力年度唯一）、
+     * uk_water_saving_scheme_year_name（方案名称年度内唯一）、uk_water_saving_indicator_name
+     * （指标名称全局唯一）均为页面判重与入库间的并发窗口兜底。
      * <p>捕获父类是为了兼容不同驱动对 SQLState 23505 的翻译（DuplicateKeyException 为子类，同样命中）。
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -153,6 +156,12 @@ public class GlobalExceptionHandler {
             message = "用水户名称已存在，请刷新列表后重试";
         } else if (detail.contains("uk_water_plan_name")) {
             message = "计划名称已存在，请刷新列表后重试";
+        } else if (detail.contains("uk_water_saving_annual_year")) {
+            message = "该潜力年度已存在水量记录，请刷新列表后直接编辑";
+        } else if (detail.contains("uk_water_saving_scheme_year_name")) {
+            message = "同一年度已存在同名节水方案，请刷新列表后重试";
+        } else if (detail.contains("uk_water_saving_indicator_name")) {
+            message = "指标名称已存在（停用指标的名称同样占用），请刷新列表后重试";
         } else {
             message = "数据已存在或不满足约束，请刷新后重试";
         }

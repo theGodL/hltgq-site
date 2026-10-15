@@ -9,6 +9,7 @@ import java.time.format.DateTimeFormatter;
 /**
  * 模型响应 JSON 字段解析辅助。
  * <p>中文业务字段原样解析；日期字符串兼容多种格式；缺失/NaN 统一返回 null。
+ * <p>字段取值有宽松（{@code textOf}，空串原样）与严格（{@code textField}/{@code textAt}，空串归一 null）两种口径，按调用方需求选择。
  */
 public final class JsonFieldUtils {
 
@@ -55,6 +56,47 @@ public final class JsonFieldUtils {
             }
         }
         return null;
+    }
+
+    /** 取严格文本字段：null 节点安全；JSON null/容器节点/空串返回 null（与 {@link #textOf} 的宽松口径有别） */
+    public static String textField(JsonNode node, String field) {
+        JsonNode value = node == null ? null : node.get(field);
+        if (value == null || value.isNull() || value.isContainerNode()) {
+            return null;
+        }
+        String text = value.asText();
+        return text == null || text.isEmpty() ? null : text;
+    }
+
+    /** 数组下标取字符串：越界/JSON null/容器节点/空串返回 null（上游数组长度不一致时跳过单条，而非整段失败） */
+    public static String textAt(JsonNode array, int index) {
+        if (array == null || index < 0 || index >= array.size()) {
+            return null;
+        }
+        JsonNode node = array.get(index);
+        if (node == null || node.isNull() || node.isContainerNode()) {
+            return null;
+        }
+        String text = node.asText();
+        return text == null || text.isEmpty() ? null : text;
+    }
+
+    /** 数组下标取小数：越界/JSON null/非数值返回 null（null 不得当作 0，否则会伪造缺失数据） */
+    public static Double doubleAt(JsonNode array, int index) {
+        if (array == null || index < 0 || index >= array.size()) {
+            return null;
+        }
+        JsonNode node = array.get(index);
+        return node != null && node.isNumber() ? node.asDouble() : null;
+    }
+
+    /** 数组下标取整数：越界/JSON null/非数值返回 null */
+    public static Integer intAt(JsonNode array, int index) {
+        if (array == null || index < 0 || index >= array.size()) {
+            return null;
+        }
+        JsonNode node = array.get(index);
+        return node != null && node.isNumber() ? node.asInt() : null;
     }
 
     /** 兼容 "2026-08-01"、"2026-08-01 00:00:00"、"2026-08-01T00:00:00" 等格式，解析失败返回 null */

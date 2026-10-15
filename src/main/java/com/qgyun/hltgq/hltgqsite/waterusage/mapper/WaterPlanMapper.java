@@ -40,6 +40,7 @@ public interface WaterPlanMapper {
             "to_char(p.period_end, 'YYYY-MM-DD') AS periodEnd, " +
             "to_char(p.created_at, 'YYYY-MM-DD HH24:MI') AS createdAtText, " +
             "p.total_water AS totalWater, p.scheduled_qty AS scheduledQty, p.status AS status, " +
+            "p.remark AS remark, " +
             "p.void_by AS voidBy, to_char(p.void_at, 'YYYY-MM-DD HH24:MI') AS voidAt, " +
             "p.void_reason AS voidReason";
 
@@ -87,14 +88,14 @@ public interface WaterPlanMapper {
             "<if test='excludeId != null'>AND id != #{excludeId}</if></script>")
     int countPlanByName(@Param("name") String name, @Param("excludeId") String excludeId);
 
-    /** 新增主表（row key：id/plan_no/plan_name/plan_type/period_start/period_end/total_water/now/operator） */
+    /** 新增主表（row key：id/plan_no/plan_name/plan_type/period_start/period_end/total_water/remark/now/operator） */
     @Insert("INSERT INTO " + T_PLAN + " " +
             "(\"id\", \"plan_no\", \"plan_name\", \"plan_type\", \"period_start\", \"period_end\", " +
-            "\"total_water\", \"scheduled_qty\", \"status\", \"corp_code\", \"created_at\", \"created_by\", " +
+            "\"total_water\", \"scheduled_qty\", \"status\", \"remark\", \"corp_code\", \"created_at\", \"created_by\", " +
             "\"updated_at\", \"updated_by\") " +
             "VALUES (#{row.id}, #{row.plan_no}, #{row.plan_name}, #{row.plan_type}, " +
             "CAST(#{row.period_start} AS date), CAST(#{row.period_end} AS date), #{row.total_water}, 0, '#1#', " +
-            "'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
+            "#{row.remark}, 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
     int insertPlan(@Param("row") Map<String, Object> row);
 
     /** 新增明细（row key：id/plan_id/water_user_id/irrigation_area/quota_id/calc_water/plan_water/
@@ -108,12 +109,21 @@ public interface WaterPlanMapper {
             "'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
     int insertPlanItem(@Param("row") Map<String, Object> row);
 
-    /** 编制中编辑主表（名称/类型/周期/总水量；带状态守卫） */
+    /** 编制中编辑主表（名称/类型/周期/总水量/备注；带状态守卫） */
     @Update("UPDATE " + T_PLAN + " SET \"plan_name\" = #{row.plan_name}, \"plan_type\" = #{row.plan_type}, " +
             "\"period_start\" = CAST(#{row.period_start} AS date), \"period_end\" = CAST(#{row.period_end} AS date), " +
-            "\"total_water\" = #{row.total_water}, \"updated_at\" = #{row.now}, \"updated_by\" = #{row.operator} " +
+            "\"total_water\" = #{row.total_water}, \"remark\" = #{row.remark}, " +
+            "\"updated_at\" = #{row.now}, \"updated_by\" = #{row.operator} " +
             "WHERE \"id\" = #{row.id} AND \"status\" = '#1#' AND \"corp_code\" = 'hltgq'")
     int updatePlanDraft(@Param("row") Map<String, Object> row);
+
+    /** 备注更新（已生效计划受限编辑：备注不锁定，可单独修改） */
+    @Update("UPDATE " + T_PLAN + " SET \"remark\" = #{remark}, \"updated_at\" = #{now}, " +
+            "\"updated_by\" = #{operator} WHERE \"id\" = #{id} AND \"corp_code\" = 'hltgq'")
+    int updatePlanRemark(@Param("id") String id,
+                         @Param("remark") String remark,
+                         @Param("now") LocalDateTime now,
+                         @Param("operator") String operator);
 
     /** 总水量维护（已生效编辑 / 明细变更 / 删除连带清理共用）：明细之和回写主表（<b>全模块唯一实现</b>） */
     @Update("<script>UPDATE " + T_PLAN + " p SET total_water = " +
@@ -181,12 +191,13 @@ public interface WaterPlanMapper {
             "WHERE i.plan_id = #{planId} GROUP BY i.water_user_id, u.name ORDER BY u.name")
     List<WaterPlanItemVO> selectPlanAmountsByUser(@Param("planId") String planId);
 
-    /** 当年已生效+已归档年度计划中该用水户的核定水量合计（弱约束基准；无则 0） */
-    @Select("SELECT COALESCE(SUM(i.plan_water), 0) FROM " + T_ITEM + " i " +
-            "JOIN " + T_PLAN + " p ON p.id = i.plan_id " +
-            "WHERE i.water_user_id = #{waterUserId} AND p.plan_type = '#1#' AND p.status IN ('#2#', '#3#') " +
-            "AND EXTRACT(YEAR FROM p.period_start) = #{year}")
-    BigDecimal selectAnnualBaseForUser(@Param("waterUserId") String waterUserId, @Param("year") int year);
+    /**
+     * 年度基准（生效校验第三层）：用水户档案中的年度计划水量（m³）。
+     * <p>设计方案 2.3：基准改为用水户档案字段（不再统计当年年度计划核定水量）；无档案值返回 null。
+     */
+    @Select("SELECT u.annual_plan_water FROM " + T_USER + " u " +
+            "WHERE u.id = #{waterUserId} AND u.corp_code = 'hltgq'")
+    BigDecimal selectAnnualBaseForUser(@Param("waterUserId") String waterUserId);
 
     /** 当年已生效+已归档月度/旬度计划中该用水户的合计（排除本计划；弱约束比对项） */
     @Select("SELECT COALESCE(SUM(i.plan_water), 0) FROM " + T_ITEM + " i " +

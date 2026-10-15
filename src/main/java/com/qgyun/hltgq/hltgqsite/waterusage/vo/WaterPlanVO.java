@@ -8,7 +8,8 @@ import java.util.List;
 /**
  * 用水计划（列表行 / 详情共用）。
  * <p>userCount（用水户数，明细 DISTINCT 用水户）由列表查询计算；
- * 执行进度 = scheduledQty ÷ totalWater，由前端动态计算（本期 scheduledQty 恒 0，显示 0%）。
+ * doneQty / missingCnt 为服务层按未取消调度方案的闸口实测计量装配（{@code WaterUsageMeter}）：
+ * 灌溉进度 = doneQty ÷ totalWater（前端动态计算）；缺读数时不能认定为零供水（前端展示「待补计量数据」）。
  */
 @Data
 public class WaterPlanVO {
@@ -41,6 +42,15 @@ public class WaterPlanVO {
     /** 已调度水量（m³，默认 0；调度模块后续回写） */
     private BigDecimal scheduledQty;
 
+    /**
+     * 已完成供水量（m³，实测）：关联本计划且未取消的调度方案实际放水量之和
+     * （逐方案按方案闸口区间累计计量、差额扣减取负；户合计为负的户按待补不计入）。
+     */
+    private BigDecimal doneQty;
+
+    /** 缺读数计数：计量不可得的方案数 + 合计异常（为负）的户数；&gt; 0 时前端展示「待补计量数据」 */
+    private Integer missingCnt;
+
     /** 用水户数（明细 DISTINCT 用水户） */
     private Integer userCount;
 
@@ -48,6 +58,9 @@ public class WaterPlanVO {
     private String status;
 
     private String statusName;
+
+    /** 备注（可空；已生效计划受限编辑中仍可修改） */
+    private String remark;
 
     /** 作废人（作废时记录） */
     private String voidBy;

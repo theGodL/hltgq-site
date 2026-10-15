@@ -46,9 +46,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px}
 .tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:12px 16px;border:1px solid #f0f0f0;white-space:nowrap}
 .tbl td{padding:12px 16px;border:1px solid #f0f0f0;color:#333;line-height:22px;vertical-align:middle;overflow-wrap:break-word}
-.cell-main{display:block;font-weight:600;color:#1f1f1f;line-height:22px}
+.cell-main{font-weight:600;color:#1f1f1f;line-height:22px}
 .cell-range{display:block;color:#333;line-height:22px}
-.cell-sub{display:block;margin-top:2px;font-size:12px;color:#8c8c8c;line-height:18px}
 .amt{font-weight:600;color:#1f1f1f}
 .amt .unit{margin-left:2px;font-size:12px;color:#8c8c8c;font-weight:400}
 .empty-cell{text-align:center;color:#bfbfbf;padding:32px 0}
@@ -240,14 +239,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           <label>用水结束日期 <i class="req">*</i></label>
           <input type="date" class="ipt" id="f-end">
         </div>
-        <div class="form-item" id="f-status-item" style="display:none">
-          <label>审核状态</label>
-          <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-status" placeholder="待审核/已通过/已驳回" autocomplete="off">
-            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <div class="sel-dd" id="status-dd"></div>
-          </div>
-        </div>
         <div class="form-item span2">
           <label>备注 / 审核意见</label>
           <textarea class="ipt" id="f-remark" placeholder="选填"></textarea>
@@ -371,14 +362,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
             <div class="sel-dd" id="p-owner-dd"></div>
           </div>
         </div>
-        <div class="form-item">
-          <label>状态</label>
-          <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-p-status" placeholder="待执行" autocomplete="off">
-            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <div class="sel-dd" id="p-status-dd"></div>
-          </div>
-        </div>
         <div class="form-item span2">
           <label>备注</label>
           <textarea class="ipt" id="f-p-remark" placeholder="选填"></textarea>
@@ -422,115 +405,53 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 (function () {
   'use strict';
 
-  /* ===================== Mock 数据区 =====================
-   * 说明:需水上报页暂无后端接口,以下数据全部为本地 Mock;
-   * 后续接口就绪后,可参照值班管理页把取数/保存替换为 request() 调用。
+  /* ===================== 接口层 =====================
+   * 本页数据全部来自后端接口(/hltgq-site/water-demand/*,经 dev-proxy 代理);
+   * 字典/闸口/用水户下拉均由接口返回,前端不写死;
+   * 写操作失败时优先展示后端应答 message 文案(见文档 0.2)。
    * ===================================================== */
 
-  /** 用水户(下拉数据源) */
-  var FARMERS = [
-    { code: 'YH001', name: '红星村民委员会', type: '农业' },
-    { code: 'YH002', name: '丰收农业合作社', type: '农业' },
-    { code: 'YH003', name: '县工业园区管委会', type: '工业' },
-    { code: 'YH004', name: '城南自来水厂', type: '生活' },
-    { code: 'YH005', name: '湿地公园生态补水', type: '生态' },
-    { code: 'YH006', name: '绿源家庭农场', type: '农业' },
-    { code: 'YH007', name: '红旗灌区合作社', type: '农业' },
-    { code: 'YH008', name: '城北开发区管委会', type: '工业' }
-  ];
+  var API_BASE = '/hltgq-site';
 
-  /** 闸口(下拉数据源,编制调度方案时选择「调度闸口」) */
-  var GATES = [
-    { code: 'GK001', name: '东干渠一号闸' },
-    { code: 'GK002', name: '东干渠二号闸' },
-    { code: 'GK003', name: '西干渠首闸' },
-    { code: 'GK004', name: '西干渠分水闸' },
-    { code: 'GK005', name: '南支渠节制闸' },
-    { code: 'GK006', name: '北干渠进水闸' },
-    { code: 'GK007', name: '东干渠分水闸' },
-    { code: 'GK008', name: '西干渠三号闸' }
-  ];
-
-  /** 用途(下拉数据源,支持输入关键字过滤) */
-  var USAGES = ['秋收后补水', '冬灌前补水', '湿地生态补水', '工业循环补水', '城乡生活供水',
-    '蔬菜滴灌补水', '秋粮灌溉', '秋播底墒水', '水稻泡田灌溉', '返青水灌溉', '渠系生态补水', '春灌泡田水'];
-
-  /** 调度负责人(下拉数据源) */
-  var OPERATORS = ['调度中心-周敏', '调度中心-李强', '调度中心-王磊',
-    '供水调度科-赵刚', '供水调度科-陈静', '工程管理科-刘洋'];
-
-  /** 用水计划(编制方案弹窗;usageMap 为各用水户在本计划中的配额,单位万m³) */
-  var PLANS = [
-    {
-      id: 'JH-2026-01', name: '2026年度灌区供水计划（2026年度 · 已生效）',
-      usageMap: {
-        YH001: { total: 10, issued: 7.2 }, YH002: { total: 12, issued: 7.9 },
-        YH003: { total: 30, issued: 13 }, YH004: { total: 36, issued: 27.5 },
-        YH005: { total: 8, issued: 3.4 }, YH006: { total: 3.5, issued: 1.2 },
-        YH007: { total: 6, issued: 2.8 }, YH008: { total: 20, issued: 9.6 }
-      }
-    },
-    {
-      id: 'JH-2026-02', name: '2026年度夏灌供水计划（已生效）',
-      usageMap: {
-        YH001: { total: 6, issued: 4.6 }, YH002: { total: 8, issued: 6.1 },
-        YH003: { total: 18, issued: 12.4 }, YH004: { total: 24, issued: 21 }, YH006: { total: 2.5, issued: 1.8 }
-      }
-    },
-    {
-      id: 'JH-2026-03', name: '2026年度秋灌供水计划（已生效）',
-      usageMap: {
-        YH001: { total: 4, issued: 2.6 }, YH002: { total: 6, issued: 3.2 },
-        YH005: { total: 5, issued: 1.8 }, YH007: { total: 4.5, issued: 1.6 }
-      }
+  /**
+   * 统一请求封装:method 方法;url 路径(可带 query);body 请求体(可空);cb(err, data) 回调。
+   * 401 提示重新登录;其余非 2xx 直接上屏后端 message。
+   */
+  function api(method, url, body, cb) {
+    var opts = { method: method, headers: {} };
+    if (body != null) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
     }
-  ];
+    fetch(API_BASE + url, opts).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (res.status === 401) { toast(data.message || '未登录或会话已过期'); cb(new Error('unauthorized')); return; }
+        if (!res.ok) { toast(data.message || ('请求失败(' + res.status + ')')); cb(new Error(data.message || String(res.status))); return; }
+        cb(null, data);
+      });
+    }, function () {
+      /* 仅收拢 fetch 自身的网络故障;业务回调(渲染等)内的异常不再吞掉,直接冒泡到控制台便于排查 */
+      toast('网络异常，请稍后重试');
+      cb(new Error('network'));
+    });
+  }
 
-  /** 审核结果选项(审核弹窗) */
+  /* 下拉/字典数据源(初始化时自接口加载,前端不写死) */
+  var USERS = [];      // 用水户 4.5 /water-demand/users: {id,name,userNo,irrigationArea}
+  var GATES = [];      // 闸口池 1.1 /water-user/meta gates: {id,code,name}
+  var USAGES = [];     // 用途联想 4.1 /water-demand/meta
+  var OPERATORS = [];  // 负责人联想 6.1 /water-dispatch-record/meta operators
+  var PLANS = [];      // 已生效计划 5.5 /water-dispatch/plans(选中用水户后带配额字段)
+  var APPLIES = [];    // 已通过需水 5.6 /water-dispatch/demands
+  var PRICE_CACHE = {}; // 户水价缓存(审核弹窗展示,来源 /water-user/detail)
+
+  /** 审核结果选项(审核弹窗;action 与 4.9 接口参数同码) */
   var AUDIT_RESULTS = [
     { value: 'pass', label: '通过' },
     { value: 'reject', label: '驳回' }
   ];
 
-  /** 状态选项(编辑表单「审核状态」) */
-  var STATUS_OPTIONS = [
-    { value: 'wait', label: '待审核' },
-    { value: 'pass', label: '已通过' },
-    { value: 'reject', label: '已驳回' }
-  ];
-
-  /** 调度方案状态选项(编制方案弹窗) */
-  var DISPATCH_STATUS = ['待执行', '执行中', '已完成'];
-
-  /** 需水上报列表(全量 Mock,按申请时间倒序排列) */
-  var DEMAND_LIST = [
-    { id: 'XS0023', applyTime: '2026-10-13 10:05', farmerCode: 'YH006', gateCode: 'GK002', amount: 1.2, startDate: '2026-10-14', endDate: '2026-10-20', usage: '秋收后补水', status: 'wait', auditOpinion: '', remark: '' },
-    { id: 'XS0022', applyTime: '2026-10-12 16:40', farmerCode: 'YH008', gateCode: 'GK006', amount: 6.5, startDate: '2026-10-15', endDate: '2026-10-31', usage: '工业循环补水', status: 'reject', auditOpinion: '申请水量超出计划余额，请核减后重新申报', remark: '' },
-    { id: 'XS0021', applyTime: '2026-10-12 09:20', farmerCode: 'YH007', gateCode: 'GK008', amount: 2.4, startDate: '2026-10-12', endDate: '2026-10-18', usage: '秋播底墒水', status: 'wait', auditOpinion: '', remark: '' },
-    { id: 'XS0019', applyTime: '2026-10-12 09:20', farmerCode: 'YH002', gateCode: 'GK003', amount: 1.6, startDate: '2026-10-12', endDate: '2026-10-18', usage: '秋收后补水', status: 'wait', auditOpinion: '', remark: '' },
-    { id: 'XS0020', applyTime: '2026-10-11 15:30', farmerCode: 'YH005', gateCode: 'GK004', amount: 3.2, startDate: '2026-10-11', endDate: '2026-10-24', usage: '湿地生态补水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0015', applyTime: '2026-10-08 09:20', farmerCode: 'YH001', gateCode: 'GK002', amount: 1.98, startDate: '2026-10-08', endDate: '2026-10-15', usage: '冬灌前补水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0018', applyTime: '2026-10-05 09:20', farmerCode: 'YH005', gateCode: 'GK004', amount: 3.8, startDate: '2026-10-05', endDate: '2026-10-20', usage: '湿地生态补水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0017', applyTime: '2026-10-01 09:20', farmerCode: 'YH004', gateCode: 'GK005', amount: 7.9, startDate: '2026-10-01', endDate: '2026-10-31', usage: '城乡生活供水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0016', applyTime: '2026-10-01 09:20', farmerCode: 'YH003', gateCode: 'GK006', amount: 4.1, startDate: '2026-10-01', endDate: '2026-10-31', usage: '工业循环补水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0014', applyTime: '2026-09-15 09:20', farmerCode: 'YH006', gateCode: 'GK002', amount: 0.86, startDate: '2026-09-15', endDate: '2026-09-22', usage: '蔬菜滴灌补水', status: 'reject', auditOpinion: '申请水量超出计划余额，请核减后重新申报', remark: '' },
-    { id: 'XS0011', applyTime: '2026-09-10 09:20', farmerCode: 'YH002', gateCode: 'GK003', amount: 2.75, startDate: '2026-09-10', endDate: '2026-09-18', usage: '秋粮灌溉', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0010', applyTime: '2026-09-06 09:20', farmerCode: 'YH001', gateCode: 'GK001', amount: 2.2, startDate: '2026-09-06', endDate: '2026-09-12', usage: '秋播底墒水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0009', applyTime: '2026-09-03 14:10', farmerCode: 'YH006', gateCode: 'GK002', amount: 1.5, startDate: '2026-09-05', endDate: '2026-09-12', usage: '蔬菜滴灌补水', status: 'reject', auditOpinion: '申报时段与已下达调度冲突，请调整后重新申报', remark: '' },
-    { id: 'XS0012', applyTime: '2026-09-01 09:20', farmerCode: 'YH003', gateCode: 'GK006', amount: 4.3, startDate: '2026-09-01', endDate: '2026-09-30', usage: '工业循环补水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0013', applyTime: '2026-09-01 09:20', farmerCode: 'YH004', gateCode: 'GK005', amount: 8.4, startDate: '2026-09-01', endDate: '2026-09-30', usage: '城乡生活供水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0008', applyTime: '2026-08-25 11:20', farmerCode: 'YH005', gateCode: 'GK004', amount: 2.6, startDate: '2026-08-26', endDate: '2026-09-05', usage: '湿地生态补水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0007', applyTime: '2026-08-18 09:45', farmerCode: 'YH002', gateCode: 'GK003', amount: 3.4, startDate: '2026-08-20', endDate: '2026-08-31', usage: '秋粮灌溉', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0006', applyTime: '2026-08-10 16:20', farmerCode: 'YH003', gateCode: 'GK006', amount: 5.2, startDate: '2026-08-12', endDate: '2026-08-31', usage: '工业循环补水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0005', applyTime: '2026-08-03 10:30', farmerCode: 'YH004', gateCode: 'GK005', amount: 7.2, startDate: '2026-08-05', endDate: '2026-08-31', usage: '城乡生活供水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0004', applyTime: '2026-07-28 15:50', farmerCode: 'YH006', gateCode: 'GK002', amount: 0.9, startDate: '2026-07-30', endDate: '2026-08-06', usage: '蔬菜滴灌补水', status: 'reject', auditOpinion: '上报单重复，请核实后重新申报', remark: '' },
-    { id: 'XS0003', applyTime: '2026-07-15 09:10', farmerCode: 'YH001', gateCode: 'GK001', amount: 2.8, startDate: '2026-07-16', endDate: '2026-07-25', usage: '水稻泡田灌溉', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0002', applyTime: '2026-06-20 14:05', farmerCode: 'YH002', gateCode: 'GK003', amount: 3.1, startDate: '2026-06-22', endDate: '2026-06-30', usage: '返青水灌溉', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' },
-    { id: 'XS0001', applyTime: '2026-06-05 10:00', farmerCode: 'YH003', gateCode: 'GK006', amount: 4.8, startDate: '2026-06-07', endDate: '2026-06-30', usage: '工业循环补水', status: 'pass', auditOpinion: '同意，按灌区水量调度计划执行', remark: '' }
-  ];
-
-  /** 用水户类型 → 水价(元/m³),审核弹窗展示用 */
-  var PRICE_BY_TYPE = { '农业': 0.350, '工业': 0.800, '生活': 1.200, '生态': 0.100 };
+  /* 需水上报列表由服务端分页提供(见 loadList);水价按户异步查询(见 PRICE_CACHE) */
 
   /** 审核状态 → 文案与徽标样式 */
   var STATUS_META = {
@@ -571,43 +492,28 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   }
 
-  /** 当前时刻的 'yyyy-MM-dd HH:mm' */
-  function nowStr() {
-    var d = new Date();
-    return todayStr() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-  }
-
+  /** 按 id 从当前页行数据中找(操作列/弹窗用) */
   function findRow(id) {
-    for (var i = 0; i < DEMAND_LIST.length; i++) {
-      if (DEMAND_LIST[i].id === id) return DEMAND_LIST[i];
+    for (var i = 0; i < S.rows.length; i++) {
+      if (S.rows[i].id === id) return S.rows[i];
     }
     return null;
   }
 
-  function findFarmer(code) {
-    for (var i = 0; i < FARMERS.length; i++) {
-      if (FARMERS[i].code === code) return FARMERS[i];
-    }
-    return null;
-  }
+  /** 用水户下拉回填文案:名称（户号) */
+  function userLabel(u) { return u.name + '（' + u.userNo + '）'; }
+  /** 行数据回填文案:名称（户号) */
+  function rowUserLabel(r) { return (r.waterUserName || '-') + (r.waterUserNo ? '（' + r.waterUserNo + '）' : ''); }
 
-  function findGate(code) {
-    for (var i = 0; i < GATES.length; i++) {
-      if (GATES[i].code === code) return GATES[i];
-    }
-    return null;
-  }
-
-  function farmerName(code) { var f = findFarmer(code); return f ? f.name : (code || '-'); }
-  /** 下拉回填文案:名称（编号) */
-  function farmerLabel(code) { var f = findFarmer(code); return f ? f.name + '（' + f.code + '）' : ''; }
-  function gateLabel(code) { var g = findGate(code); return g ? g.name + '（' + g.code + '）' : ''; }
-
-  /** 水价(元/m³):按用水户类型取值,兜底 0.350 */
-  function priceOf(row) {
-    var f = findFarmer(row.farmerCode);
-    var p = f && PRICE_BY_TYPE[f.type] != null ? PRICE_BY_TYPE[f.type] : 0.350;
-    return p.toFixed(3);
+  /** 水价(元/m³):按户异步查 /water-user/detail,前端缓存 */
+  function loadPrice(userId, cb) {
+    if (!userId) { cb('—'); return; }
+    if (PRICE_CACHE[userId] != null) { cb(PRICE_CACHE[userId]); return; }
+    api('GET', '/water-user/detail?id=' + encodeURIComponent(userId), null, function (err, d) {
+      var txt = !err && d && d.waterPrice != null ? Number(d.waterPrice).toFixed(3) : '—';
+      if (!err) PRICE_CACHE[userId] = txt;
+      cb(txt);
+    });
   }
 
   /** 设置搜索下拉的值:label 为展示文案,value 为真实值(存 dataset) */
@@ -618,24 +524,39 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   }
 
   /* ===================== 列表状态与渲染 ===================== */
-  var S = { tab: '', kw: '', page: 1, size: 10 };
+  /** 列表状态:筛选/分页参数 + 最近一次服务端响应(0.1 分页结构) */
+  var S = { tab: '', kw: '', page: 1, size: 10, total: 0, pages: 1, rows: [] };
 
-  /** 按状态统计条数(st 为空时返回全部) */
-  function statusCount(st) {
-    if (!st) return DEMAND_LIST.length;
-    return DEMAND_LIST.filter(function (r) { return r.status === st; }).length;
+  /** 服务器当天(4.1 meta.today,兜底本地) */
+  var TODAY = todayStr();
+
+  /** 拉取列表(服务端筛选+分页,4.3) */
+  var listSeq = 0;
+  function loadList() {
+    var seq = ++listSeq;
+    var q = '?page=' + S.page + '&size=' + S.size;
+    if (S.kw) q += '&keyword=' + encodeURIComponent(S.kw);
+    if (S.tab) q += '&status=' + encodeURIComponent(S.tab);
+    api('GET', '/water-demand/page' + q, null, function (err, data) {
+      if (err || seq !== listSeq) return;
+      S.total = data.total || 0;
+      S.pages = Math.max(1, data.pages || 1);
+      S.rows = data.records || [];
+      if (S.page > S.pages) { S.page = S.pages; loadList(); return; }
+      renderRows(S.rows);
+      renderPager();
+    });
   }
 
-  /** 当前过滤结果(状态 Tab + 关键词同时生效) */
-  function filteredList() {
-    var kw = S.kw.toLowerCase();
-    return DEMAND_LIST.filter(function (r) {
-      if (S.tab && r.status !== S.tab) return false;
-      if (kw) {
-        var hay = (r.id + ' ' + farmerName(r.farmerCode) + ' ' + r.farmerCode + ' ' + (r.usage || '')).toLowerCase();
-        if (hay.indexOf(kw) < 0) return false;
-      }
-      return true;
+  /** 拉取 Tab 角标统计(4.2,无状态筛选全量) */
+  function loadStats() {
+    api('GET', '/water-demand/stats', null, function (err, data) {
+      if (err || !data) return;
+      $('head-sub').textContent = '共 ' + data.total + ' 条 · 待审核 ' + data.wait + ' 条';
+      $('tab-num-all').textContent = data.total;
+      $('tab-num-wait').textContent = data.wait;
+      $('tab-num-pass').textContent = data.pass;
+      $('tab-num-reject').textContent = data.reject;
     });
   }
 
@@ -649,8 +570,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (row.status === 'pass') {
       html += '<span class="act" data-action="plan" data-id="' + id + '">编制方案</span>';
     }
-    html += '<span class="act" data-action="edit" data-id="' + id + '">编辑</span>'
-          + '<span class="act del" data-action="delete" data-id="' + id + '">删除</span>';
+    if (row.status !== 'pass') {
+      html += '<span class="act" data-action="edit" data-id="' + id + '">编辑</span>';
+    }
+    html += '<span class="act del" data-action="delete" data-id="' + id + '">删除</span>';
     return '<td>' + html + '</td>';
   }
 
@@ -669,8 +592,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     }
     $('tbl-body').innerHTML = records.map(function (r) {
       return '<tr>'
-        + '<td><span class="cell-main">' + esc(r.id) + '</span><span class="cell-sub">' + esc(r.applyTime) + '</span></td>'
-        + '<td>' + esc(farmerName(r.farmerCode)) + '</td>'
+        + '<td><span class="cell-main">' + esc(r.demandNo) + '</span> · <span style="color:#8c8c8c">' + esc(r.applyTime) + '</span></td>'
+        + '<td>' + esc(r.waterUserName || '-') + '</td>'
         + '<td><span class="amt">' + esc(fmtAmount(r.amount)) + '<span class="unit">万m³</span></span></td>'
         + '<td><span class="cell-range">' + esc(r.startDate) + '</span><span class="cell-range">至 ' + esc(r.endDate) + '</span></td>'
         + '<td>' + esc(r.usage || '-') + '</td>'
@@ -697,10 +620,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return out;
   }
 
-  function renderPager(total) {
-    var totalPages = Math.max(1, Math.ceil(total / S.size));
+  function renderPager() {
+    var totalPages = S.pages;
     var sizes = [10, 20, 50];
-    var html = '<span class="pg-info">共 ' + total + ' 条</span><div class="pg-btns">'
+    var html = '<span class="pg-info">共 ' + S.total + ' 条</span><div class="pg-btns">'
       + '<button class="pg-btn" data-pg="prev"' + (S.page <= 1 ? ' disabled' : '') + '>‹</button>';
     pageNumbers(S.page, totalPages).forEach(function (p) {
       html += p === '...'
@@ -715,29 +638,16 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     $('pg-bar').innerHTML = html;
   }
 
-  /** 列表整体刷新:统计 → Tab 计数 → 表格 → 分页 */
+  /** 列表整体刷新:列表(服务端筛选/分页) + 角标统计 */
   function renderAll() {
-    var list = filteredList();
-    var totalPages = Math.max(1, Math.ceil(list.length / S.size));
-    if (S.page > totalPages) S.page = totalPages;
-    var start = (S.page - 1) * S.size;
-
-    $('head-sub').textContent = '共 ' + DEMAND_LIST.length + ' 条 · 待审核 ' + statusCount('wait') + ' 条';
-    $('tab-num-all').textContent = statusCount('');
-    $('tab-num-wait').textContent = statusCount('wait');
-    $('tab-num-pass').textContent = statusCount('pass');
-    $('tab-num-reject').textContent = statusCount('reject');
-
-    renderRows(list.slice(start, start + S.size));
-    renderPager(list.length);
+    loadList();
+    loadStats();
   }
 
   /** 跳转到指定页(越界收敛,非法值还原) */
   function jumpToPage(val) {
-    var list = filteredList();
-    var totalPages = Math.max(1, Math.ceil(list.length / S.size));
     var n = parseInt(String(val).trim(), 10);
-    var target = isNaN(n) ? S.page : Math.min(totalPages, Math.max(1, n));
+    var target = isNaN(n) ? S.page : Math.min(S.pages, Math.max(1, n));
     var box = $('pg-jump');
     if (box) box.value = String(target);
     if (target === S.page) return;
@@ -801,19 +711,21 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  /* 各下拉选项数据源 */
-  function farmerOptions() { return FARMERS.map(function (f) { return { value: f.code, label: f.name + '（' + f.code + '）' }; }); }
-  function gateOptions() { return GATES.map(function (g) { return { value: g.code, label: g.name + '（' + g.code + '）' }; }); }
+  /* 各下拉选项数据源(数据均来自接口,不写死) */
+  function userOptions() { return USERS.map(function (u) { return { value: u.id, label: userLabel(u) }; }); }
+  function gateOptions() { return GATES.map(function (g) { return { value: g.id, label: g.name }; }); }
   function usageOptions() { return USAGES.map(function (u) { return { value: u, label: u }; }); }
   function ownerOptions() { return OPERATORS.map(function (o) { return { value: o, label: o }; }); }
-  function statusOptions() { return STATUS_OPTIONS; }
-  function dispatchStatusOptions() { return DISPATCH_STATUS.map(function (s) { return { value: s, label: s }; }); }
-  function planOptions() { return PLANS.map(function (p) { return { value: p.id, label: p.name }; }); }
-  /** 关联需水申请:仅已通过的上报单可选 */
+  function planOptions() { return PLANS.map(function (p) { return { value: p.id, label: p.planNo + ' · ' + p.planName }; }); }
+  /** 关联需水申请:仅已通过的上报单可选(4.6,选中用水户后按户过滤) */
   function applyOptions() {
-    return DEMAND_LIST.filter(function (r) { return r.status === 'pass'; }).map(function (r) {
-      return { value: r.id, label: r.id + ' · ' + farmerName(r.farmerCode) + ' · ' + fmtAmount(r.amount) + '万m³' };
+    return APPLIES.map(function (r) {
+      return { value: r.id, label: r.demandNo + ' · ' + (r.waterUserName || '') + ' · ' + fmtAmount(r.amount) + '万m³' };
     });
+  }
+  function findApply(id) {
+    for (var i = 0; i < APPLIES.length; i++) { if (APPLIES[i].id === id) return APPLIES[i]; }
+    return null;
   }
 
   /* ===================== 弹窗开合 ===================== */
@@ -834,88 +746,60 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     $('form-title').textContent = mode === 'add' ? '新增需水上报' : '编辑需水上报';
     $('form-sub').textContent = '审核通过后可编制调度方案';
 
-    // 默认值:日期取今天,其余清空
+    // 默认值:日期取服务器当天(4.1 meta.today),其余清空
     setSel('f-farmer', '', '');
     $('f-amount').value = '';
     setSel('f-usage', '', '');
-    $('f-start').value = todayStr();
-    $('f-end').value = todayStr();
-    setSel('f-status', '', '');
+    $('f-start').value = TODAY;
+    $('f-end').value = TODAY;
     $('f-remark').value = '';
 
     if (mode === 'edit' && row) {
-      setSel('f-farmer', farmerLabel(row.farmerCode), row.farmerCode);
+      setSel('f-farmer', rowUserLabel(row), row.waterUserId);
       $('f-amount').value = fmtAmount(row.amount);
       setSel('f-usage', row.usage || '', row.usage || '');
       $('f-start').value = row.startDate;
       $('f-end').value = row.endDate;
-      setSel('f-status', (STATUS_META[row.status] || {}).text || '', row.status);
       $('f-remark').value = row.remark || '';
     }
-    // 审核状态下拉仅编辑态展示
-    $('f-status-item').style.display = mode === 'edit' ? '' : 'none';
     openModal('form-ov');
-  }
-
-  /** 新增单号:XS + 4 位递增序号 */
-  function nextDemandId() {
-    var max = 0;
-    DEMAND_LIST.forEach(function (r) {
-      var n = parseInt(String(r.id).replace(/^XS/, ''), 10);
-      if (n > max) max = n;
-    });
-    var s = String(max + 1);
-    while (s.length < 4) s = '0' + s;
-    return 'XS' + s;
   }
 
   $('btn-form-cancel').addEventListener('click', function () { closeModal('form-ov'); });
 
   $('btn-form-save').addEventListener('click', function () {
-    var farmerCode = $('f-farmer').dataset.value;
+    var waterUserId = $('f-farmer').dataset.value;
     var amount = $('f-amount').value.trim();
     var start = $('f-start').value;
     var end = $('f-end').value;
-    if (!farmerCode) { toast('请选择「用水户」'); return; }
+    if (!waterUserId) { toast('请选择「用水户」'); return; }
     if (!amount || !(Number(amount) > 0)) { toast('请填写「计划水量」(大于 0)'); return; }
     if (!start) { toast('请选择「用水开始日期」'); return; }
     if (!end) { toast('请选择「用水结束日期」'); return; }
     if (end < start) { toast('用水结束日期不能早于开始日期'); return; }
 
-    var usage = $('f-usage').value.trim();
-    var remark = $('f-remark').value.trim();
+    // 0.3:数量按万m³提交,前端收敛 ≤2 位小数
+    var payload = {
+      waterUserId: waterUserId,
+      amount: Number(Number(amount).toFixed(2)),
+      startDate: start,
+      endDate: end
+    };
+    if ($('f-usage').value.trim()) payload.usage = $('f-usage').value.trim();
+    if ($('f-remark').value.trim()) payload.remark = $('f-remark').value.trim();
 
-    if (formState.mode === 'add') {
-      // 新增:插入列表头部(最新上报靠前),初始状态待审核
-      DEMAND_LIST.unshift({
-        id: nextDemandId(),
-        applyTime: nowStr(),
-        farmerCode: farmerCode,
-        amount: Number(amount),
-        startDate: start,
-        endDate: end,
-        usage: usage,
-        status: 'wait',
-        auditOpinion: '',
-        remark: remark
-      });
-      toast('新增成功（Mock）');
-    } else {
-      var row = findRow(formState.id);
-      if (row) {
-        row.farmerCode = farmerCode;
-        row.amount = Number(amount);
-        row.startDate = start;
-        row.endDate = end;
-        row.usage = usage;
-        row.status = $('f-status').dataset.value || row.status;
-        row.remark = remark;
-      }
-      toast('保存成功（Mock）');
-    }
-    closeModal('form-ov');
-    S.page = 1; // 保存后回第一页,便于看到最新数据
-    renderAll();
+    var isAdd = formState.mode === 'add';
+    var url = isAdd ? '/water-demand/create' : '/water-demand/update?id=' + encodeURIComponent(formState.id);
+    var btn = this;
+    btn.disabled = true;
+    api(isAdd ? 'POST' : 'PUT', url, payload, function (err) {
+      btn.disabled = false;
+      if (err) return; // 失败文案 api() 已上屏(0.2)
+      closeModal('form-ov');
+      toast(isAdd ? '新增成功' : '保存成功');
+      S.page = 1; // 保存后回第一页,便于看到最新数据
+      renderAll();
+    });
   });
 
   /* ===================== 审核弹窗 ===================== */
@@ -926,16 +810,26 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return '<div class="kv-row"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>';
   }
 
-  function openAuditModal(row) {
-    auditId = row.id;
-    $('audit-sub').textContent = row.id;
-    $('audit-kv').innerHTML = [
-      kvRow('用水户', farmerName(row.farmerCode)),
+  /** 审核弹窗信息区(水价异步回填,见 openAuditModal) */
+  function auditKvHtml(row, priceText) {
+    return [
+      kvRow('用水户', row.waterUserName || '-'),
       kvRow('计划水量', fmtAmount(row.amount) + ' 万m³'),
       kvRow('用水时段', row.startDate + ' 至 ' + row.endDate),
       kvRow('用途', row.usage || '-'),
-      kvRow('水价', priceOf(row) + ' 元/m³')
+      kvRow('水价', priceText)
     ].join('');
+  }
+
+  function openAuditModal(row) {
+    auditId = row.id;
+    $('audit-sub').textContent = row.demandNo || '';
+    $('audit-kv').innerHTML = auditKvHtml(row, '查询中…');
+    // 水价按户异步查询(/water-user/detail),弹窗未切换时回填
+    loadPrice(row.waterUserId, function (priceText) {
+      if (auditId !== row.id) return;
+      $('audit-kv').innerHTML = auditKvHtml(row, priceText + ' 元/m³');
+    });
     // 默认选中「通过」并预填意见,与审核弹窗习惯一致
     setSel('f-audit-result', '通过', 'pass');
     lastDefaultOpinion = '同意，按灌区水量调度计划执行';
@@ -957,57 +851,102 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var result = $('f-audit-result').dataset.value;
     var opinion = $('f-audit-opinion').value.trim();
     if (!result) { toast('请选择「审核结果」'); return; }
-    var row = findRow(auditId);
-    if (row) {
-      row.status = result;
-      row.auditOpinion = opinion || (result === 'pass' ? '同意，按灌区水量调度计划执行' : '不同意，请调整后重新申报');
-    }
-    closeModal('audit-ov');
-    renderAll();
-    toast('审核结果已提交（Mock）');
+    if (result === 'reject' && !opinion) { toast('请填写驳回意见'); return; } // 4.9:reject 必填意见
+    // 4.9:query 参数提交(id/action/opinion)
+    var url = '/water-demand/audit?id=' + encodeURIComponent(auditId)
+      + '&action=' + encodeURIComponent(result)
+      + '&opinion=' + encodeURIComponent(opinion);
+    var btn = this;
+    btn.disabled = true;
+    api('POST', url, null, function (err) {
+      btn.disabled = false;
+      if (err) return;
+      closeModal('audit-ov');
+      renderAll();
+      toast('审核结果已提交');
+    });
   });
 
-  /* ===================== 编制方案弹窗 ===================== */
+  /* ===================== 编制方案弹窗(提交 /water-dispatch/create,5.7) ===================== */
 
   /** 关联需水申请下拉文案:XS0016 · 县工业园区管委会 · 4.1万m³ */
-  function applyLabelOf(row) {
-    return row.id + ' · ' + farmerName(row.farmerCode) + ' · ' + fmtAmount(row.amount) + '万m³';
+  function applyLabelOf(r) {
+    return r.demandNo + ' · ' + (r.waterUserName || '') + ' · ' + fmtAmount(r.amount) + '万m³';
   }
 
-  /** 按需水申请带出用水户/闸口/放水量/起止时间 */
+  /** 配额数据源联动:按户刷新「已生效计划」与「已通过需水」下拉(5.5/5.6) */
+  var quotaSeq = 0;
+  function loadPlansAndApplies(userId, cb) {
+    var seq = ++quotaSeq;
+    PLANS = [];
+    APPLIES = [];
+    updatePlanTip();
+    if (!userId) { if (cb) cb(); return; }
+    var left = 2;
+    function tryDone() {
+      if (seq !== quotaSeq || --left > 0) return;
+      updatePlanTip();
+      if (cb) cb();
+    }
+    api('GET', '/water-dispatch/plans?userId=' + encodeURIComponent(userId), null, function (err, arr) {
+      if (seq === quotaSeq && !err) PLANS = arr || [];
+      tryDone();
+    });
+    api('GET', '/water-dispatch/demands?userId=' + encodeURIComponent(userId), null, function (err, arr) {
+      if (seq === quotaSeq && !err) APPLIES = arr || [];
+      tryDone();
+    });
+  }
+
+  /** 按需水申请带出用水户/闸口/放水量/起止时间,并刷新该户配额下拉 */
   function fillPlanByApply(row) {
-    setSel('f-p-farmer', farmerLabel(row.farmerCode), row.farmerCode);
-    setSel('f-p-gate', gateLabel(row.gateCode), row.gateCode);
+    setSel('f-plan', '', '');
+    setSel('f-p-farmer', rowUserLabel(row), row.waterUserId);
+    if (row.gateId) setSel('f-p-gate', (row.gateName || ''), row.gateId);
     $('f-p-amount').value = fmtAmount(row.amount);
     $('f-p-start').value = row.startDate + 'T08:00';
     $('f-p-end').value = row.endDate + 'T18:00';
-    updatePlanTip();
+    loadPlansAndApplies(row.waterUserId);
   }
 
-  /** 选中用水计划后展示该用水户的计划配额提示条 */
+  /** 选中用水计划后展示该用水户的配额提示条(5.5:userPlanWater/userScheduledQty,单位 m³) */
   function updatePlanTip() {
     var planId = $('f-plan').dataset.value;
-    var farmerCode = $('f-p-farmer').dataset.value;
+    var userId = $('f-p-farmer').dataset.value;
     var plan = null;
     PLANS.forEach(function (p) { if (p.id === planId) plan = p; });
-    var conf = plan && plan.usageMap ? plan.usageMap[farmerCode] : null;
     var tip = $('plan-tip');
-    if (!conf) { tip.classList.remove('show'); return; }
-    var remain = Math.max(0, Math.round((conf.total - conf.issued) * 100) / 100);
-    $('plan-tip-text').textContent = '本计划中该用水户计划用水量：' + fmtAmount(conf.total)
-      + ' 万m³ · 已下达调度 ' + fmtAmount(conf.issued) + ' 万m³ · 剩余可下达 ' + fmtAmount(remain) + ' 万m³';
+    if (!plan || !userId || plan.userPlanWater == null) { tip.classList.remove('show'); return; }
+    var remain = Math.max(0, (plan.userPlanWater - (plan.userScheduledQty || 0)) / 10000);
+    $('plan-tip-text').textContent = '本计划中该用水户计划用水量：' + fmtAmount(plan.userPlanWater / 10000)
+      + ' 万m³ · 已下达调度 ' + fmtAmount((plan.userScheduledQty || 0) / 10000)
+      + ' 万m³ · 剩余可下达 ' + fmtAmount(remain) + ' 万m³';
     tip.classList.add('show');
+  }
+
+  /** 手动更换弹窗内用水户:刷新下拉,且已选需水单不属于新户时清空(5.7 一致性) */
+  function onPlanFarmerPick(userId) {
+    setSel('f-plan', '', '');
+    loadPlansAndApplies(userId, function () {
+      var sel = $('f-apply').dataset.value;
+      if (sel && !findApply(sel)) {
+        setSel('f-apply', '', '');
+        $('f-p-amount').value = '';
+        $('f-p-start').value = '';
+        $('f-p-end').value = '';
+      }
+    });
   }
 
   function openPlanModal(row) {
     // 关联需水申请默认选中当前上报单,并带出用水户/闸口/放水量/时段
     setSel('f-plan', '', '');
+    setSel('f-p-gate', '', '');
     $('plan-tip').classList.remove('show');
     setSel('f-apply', applyLabelOf(row), row.id);
-    fillPlanByApply(row);
     setSel('f-p-owner', '', '');
-    setSel('f-p-status', '待执行', '待执行');
     $('f-p-remark').value = '';
+    fillPlanByApply(row);
     openModal('plan-ov');
   }
 
@@ -1023,8 +962,28 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (!start) { toast('请选择「开始时间」'); return; }
     if (!end) { toast('请选择「结束时间」'); return; }
     if (end <= start) { toast('结束时间需晚于开始时间'); return; }
-    closeModal('plan-ov');
-    toast('调度方案已编制（Mock）');
+
+    var payload = {
+      waterUserId: $('f-p-farmer').dataset.value,
+      gateId: $('f-p-gate').dataset.value,
+      planAmount: Number(Number(amount).toFixed(2)), // 万m³,≤2 位小数(0.3)
+      startTime: start,
+      endTime: end
+    };
+    if ($('f-plan').dataset.value) payload.planId = $('f-plan').dataset.value;
+    if ($('f-apply').dataset.value) payload.demandId = $('f-apply').dataset.value;
+    if ($('f-p-owner').value.trim()) payload.owner = $('f-p-owner').value.trim();
+    if ($('f-p-remark').value.trim()) payload.remark = $('f-p-remark').value.trim();
+
+    var btn = this;
+    btn.disabled = true;
+    api('POST', '/water-dispatch/create', payload, function (err) {
+      btn.disabled = false;
+      if (err) return;
+      closeModal('plan-ov');
+      toast('调度方案已编制');
+      renderAll();
+    });
   });
 
   /* ===================== 删除确认 ===================== */
@@ -1032,7 +991,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   function askDelete(row) {
     pendingDeleteId = row.id;
-    $('confirm-text').textContent = '确认删除上报单 ' + row.id + '？删除后不可恢复。';
+    $('confirm-text').textContent = '确认删除上报单 ' + (row.demandNo || '') + '？删除后不可恢复。';
     openModal('confirm-ov');
   }
 
@@ -1042,13 +1001,17 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   });
 
   $('btn-del-ok').addEventListener('click', function () {
-    for (var i = 0; i < DEMAND_LIST.length; i++) {
-      if (DEMAND_LIST[i].id === pendingDeleteId) { DEMAND_LIST.splice(i, 1); break; }
-    }
-    pendingDeleteId = null;
-    closeModal('confirm-ov');
-    renderAll();
-    toast('删除成功（Mock）');
+    var id = pendingDeleteId;
+    var btn = this;
+    btn.disabled = true;
+    api('DELETE', '/water-demand/delete?id=' + encodeURIComponent(id), null, function (err) {
+      btn.disabled = false;
+      if (err) return; // 被调度引用等 400 文案已上屏(4.10)
+      pendingDeleteId = null;
+      closeModal('confirm-ov');
+      renderAll();
+      toast('删除成功');
+    });
   });
 
   /* ===================== 事件绑定 ===================== */
@@ -1068,22 +1031,25 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   });
 
-  // 关键词搜索(单号 / 用水户 / 用途)
+  // 关键词搜索(单号 / 户名 / 户号 / 用途,4.3;300ms 防抖)
+  var kwTimer = null;
   $('f-kw').addEventListener('input', function () {
-    S.kw = this.value.trim();
-    S.page = 1;
-    renderAll();
+    var v = this.value.trim();
+    clearTimeout(kwTimer);
+    kwTimer = setTimeout(function () {
+      S.kw = v;
+      S.page = 1;
+      renderAll();
+    }, 300);
   });
 
   // 分页:翻页 / 每页条数 / 跳页
   $('pg-bar').addEventListener('click', function (e) {
     var btn = e.target.closest('[data-pg]');
     if (!btn || btn.disabled) return;
-    var list = filteredList();
-    var totalPages = Math.max(1, Math.ceil(list.length / S.size));
     var v = btn.dataset.pg;
     if (v === 'prev') S.page = Math.max(1, S.page - 1);
-    else if (v === 'next') S.page = Math.min(totalPages, S.page + 1);
+    else if (v === 'next') S.page = Math.min(S.pages, S.page + 1);
     else S.page = Number(v);
     renderAll();
   });
@@ -1109,24 +1075,44 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var action = el.dataset.action;
     if (action === 'audit') openAuditModal(row);
     else if (action === 'plan') openPlanModal(row);
-    else if (action === 'edit') openFormModal('edit', row);
-    else if (action === 'delete') askDelete(row);
+    else if (action === 'edit') {
+      if (row.status === 'pass') { toast('已通过的上报单不可编辑'); return; }
+      openFormModal('edit', row);
+    } else if (action === 'delete') askDelete(row);
   });
 
-  /* ===================== 初始化:绑定各弹窗下拉 + 首屏渲染 ===================== */
-  bindSearchSelect('f-farmer', 'farmer-dd', farmerOptions, '无匹配用水户');
+  /* ===================== 初始化:并行拉取字典/下拉(接口) + 首屏 ===================== */
+  bindSearchSelect('f-farmer', 'farmer-dd', userOptions, '无匹配用水户');
   bindSearchSelect('f-usage', 'usage-dd', usageOptions, '无匹配用途');
-  bindSearchSelect('f-status', 'status-dd', statusOptions, '无匹配状态');
   bindSearchSelect('f-audit-result', 'audit-result-dd', function () { return AUDIT_RESULTS; }, '无匹配项', onAuditResultPick);
   bindSearchSelect('f-plan', 'plan-dd', planOptions, '无匹配计划', updatePlanTip);
   bindSearchSelect('f-apply', 'apply-dd', applyOptions, '无匹配申请', function (val) {
-    var row = findRow(val);
+    var row = findApply(val);
     if (row) fillPlanByApply(row);
   });
-  bindSearchSelect('f-p-farmer', 'p-farmer-dd', farmerOptions, '无匹配用水户', updatePlanTip);
+  bindSearchSelect('f-p-farmer', 'p-farmer-dd', userOptions, '无匹配用水户', onPlanFarmerPick);
   bindSearchSelect('f-p-gate', 'p-gate-dd', gateOptions, '无匹配闸口');
   bindSearchSelect('f-p-owner', 'p-owner-dd', ownerOptions, '无匹配负责人');
-  bindSearchSelect('f-p-status', 'p-status-dd', dispatchStatusOptions, '无匹配状态');
+
+  // 4.1 表单元数据(用途联想 + 服务器当天)
+  api('GET', '/water-demand/meta', null, function (err, d) {
+    if (!err && d) {
+      USAGES = d.usages || [];
+      if (d.today) TODAY = d.today;
+    }
+  });
+  // 4.5 用水户下拉(仅正常状态)
+  api('GET', '/water-demand/users', null, function (err, d) {
+    if (!err) USERS = Array.isArray(d) ? d : [];
+  });
+  // 1.1 闸口池(用水户/需水/调度的闸口只能从该池选择)
+  api('GET', '/water-user/meta', null, function (err, d) {
+    if (!err && d) GATES = d.gates || [];
+  });
+  // 6.1 负责人联想
+  api('GET', '/water-dispatch-record/meta', null, function (err, d) {
+    if (!err && d) OPERATORS = d.operators || [];
+  });
 
   renderAll();
 })();

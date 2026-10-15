@@ -25,7 +25,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .stat-item{flex:1;border-left:1px solid rgba(255,255,255,.16);padding-left:20px;min-width:0}
 .stat-item:first-child{border-left:none;padding-left:0}
 .stat-label{font-size:12px;color:rgba(255,255,255,.62);margin-bottom:6px;white-space:nowrap}
-.stat-value{font-size:20px;font-weight:600;letter-spacing:.3px;white-space:nowrap}
+.stat-value{font-size:20px;font-weight:600;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .stat-value .stat-unit{font-size:12px;font-weight:400;margin-left:2px;color:rgba(255,255,255,.72)}
 .stat-value .stat-sub{font-size:12px;font-weight:400;color:rgba(255,255,255,.62);margin-left:8px}
 
@@ -84,8 +84,9 @@ input[type="checkbox"]{width:15px;height:15px;accent-color:#1677ff;cursor:pointe
 .tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13.5px;margin-top:12px}
 .tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:11px 12px;border:1px solid #f0f0f0;white-space:nowrap;font-size:13px}
 .tbl td{padding:11px 12px;border:1px solid #f0f0f0;color:#333;line-height:20px;vertical-align:middle;overflow-wrap:break-word}
-.cell-main{display:block;font-weight:600;color:#1f1f1f;line-height:21px}
-.cell-sub{display:block;margin-top:2px;font-size:12px;color:#8c8c8c;line-height:17px}
+.cell-main{font-weight:600;color:#1f1f1f;line-height:21px}
+.tbl td.ellip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell-ellip{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .amt{font-weight:600;color:#1f1f1f}
 .amt .unit{margin-left:2px;font-size:12px;color:#8c8c8c;font-weight:400}
 .num-orange{font-weight:600;color:#fa8c16}
@@ -108,6 +109,10 @@ input[type="checkbox"]{width:15px;height:15px;accent-color:#1677ff;cursor:pointe
 .st-tag.unbilled{background:#fff7e6;color:#fa8c16}
 .st-tag.generated{background:#e6f4ff;color:#1677ff}
 .st-tag.paid{background:#f6ffed;color:#52c41a}
+.st-tag.pending{background:#fff7e6;color:#fa8c16}
+.st-tag.running{background:#e6f4ff;color:#1677ff}
+.st-tag.canceled{background:#f5f5f5;color:#8c8c8c}
+.st-tag.abnormal{background:#fff1f2;color:#cf1322}
 /* 明细分期头行 */
 .period-row td{background:#f2f7fc!important;border-color:#e2ecf6!important;padding:9px 12px!important}
 .period-line{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:13px}
@@ -416,7 +421,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     <div class="modal-bd">
       <div class="plan-tip show">
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="2.5" width="9" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 5h9M4 1.5v2M8 1.5v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-        <span>调整后水费台账与待出账金额将实时重算；账期归属按开始时间所在月度确定。</span>
+        <span>调整后水费台账与待出账金额将实时重算；账期归属按新开始时间与户统计周期重新推导。</span>
       </div>
       <div class="form-grid">
         <div class="form-item">
@@ -500,49 +505,46 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 (function () {
   'use strict';
 
-  /* ==================== Mock 数据区(后续可替换为真实接口) ==================== */
+  /* ==================== 接口层(数据全部来自后端接口,经 dev-proxy 代理) ==================== */
 
-  /** 演示基准日期:"本期"按该日所在的月/季/年计算 */
-  var BASE_DATE = new Date(2026, 9, 14); // 2026-10-14
+  var API_BASE = '/hltgq-site';
 
-  var GATE_NAMES = {
-    GK001: '东干渠一号闸', GK002: '东干渠二号闸', GK003: '西干渠首闸', GK004: '西干渠分水闸',
-    GK005: '南支渠节制闸', GK006: '北干渠进水闸', GK007: '七号泄水闸'
-  };
+  function api(method, url, body, cb) {
+    var opts = { method: method, headers: {} };
+    if (body != null) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    fetch(API_BASE + url, opts).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (res.status === 401) { toast(data.message || '未登录或会话已过期'); cb(new Error('unauthorized')); return; }
+        if (!res.ok) { toast(data.message || ('请求失败(' + res.status + ')')); cb(new Error(data.message || String(res.status))); return; }
+        cb(null, data);
+      });
+    }, function () {
+      /* 仅收拢 fetch 自身的网络故障;业务回调(渲染等)内的异常不再吞掉,直接冒泡到控制台便于排查 */
+      toast('网络异常，请稍后重试');
+      cb(new Error('network'));
+    });
+  }
 
-  /** 用水户台账配置(统计周期在新增用水户时设定) */
-  var LEDGERS = [
-    { code: 'YH001', name: '红星村民委员会', type: '农业', strategy: '指定闸口累加', gateText: '东干渠一号闸 + 东干渠二号闸', cycle: 'month', price: 0.350, yearPlan: 18 },
-    { code: 'YH002', name: '丰收农业合作社', type: '农业', strategy: '闸口差额计量', gateText: '西干渠首闸 - 七号泄水闸', cycle: 'quarter', price: 0.350, yearPlan: 12 },
-    { code: 'YH003', name: '县工业园区管委会', type: '工业', strategy: '指定闸口累加', gateText: '北干渠进水闸', cycle: 'month', price: 1.200, yearPlan: 30 },
-    { code: 'YH004', name: '城南自来水厂', type: '生活', strategy: '指定闸口累加', gateText: '南支渠节制闸', cycle: 'month', price: 1.600, yearPlan: 95 },
-    { code: 'YH005', name: '湿地公园生态补水', type: '生态', strategy: '闸口差额计量', gateText: '西干渠分水闸 - 七号泄水闸', cycle: 'year', price: 0.200, yearPlan: 40 },
-    { code: 'YH006', name: '绿源家庭农场', type: '农业', strategy: '指定闸口累加', gateText: '东干渠二号闸', cycle: 'quarter', price: 0.380, yearPlan: 4.5 }
+  /* 接口数据缓存(视图渲染与操作复用,前端不写死业务数据) */
+  var LEDGERS = [];       // 台账行(视图一) 7.5 /water-bill/ledger records(LedgerRowVO)
+  var LEDGER_STAT = null; // 台账汇总 7.5 stat(视图一统计条)
+  var SUM_ROWS = [];      // 汇总行(视图四;同一 7.5 接口全量数据)
+  var CUR_USER = null;    // 明细视图用水户 7.6 user
+  var CUR_PLANS = [];     // 明细视图方案行 7.6 records(未取消,含 cycleKey/cycleLabel/实时计量)
+
+  /* 字典(7.1 meta 覆盖;默认与 0.4 一致) */
+  var CYCLE_OPTS = [
+    { value: 'month', label: '月度结算' },
+    { value: 'quarter', label: '季度结算' },
+    { value: 'year', label: '年度结算' }
   ];
-
-  /** 调度方案列表(台账归集对象; billNo 为空表示未计费) */
-  var PLANS = [
-    { id: 'DD0014', farmerCode: 'YH001', gateCode: 'GK002', amount: 1.98, startTime: '2026-10-08 08:00', endTime: '2026-10-15 18:00', planName: '2026年10月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0010', farmerCode: 'YH001', gateCode: 'GK001', amount: 2.2, startTime: '2026-09-06 08:00', endTime: '2026-09-12 18:00', planName: '2026年9月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0003', farmerCode: 'YH001', gateCode: 'GK002', amount: 1.85, startTime: '2026-06-11 08:00', endTime: '2026-06-16 18:00', planName: '2026年6月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0002', farmerCode: 'YH001', gateCode: 'GK001', amount: 2.6, startTime: '2026-05-08 08:00', endTime: '2026-05-14 18:00', planName: '2026年5月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0005', farmerCode: 'YH002', gateCode: 'GK003', amount: 3.1, startTime: '2026-07-05 08:00', endTime: '2026-07-20 18:00', planName: '2026年第3季度灌溉供水计划', trail: 2, billNo: '' },
-    { id: 'DD0011', farmerCode: 'YH002', gateCode: 'GK003', amount: 2.75, startTime: '2026-09-10 08:00', endTime: '2026-09-18 18:00', planName: '2026年第3季度灌溉供水计划', trail: 4, billNo: '' },
-    { id: 'DD0015', farmerCode: 'YH003', gateCode: 'GK006', amount: 4.1, startTime: '2026-10-01 08:00', endTime: '2026-10-31 18:00', planName: '2026年10月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0013', farmerCode: 'YH003', gateCode: 'GK006', amount: 4.3, startTime: '2026-09-01 08:00', endTime: '2026-09-30 18:00', planName: '2026年9月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0007', farmerCode: 'YH003', gateCode: 'GK006', amount: 3.5, startTime: '2026-08-02 08:00', endTime: '2026-08-15 18:00', planName: '2026年8月月度供水计划', trail: 2, billNo: '' },
-    { id: 'DD0009', farmerCode: 'YH003', gateCode: 'GK006', amount: 5.2, startTime: '2026-07-05 08:00', endTime: '2026-07-31 18:00', planName: '2026年7月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0016', farmerCode: 'YH004', gateCode: 'GK005', amount: 7.9, startTime: '2026-10-01 08:00', endTime: '2026-10-31 18:00', planName: '2026年10月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0004', farmerCode: 'YH004', gateCode: 'GK005', amount: 8.4, startTime: '2026-09-01 08:00', endTime: '2026-09-30 18:00', planName: '2026年9月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0006', farmerCode: 'YH004', gateCode: 'GK005', amount: 9.6, startTime: '2026-08-01 08:00', endTime: '2026-08-31 18:00', planName: '2026年8月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0008', farmerCode: 'YH004', gateCode: 'GK005', amount: 7.8, startTime: '2026-07-03 08:00', endTime: '2026-07-28 18:00', planName: '2026年7月月度供水计划', trail: 3, billNo: '' },
-    { id: 'DD0017', farmerCode: 'YH005', gateCode: 'GK004', amount: 4.6, startTime: '2026-06-15 08:00', endTime: '2026-06-30 18:00', planName: '2026年度生态补水计划', trail: 2, billNo: '' },
-    { id: 'DD0001', farmerCode: 'YH005', gateCode: 'GK004', amount: 4.4, startTime: '2026-03-10 08:00', endTime: '2026-03-25 18:00', planName: '2026年度生态补水计划', trail: 2, billNo: '' },
-    { id: 'DD0018', farmerCode: 'YH006', gateCode: 'GK002', amount: 0.98, startTime: '2026-09-28 08:00', endTime: '2026-10-06 18:00', planName: '2026年第3季度灌溉供水计划', trail: 1, billNo: '' }
+  var BILL_STATUS_OPTS = [
+    { value: 'generated', label: '已生成' },
+    { value: 'paid', label: '已缴清' }
   ];
-
-  /** 水费账单列表(初始为空,由台账出账生成) */
-  var BILLS = [];
 
   /* ==================== 基础工具 ==================== */
 
@@ -558,8 +560,11 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   function round2(n) { return Math.round(n * 100) / 100; }
 
-  /** 水量格式化:保留2位去掉尾零 */
-  function fmtQty(n) { return String(round2(Number(n))); }
+  /** 水量格式化:保留2位去掉尾零(计量不可得显示「—」) */
+  function fmtQty(n) {
+    if (n == null || n === '' || isNaN(Number(n))) return '—';
+    return String(round2(Number(n)));
+  }
 
   /** 金额格式化:千分位 + 2位小数 */
   function fmtMoney(n) {
@@ -589,55 +594,23 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   function openModal(id) { $(id).classList.add('show'); }
   function closeModal(id) { $(id).classList.remove('show'); }
 
-  function findLedger(code) {
-    for (var i = 0; i < LEDGERS.length; i++) { if (LEDGERS[i].code === code) return LEDGERS[i]; }
-    return null;
-  }
-  function findPlan(id) {
-    for (var i = 0; i < PLANS.length; i++) { if (PLANS[i].id === id) return PLANS[i]; }
-    return null;
-  }
-  function findBill(no) {
-    for (var i = 0; i < BILLS.length; i++) { if (BILLS[i].billNo === no) return BILLS[i]; }
-    return null;
-  }
-  function gateName(code) { return GATE_NAMES[code] || '-'; }
-
-  /* ==================== 统计周期计算 ==================== */
-
-  var CYCLE_NAME = { month: '月度结算', quarter: '季度结算', year: '年度结算' };
-  var CYCLE_TAG = { month: 'tag-blue', quarter: 'tag-orange', year: 'tag-green' };
-
-  /** 方案开始时间 → 其所属分期 key(月:'2026-10' / 季:'2026-Q3' / 年:'2026') */
-  function cycleKeyOf(startTime, cycle) {
-    var y = +startTime.slice(0, 4);
-    var m = +startTime.slice(5, 7);
-    if (cycle === 'month') return y + '-' + pad2(m);
-    if (cycle === 'quarter') return y + '-Q' + Math.ceil(m / 3);
-    return String(y);
-  }
-
-  /** 基准日所在的分期 key(用于"本期"统计) */
-  function currentCycleKey(cycle) {
-    var y = BASE_DATE.getFullYear();
-    var m = BASE_DATE.getMonth() + 1;
-    if (cycle === 'month') return y + '-' + pad2(m);
-    if (cycle === 'quarter') return y + '-Q' + Math.ceil(m / 3);
-    return String(y);
-  }
-
-  /** 分期 key → 中文标签 */
-  function cycleLabel(key) {
-    if (key.indexOf('-Q') !== -1) {
-      var parts = key.split('-Q');
-      return parts[0] + '年第' + parts[1] + '季度';
+  /** 从账单当前页缓存按 id / 账单号查找(操作与明细弹窗用) */
+  function findBill(idOrNo) {
+    for (var i = 0; i < S2.rows.length; i++) {
+      if (S2.rows[i].id === idOrNo || S2.rows[i].billNo === idOrNo) return S2.rows[i];
     }
-    if (key.indexOf('-') !== -1) {
-      var mp = key.split('-');
-      return mp[0] + '年' + (+mp[1]) + '月';
-    }
-    return key + '年度';
+    return null;
   }
+
+  /** 从明细方案缓存按调度方案 id 查找 */
+  function findCurPlan(dispatchId) {
+    for (var i = 0; i < CUR_PLANS.length; i++) {
+      if (CUR_PLANS[i].dispatchId === dispatchId) return CUR_PLANS[i];
+    }
+    return null;
+  }
+
+  /* ==================== 账期区间推算(口径与接口 8.3 一致,仅展示用) ==================== */
 
   /** 分期 key → 账期区间 ['2026-10-01','2026-10-31'] */
   function cycleRange(key) {
@@ -656,117 +629,31 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return [key + '-01-01', key + '-12-31'];
   }
 
-  /** 分期 key → 账单号期间码(月:'202610' / 季:'2026Q3' / 年:'2026') */
-  function cycleCode(key) { return key.replace('-', ''); }
+  /* ==================== 出账(7.7 POST /water-bill/bills/create;视图一/二共用) ==================== */
 
-  /* ==================== 台账/账单统计 ==================== */
-
-  function plansOf(farmerCode) {
-    return PLANS.filter(function (p) { return p.farmerCode === farmerCode; });
-  }
-
-  /** 单户台账统计 */
-  function ledgerStats(farmerCode) {
-    var led = findLedger(farmerCode);
-    var all = plansOf(farmerCode);
-    var pending = all.filter(function (p) { return !p.billNo; });
-    var billed = all.filter(function (p) { return !!p.billNo; });
-    var cur = currentCycleKey(led.cycle);
-    var thisPeriod = all.filter(function (p) { return cycleKeyOf(p.startTime, led.cycle) === cur; });
-    return {
-      pending: pending, billed: billed,
-      pendingQty: round2(pending.reduce(function (s, p) { return s + p.amount; }, 0)),
-      pendingAmount: round2(pending.reduce(function (s, p) { return s + p.amount; }, 0) * led.price * 10000),
-      billedQty: round2(billed.reduce(function (s, p) { return s + p.amount; }, 0)),
-      billedAmount: round2(billed.reduce(function (s, p) { return s + p.amount; }, 0) * led.price * 10000),
-      thisQty: round2(thisPeriod.reduce(function (s, p) { return s + p.amount; }, 0)),
-      thisCount: thisPeriod.length
-    };
-  }
-
-  /** 全台账汇总 */
-  function overallStats() {
-    var pendingPlans = PLANS.filter(function (p) { return !p.billNo; });
-    var qty = 0, amount = 0;
-    pendingPlans.forEach(function (p) {
-      var led = findLedger(p.farmerCode);
-      qty += p.amount;
-      amount += p.amount * led.price * 10000;
+  /** 提交调度方案 id 数组,后端按「用水户 × 分期 key」自动分组拆账 */
+  function doCreateBills(ids) {
+    if (!ids.length) { toast('请先勾选需要出账的方案'); return; }
+    api('POST', '/water-bill/bills/create', ids, function (err, data) {
+      if (err || !data) return;
+      toastCreated(data);
+      selPlans = {};
+      $('ck-select-page').checked = false;
+      refreshAll();
     });
-    var billedTotal = BILLS.reduce(function (s, b) { return s + b.amount; }, 0);
-    return { farmerCount: LEDGERS.length, pendingCount: pendingPlans.length, pendingQty: round2(qty), pendingAmount: round2(amount), billedTotal: round2(billedTotal) };
-  }
-
-  /* ==================== 账单生成(核心) ==================== */
-
-  /** 账单序号:扫描现有账单取最大值+1 */
-  function nextBillSeq() {
-    var max = 0;
-    BILLS.forEach(function (b) {
-      var n = parseInt(b.billNo.slice(-4), 10);
-      if (n > max) max = n;
-    });
-    return max + 1;
-  }
-
-  /**
-   * 为指定方案批量生成账单
-   * 月度结算:跨月勾选自动拆分为多个独立月份账单; 季度/年度结算:同期合并为一张
-   * 返回生成的账单数组
-   */
-  function createBills(farmerCode, planIds) {
-    var led = findLedger(farmerCode);
-    var plans = PLANS.filter(function (p) {
-      return p.farmerCode === farmerCode && !p.billNo && planIds.indexOf(p.id) !== -1;
-    });
-    if (!plans.length) return [];
-
-    // 按统计周期分组
-    var groups = {};
-    var order = [];
-    plans.forEach(function (p) {
-      var key = cycleKeyOf(p.startTime, led.cycle);
-      if (!groups[key]) { groups[key] = []; order.push(key); }
-      groups[key].push(p);
-    });
-
-    var created = [];
-    order.forEach(function (key) {
-      var g = groups[key];
-      var qty = round2(g.reduce(function (s, p) { return s + p.amount; }, 0));
-      var range = cycleRange(key);
-      var bill = {
-        billNo: 'SF' + cycleCode(key) + '-' + farmerCode + ('0000' + nextBillSeq()).slice(-4),
-        farmerCode: farmerCode,
-        cycle: led.cycle,
-        cycleKey: key,
-        startDate: range[0],
-        endDate: range[1],
-        quantity: qty,
-        price: led.price,
-        amount: round2(qty * led.price * 10000),
-        paid: 0,
-        status: 'generated',
-        createTime: nowStr(),
-        payTime: '',
-        planIds: g.map(function (p) { return p.id; })
-      };
-      BILLS.unshift(bill);
-      g.forEach(function (p) { p.billNo = bill.billNo; p.billTime = bill.createTime; });
-      created.push(bill);
-    });
-    return created;
   }
 
   /** 出账成功提示(单张:账单号+算式;多张:拆分张数+合计) */
-  function toastCreated(created) {
-    if (!created.length) return;
-    if (created.length === 1) {
-      var b = created[0];
+  function toastCreated(res) {
+    var bills = (res && res.bills) || [];
+    if (!bills.length) { toast('出账成功'); return; }
+    if (bills.length === 1) {
+      var b = bills[0];
       toast('账单 ' + b.billNo + ' 已生成：' + fmtQty(b.quantity) + ' 万m³ × ' + fmtPrice(b.price) + ' 元/m³ = ' + fmtMoney(b.amount));
     } else {
-      var total = round2(created.reduce(function (s, b) { return s + b.amount; }, 0));
-      toast('已按统计周期自动拆分生成 ' + created.length + ' 张账单，合计 ' + fmtMoney(total));
+      var total = 0;
+      bills.forEach(function (b) { total += Number(b.amount) || 0; });
+      toast('已按统计周期自动拆分生成 ' + bills.length + ' 张账单，合计 ' + fmtMoney(round2(total)));
     }
   }
 
@@ -809,13 +696,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   }
 
   var CYCLE_SHORT = { month: '月度', quarter: '季度', year: '年度' };
-
-  /** 分期 key 排序值(用于倒序排列) */
-  function cycleSort(key) {
-    if (key.indexOf('-Q') !== -1) { var q = key.split('-Q'); return (+q[0]) * 100 + (+q[1]) * 3; }
-    if (key.indexOf('-') !== -1) { var m = key.split('-'); return (+m[0]) * 100 + (+m[1]); }
-    return (+key) * 100 + 13;
-  }
+  var CYCLE_TAG = { month: 'tag-blue', quarter: 'tag-orange', year: 'tag-green' }; /* 周期标签配色 */
 
   /* ==================== 视图切换 ==================== */
   function setActiveTab(view) {
@@ -828,30 +709,38 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     $('view-summary').classList.toggle('hide', view !== 'summary');
   }
 
-  function statItem(label, value) {
-    return '<div class="stat-item"><div class="stat-label">' + label + '</div><div class="stat-value">' + value + '</div></div>';
+  function statItem(label, value, title) {
+    return '<div class="stat-item"' + (title ? ' title="' + esc(title) + '"' : '') + '><div class="stat-label">' + label + '</div><div class="stat-value">' + value + '</div></div>';
   }
 
-  /* ==================== 视图一:水费台账 ==================== */
+  /* ==================== 视图一:水费台账(7.5 /water-bill/ledger) ==================== */
   var ledgerFilter = { kw: '', cycle: '', lf: 'all' };
 
-  /** 当前筛选条件下的用水户列表(渲染与导出共用) */
+  /** 拉取台账(服务端 keyword 过滤 户名/户号;全量不分页,含 stat 汇总) */
+  var ledgerSeq = 0;
+  function loadLedger() {
+    var seq = ++ledgerSeq;
+    var q = ledgerFilter.kw ? '?keyword=' + encodeURIComponent(ledgerFilter.kw) : '';
+    api('GET', '/water-bill/ledger' + q, null, function (err, data) {
+      if (err || !data || seq !== ledgerSeq) return;
+      LEDGERS = data.records || [];
+      LEDGER_STAT = data.stat || null;
+      renderLedger();
+    });
+  }
+
+  /** 本地小筛选(周期/快速页签;keyword 已由服务端过滤),渲染与导出共用 */
   function ledgerList() {
-    var kw = ledgerFilter.kw.trim().toLowerCase();
-    return LEDGERS.filter(function (led) {
-      if (ledgerFilter.cycle && led.cycle !== ledgerFilter.cycle) return false;
-      if (ledgerFilter.lf === 'abnormal') return false;
-      if (ledgerFilter.lf === 'pending' && ledgerStats(led.code).pending.length === 0) return false;
-      if (kw) {
-        var hay = (led.name + ' ' + led.code + ' ' + led.gateText).toLowerCase();
-        if (hay.indexOf(kw) === -1) return false;
-      }
+    return LEDGERS.filter(function (r) {
+      if (ledgerFilter.cycle && r.cycle !== ledgerFilter.cycle) return false;
+      if (ledgerFilter.lf === 'pending' && !(r.pendingCount > 0)) return false;
+      if (ledgerFilter.lf === 'abnormal' && r.dataOk) return false;
       return true;
     });
   }
 
   function renderLedger() {
-    var o = overallStats();
+    var o = LEDGER_STAT || { farmerCount: 0, pendingCount: 0, pendingQty: 0, pendingAmount: 0, billedTotal: 0 };
     $('ledger-stat').innerHTML =
       statItem('台账用水户', o.farmerCount + ' <span class="stat-unit">户</span>') +
       statItem('待出账方案', o.pendingCount + ' <span class="stat-unit">个</span>') +
@@ -866,39 +755,41 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       return;
     }
     var html = '';
-    list.forEach(function (led) {
-      var st = ledgerStats(led.code);
-      var hasPending = st.pending.length > 0;
+    list.forEach(function (r) {
+      var hasPending = r.pendingCount > 0;
       html += '<tr>' +
-        '<td><span class="cell-main">' + esc(led.name) + '</span></td>' +
-        '<td><span class="tag ' + (led.strategy === '指定闸口累加' ? 'tag-blue' : 'tag-purple') + '">' + led.strategy + '</span></td>' +
-        '<td><span class="tag ' + CYCLE_TAG[led.cycle] + '">' + CYCLE_SHORT[led.cycle] + '</span></td>' +
-        '<td>' + fmtPrice(led.price) + ' 元/m³</td>' +
-        '<td>' + fmtQty(st.thisQty) + ' 万m³</td>' +
+        '<td><span class="cell-main">' + esc(r.userName) + (r.userNo ? '（' + esc(r.userNo) + '）' : '') + '</span></td>' +
+        '<td><div class="cell-ellip" title="' + esc((r.strategy || '') + (r.gateText ? ' ' + r.gateText : '')) + '"><span class="tag ' + (r.strategy === '指定闸口累加' ? 'tag-blue' : 'tag-purple') + '">' + esc(r.strategy || '-') + '</span>' +
+          (r.gateText ? ' <span style="color:#8c8c8c">' + esc(r.gateText) + '</span>' : '') + '</div></td>' +
+        '<td><span class="tag ' + (CYCLE_TAG[r.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[r.cycle] || esc(r.cycleName || r.cycle || '')) + '</span></td>' +
+        '<td>' + fmtPrice(r.price) + ' 元/m³</td>' +
+        '<td>' + fmtQty(r.thisQty) + ' 万m³</td>' +
         '<td>' + (hasPending
-          ? '<span class="num-orange">' + fmtQty(st.pendingQty) + ' 万m³</span>'
+          ? '<span class="num-orange">' + fmtQty(r.pendingQty) + ' 万m³</span>'
           : '<span style="color:#bfbfbf">—</span>') + '</td>' +
         '<td>' + (hasPending
-          ? '<span class="num-red">' + fmtMoney(st.pendingAmount) + '</span>'
+          ? '<span class="num-red">' + fmtMoney(r.pendingAmount) + '</span>'
           : '<span style="color:#bfbfbf">¥0.00</span>') + '</td>' +
-        '<td>' + (st.billedQty > 0
-          ? fmtQty(st.billedQty) + ' 万m³'
+        '<td>' + (r.billedQty > 0
+          ? fmtQty(r.billedQty) + ' 万m³'
           : '<span style="color:#bfbfbf">0</span>') + '</td>' +
-        '<td><span class="st-tag done">正常</span></td>' +
-        '<td><span class="act" data-detail="' + led.code + '">明细</span>' +
-          (hasPending ? '<button type="button" class="btn btn-green btn-xs" style="margin-left:10px" data-billall="' + led.code + '">全部出账</button>' : '') +
+        '<td>' + (r.dataOk
+          ? '<span class="st-tag done">正常</span>'
+          : '<span class="st-tag abnormal" title="' + esc(r.dataNote || '') + '">异常</span>') + '</td>' +
+        '<td><span class="act" data-detail="' + esc(r.userId) + '">明细</span>' +
+          (hasPending ? '<button type="button" class="btn btn-green btn-xs" style="margin-left:10px" data-billall="' + esc(r.userId) + '">全部出账</button>' : '') +
         '</td></tr>';
     });
     $('ledger-body').innerHTML = html;
   }
 
-  /* ==================== 视图二:台账明细(第二层) ==================== */
-  var curFarmer = '';          // 当前查看明细的用水户
-  var selPlans = {};           // 勾选的待出账方案 id 集合
+  /* ==================== 视图二:台账明细(第二层;7.6 /water-bill/user-plans) ==================== */
+  var curUserId = '';          // 当前查看明细的用水户 id
+  var selPlans = {};           // 勾选的待出账方案 id(dispatchId)集合
   var detailFilter = { cycle: '', billed: '' };
 
-  function openDetail(code) {
-    curFarmer = code;
+  function openDetail(userId) {
+    curUserId = userId;
     selPlans = {};
     detailFilter = { cycle: '', billed: '' };
     $('f-detail-cycle').value = ''; $('f-detail-cycle').dataset.value = '';
@@ -907,61 +798,90 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     setActiveTab('ledger');
     $('view-ledger').classList.add('hide');
     $('view-detail').classList.remove('hide');
+    CUR_USER = null;
+    CUR_PLANS = [];
     renderDetail();
+    loadDetail(userId);
+  }
+
+  /** 拉取户方案明细(7.6;未取消方案按执行时段起排序;未计费行 amount 为实时计量快照) */
+  var detailSeq = 0;
+  function loadDetail(userId) {
+    var seq = ++detailSeq;
+    api('GET', '/water-bill/user-plans?userId=' + encodeURIComponent(userId), null, function (err, data) {
+      if (err || !data || seq !== detailSeq) return;
+      CUR_USER = data.user || null;
+      CUR_PLANS = data.records || [];
+      renderDetail();
+    });
   }
 
   function renderDetail() {
-    var led = findLedger(curFarmer);
-    if (!led) return;
-    var all = plansOf(curFarmer);
-    var st = ledgerStats(curFarmer);
-    $('detail-count').textContent = '共 ' + all.length + ' 个方案 · 待出账 ' + st.pending.length + ' 个';
+    if (!CUR_USER) {
+      $('detail-count').textContent = '';
+      $('detail-bar').innerHTML = '';
+      $('detail-body').innerHTML = '<tr><td colspan="10" class="empty-cell">正在加载…</td></tr>';
+      updateSelInfo();
+      return;
+    }
+    var u = CUR_USER;
+    var price = Number(u.waterPrice) || 0;
+    var unbilled = CUR_PLANS.filter(function (p) { return !p.billed; });
+    var pendQty = 0;
+    unbilled.forEach(function (p) { pendQty += Number(p.amount) || 0; });
+    pendQty = round2(pendQty);
+    var pendAmt = round2(pendQty * price * 10000);
+    $('detail-count').textContent = '共 ' + CUR_PLANS.length + ' 个方案 · 待出账 ' + unbilled.length + ' 个';
     $('detail-bar').innerHTML =
-      statItem('用水户', esc(led.name) + '（' + led.code + '）') +
-      statItem('用水计算策略', led.strategy) +
-      statItem('统计周期', CYCLE_SHORT[led.cycle] + '结算') +
-      statItem('水价', fmtPrice(led.price) + ' <span class="stat-unit">元/m³</span>') +
-      statItem('待出账水量', fmtQty(st.pendingQty) + ' <span class="stat-unit">万m³</span>') +
-      statItem('待出账金额', fmtMoney(st.pendingAmount));
+      statItem('用水户', esc(u.name || '') + '（' + esc(u.userNo || '') + '）') +
+      statItem('用水计算策略', esc(u.calcModeName || '-') + ' · ' + esc(u.gateText || '-'), (u.calcModeName || '-') + ' · ' + (u.gateText || '-')) +
+      statItem('统计周期', esc(u.settleCycleName || '-')) +
+      statItem('水价', fmtPrice(u.waterPrice) + ' <span class="stat-unit">元/m³</span>') +
+      statItem('待出账水量', fmtQty(pendQty) + ' <span class="stat-unit">万m³</span>') +
+      statItem('待出账金额', fmtMoney(pendAmt));
 
-    // 按统计周期分期分组
+    // 按分期分组(接口行上已给出 cycleKey/cycleLabel;key 倒序,最新期在前)
     var groups = {}, order = [];
-    all.forEach(function (p) {
-      var key = cycleKeyOf(p.startTime, led.cycle);
+    CUR_PLANS.forEach(function (p) {
+      var key = p.cycleKey || '';
       if (!groups[key]) { groups[key] = []; order.push(key); }
       groups[key].push(p);
     });
-    order.sort(function (a, b) { return cycleSort(b) - cycleSort(a); });
+    order.sort(function (a, b) { return a < b ? 1 : (a > b ? -1 : 0); });
 
     var html = '';
     order.forEach(function (key) {
       if (detailFilter.cycle && detailFilter.cycle !== key) return;
       var g = groups[key];
-      var gPending = g.filter(function (p) { return !p.billNo; });
-      var gBilled = g.filter(function (p) { return !!p.billNo; });
+      var gBilled = g.filter(function (p) { return p.billed; });
+      var gUnbilled = g.filter(function (p) { return !p.billed; });
       var rows = g.filter(function (p) {
-        if (detailFilter.billed === 'unbilled') return !p.billNo;
-        if (detailFilter.billed === 'billed') return !!p.billNo;
+        if (detailFilter.billed === 'unbilled') return !p.billed;
+        if (detailFilter.billed === 'billed') return p.billed;
         return true;
       });
       if (!rows.length) return;
 
       var range = cycleRange(key);
-      var gQty = round2(g.reduce(function (s, p) { return s + p.amount; }, 0));
-      var pQty = round2(gPending.reduce(function (s, p) { return s + p.amount; }, 0));
-      var pAmt = round2(pQty * led.price * 10000);
+      var gQty = 0, pQty = 0;
+      g.forEach(function (p) { gQty += Number(p.amount) || 0; });
+      gUnbilled.forEach(function (p) { pQty += Number(p.amount) || 0; });
+      gQty = round2(gQty);
+      pQty = round2(pQty);
+      var pAmt = round2(pQty * price * 10000);
+      var label = (g[0] && g[0].cycleLabel) || key;
       var right = '';
       if (gBilled.length) {
         var nos = [];
-        gBilled.forEach(function (p) { if (nos.indexOf(p.billNo) === -1) nos.push(p.billNo); });
-        right += '<span class="p-billno" data-vbill="' + nos[0] + '">本期已出账 · 账单 ' + nos.join('、') + '</span>';
+        gBilled.forEach(function (p) { if (p.billNo && nos.indexOf(p.billNo) === -1) nos.push(p.billNo); });
+        if (nos.length) right += '<span class="p-billno" data-vbill="' + esc(nos[0]) + '">本期已出账 · 账单 ' + nos.join('、') + '</span>';
       }
-      if (gPending.length) {
-        right += '<span class="p-status">待出账 ' + gPending.length + ' 个 · ' + fmtQty(pQty) + ' 万m³ · ' + fmtMoney(pAmt) + '</span>' +
-          '<button type="button" class="btn btn-green btn-xs" data-genkey="' + key + '">生成本期账单</button>';
+      if (gUnbilled.length) {
+        right += '<span class="p-status">待出账 ' + gUnbilled.length + ' 个 · ' + fmtQty(pQty) + ' 万m³ · ' + fmtMoney(pAmt) + '</span>' +
+          '<button type="button" class="btn btn-green btn-xs" data-genkey="' + esc(key) + '">生成本期账单</button>';
       }
       html += '<tr class="period-row"><td colspan="10"><div class="period-line">' +
-        '<span class="p-name">' + cycleLabel(key) + '</span>' +
+        '<span class="p-name">' + esc(label) + '</span>' +
         '<span class="p-range">' + range[0] + ' ~ ' + range[1] + '</span>' +
         '<span class="p-qty">水量 ' + fmtQty(gQty) + ' 万m³</span>' +
         '<span class="p-count">方案 ' + g.length + ' 个</span>' +
@@ -969,22 +889,23 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         '</div></td></tr>';
 
       rows.forEach(function (p) {
-        var billed = !!p.billNo;
-        var amt = round2(p.amount * led.price * 10000);
+        var billed = !!p.billed;
+        var amtTxt = p.amount == null ? '<span style="color:#bfbfbf" title="' + esc(p.meterIssue || '') + '">—</span>'
+          : fmtMoney(round2(Number(p.amount) * price * 10000));
         var ops = billed
-          ? '<span class="act del" data-delplan="' + p.id + '">删除</span>'
-          : '<span class="act" data-adj="' + p.id + '">编辑水量</span>' +
-            '<span class="act" data-gen="' + p.id + '">单独出账</span>' +
-            '<span class="act del" data-delplan="' + p.id + '">删除</span>';
+          ? '<span class="act del" data-delplan="' + esc(p.dispatchId) + '">删除</span>'
+          : '<span class="act" data-adj="' + esc(p.dispatchId) + '">编辑水量</span>' +
+            '<span class="act" data-gen="' + esc(p.dispatchId) + '">单独出账</span>' +
+            '<span class="act del" data-delplan="' + esc(p.dispatchId) + '">删除</span>';
         html += '<tr>' +
-          '<td><input type="checkbox" class="ck-plan" data-id="' + p.id + '"' + (billed ? ' disabled' : '') + (selPlans[p.id] ? ' checked' : '') + '></td>' +
-          '<td><span class="cell-main">' + p.id + '</span></td>' +
-          '<td>' + gateName(p.gateCode) + '</td>' +
-          '<td><span style="font-size:12.5px;color:#595959">' + p.startTime + '<br>' + p.endTime + '</span></td>' +
-          '<td>' + fmtQty(p.amount) + '</td>' +
-          '<td>' + fmtQty(p.amount) + '</td>' +
-          '<td><span class="amt">' + fmtMoney(amt) + '</span></td>' +
-          '<td><span class="st-tag done">已完成</span></td>' +
+          '<td><input type="checkbox" class="ck-plan" data-id="' + esc(p.dispatchId) + '"' + (billed ? ' disabled' : '') + (selPlans[p.dispatchId] ? ' checked' : '') + '></td>' +
+          '<td><span class="cell-main">' + esc(p.dispatchNo || p.dispatchId || '-') + '</span>' + (p.planName ? ' · <span style="color:#8c8c8c">' + esc(p.planName) + '</span>' : '') + '</td>' +
+          '<td>' + esc(p.gateName || '-') + '</td>' +
+          '<td><span style="font-size:12.5px;color:#595959">' + esc(p.startTime || '') + '<br>' + esc(p.endTime || '') + '</span></td>' +
+          '<td>' + fmtQty(p.planAmount) + '</td>' +
+          '<td>' + (p.amount == null ? (p.meterIssue ? '<span style="color:#fa8c16;font-size:12px" title="' + esc(p.meterIssue) + '">' + esc(p.meterIssue) + '</span>' : '<span style="color:#bfbfbf">—</span>') : fmtQty(p.amount)) + '</td>' +
+          '<td><span class="amt">' + amtTxt + '</span></td>' +
+          '<td>' + planStatusTag(p) + '</td>' +
           '<td>' + (billed ? '<span class="st-tag billed">已计费</span>' : '<span class="st-tag unbilled">未计费</span>') + '</td>' +
           '<td>' + ops + '</td></tr>';
       });
@@ -993,87 +914,98 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     updateSelInfo();
   }
 
+  /** 调度方案执行状态徽标(0.4 英文码:pending/running/done/canceled) */
+  function planStatusTag(p) {
+    var cls = 'done';
+    if (p.status === 'running') cls = 'running';
+    else if (p.status === 'pending') cls = 'pending';
+    else if (p.status === 'canceled') cls = 'canceled';
+    return '<span class="st-tag ' + cls + '">' + esc(p.statusName || p.status || '-') + '</span>';
+  }
+
   function updateSelInfo() {
-    var led = findLedger(curFarmer);
-    var qty = 0, amt = 0, count = 0;
+    var price = CUR_USER ? Number(CUR_USER.waterPrice) || 0 : 0;
+    var qty = 0, count = 0;
     for (var k in selPlans) {
       if (!selPlans[k]) continue;
-      var p = findPlan(k);
-      if (p && !p.billNo && p.farmerCode === curFarmer) {
+      var p = findCurPlan(k);
+      if (p && !p.billed) {
         count++;
-        qty += p.amount;
-        amt += p.amount * (led ? led.price : 0) * 10000;
+        qty += Number(p.amount) || 0;
       }
     }
-    $('detail-sel').innerHTML = '已选 <b>' + count + '</b> 个 · 水量 <b>' + fmtQty(round2(qty)) + '</b> 万m³ · 金额 <b>' + fmtMoney(round2(amt)) + '</b>';
+    qty = round2(qty);
+    $('detail-sel').innerHTML = '已选 <b>' + count + '</b> 个 · 水量 <b>' + fmtQty(qty) + '</b> 万m³ · 金额 <b>' + fmtMoney(round2(qty * price * 10000)) + '</b>';
     $('btn-detail-gen').disabled = count === 0;
   }
 
-  /* ==================== 视图三:水费账单 ==================== */
-  var billFilter = { kw: '', status: '' };
-  var billPage = 1, billSize = 10;
+  /* ==================== 视图三:水费账单(7.2 /water-bill/page + 7.3 /water-bill/stats) ==================== */
+  var S2 = { kw: '', status: '', page: 1, size: 10, total: 0, pages: 1, rows: [] };
 
-  /** 当前筛选条件下的账单列表(渲染与导出共用) */
-  function billList() {
-    var kw = billFilter.kw.trim().toLowerCase();
-    return BILLS.filter(function (b) {
-      if (billFilter.status && b.status !== billFilter.status) return false;
-      if (kw) {
-        var led = findLedger(b.farmerCode);
-        var hay = (b.billNo + ' ' + (led ? led.name + ' ' + led.code : '') + ' ' + cycleLabel(b.cycleKey)).toLowerCase();
-        if (hay.indexOf(kw) === -1) return false;
-      }
-      return true;
+  /** 拉取账单分页(服务端筛选 账单编号/户名/户号/分期 key + 状态) */
+  var billSeq = 0;
+  function loadBills() {
+    var seq = ++billSeq;
+    var q = '?page=' + S2.page + '&size=' + S2.size;
+    if (S2.kw) q += '&keyword=' + encodeURIComponent(S2.kw);
+    if (S2.status) q += '&status=' + encodeURIComponent(S2.status);
+    api('GET', '/water-bill/page' + q, null, function (err, data) {
+      if (err || !data || seq !== billSeq) return;
+      S2.total = data.total || 0;
+      S2.pages = Math.max(1, data.pages || 1);
+      S2.rows = data.records || [];
+      if (S2.page > S2.pages) { S2.page = S2.pages; loadBills(); return; }
+      renderBills();
+    });
+  }
+
+  /** 账单统计条(7.3;全量汇总,不受列表筛选影响) */
+  function loadBillStats() {
+    api('GET', '/water-bill/stats', null, function (err, d) {
+      if (err || !d) return;
+      $('bill-stat').innerHTML =
+        statItem('账单总数', d.billCount + ' <span class="stat-unit">张</span>') +
+        statItem('计费总水量', fmtQty(d.totalQty) + ' <span class="stat-unit">万m³</span>') +
+        statItem('应收总额', fmtMoney(d.totalAmount)) +
+        statItem('已收总额', fmtMoney(d.paidAmount)) +
+        statItem('收缴率', (d.collectRate == null ? 0 : d.collectRate) + ' <span class="stat-unit">%</span>');
     });
   }
 
   function renderBills() {
-    var qty = 0, amount = 0, paid = 0;
-    BILLS.forEach(function (b) { qty += b.quantity; amount += b.amount; paid += b.paid; });
-    qty = round2(qty); amount = round2(amount); paid = round2(paid);
-    var rate = amount > 0 ? Math.round(paid / amount * 100) : 0;
-    $('bill-stat').innerHTML =
-      statItem('账单总数', BILLS.length + ' <span class="stat-unit">张</span>') +
-      statItem('计费总水量', fmtQty(qty) + ' <span class="stat-unit">万m³</span>') +
-      statItem('应收总额', fmtMoney(amount)) +
-      statItem('已收总额', fmtMoney(paid)) +
-      statItem('收缴率', rate + ' <span class="stat-unit">%</span>');
-
-    var list = billList();
-    var pages = Math.max(1, Math.ceil(list.length / billSize));
-    if (billPage > pages) billPage = pages;
-    var pageList = list.slice((billPage - 1) * billSize, billPage * billSize);
-    if (!pageList.length) {
+    if (!S2.rows.length) {
       $('bill-body').innerHTML = '<tr><td colspan="10" class="empty-cell">暂无账单，请先到「水费台账」勾选方案生成账单</td></tr>';
     } else {
       var html = '';
-      pageList.forEach(function (b) {
-        var led = findLedger(b.farmerCode);
+      S2.rows.forEach(function (b) {
         html += '<tr>' +
-          '<td><span class="cell-main">' + b.billNo + '</span></td>' +
-          '<td><span class="cell-main">' + (led ? esc(led.name) : '-') + '</span></td>' +
-          '<td><span class="tag ' + CYCLE_TAG[b.cycle] + '">' + CYCLE_SHORT[b.cycle] + '</span></td>' +
-          '<td>' + b.startDate + ' ~ ' + b.endDate + '</td>' +
+          '<td><span class="cell-main">' + esc(b.billNo) + '</span></td>' +
+          '<td><span class="cell-main">' + esc(b.waterUserName || '-') + (b.waterUserNo ? '（' + esc(b.waterUserNo) + '）' : '') + '</span></td>' +
+          '<td><span class="tag ' + (CYCLE_TAG[b.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[b.cycle] || esc(b.cycleName || '')) + '</span></td>' +
+          '<td>' + esc(b.startDate || '') + ' ~ ' + esc(b.endDate || '') + '</td>' +
           '<td>' + fmtQty(b.quantity) + ' 万m³</td>' +
           '<td>' + fmtPrice(b.price) + ' 元/m³</td>' +
           '<td><span class="amt">' + fmtMoney(b.amount) + '</span></td>' +
           '<td>' + (b.paid > 0
             ? '<span class="num-green">' + fmtMoney(b.paid) + '</span>'
             : '<span style="color:#bfbfbf">¥0.00</span>') + '</td>' +
-          '<td>' + (b.status === 'paid' ? '<span class="st-tag paid">已缴清</span>' : '<span class="st-tag generated">已生成</span>') + '</td>' +
-          '<td><span class="act" data-vbill="' + b.billNo + '">明细</span>' +
-            (b.status !== 'paid' ? '<span class="act" data-pay="' + b.billNo + '">收款</span>' : '') +
-            '<span class="act del" data-delbill="' + b.billNo + '">删除</span></td>' +
+          '<td>' + (b.status === 'paid'
+            ? '<span class="st-tag paid">' + esc(b.statusName || '已缴清') + '</span>'
+            : '<span class="st-tag generated">' + esc(b.statusName || '已生成') + '</span>') + '</td>' +
+          '<td><span class="act" data-vbill="' + esc(b.id) + '">明细</span>' +
+            (b.status === 'generated' ? '<span class="act" data-pay="' + esc(b.id) + '">收款</span>' : '') +
+            '<span class="act del" data-delbill="' + esc(b.id) + '">删除</span></td>' +
           '</tr>';
       });
       $('bill-body').innerHTML = html;
     }
-    renderPager(list.length, billPage, billSize, function (p) { billPage = p; renderBills(); });
+    renderPager(function (p) { S2.page = p; loadBills(); });
   }
 
-  /** 分页栏渲染(共 N 条 / 页码 / 每页条数 / 跳页) */
-  function renderPager(total, page, size, onGo) {
-    var pages = Math.max(1, Math.ceil(total / size));
+  /** 分页栏渲染(服务端分页 0.1;共 N 条 / 页码 / 每页条数 / 跳页) */
+  function renderPager(onGo) {
+    var total = S2.total, page = S2.page, size = S2.size;
+    var pages = S2.pages;
     var el = $('bill-pg');
     var html = '<span class="pg-info">共 ' + total + ' 条</span><div class="pg-btns">';
     html += '<button type="button" class="pg-btn" data-pg="prev"' + (page <= 1 ? ' disabled' : '') + '>‹</button>';
@@ -1092,123 +1024,155 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     el.innerHTML = html;
     var sel = el.querySelector('.pg-size');
     sel.value = String(size);
-    sel.addEventListener('change', function () { billSize = +sel.value; billPage = 1; onGo(1); });
+    sel.addEventListener('change', function () { S2.size = parseInt(sel.value, 10); S2.page = 1; onGo(1); });
     el.querySelectorAll('[data-page]').forEach(function (b) {
       b.addEventListener('click', function () { onGo(+b.dataset.page); });
     });
     var prev = el.querySelector('[data-pg="prev"]');
     var next = el.querySelector('[data-pg="next"]');
-    if (prev) prev.addEventListener('click', function () { if (page > 1) onGo(page - 1); });
-    if (next) next.addEventListener('click', function () { if (page < pages) onGo(page + 1); });
+    if (prev) prev.addEventListener('click', function () { if (S2.page > 1) onGo(S2.page - 1); });
+    if (next) next.addEventListener('click', function () { if (S2.page < pages) onGo(S2.page + 1); });
     var jump = el.querySelector('.pg-jump input');
     jump.addEventListener('change', function () {
       var v = parseInt(jump.value, 10);
-      if (v >= 1 && v <= pages) onGo(v); else jump.value = page;
+      if (v >= 1 && v <= pages) onGo(v); else jump.value = S2.page;
     });
   }
 
-  /* ==================== 视图四:用水户水费汇总 ==================== */
+  /* ==================== 视图四:用水户水费汇总(7.5 全量台账行,回显收缴指标) ==================== */
+  var summarySeq = 0;
+  function loadSummary() {
+    var seq = ++summarySeq;
+    api('GET', '/water-bill/ledger', null, function (err, data) {
+      if (err || !data || seq !== summarySeq) return;
+      SUM_ROWS = data.records || [];
+      renderSummary();
+    });
+  }
+
   function renderSummary() {
-    $('sum-count').textContent = '共 ' + LEDGERS.length + ' 户';
+    $('sum-count').textContent = '共 ' + SUM_ROWS.length + ' 户';
+    if (!SUM_ROWS.length) {
+      $('sum-body').innerHTML = '<tr><td colspan="11" class="empty-cell">暂无用水户</td></tr>';
+      return;
+    }
     var html = '';
-    LEDGERS.forEach(function (led) {
-      var st = ledgerStats(led.code);
-      var bills = BILLS.filter(function (b) { return b.farmerCode === led.code; });
-      var paid = 0;
-      bills.forEach(function (b) { paid += b.paid; });
-      paid = round2(paid);
-      var receivable = st.billedAmount;
-      var owe = round2(receivable - paid);
-      var rate = receivable > 0 ? Math.round(paid / receivable * 100) : 0;
+    SUM_ROWS.forEach(function (r) {
       html += '<tr>' +
-        '<td><span class="cell-main">' + esc(led.name) + '</span></td>' +
-        '<td><span class="tag ' + (led.strategy === '指定闸口累加' ? 'tag-blue' : 'tag-purple') + '">' + led.strategy + '</span> <span class="tag ' + CYCLE_TAG[led.cycle] + '">' + CYCLE_SHORT[led.cycle] + '</span></td>' +
-        '<td>' + fmtQty(led.yearPlan) + '</td>' +
-        '<td>' + fmtPrice(led.price) + ' 元/m³</td>' +
-        '<td>' + bills.length + ' 张</td>' +
-        '<td><span class="amt">' + fmtMoney(receivable) + '</span></td>' +
-        '<td>' + (paid > 0 ? '<span class="num-green">' + fmtMoney(paid) + '</span>' : '<span style="color:#bfbfbf">¥0.00</span>') + '</td>' +
-        '<td>' + (owe > 0 ? '<span class="num-red">' + fmtMoney(owe) + '</span>' : '¥0.00') + '</td>' +
-        '<td>' + rate + '%</td>' +
-        '<td>' + (st.pending.length
-          ? '<span class="num-orange">' + fmtQty(st.pendingQty) + '</span> 万m³'
+        '<td><span class="cell-main">' + esc(r.userName) + (r.userNo ? '（' + esc(r.userNo) + '）' : '') + '</span></td>' +
+        '<td><div class="cell-ellip" title="' + esc((r.strategy || '') + ' ' + (CYCLE_SHORT[r.cycle] || r.cycleName || '')) + '"><span class="tag ' + (r.strategy === '指定闸口累加' ? 'tag-blue' : 'tag-purple') + '">' + esc(r.strategy || '-') + '</span> <span class="tag ' + (CYCLE_TAG[r.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[r.cycle] || esc(r.cycleName || '')) + '</span></div></td>' +
+        '<td>' + (r.yearPlan == null ? '<span style="color:#bfbfbf">—</span>' : fmtQty(r.yearPlan)) + '</td>' +
+        '<td>' + fmtPrice(r.price) + ' 元/m³</td>' +
+        '<td>' + (r.billCount || 0) + ' 张</td>' +
+        '<td><span class="amt">' + fmtMoney(r.billedAmount) + '</span></td>' +
+        '<td>' + (r.paidAmount > 0
+          ? '<span class="num-green">' + fmtMoney(r.paidAmount) + '</span>'
+          : '<span style="color:#bfbfbf">¥0.00</span>') + '</td>' +
+        '<td>' + (r.oweAmount > 0 ? '<span class="num-red">' + fmtMoney(r.oweAmount) + '</span>' : '¥0.00') + '</td>' +
+        '<td>' + (r.collectRate == null ? 0 : r.collectRate) + '%</td>' +
+        '<td>' + (r.pendingCount > 0
+          ? '<span class="num-orange">' + fmtQty(r.pendingQty) + '</span> 万m³'
           : '<span style="color:#bfbfbf">已全部出账</span>') + '</td>' +
-        '<td><span class="act" data-detail="' + led.code + '">台账明细</span></td>' +
+        '<td><span class="act" data-detail="' + esc(r.userId) + '">台账明细</span></td>' +
         '</tr>';
     });
     $('sum-body').innerHTML = html;
   }
 
-  /* ==================== 弹窗:调整方案计划水量 ==================== */
+  /* ==================== 弹窗:调整方案计划水量(5.9 PUT /water-dispatch/adjust) ==================== */
   var adjId = '';
 
   function openAdjust(id) {
-    var p = findPlan(id);
+    var p = findCurPlan(id);
     if (!p) return;
-    if (p.billNo) { toast('已计费方案不可调整水量，如需修改请先删除关联账单'); return; }
+    if (p.billed) { toast('该方案已计费，请先删除关联账单后再调整'); return; }
     adjId = id;
-    var led = findLedger(p.farmerCode);
-    $('adjust-sub').textContent = p.id + ' · ' + gateName(p.gateCode) + ' · ' + (led ? led.name : '');
-    $('adj-old').value = fmtQty(p.amount) + ' 万m³';
-    $('adj-new').value = p.amount;
-    $('adj-start').value = p.startTime.replace(' ', 'T');
-    $('adj-end').value = p.endTime ? p.endTime.replace(' ', 'T') : '';
+    $('adjust-sub').textContent = (p.dispatchNo || p.dispatchId) + ' · ' + (p.gateName || '-') + ' · ' + (CUR_USER ? CUR_USER.name : '');
+    $('adj-old').value = fmtQty(p.planAmount) + ' 万m³';
+    $('adj-new').value = p.planAmount;
+    $('adj-start').value = String(p.startTime || '').replace(' ', 'T');
+    $('adj-end').value = p.endTime ? String(p.endTime).replace(' ', 'T') : '';
     $('adj-remark').value = '';
     openModal('adjust-ov');
   }
 
   function saveAdjust() {
-    var p = findPlan(adjId);
+    var p = findCurPlan(adjId);
     if (!p) return;
     var val = parseFloat($('adj-new').value);
     if (!(val > 0)) { toast('请输入大于 0 的计划放水量'); return; }
-    if (!$('adj-start').value) { toast('请选择开始时间'); return; }
-    var oldQty = p.amount;
-    p.amount = round2(val);
-    p.startTime = $('adj-start').value.replace('T', ' ');
-    if ($('adj-end').value) p.endTime = $('adj-end').value.replace('T', ' ');
-    closeModal('adjust-ov');
-    refreshAll();
-    toast('已调整方案 ' + p.id + ' 计划放水量：' + fmtQty(oldQty) + ' → ' + fmtQty(p.amount) + ' 万m³，台账与待出账金额已重算');
+    var start = $('adj-start').value;
+    if (!start) { toast('请选择开始时间'); return; }
+    var payload = {
+      planAmount: Number(val.toFixed(2)), // 万m³,≤2 位小数(0.3)
+      startTime: start.replace('T', ' ')
+    };
+    if ($('adj-end').value) payload.endTime = $('adj-end').value.replace('T', ' ');
+    var remark = $('adj-remark').value.trim();
+    if (remark) payload.remark = remark;
+
+    var btn = $('btn-adjust-save');
+    btn.disabled = true;
+    api('PUT', '/water-dispatch/adjust?id=' + encodeURIComponent(adjId), payload, function (err) {
+      btn.disabled = false;
+      if (err) return;
+      closeModal('adjust-ov');
+      toast('方案 ' + (p.dispatchNo || adjId) + ' 计划放水量已调整，台账与待出账金额已重算');
+      refreshAll();
+    });
   }
 
-  /* ==================== 弹窗:账单明细 ==================== */
+  /* ==================== 弹窗:账单明细(7.4 GET /water-bill/detail) ==================== */
   function kvRow(k, v) {
     return '<div class="kv-row"><span class="kv-k">' + k + '</span><span class="kv-v">' + v + '</span></div>';
   }
 
-  function openBillModal(no) {
-    var b = findBill(no);
-    if (!b) return;
-    var led = findLedger(b.farmerCode);
-    var owe = round2(b.amount - b.paid);
-    $('bill-modal-sub').textContent = b.billNo + ' · ' + (led ? led.name : '') + ' · ' + cycleLabel(b.cycleKey);
-    $('bill-kv').innerHTML =
-      kvRow('用水户', (led ? esc(led.name) : '-') + '（' + b.farmerCode + '）') +
-      kvRow('用水计算策略', led ? led.strategy + ' · ' + esc(led.gateText) : '-') +
-      kvRow('统计周期', cycleLabel(b.cycleKey) + '（' + CYCLE_NAME[b.cycle] + '）') +
-      kvRow('账期区间', b.startDate + ' ~ ' + b.endDate) +
-      kvRow('计费水量', fmtQty(b.quantity) + ' 万m³（含 ' + b.planIds.length + ' 个方案）') +
-      kvRow('水价', fmtPrice(b.price) + ' 元/m³') +
-      kvRow('应收金额', '<span class="num-red">' + fmtMoney(b.amount) + '</span>') +
-      kvRow('已收 / 欠缴', fmtMoney(b.paid) + ' / ' + (owe > 0 ? '<span class="num-red">' + fmtMoney(owe) + '</span>' : '¥0.00')) +
-      kvRow('账单状态', b.status === 'paid' ? '<span class="st-tag paid">已缴清</span>' : '<span class="st-tag generated">已生成</span>') +
-      kvRow('收款日期', b.payTime || '—');
-    var rows = '';
-    b.planIds.forEach(function (id) {
-      var p = findPlan(id);
-      if (!p) return;
-      rows += '<tr>' +
-        '<td><span class="cell-main">' + p.id + '</span></td>' +
-        '<td>' + gateName(p.gateCode) + '</td>' +
-        '<td><span class="plus-dot">+</span></td>' +
-        '<td style="font-size:12.5px;color:#595959">' + p.startTime + '<br>' + p.endTime + '</td>' +
-        '<td>' + fmtQty(p.amount) + '</td>' +
-        '<td>' + fmtQty(p.amount) + '</td>' +
-        '<td>' + fmtMoney(round2(p.amount * b.price * 10000)) + '</td></tr>';
+  /** 打开账单明细:优先命中列表缓存;否则按账单号回查(明细视图只持账单号) */
+  function openBillModal(idOrNo) {
+    var b = findBill(idOrNo);
+    if (b) { showBillModal(b.id); return; }
+    api('GET', '/water-bill/page?page=1&size=1&keyword=' + encodeURIComponent(idOrNo), null, function (err, data) {
+      if (err || !data || !data.records || !data.records.length) { toast('未找到账单 ' + idOrNo); return; }
+      showBillModal(data.records[0].id);
     });
-    $('bill-plans-body').innerHTML = rows;
-    openModal('bill-ov');
+  }
+
+  function showBillModal(id) {
+    api('GET', '/water-bill/detail?id=' + encodeURIComponent(id), null, function (err, b) {
+      if (err || !b) return;
+      var owe = round2(Number(b.amount) - Number(b.paid || 0));
+      $('bill-modal-sub').textContent = b.billNo + ' · ' + (b.waterUserName || '') + ' · ' + (b.cycleLabel || '');
+      $('bill-kv').innerHTML =
+        kvRow('用水户', esc(b.waterUserName || '-') + (b.waterUserNo ? '（' + esc(b.waterUserNo) + '）' : '')) +
+        kvRow('统计周期', esc(b.cycleLabel || '') + '（' + esc(b.cycleName || '') + '）') +
+        kvRow('账期区间', esc(b.startDate || '') + ' ~ ' + esc(b.endDate || '')) +
+        kvRow('计费水量', fmtQty(b.quantity) + ' 万m³（含 ' + (b.planCount || (b.plans || []).length) + ' 个方案）') +
+        kvRow('水价', fmtPrice(b.price) + ' 元/m³') +
+        kvRow('应收金额', '<span class="num-red">' + fmtMoney(b.amount) + '</span>') +
+        kvRow('已收 / 欠缴', fmtMoney(b.paid || 0) + ' / ' + (owe > 0 ? '<span class="num-red">' + fmtMoney(owe) + '</span>' : '¥0.00')) +
+        kvRow('账单状态', b.status === 'paid'
+          ? '<span class="st-tag paid">' + esc(b.statusName || '已缴清') + '</span>'
+          : '<span class="st-tag generated">' + esc(b.statusName || '已生成') + '</span>') +
+        kvRow('收款日期', esc(b.payTime || '—'));
+      var rows = '';
+      (b.plans || []).forEach(function (p) {
+        var amt = p.amount == null ? '<span style="color:#bfbfbf">—</span>'
+          : fmtMoney(round2(Number(p.amount) * Number(b.price) * 10000));
+        var signHtml = Number(p.sign) < 0
+          ? '<span class="plus-dot" style="background:#fff1f0;color:#cf1322">−</span>'
+          : '<span class="plus-dot">+</span>';
+        rows += '<tr>' +
+          '<td><span class="cell-main">' + esc(p.dispatchNo || p.dispatchId || '-') + '</span></td>' +
+          '<td>' + esc(p.gateName || '-') + '</td>' +
+          '<td>' + signHtml + '</td>' +
+          '<td style="font-size:12.5px;color:#595959">' + esc(p.startTime || '') + '<br>' + esc(p.endTime || '') + '</td>' +
+          '<td>' + fmtQty(p.planAmount) + '</td>' +
+          '<td>' + fmtQty(p.amount) + '</td>' +
+          '<td>' + amt + '</td></tr>';
+      });
+      $('bill-plans-body').innerHTML = rows || '<tr><td colspan="7" class="empty-cell">无方案明细</td></tr>';
+      openModal('bill-ov');
+    });
   }
 
   /* ==================== 通用确认弹窗 ==================== */
@@ -1222,113 +1186,98 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     openModal('confirm-ov');
   }
 
-  /* ==================== 出账 / 收款 / 删除 动作 ==================== */
+  /* ==================== 出账 / 收款 / 删除 动作(全部走后端接口) ==================== */
 
-  /** 勾选后点「生成账单」:多选多周期时按周期自动拆分 */
+  /** 勾选后点「生成账单」:多选多周期由后端自动拆分 */
   function genSelected() {
     var ids = [];
-    for (var k in selPlans) {
-      if (!selPlans[k]) continue;
-      var p = findPlan(k);
-      if (p && !p.billNo) ids.push(k);
-    }
+    CUR_PLANS.forEach(function (p) {
+      if (selPlans[p.dispatchId] && !p.billed) ids.push(p.dispatchId);
+    });
     if (!ids.length) { toast('请先勾选需要出账的方案'); return; }
-    var created = createBills(curFarmer, ids);
-    selPlans = {};
-    $('ck-select-page').checked = false;
-    refreshAll();
-    toastCreated(created);
+    doCreateBills(ids);
   }
 
   /** 分期头行「生成本期账单」:将该期全部待出账方案一次出账 */
   function genPeriod(key) {
-    var led = findLedger(curFarmer);
-    var ids = plansOf(curFarmer).filter(function (p) {
-      return !p.billNo && cycleKeyOf(p.startTime, led.cycle) === key;
-    }).map(function (p) { return p.id; });
+    var ids = CUR_PLANS.filter(function (p) { return !p.billed && p.cycleKey === key; })
+      .map(function (p) { return p.dispatchId; });
     if (!ids.length) { toast('该统计周期暂无待出账方案'); return; }
-    var created = createBills(curFarmer, ids);
-    ids.forEach(function (id) { delete selPlans[id]; });
-    $('ck-select-page').checked = false;
-    refreshAll();
-    toastCreated(created);
+    doCreateBills(ids);
   }
 
   /** 行内「单独出账」 */
   function genSingle(id) {
-    var p = findPlan(id);
-    if (!p || p.billNo) return;
-    var created = createBills(p.farmerCode, [id]);
-    delete selPlans[id];
-    refreshAll();
-    toastCreated(created);
+    var p = findCurPlan(id);
+    if (!p || p.billed) return;
+    doCreateBills([id]);
   }
 
-  /** 台账行「全部出账」:月度户跨月自动拆多张 / 季度户合并一张 */
-  function genAll(code) {
-    var st = ledgerStats(code);
-    var ids = st.pending.map(function (p) { return p.id; });
-    if (!ids.length) { toast('该用水户暂无待出账方案'); return; }
-    var created = createBills(code, ids);
-    for (var k in selPlans) { delete selPlans[k]; }
-    refreshAll();
-    toastCreated(created);
+  /** 台账行「全部出账」:先取该户待出账方案集合,再交后端按「户 × 分期」拆账 */
+  function genAll(userId) {
+    api('GET', '/water-bill/user-plans?userId=' + encodeURIComponent(userId), null, function (err, data) {
+      if (err || !data) return;
+      var ids = (data.records || []).filter(function (p) { return !p.billed; })
+        .map(function (p) { return p.dispatchId; });
+      if (!ids.length) { toast('该用水户暂无待出账方案'); return; }
+      doCreateBills(ids);
+    });
   }
 
-  /** 确认收款:账单状态更新为「已缴清」 */
-  function askPay(no) {
-    var b = findBill(no);
+  /** 确认收款(7.8;仅「已生成」可收款,已缴清 400) */
+  function askPay(id) {
+    var b = findBill(id);
     if (!b) return;
+    if (b.status !== 'generated') { toast('该账单已缴清'); return; }
     askConfirm('确认收款', '确认收到账单 ' + b.billNo + ' 的水费 ' + fmtMoney(b.amount) + '？确认后账单状态将更新为「已缴清」。', '确认收款', function () {
-      payBill(no);
+      payBill(b.id);
     });
   }
 
-  function payBill(no) {
-    var b = findBill(no);
-    if (!b || b.status === 'paid') return;
-    b.status = 'paid';
-    b.paid = b.amount;
-    b.payTime = nowStr();
-    refreshAll();
-    toast('账单 ' + b.billNo + ' 已确认收款 ' + fmtMoney(b.amount) + '，状态更新为「已缴清」');
-  }
-
-  /** 删除方案(仅未计费方案可直接删除) */
-  function deletePlan(id) {
-    var p = findPlan(id);
-    if (!p) return;
-    if (p.billNo) { toast('已计费方案需先删除关联账单，才能删除方案'); return; }
-    askConfirm('删除方案', '确定删除方案 ' + p.id + '（' + gateName(p.gateCode) + ' · ' + fmtQty(p.amount) + ' 万m³）？删除后该方案将不再参与出账。', '确认删除', function () {
-      var i = PLANS.indexOf(p);
-      if (i !== -1) PLANS.splice(i, 1);
-      delete selPlans[id];
+  function payBill(id) {
+    var b = findBill(id);
+    api('POST', '/water-bill/bills/pay?id=' + encodeURIComponent(id), null, function (err) {
+      if (err) return;
+      toast('账单 ' + (b ? b.billNo : '') + ' 已确认收款');
       refreshAll();
-      toast('方案 ' + id + ' 已删除');
     });
   }
 
-  /** 删除账单(关联方案恢复为未计费) */
-  function deleteBill(no) {
-    var b = findBill(no);
+  /** 删除方案(5.11;未计费不限执行态,已计费需先删关联账单) */
+  function deletePlan(id) {
+    var p = findCurPlan(id);
+    if (!p) return;
+    if (p.billed) { toast('该方案已计费，请先删除关联账单后再删除'); return; }
+    askConfirm('删除方案', '确定删除方案 ' + (p.dispatchNo || id) + '（' + (p.gateName || '-') + ' · ' + fmtQty(p.planAmount) + ' 万m³）？删除后该方案将不再参与出账。', '确认删除', function () {
+      api('DELETE', '/water-dispatch/delete?id=' + encodeURIComponent(id), null, function (err) {
+        if (err) return;
+        delete selPlans[id];
+        toast('方案已删除');
+        refreshAll();
+      });
+    });
+  }
+
+  /** 删除账单(7.9;任意状态可删,关联方案恢复未计费) */
+  function deleteBill(id) {
+    var b = findBill(id);
     if (!b) return;
     askConfirm('删除账单', '确定删除账单 ' + b.billNo + '（' + fmtMoney(b.amount) + '）？删除后其关联方案将恢复为「未计费」，可重新出账。', '确认删除', function () {
-      b.planIds.forEach(function (id) {
-        var p = findPlan(id);
-        if (p) { p.billNo = ''; p.billTime = ''; }
+      api('DELETE', '/water-bill/bills/delete?id=' + encodeURIComponent(b.id), null, function (err) {
+        if (err) return;
+        toast('账单 ' + b.billNo + ' 已删除，关联方案已恢复为「未计费」');
+        refreshAll();
       });
-      var i = BILLS.indexOf(b);
-      if (i !== -1) BILLS.splice(i, 1);
-      refreshAll();
-      toast('账单 ' + b.billNo + ' 已删除，关联方案已恢复为未计费');
     });
   }
 
+  /** 写操作成功后统一刷新各视图(接口数据实时重拉) */
   function refreshAll() {
-    renderLedger();
-    if (curFarmer) renderDetail();
-    renderBills();
-    renderSummary();
+    loadLedger();
+    if (curUserId) loadDetail(curUserId);
+    loadBills();
+    loadBillStats();
+    loadSummary();
   }
 
   /* ==================== 导出 Excel(复用项目通用 MonitorExport) ==================== */
@@ -1336,24 +1285,25 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   /** 导出台账:按当前筛选条件导出用水户台账 */
   function exportLedger() {
-    var rows = ledgerList().map(function (led) {
-      var st = ledgerStats(led.code);
+    var rows = ledgerList().map(function (r) {
       return {
-        name: led.name,
-        strategy: led.strategy,
-        gateText: led.gateText,
-        cycle: CYCLE_SHORT[led.cycle] + '结算',
-        price: led.price,
-        thisQty: st.thisQty,
-        pendingQty: st.pendingQty,
-        pendingAmount: st.pendingAmount,
-        billedQty: st.billedQty,
-        billedAmount: st.billedAmount
+        name: r.userName,
+        userNo: r.userNo,
+        strategy: r.strategy,
+        gateText: r.gateText,
+        cycle: r.cycleName || (CYCLE_SHORT[r.cycle] || '') + '结算',
+        price: r.price,
+        thisQty: r.thisQty,
+        pendingQty: r.pendingQty,
+        pendingAmount: r.pendingAmount,
+        billedQty: r.billedQty,
+        billedAmount: r.billedAmount
       };
     });
     MonitorExport.download({
       fields: [
         { key: 'name', label: '用水户' },
+        { key: 'userNo', label: '用水户编号' },
         { key: 'strategy', label: '用水计算策略' },
         { key: 'gateText', label: '计量闸口' },
         { key: 'cycle', label: '统计周期' },
@@ -1372,24 +1322,23 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   /** 导出明细:按当前用水户与筛选条件导出方案明细 */
   function exportDetail() {
-    var led = findLedger(curFarmer);
-    if (!led) { toast('请先进入用水户台账明细再导出'); return; }
+    if (!CUR_USER) { toast('请先进入用水户台账明细再导出'); return; }
+    var price = Number(CUR_USER.waterPrice) || 0;
     var rows = [];
-    plansOf(curFarmer).forEach(function (p) {
-      var key = cycleKeyOf(p.startTime, led.cycle);
-      if (detailFilter.cycle && detailFilter.cycle !== key) return;
-      if (detailFilter.billed === 'unbilled' && p.billNo) return;
-      if (detailFilter.billed === 'billed' && !p.billNo) return;
+    CUR_PLANS.forEach(function (p) {
+      if (detailFilter.cycle && detailFilter.cycle !== (p.cycleKey || '')) return;
+      if (detailFilter.billed === 'unbilled' && p.billed) return;
+      if (detailFilter.billed === 'billed' && !p.billed) return;
       rows.push({
-        period: cycleLabel(key),
-        id: p.id,
-        planName: p.planName,
-        gate: gateName(p.gateCode),
-        time: p.startTime + ' ~ ' + p.endTime,
-        amount: p.amount,
-        money: round2(p.amount * led.price * 10000),
-        exec: '已完成',
-        billed: p.billNo ? '已计费' : '未计费',
+        period: p.cycleLabel || p.cycleKey || '',
+        id: p.dispatchNo || p.dispatchId || '',
+        planName: p.planName || '',
+        gate: p.gateName || '-',
+        time: (p.startTime || '') + ' ~ ' + (p.endTime || ''),
+        amount: p.planAmount,
+        money: p.amount == null ? '' : round2(Number(p.amount) * price * 10000),
+        exec: p.statusName || '',
+        billed: p.billed ? '已计费' : '未计费',
         billNo: p.billNo || '-'
       });
     });
@@ -1407,76 +1356,91 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         { key: 'billNo', label: '账单编号' }
       ],
       rows: rows,
-      filename: '台账明细_' + led.name + '_' + dateTag(),
+      filename: '台账明细_' + CUR_USER.name + '_' + dateTag(),
       sheetName: '台账明细'
     });
   }
 
-  /** 导出账单:按当前筛选条件导出账单列表 */
+  /** 拉取当前筛选条件下全部账单(size=100 逐页,对齐 0.1 分页上限) */
+  function fetchAllBills(cb) {
+    var all = [], pageNo = 1;
+    function step() {
+      var q = '?page=' + pageNo + '&size=100';
+      if (S2.kw) q += '&keyword=' + encodeURIComponent(S2.kw);
+      if (S2.status) q += '&status=' + encodeURIComponent(S2.status);
+      api('GET', '/water-bill/page' + q, null, function (err, data) {
+        if (err || !data) { cb(null); return; }
+        all = all.concat(data.records || []);
+        if (pageNo < (data.pages || 1)) { pageNo++; step(); }
+        else cb(all);
+      });
+    }
+    step();
+  }
+
+  /** 导出账单:按当前筛选条件先拉全量再导出 */
   function exportBills() {
-    var rows = billList().map(function (b) {
-      var led = findLedger(b.farmerCode);
-      return {
-        billNo: b.billNo,
-        farmer: led ? led.name : '-',
-        cycle: CYCLE_SHORT[b.cycle] + '结算',
-        period: cycleLabel(b.cycleKey),
-        range: b.startDate + ' ~ ' + b.endDate,
-        quantity: b.quantity,
-        price: b.price,
-        amount: b.amount,
-        paid: b.paid,
-        owe: round2(b.amount - b.paid),
-        status: b.status === 'paid' ? '已缴清' : '已生成',
-        createTime: b.createTime,
-        payTime: b.payTime || '-'
-      };
-    });
-    MonitorExport.download({
-      fields: [
-        { key: 'billNo', label: '账单编号' },
-        { key: 'farmer', label: '用水户' },
-        { key: 'cycle', label: '统计周期' },
-        { key: 'period', label: '账期' },
-        { key: 'range', label: '账期区间' },
-        { key: 'quantity', label: '计费水量（万m³）' },
-        { key: 'price', label: '水价（元/m³）' },
-        { key: 'amount', label: '应收金额（元）' },
-        { key: 'paid', label: '已收金额（元）' },
-        { key: 'owe', label: '欠缴金额（元）' },
-        { key: 'status', label: '状态' },
-        { key: 'createTime', label: '生成时间' },
-        { key: 'payTime', label: '收款日期' }
-      ],
-      rows: rows,
-      filename: '水费账单_' + dateTag(),
-      sheetName: '水费账单'
+    var btn = $('btn-export-bills');
+    btn.disabled = true;
+    fetchAllBills(function (list) {
+      btn.disabled = false;
+      if (!list) return;
+      var rows = list.map(function (b) {
+        return {
+          billNo: b.billNo,
+          farmer: b.waterUserName || '-',
+          cycle: b.cycleName || (CYCLE_SHORT[b.cycle] || '') + '结算',
+          period: b.cycleLabel || b.cycleKey || '',
+          range: b.startDate + ' ~ ' + b.endDate,
+          quantity: b.quantity,
+          price: b.price,
+          amount: b.amount,
+          paid: b.paid,
+          owe: round2(Number(b.amount) - Number(b.paid || 0)),
+          status: b.statusName || (b.status === 'paid' ? '已缴清' : '已生成'),
+          createTime: b.createTime,
+          payTime: b.payTime || '-'
+        };
+      });
+      MonitorExport.download({
+        fields: [
+          { key: 'billNo', label: '账单编号' },
+          { key: 'farmer', label: '用水户' },
+          { key: 'cycle', label: '统计周期' },
+          { key: 'period', label: '账期' },
+          { key: 'range', label: '账期区间' },
+          { key: 'quantity', label: '计费水量（万m³）' },
+          { key: 'price', label: '水价（元/m³）' },
+          { key: 'amount', label: '应收金额（元）' },
+          { key: 'paid', label: '已收金额（元）' },
+          { key: 'owe', label: '欠缴金额（元）' },
+          { key: 'status', label: '状态' },
+          { key: 'createTime', label: '生成时间' },
+          { key: 'payTime', label: '收款日期' }
+        ],
+        rows: rows,
+        filename: '水费账单_' + dateTag(),
+        sheetName: '水费账单'
+      });
     });
   }
 
-  /** 导出汇总:用水户水费汇总表 */
+  /** 导出汇总:用水户水费汇总表(7.5 全量台账行) */
   function exportSummary() {
-    var rows = LEDGERS.map(function (led) {
-      var st = ledgerStats(led.code);
-      var bills = BILLS.filter(function (b) { return b.farmerCode === led.code; });
-      var paid = 0;
-      bills.forEach(function (b) { paid += b.paid; });
-      paid = round2(paid);
-      var receivable = st.billedAmount;
-      var owe = round2(receivable - paid);
+    var rows = SUM_ROWS.map(function (r) {
       return {
-        name: led.name,
-        strategy: led.strategy,
-        cycle: CYCLE_SHORT[led.cycle] + '结算',
-        yearPlan: led.yearPlan,
-        price: led.price,
-        billCount: bills.length,
-        receivable: receivable,
-        paid: paid,
-        owe: owe,
-        rate: (receivable > 0 ? Math.round(paid / receivable * 100) : 0) + '%',
-        pendingQty: st.pendingQty,
-        pendingCount: st.pending.length
+        name: r.userName,
+        strategy: r.strategy,
+        cycle: r.cycleName || (CYCLE_SHORT[r.cycle] || '') + '结算',
+        yearPlan: r.yearPlan == null ? '—' : r.yearPlan,
+        price: r.price,
+        billCount: r.billCount || 0,
+        receivable: r.billedAmount,
+        paid: r.paidAmount,
+        owe: r.oweAmount,
+        rate: (r.collectRate == null ? 0 : r.collectRate) + '%',
+        pendingQty: r.pendingQty,
+        pendingCount: r.pendingCount
       };
     });
     MonitorExport.download({
@@ -1502,9 +1466,15 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   /* ==================== 事件绑定与初始化 ==================== */
   function bindEvents() {
-    // 顶部视图切换
+    // 顶部视图切换(切换即拉取对应视图数据)
     document.querySelectorAll('.vtab').forEach(function (tab) {
-      tab.addEventListener('click', function () { setActiveTab(tab.dataset.view); });
+      tab.addEventListener('click', function () {
+        var v = tab.dataset.view;
+        setActiveTab(v);
+        if (v === 'ledger') loadLedger();
+        else if (v === 'bills') { loadBills(); loadBillStats(); }
+        else if (v === 'summary') loadSummary();
+      });
     });
     // 弹窗关闭(✕ / 取消)
     document.addEventListener('click', function (e) {
@@ -1512,15 +1482,18 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       if (btn) closeModal(btn.dataset.close);
     });
 
-    // 台账:搜索 / 周期筛选 / 状态小tab
-    $('ledger-kw').addEventListener('input', function () { ledgerFilter.kw = this.value; renderLedger(); });
+    // 台账:搜索(300ms 防抖,服务端 keyword 匹配 户名/户号) / 周期筛选(本地) / 状态小tab
+    var ledgerKwTimer = null;
+    $('ledger-kw').addEventListener('input', function () {
+      var v = this.value.trim();
+      clearTimeout(ledgerKwTimer);
+      ledgerKwTimer = setTimeout(function () {
+        ledgerFilter.kw = v;
+        loadLedger();
+      }, 300);
+    });
     bindSearchSelect('f-ledger-cycle', 'ledger-cycle-dd', function () {
-      return [
-        { label: '全部统计周期', value: '' },
-        { label: '月度结算', value: 'month' },
-        { label: '季度结算', value: 'quarter' },
-        { label: '年度结算', value: 'year' }
-      ];
+      return [{ label: '全部统计周期', value: '' }].concat(CYCLE_OPTS);
     }, function (v) { ledgerFilter.cycle = v; renderLedger(); });
     document.querySelectorAll('.filter-tabs .ftab').forEach(function (t) {
       t.addEventListener('click', function () {
@@ -1540,7 +1513,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     $('btn-export-ledger').addEventListener('click', exportLedger);
 
     // 明细:返回 / 取消选择 / 生成账单 / 全选 / 导出
-    $('btn-detail-back').addEventListener('click', function () { setActiveTab('ledger'); renderLedger(); });
+    $('btn-detail-back').addEventListener('click', function () { setActiveTab('ledger'); loadLedger(); });
     $('btn-detail-clear').addEventListener('click', function () {
       selPlans = {};
       $('ck-select-page').checked = false;
@@ -1558,18 +1531,16 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
     $('btn-export-detail').addEventListener('click', exportDetail);
 
-    // 明细:周期 / 计费状态筛选(选项随用水户动态生成)
+    // 明细:周期 / 计费状态筛选(周期选项按当前户方案动态生成)
     bindSearchSelect('f-detail-cycle', 'detail-cycle-dd', function () {
       var opts = [{ label: '全部统计周期', value: '' }];
-      if (!curFarmer) return opts;
-      var led = findLedger(curFarmer);
-      var seen = {}, keys = [];
-      plansOf(curFarmer).forEach(function (p) {
-        var k = cycleKeyOf(p.startTime, led.cycle);
-        if (!seen[k]) { seen[k] = 1; keys.push(k); }
+      var seen = {};
+      CUR_PLANS.forEach(function (p) {
+        var k = p.cycleKey || '';
+        if (!k || seen[k]) return;
+        seen[k] = 1;
+        opts.push({ label: p.cycleLabel || k, value: k });
       });
-      keys.sort(function (a, b) { return cycleSort(b) - cycleSort(a); });
-      keys.forEach(function (k) { opts.push({ label: cycleLabel(k), value: k }); });
       return opts;
     }, function (v) { detailFilter.cycle = v; renderDetail(); });
     bindSearchSelect('f-detail-billed', 'detail-billed-dd', function () {
@@ -1600,22 +1571,26 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       else if (act.dataset.delplan) deletePlan(act.dataset.delplan);
     });
 
-    // 账单:搜索 / 状态筛选 / 重置
-    $('bill-kw').addEventListener('input', function () { billFilter.kw = this.value; billPage = 1; renderBills(); });
+    // 账单:搜索(300ms 防抖,服务端匹配 账单编号/户名/户号/分期key) / 状态筛选 / 重置
+    var billKwTimer = null;
+    $('bill-kw').addEventListener('input', function () {
+      var v = this.value.trim();
+      clearTimeout(billKwTimer);
+      billKwTimer = setTimeout(function () {
+        S2.kw = v;
+        S2.page = 1;
+        loadBills();
+      }, 300);
+    });
     bindSearchSelect('f-bill-status', 'bill-status-dd', function () {
-      return [
-        { label: '全部状态', value: '' },
-        { label: '已生成', value: 'generated' },
-        { label: '已缴清', value: 'paid' }
-      ];
-    }, function (v) { billFilter.status = v; billPage = 1; renderBills(); });
+      return [{ label: '全部状态', value: '' }].concat(BILL_STATUS_OPTS);
+    }, function (v) { S2.status = v; S2.page = 1; loadBills(); });
     $('btn-bill-reset').addEventListener('click', function () {
-      billFilter = { kw: '', status: '' };
-      billPage = 1;
+      S2.kw = ''; S2.status = ''; S2.page = 1;
       $('bill-kw').value = '';
       $('f-bill-status').value = '';
       $('f-bill-status').dataset.value = '';
-      renderBills();
+      loadBills();
     });
     // 账单行操作:明细 / 收款 / 删除
     $('bill-body').addEventListener('click', function (e) {
@@ -1626,7 +1601,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       else if (act.dataset.delbill) deleteBill(act.dataset.delbill);
     });
     $('btn-export-bills').addEventListener('click', exportBills);
-    $('btn-go-ledger').addEventListener('click', function () { setActiveTab('ledger'); renderLedger(); });
+    $('btn-go-ledger').addEventListener('click', function () { setActiveTab('ledger'); loadLedger(); });
 
     // 汇总:台账明细链接 / 导出
     $('sum-body').addEventListener('click', function (e) {
@@ -1646,9 +1621,20 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   }
 
   bindEvents();
-  renderLedger();
-  renderBills();
-  renderSummary();
+
+  // 7.1 表单元数据(周期/账单状态字典)
+  api('GET', '/water-bill/meta', null, function (err, d) {
+    if (!err && d) {
+      if (d.cycles && d.cycles.length) CYCLE_OPTS = d.cycles;
+      if (d.statuses && d.statuses.length) BILL_STATUS_OPTS = d.statuses;
+    }
+  });
+
+  // 首屏:并行拉取各视图数据(接口)
+  loadLedger();      // 视图一 台账
+  loadBills();       // 视图三 账单分页
+  loadBillStats();   // 视图三 统计条
+  loadSummary();     // 视图四 汇总
 })();
 </script>
 </body>

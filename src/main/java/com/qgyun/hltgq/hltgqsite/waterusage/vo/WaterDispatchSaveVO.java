@@ -31,7 +31,10 @@ public class WaterDispatchSaveVO {
     /** 执行时段止 */
     private String endTime;
 
-    /** 调度负责人 */
+    /** 调度负责人（选人下拉的 id；传了则后端按 id 回查固化姓名快照，不信任 owner 文本） */
+    private String ownerUserId;
+
+    /** 调度负责人姓名（快照回传；仅未换人时生效） */
     private String owner;
 
     private String remark;

@@ -39,8 +39,6 @@ public class WaterDispatchVO {
 
     private String gateId;
 
-    private String gateCode;
-
     private String gateName;
 
     /** 计划放水量（万m³，语义字段） */

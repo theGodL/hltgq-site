@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import com.qgyun.hltgq.hltgqsite.model.util.StationStatusUtils;
 
 /**
  * 水位监测-灌区服务实现
@@ -78,7 +79,7 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
                 wrapper.in("iofhpi", stcds);
                 for (StStinfo s : stStinfoMapper.selectList(wrapper)) {
                     if (s.getStcd() != null) {
-                        onlineByStcd.put(s.getStcd().trim(), isZebpsuOnline(s.getZebpsu()));
+                        onlineByStcd.put(s.getStcd().trim(), StationStatusUtils.isZebpsuOnline(s.getZebpsu()));
                     }
                 }
             }
@@ -91,12 +92,6 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         page.setRecords(records);
 
         return page;
-    }
-
-    /** zebpsu 站点状态：#1# 在线、#2# 离线；兼容 "#1#"/"1"/"#1" 格式，null 或未知值默认在线 */
-    private boolean isZebpsuOnline(String zebpsu) {
-        if (zebpsu == null) return true;
-        return !"2".equals(zebpsu.trim().replace("#", ""));
     }
 
     @Override

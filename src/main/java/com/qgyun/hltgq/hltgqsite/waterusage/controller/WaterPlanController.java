@@ -27,6 +27,7 @@ import java.util.Map;
  * <p>状态机：编制中 →（生效）已生效 →（归档）已归档；已生效 →（作废）已作废。
  * 生效前前端先调 conflict-check（只读预览）：blocked 非空终止；warnings 非空二次确认后 activate
  * （activate 事务内以同一校验函数最终裁决）。编号 YJ + 3 位序号，冲突重试同用水户。
+ * <p>计划名称必填且全局唯一（不自动生成）；同一计划中同一用水户仅可出现一次；主表备注可改。
  */
 @RestController
 @RequestMapping("/water-plan")
@@ -37,7 +38,7 @@ public class WaterPlanController {
     @Autowired
     private WaterPlanService planService;
 
-    /** 表单元数据（类型/状态/旬字典 + 当天日期） */
+    /** 表单元数据（类型/状态/旬字典 + 当天日期 + 规则版本） */
     @GetMapping("/meta")
     public Map<String, Object> meta() {
         return planService.meta();
@@ -61,6 +62,16 @@ public class WaterPlanController {
     @GetMapping("/detail")
     public WaterPlanVO detail(@RequestParam String id) {
         return planService.detail(id);
+    }
+
+    /**
+     * 实际保证率 KPI（全部审核通过需水申请聚合，不随列表筛选变化）。
+     *
+     * @return need / actual（m³）/ missing（条）/ count / overlap
+     */
+    @GetMapping("/guarantee")
+    public Map<String, Object> guarantee() {
+        return planService.guarantee();
     }
 
     /** 明细「用水户」下拉（仅正常状态） */
@@ -92,7 +103,7 @@ public class WaterPlanController {
                 () -> planService.create(body), log);
     }
 
-    /** 编辑（编制中 = 全量替换；已生效 = 仅明细计划水量与超测算说明） */
+    /** 编辑（编制中 = 全量替换；已生效 = 明细计划水量/超测算说明 + 主表备注） */
     @PutMapping("/update")
     public WaterPlanVO update(@RequestParam String id, @RequestBody WaterPlanSaveVO body) {
         log.info("收到用水计划编辑请求：id={}，items={}", id,

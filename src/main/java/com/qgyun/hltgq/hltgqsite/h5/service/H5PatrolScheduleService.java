@@ -12,6 +12,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 
 /**
  * H5 巡检计划查询服务：仅「进行中 #2# / 已完成 #3#」两类计划，分页返回。
@@ -61,8 +63,8 @@ public class H5PatrolScheduleService {
         result.setCurrent(current);
         result.setSize(pageSize);
 
-        String keyword = trimToNull(name);
-        String statusCode = resolveCode(STATUS_LABELS, status);
+        String keyword = CheckUtils.trim(name);
+        String statusCode = DictUtils.resolveCode(STATUS_LABELS, status);
         long total = mapper.countScheduleList(keyword, statusCode);
         result.setTotal(total);
         result.setPages((total + pageSize - 1) / pageSize);
@@ -74,8 +76,8 @@ public class H5PatrolScheduleService {
         List<H5PatrolScheduleVO> rows = mapper.selectScheduleList(keyword, statusCode,
                 pageSize, (current - 1) * pageSize);
         for (H5PatrolScheduleVO row : rows) {
-            row.setPlanTypeLabel(label(PLAN_TYPE_LABELS, row.getPlanType()));
-            row.setStatusLabel(label(STATUS_LABELS, row.getStatusCode()));
+            row.setPlanTypeLabel(DictUtils.label(PLAN_TYPE_LABELS, row.getPlanType()));
+            row.setStatusLabel(DictUtils.label(STATUS_LABELS, row.getStatusCode()));
         }
         attachStations(rows);
         result.setRecords(rows);
@@ -89,7 +91,7 @@ public class H5PatrolScheduleService {
      * @param scheduleId 巡检计划 id（空 → 400）
      */
     public List<H5PatrolStationVO> stations(String scheduleId) {
-        String id = trimToNull(scheduleId);
+        String id = CheckUtils.trim(scheduleId);
         if (id == null) {
             throw new IllegalArgumentException("巡检计划 id 不能为空");
         }
@@ -133,35 +135,5 @@ public class H5PatrolScheduleService {
         station.setLon(r.getLon());
         station.setLat(r.getLat());
         return station;
-    }
-
-    /** 单值编码 → 中文（未知编码原样返回） */
-    private String label(Map<String, String> labels, String code) {
-        if (code == null || code.isEmpty()) {
-            return code;
-        }
-        return labels.getOrDefault(code, code);
-    }
-
-    /** 过滤值归一：空 → null；编码（#...#）原样；中文 → 编码；未知原样下传 */
-    private String resolveCode(Map<String, String> labels, String value) {
-        String v = trimToNull(value);
-        if (v == null || v.startsWith("#")) {
-            return v;
-        }
-        for (Map.Entry<String, String> e : labels.entrySet()) {
-            if (e.getValue().equals(v)) {
-                return e.getKey();
-            }
-        }
-        return v;
-    }
-
-    private String trimToNull(String s) {
-        if (s == null) {
-            return null;
-        }
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
     }
 }

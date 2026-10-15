@@ -9,13 +9,11 @@ import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterBillMapper;
 import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterDispatchMapper;
 import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterUserMapper;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.BillPlanRowVO;
-import com.qgyun.hltgq.hltgqsite.waterusage.vo.GateIntervalVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.DispatchExecRowVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.LedgerRowVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterBillVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDispatchVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterUserVO;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +29,8 @@ import java.util.Map;
 
 /**
  * 水费账单服务（台账 / 明细 / 账单 / 出账 / 收款 / 删除）。
- * <p>计入水量计量（与流量监测/灌溉用水同源）：区间累计 = ttf(窗口内末行) − prevTtf(起点前最近一条 ttf 非空行)，
+ * <p>计入水量计量统一走 {@link WaterUsageMeter}（与流量监测/灌溉用水、用水计划灌溉进度同源同一实现）：
+ * 区间累计 = ttf(窗口内末行) − prevTtf(起点前最近一条 ttf 非空行)，
  * 起点前无基准按 0，哨兵值 -999/-9991 视为缺失；差额策略（calc_mode=#2#）扣减闸口取负参与合计。
  * <p>出账：按 (用水户, 分期 key) 分组拆分多张账单（1 账单 : N 方案），组内逐方案实时计量、
  * 净计入水量 ≤0 拦截；成功后以 billed_qty 快照逐行打标、bill_id 挂接；账单删除清空挂接、
@@ -42,8 +41,6 @@ import java.util.Map;
  */
 @Service
 public class WaterBillService {
-
-    private static final Logger log = LoggerFactory.getLogger(WaterBillService.class);
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
@@ -60,6 +57,8 @@ public class WaterBillService {
 
     private final ObjectMapper objectMapper;
 
+    private final WaterUsageMeter meter;
+
     /** 操作人兜底（会话缺失时使用，审计列 NOT NULL） */
     @Value("${hltgq.created-by}")
     private String fallbackOperator;
@@ -68,12 +67,14 @@ public class WaterBillService {
                             WaterDispatchMapper dispatchMapper,
                             WaterUserMapper userMapper,
                             ShortIdGenerator shortIdGenerator,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper,
+                            WaterUsageMeter meter) {
         this.billMapper = billMapper;
         this.dispatchMapper = dispatchMapper;
         this.userMapper = userMapper;
         this.shortIdGenerator = shortIdGenerator;
         this.objectMapper = objectMapper;
+        this.meter = meter;
     }
 
     // ==================== 元数据 / 列表 / 详情 ====================
@@ -108,6 +109,21 @@ public class WaterBillService {
         return WaterUsageSupport.pageResult(total, p, s, records);
     }
 
+    /** 账单列表统计条（全量汇总，无筛选参数：账单总数/计费总水量(万m³)/应收/已收/收缴率%） */
+    public Map<String, Object> stats() {
+        Map<String, Object> agg = billMapper.selectBillStats();
+        BigDecimal amt = toDecimal(agg.get("amt"));
+        BigDecimal paid = toDecimal(agg.get("paid"));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("billCount", agg.get("cnt") == null ? 0L : ((Number) agg.get("cnt")).longValue());
+        out.put("totalQty", WaterUsageSupport.toWan(toDecimal(agg.get("qty"))));
+        out.put("totalAmount", amt);
+        out.put("paidAmount", paid);
+        out.put("collectRate", amt.signum() <= 0 ? 0
+                : paid.multiply(HUNDRED).divide(amt, 0, RoundingMode.HALF_UP).intValue());
+        return out;
+    }
+
     /** 账单详情（含方案明细，计费快照） */
     public WaterBillVO detail(String id) {
         String key = WaterUsageSupport.requireText(id, "账单 id 不能为空");
@@ -131,8 +147,7 @@ public class WaterBillService {
     /** 台账（视图一：按用水户归集，一行为一户；含汇总 stat） */
     public Map<String, Object> ledger(String keyword) {
         String kw = WaterUsageSupport.trim(keyword);
-        int year = LocalDate.now().getYear();
-        List<WaterUserVO> users = userMapper.selectLedgerUsers(kw, year);
+        List<WaterUserVO> users = userMapper.selectLedgerUsers(kw);
         Map<String, Map<String, Object>> aggMap = new LinkedHashMap<>();
         for (Map<String, Object> row : billMapper.selectBillAggAll()) {
             Object uid = row.get("uid");
@@ -167,6 +182,48 @@ public class WaterBillService {
         return out;
     }
 
+    /**
+     * 户级待出账装配（用水户列表「待出账水量」列用：仅未计费未取消方案的实时计量合计，口径与台账 pendingQty 一致）。
+     * <p>pendingCount = 未计费方案数（不分计量成败）；pendingQty = 有效计量带符号合计（m³，无有效计量按 0；
+     * 前端按 {@code WaterRules.fmtWan} 折算万m³，与 annualPlanWater 同模式）；
+     * 传入当前页用户，方案行一次批量查询后逐方案计量（与账单出账同源 WaterUsageMeter）。
+     */
+    public void fillPending(List<WaterUserVO> users) {
+        if (users == null || users.isEmpty()) {
+            return;
+        }
+        Map<String, WaterUserVO> byId = new LinkedHashMap<>();
+        for (WaterUserVO user : users) {
+            byId.put(user.getId(), user);
+            user.setPendingQty(BigDecimal.ZERO);
+            user.setPendingCount(0);
+        }
+        Map<String, GateConfig> configs = new LinkedHashMap<>();
+        for (DispatchExecRowVO row : dispatchMapper.selectUnbilledDispatchRows(new ArrayList<>(byId.keySet()))) {
+            WaterUserVO user = byId.get(row.getWaterUserId());
+            if (user == null) {
+                continue;
+            }
+            user.setPendingCount(user.getPendingCount() + 1);
+            GateConfig config;
+            if (configs.containsKey(row.getWaterUserId())) {
+                config = configs.get(row.getWaterUserId());
+            } else {
+                config = WaterUsageSupport.gateConfigOf(user.getGateConfigRaw(), objectMapper);
+                configs.put(row.getWaterUserId(), config);
+            }
+            if (config == null) {
+                continue;
+            }
+            BigDecimal raw = meter.gateInterval(row.getGateId(), row.getStartTime(), row.getEndTime());
+            if (raw == null || raw.signum() <= 0) {
+                continue;
+            }
+            BigDecimal signed = WaterUsageMeter.isDeduct(config, row.getGateId()) ? raw.negate() : raw;
+            user.setPendingQty(user.getPendingQty().add(signed));
+        }
+    }
+
     /** 户方案明细（视图二：单户全部未取消方案；未计费行实时计量、已计费行取快照） */
     public Map<String, Object> userPlans(String userId) {
         String key = WaterUsageSupport.requireText(userId, "用水户 id 不能为空");
@@ -180,10 +237,17 @@ public class WaterBillService {
         for (BillPlanRowVO plan : plans) {
             boolean billed = Boolean.TRUE.equals(plan.getBilled());
             if (!billed) {
-                BigDecimal raw = rawInterval(plan.getGateId(), plan.getStartTime(), plan.getEndTime());
-                plan.setAmount(raw == null ? null : (isDeduct(config, plan.getGateId()) ? raw.negate() : raw));
+                WaterUsageMeter.Result measured = meter.measure(
+                        plan.getGateId(), plan.getStartTime(), plan.getEndTime());
+                if (measured.getValue() == null) {
+                    // 水量列留空，同时回传不可得原因（前端明细直接展示，避免只看到“没内容”）
+                    plan.setMeterIssue(measured.getIssue());
+                } else {
+                    plan.setAmount(WaterUsageMeter.isDeduct(config, plan.getGateId())
+                            ? measured.getValue().negate() : measured.getValue());
+                }
             }
-            plan.setSign(isDeduct(config, plan.getGateId()) ? -1 : 1);
+            plan.setSign(WaterUsageMeter.isDeduct(config, plan.getGateId()) ? -1 : 1);
             String cycleKey = WaterUsageDict.cycleKeyOf(tryParse(plan.getStartTime()), settle);
             plan.setCycleKey(cycleKey);
             plan.setCycleLabel(WaterUsageDict.cycleLabel(cycleKey));
@@ -257,16 +321,19 @@ public class WaterBillService {
                 }
                 configCache.put(user.getId(), config);
             }
-            BigDecimal raw = rawInterval(row.getGateId(), row.getStartTime(), row.getEndTime());
+            WaterUsageMeter.Result measured = meter.measure(
+                    row.getGateId(), row.getStartTime(), row.getEndTime());
+            BigDecimal raw = measured.getValue();
             if (raw == null) {
-                throw new IllegalArgumentException("方案 " + row.getDispatchNo()
-                        + " 无有效计量数据（执行时段内无流量记录），不可出账");
+                throw new IllegalArgumentException("方案 " + row.getDispatchNo() + " 不可出账："
+                        + measured.getIssue() + "（时段 " + row.getStartTime() + " ~ " + row.getEndTime()
+                        + "，闸口 " + (row.getGateName() == null ? row.getGateId() : row.getGateName()) + "）");
             }
             if (raw.signum() <= 0) {
                 throw new IllegalArgumentException("方案 " + row.getDispatchNo() + " 计入水量为 0 或负值（"
                         + raw.toPlainString() + " m³），请核对流量数据");
             }
-            BigDecimal signed = isDeduct(config, row.getGateId()) ? raw.negate() : raw;
+            BigDecimal signed = WaterUsageMeter.isDeduct(config, row.getGateId()) ? raw.negate() : raw;
             String groupKey = row.getWaterUserId() + "|" + cycleKey;
             Group group = groups.get(groupKey);
             if (group == null) {
@@ -403,13 +470,15 @@ public class WaterBillService {
                         notes.add("未配置关联闸口");
                     }
                 } else {
-                    BigDecimal raw = rawInterval(plan.getGateId(), plan.getStartTime(), plan.getEndTime());
+                    WaterUsageMeter.Result measured = meter.measure(
+                            plan.getGateId(), plan.getStartTime(), plan.getEndTime());
+                    BigDecimal raw = measured.getValue();
                     if (raw == null) {
-                        notes.add(plan.getDispatchNo() + " 无有效流量数据");
+                        notes.add(plan.getDispatchNo() + " " + measured.getIssue());
                     } else if (raw.signum() <= 0) {
                         notes.add(plan.getDispatchNo() + " 计量异常（" + raw.toPlainString() + " m³）");
                     } else {
-                        signed = isDeduct(config, plan.getGateId()) ? raw.negate() : raw;
+                        signed = WaterUsageMeter.isDeduct(config, plan.getGateId()) ? raw.negate() : raw;
                         pendingQty = pendingQty.add(signed);
                     }
                 }
@@ -458,38 +527,7 @@ public class WaterBillService {
         return row;
     }
 
-    // ==================== 内部：计量与通用 ====================
-
-    /**
-     * 单闸口区间累计流量（m³）：ttf(窗口内末行) − prevTtf(起点前最近一条 ttf 非空行)；
-     * 窗口内无有效行 / 末行 ttf 缺失（null 或哨兵）→ null（计量不可得）；起点前无基准按 0。
-     */
-    private BigDecimal rawInterval(String gateId, String startText, String endText) {
-        LocalDateTime start;
-        LocalDateTime end;
-        try {
-            start = WaterUsageSupport.parseDateTime(startText, "执行时段起");
-            end = WaterUsageSupport.parseDateTime(endText, "执行时段止");
-        } catch (IllegalArgumentException e) {
-            log.warn("[灌区用水] 方案时段解析失败，计量不可得：gate={}，{} ~ {}", gateId, startText, endText);
-            return null;
-        }
-        List<GateIntervalVO> rows = billMapper.selectGateInterval(gateId, start, end);
-        for (GateIntervalVO row : rows) {
-            BigDecimal ttf = WaterUsageSupport.usableFlow(row.getTtf());
-            if (ttf == null) {
-                continue;
-            }
-            BigDecimal prev = WaterUsageSupport.usableFlow(row.getPrevTtf());
-            return ttf.subtract(prev == null ? BigDecimal.ZERO : prev);
-        }
-        return null;
-    }
-
-    /** 差额策略扣减闸口判定（记账符号取负） */
-    private static boolean isDeduct(GateConfig config, String gateId) {
-        return config != null && WaterUsageDict.GATE_MODE_DIFF.equals(config.mode) && config.isDeduct(gateId);
-    }
+    // ==================== 内部：通用 ====================
 
     /** 宽容解析（失败返回 null，用于周期推导等辅助场景） */
     private static LocalDateTime tryParse(String text) {

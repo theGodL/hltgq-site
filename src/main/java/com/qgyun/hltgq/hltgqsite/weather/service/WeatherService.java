@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
 
 /**
  * 天气数据服务：Open-Meteo 代理 + Redis 缓存 + 旧值兜底 + 单飞防击穿 + 限流。
@@ -245,7 +246,7 @@ public class WeatherService {
         vo.setFeelTemperature(String.format(Locale.US, "体感温度 %.0f°", feelTemp));
         vo.setWeatherIcon(String.valueOf(weatherCode));
         vo.setLocation(location);
-        vo.setUpdateTime(textField(current, "time"));
+        vo.setUpdateTime(JsonFieldUtils.textField(current, "time"));
         vo.setSource("openmeteo");
         return vo;
     }
@@ -274,13 +275,13 @@ public class WeatherService {
         DateTimeFormatter hourFormat = DateTimeFormatter.ofPattern("HH:mm");
         for (int i = 0; i < size; i++) {
             // 边界安全取值：任一字段缺失/越界只跳过该小时，不因单条异常使整个列表降级为空（与日级同口径）
-            String time = textAt(times, i);
-            Integer code = intAt(codes, i);
-            Double temperature = doubleAt(temps, i);
-            Double rainfall = doubleAt(precips, i);
-            Double humidity = doubleAt(humidities, i);
-            Double windSpeed = doubleAt(windSpeeds, i);
-            Integer windDegree = intAt(windDirs, i);
+            String time = JsonFieldUtils.textAt(times, i);
+            Integer code = JsonFieldUtils.intAt(codes, i);
+            Double temperature = JsonFieldUtils.doubleAt(temps, i);
+            Double rainfall = JsonFieldUtils.doubleAt(precips, i);
+            Double humidity = JsonFieldUtils.doubleAt(humidities, i);
+            Double windSpeed = JsonFieldUtils.doubleAt(windSpeeds, i);
+            Integer windDegree = JsonFieldUtils.intAt(windDirs, i);
             if (time == null || code == null || temperature == null || rainfall == null
                     || humidity == null || windSpeed == null || windDegree == null) {
                 continue;
@@ -387,47 +388,6 @@ public class WeatherService {
     private static Integer intField(JsonNode node, String field) {
         JsonNode value = node == null ? null : node.get(field);
         return value != null && value.isNumber() ? value.asInt() : null;
-    }
-
-    /** 字段安全取字符串（字段名版）：缺失/JSON null/容器节点返回 null（避免出现字符串 "null" 或 ""） */
-    private static String textField(JsonNode node, String field) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || value.isNull() || value.isContainerNode()) {
-            return null;
-        }
-        String text = value.asText();
-        return text == null || text.isEmpty() ? null : text;
-    }
-
-    /** 数组下标取字符串：越界/空值返回 null（上游数组长度不一致时跳过单条，而非整段失败） */
-    private static String textAt(JsonNode array, int index) {
-        if (array == null || index < 0 || index >= array.size()) {
-            return null;
-        }
-        JsonNode node = array.get(index);
-        if (node == null || node.isNull() || node.isContainerNode()) {
-            return null;
-        }
-        String text = node.asText();
-        return text == null || text.isEmpty() ? null : text;
-    }
-
-    /** 数组下标取小数：越界/非数值返回 null（null 不得当作 0，否则会伪造缺失数据） */
-    private static Double doubleAt(JsonNode array, int index) {
-        if (array == null || index < 0 || index >= array.size()) {
-            return null;
-        }
-        JsonNode node = array.get(index);
-        return node != null && node.isNumber() ? node.asDouble() : null;
-    }
-
-    /** 数组下标取整数：越界/非数值返回 null */
-    private static Integer intAt(JsonNode array, int index) {
-        if (array == null || index < 0 || index >= array.size()) {
-            return null;
-        }
-        JsonNode node = array.get(index);
-        return node != null && node.isNumber() ? node.asInt() : null;
     }
 
     private String resolveLocation(String location) {

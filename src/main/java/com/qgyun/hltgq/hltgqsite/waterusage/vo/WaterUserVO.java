@@ -9,14 +9,15 @@ import java.math.BigDecimal;
  * 用水户（列表行 / 详情共用）。
  * <p>gateConfigRaw 为库内 JSON 原文（不序列化给前端）；gateConfig 为 Service 解析后的对象，
  * gateText 为列表展示文案（累加「闸A、闸B」；差额「主闸 − 扣A、扣B」）。
- * <p>年度计划水量为派生值（当年周期起始、状态 已生效+已归档 的计划明细之和，不落库）。
+ * <p>annualPlanWater 为档案字段（water_user.annual_plan_water 列，m³；可空=未设定）；
+ * annualScheduledQty 为派生值（该户当年年度计划上未取消调度方案的 plan_amount 合计）。
  */
 @Data
 public class WaterUserVO {
 
     private String id;
 
-    /** 编号：YH + 3 位序号 */
+    /** 编号：YH + 3 位序号（后端自动生成，不可修改） */
     private String userNo;
 
     /** 名称（必填，全局唯一） */
@@ -35,6 +36,12 @@ public class WaterUserVO {
 
     /** 灌溉面积（亩，2 位小数；工业/生活可空） */
     private BigDecimal irrigationArea;
+
+    /** 位置经度（可空，-180 ~ 180） */
+    private BigDecimal lng;
+
+    /** 位置纬度（可空，-90 ~ 90） */
+    private BigDecimal lat;
 
     /** 水价（元/m³，3 位小数） */
     private BigDecimal waterPrice;
@@ -64,9 +71,18 @@ public class WaterUserVO {
 
     private String statusName;
 
-    /** 年度计划水量（m³，派生：当年已生效+已归档年度计划的明细之和；无则 null） */
+    /** 年度计划水量（m³，档案字段；可空=未设定） */
     private BigDecimal annualPlanWater;
 
     /** 年度已调度水量（m³，派生：该户当年年度计划上未取消调度方案的 plan_amount 合计） */
     private BigDecimal annualScheduledQty;
+
+    /** 待出账水量（m³，列表装配：未计费未取消方案的实时计量合计，口径同水费台账） */
+    private BigDecimal pendingQty;
+
+    /** 待出账方案数（列表装配） */
+    private Integer pendingCount;
+
+    /** 备注 */
+    private String remark;
 }

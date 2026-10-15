@@ -24,8 +24,6 @@ public class WaterDispatchRecordVO {
 
     private String gateId;
 
-    private String gateCode;
-
     private String gateName;
 
     /** 操作时间（YYYY-MM-DD HH:mm） */

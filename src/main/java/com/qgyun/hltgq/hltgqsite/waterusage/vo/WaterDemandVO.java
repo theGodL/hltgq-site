@@ -26,8 +26,6 @@ public class WaterDemandVO {
     /** 申报拟用闸口（可空） */
     private String gateId;
 
-    private String gateCode;
-
     private String gateName;
 
     /** 申报计划水量（万m³，对外口径） */

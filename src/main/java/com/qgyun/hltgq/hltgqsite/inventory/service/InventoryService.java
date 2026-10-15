@@ -15,6 +15,10 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 
 /**
  * 设备库存查询服务：枚举编码翻译（中文）+ 数值文本转换 + obompq 明细 JSON 防御解析。
@@ -55,13 +59,13 @@ public class InventoryService {
      * @param stockStatus  库存状态：中文（安全库存/库存预警）或编码（#1#/#2#），可选
      */
     public List<InventoryVO> list(String departmentId, String stockStatus) {
-        List<InventoryVO> rows = mapper.selectInventoryList(trimToNull(departmentId),
-                resolveCode(STOCK_STATUS_LABELS, stockStatus));
+        List<InventoryVO> rows = mapper.selectInventoryList(CheckUtils.trim(departmentId),
+                DictUtils.resolveCode(STOCK_STATUS_LABELS, stockStatus));
         for (InventoryVO row : rows) {
-            row.setCategory(translate(CATEGORY_LABELS, row.getCategoryCode()));
-            row.setStockStatus(translate(STOCK_STATUS_LABELS, row.getStockStatusCode()));
-            row.setStockQty(toDecimal(row.getStockQtyText()));
-            row.setSafetyStock(toDecimal(row.getSafetyStockText()));
+            row.setCategory(DictUtils.label(CATEGORY_LABELS, row.getCategoryCode()));
+            row.setStockStatus(DictUtils.label(STOCK_STATUS_LABELS, row.getStockStatusCode()));
+            row.setStockQty(ValueConvertUtils.decimalOf(row.getStockQtyText()));
+            row.setSafetyStock(ValueConvertUtils.decimalOf(row.getSafetyStockText()));
             row.setDetails(parseDetails(row.getDetailsJson()));
             // 内部转换字段置空（@JsonIgnore 本就不出 JSON，置空释放字符串引用）
             row.setStockQtyText(null);
@@ -84,10 +88,10 @@ public class InventoryService {
             List<InventoryVO.Detail> details = new ArrayList<>(root.size());
             for (JsonNode node : root) {
                 InventoryVO.Detail detail = new InventoryVO.Detail();
-                detail.setCode(textOf(node, "tgmziv"));
-                detail.setName(textOf(node, "lmtibt"));
-                detail.setBrand(textOf(node, "ihcepa"));
-                detail.setUnit(textOf(node, "lwlpnf"));
+                detail.setCode(JsonFieldUtils.textOf(node, "tgmziv"));
+                detail.setName(JsonFieldUtils.textOf(node, "lmtibt"));
+                detail.setBrand(JsonFieldUtils.textOf(node, "ihcepa"));
+                detail.setUnit(JsonFieldUtils.textOf(node, "lwlpnf"));
                 detail.setInboundQty(decimalOf(node, "jynpfu"));
                 detail.setOutboundQty(decimalOf(node, "uxsxkn"));
                 detail.setOutboundTotalQty(decimalOf(node, "dsanix"));
@@ -117,52 +121,8 @@ public class InventoryService {
         return null;
     }
 
-    /** JSON 节点文本值（键缺失/空节点恒 null） */
-    private String textOf(JsonNode node, String key) {
-        JsonNode value = node.get(key);
-        return value == null || value.isNull() ? null : value.asText();
-    }
-
     /** JSON 节点数值（文本解析失败/空恒 null） */
     private BigDecimal decimalOf(JsonNode node, String key) {
-        return toDecimal(textOf(node, key));
-    }
-
-    /** 文本转数值（空串/非法恒 null） */
-    private BigDecimal toDecimal(String text) {
-        if (text == null || text.trim().isEmpty()) {
-            return null;
-        }
-        try {
-            return new BigDecimal(text.trim());
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    /** 编码 → 中文（未知编码原样返回） */
-    private String translate(Map<String, String> labels, String code) {
-        return labels.getOrDefault(code, code);
-    }
-
-    /** 过滤值归一为编码：空 → null；已是编码/中文 → 对应编码；未知原样下传 */
-    private String resolveCode(Map<String, String> labels, String value) {
-        String text = trimToNull(value);
-        if (text == null || labels.containsKey(text)) {
-            return text;
-        }
-        for (Map.Entry<String, String> entry : labels.entrySet()) {
-            if (entry.getValue().equals(text)) {
-                return entry.getKey();
-            }
-        }
-        return text;
-    }
-
-    private String trimToNull(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return null;
-        }
-        return value.trim();
+        return ValueConvertUtils.decimalOf(JsonFieldUtils.textOf(node, key));
     }
 }

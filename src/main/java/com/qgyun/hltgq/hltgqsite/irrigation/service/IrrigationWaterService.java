@@ -36,6 +36,7 @@ import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import com.qgyun.hltgq.hltgqsite.model.util.DeviceValueUtils;
 
 /**
  * 灌溉用水服务：需水方案 × 四县（宿松/怀宁/望江/太湖）需水量、实际供水量与保证率计算。
@@ -59,10 +60,6 @@ public class IrrigationWaterService {
 
     /** 单次最多查询方案数（区间取数防御限制） */
     private static final int MAX_SCHEME_COUNT = 10;
-
-    /** 设备哨兵值：-999 设备不存在、-9991 设备异常；区间累计场景下均视为缺失 */
-    private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
-    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
 
     private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
 
@@ -323,13 +320,13 @@ public class IrrigationWaterService {
         List<IrrigationIntervalVO> rows = irrigationWaterMapper.selectIntervalPerStation(codes, start, end);
         Map<String, BigDecimal> volumes = new HashMap<>();
         for (IrrigationIntervalVO row : rows) {
-            BigDecimal ttf = usable(row.getTtf());
+            BigDecimal ttf = DeviceValueUtils.usable(row.getTtf());
             if (ttf == null) {
                 log.info("[灌溉用水] 区间取数 站点={}({}) 窗口={} ~ {} 末行无累计流量（ttf 为空或哨兵值）",
                         row.getStnm(), row.getSite(), start, end);
                 continue;
             }
-            BigDecimal prevTtf = usable(row.getPrevTtf());
+            BigDecimal prevTtf = DeviceValueUtils.usable(row.getPrevTtf());
             BigDecimal interval = ttf.subtract(prevTtf != null ? prevTtf : BigDecimal.ZERO);
             volumes.put(row.getSite(), interval);
             log.info("[灌溉用水] 区间取数 站点={}({}) 末行时间={} 区间累计={} m³（起点前基准 ttf={}）",
@@ -429,17 +426,6 @@ public class IrrigationWaterService {
         }
     }
 
-    /** 哨兵值视为缺失 */
-    private static BigDecimal usable(BigDecimal value) {
-        if (value == null) {
-            return null;
-        }
-        if (value.compareTo(DEVICE_MISSING) == 0 || value.compareTo(DEVICE_ERROR) == 0) {
-            return null;
-        }
-        return value;
-    }
-
     /** 旬标签 + 年份 → 该旬第一天；无法解析返回 null */
     private static LocalDate tendayFirstDate(String label, int year) {
         return label == null ? null : TenDayDateUtils.toFirstDate(label, year);
@@ -488,4 +474,3 @@ public class IrrigationWaterService {
         }
     }
 }
-

@@ -1,0 +1,21 @@
+{
+  "rules_version": "2026.10.14-1",
+  "note": "灌区用水三页面规则值（设计方案 2.4）：与 static/lib/rules.js 成对维护，版本号必须一致；后端 WaterUsageRules 读取本文件向 meta 输出 rulesVersion，前端加载 rules.js 后比对，不一致页面顶部黄条提示。",
+  "units": {
+    "wan_factor": 10000,
+    "store_scale": 2,
+    "display_scale": 1,
+    "area_scale": 2,
+    "price_scale": 3
+  },
+  "numbering": {
+    "user_prefix": "YH",
+    "user_seq_digits": 3,
+    "plan_prefix": "YJ",
+    "plan_seq_digits": 3
+  },
+  "formula": {
+    "calc_water": "area_x_quota",
+    "diff_reading_rule": "main_minus_deduct_gt_zero"
+  }
+}

@@ -4,7 +4,6 @@ import com.qgyun.hltgq.hltgqsite.decision.mapper.FloodDroughtMapper;
 import com.qgyun.hltgq.hltgqsite.decision.vo.HydroHistoryVO;
 import com.qgyun.hltgq.hltgqsite.decision.vo.ObsDailyVO;
 import com.qgyun.hltgq.hltgqsite.decision.vo.ObsPointVO;
-import com.qgyun.hltgq.hltgqsite.decision.vo.StationOptionVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +20,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 
 /**
  * 防洪抗旱决策服务（会议 2 定稿版）。
@@ -54,9 +54,9 @@ public class FloodDroughtService {
                                @Value("${flood-drought.obs-flow-stcd:}") String obsFlowStcd,
                                @Value("${flood-drought.max-range-days:90}") int maxRangeDays) {
         this.mapper = mapper;
-        this.obsRainStcd = trimToNull(obsRainStcd);
-        this.obsLevelStcd = trimToNull(obsLevelStcd);
-        this.obsFlowStcd = trimToNull(obsFlowStcd);
+        this.obsRainStcd = CheckUtils.trim(obsRainStcd);
+        this.obsLevelStcd = CheckUtils.trim(obsLevelStcd);
+        this.obsFlowStcd = CheckUtils.trim(obsFlowStcd);
         this.maxRangeDays = maxRangeDays;
     }
 
@@ -96,9 +96,9 @@ public class FloodDroughtService {
         }
 
         // 站点解析：入参优先 → 配置其次 → 按类型自动选站；均无则该序列全 null
-        String rainStcdResolved = resolveStcd(trimToNull(rainStcd), obsRainStcd, TYPE_RAIN);
-        String levelStcdResolved = resolveStcd(trimToNull(levelStcd), obsLevelStcd, TYPE_WATER_LEVEL);
-        String flowStcdResolved = resolveStcd(trimToNull(flowStcd), obsFlowStcd, TYPE_FLOW);
+        String rainStcdResolved = resolveStcd(CheckUtils.trim(rainStcd), obsRainStcd, TYPE_RAIN);
+        String levelStcdResolved = resolveStcd(CheckUtils.trim(levelStcd), obsLevelStcd, TYPE_WATER_LEVEL);
+        String flowStcdResolved = resolveStcd(CheckUtils.trim(flowStcd), obsFlowStcd, TYPE_FLOW);
 
         HydroHistoryVO vo = new HydroHistoryVO();
         vo.setDates(dates);
@@ -217,13 +217,5 @@ public class FloodDroughtService {
 
     private static double round3(double v) {
         return Math.round(v * 1000.0) / 1000.0;
-    }
-
-    private static String trimToNull(String text) {
-        if (text == null) {
-            return null;
-        }
-        String trimmed = text.trim();
-        return trimmed.isEmpty() ? null : trimmed;
     }
 }

@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import javax.servlet.http.HttpServletRequest;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 
 /**
  * 站点详情服务：站点档案聚合 + 巡检/问题/工单/设备分页 + 筛选下拉选项。
@@ -648,8 +649,8 @@ public class StationDetailService {
             throw new IllegalArgumentException("站点不存在：" + stationKey);
         }
         StationKey key = new StationKey();
-        key.setId(str(row.get("id")));
-        key.setIofhpi(str(row.get("iofhpi")));
+        key.setId(ValueConvertUtils.str(row.get("id")));
+        key.setIofhpi(ValueConvertUtils.str(row.get("iofhpi")));
         return key;
     }
 
@@ -770,7 +771,7 @@ public class StationDetailService {
 
         Map<String, String> idToName = new HashMap<>();
         for (Map<String, Object> row : mapper.selectDeviceNamesByIds(tokens)) {
-            idToName.put(str(row.get("id")), str(row.get("name")));
+            idToName.put(ValueConvertUtils.str(row.get("id")), ValueConvertUtils.str(row.get("name")));
         }
         List<String> missed = new ArrayList<>();
         for (String t : tokens) {
@@ -804,7 +805,7 @@ public class StationDetailService {
         List<String> tokenList = new ArrayList<>(allTokens);
         Map<String, String> idToName = new HashMap<>();
         for (Map<String, Object> row : mapper.selectDeviceNamesByIds(tokenList)) {
-            idToName.put(str(row.get("id")), str(row.get("name")));
+            idToName.put(ValueConvertUtils.str(row.get("id")), ValueConvertUtils.str(row.get("name")));
         }
         List<String> missed = new ArrayList<>();
         for (String t : tokenList) {
@@ -881,7 +882,7 @@ public class StationDetailService {
         if (needGate) {
             for (Map<String, Object> row : mapper.selectLatestGateOpenings(siteId)) {
                 BigDecimal v = dec(row.get("value"));
-                if (v != null) gateMap.put(str(row.get("gate_no")), v);
+                if (v != null) gateMap.put(ValueConvertUtils.str(row.get("gate_no")), v);
             }
         }
         // 站点级最新值（每类一条，无数据为 null）
@@ -902,8 +903,8 @@ public class StationDetailService {
             }
             if (!videoCodes.isEmpty()) {
                 for (Map<String, Object> row : mapper.selectLatestVideoPatrolResults(videoCodes)) {
-                    String code = str(row.get("channel_code"));
-                    String text = translateVideoResult(str(row.get("result")));
+                    String code = ValueConvertUtils.str(row.get("channel_code"));
+                    String text = translateVideoResult(ValueConvertUtils.str(row.get("result")));
                     if (code != null && text != null) {
                         videoTextMap.put(code, text);
                     }
@@ -974,10 +975,6 @@ public class StationDetailService {
         if (v instanceof Timestamp) return ((Timestamp) v).toLocalDateTime();
         if (v instanceof java.sql.Date) return ((java.sql.Date) v).toLocalDate().atStartOfDay();
         return null;
-    }
-
-    private static String str(Object v) {
-        return v == null ? null : String.valueOf(v);
     }
 
     private static BigDecimal dec(Object v) {

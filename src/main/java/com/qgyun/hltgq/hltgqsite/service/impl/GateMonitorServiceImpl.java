@@ -29,7 +29,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -39,6 +38,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.StationStatusUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DeviceValueUtils;
 
 @Service
 public class GateMonitorServiceImpl implements GateMonitorService {
@@ -52,11 +55,6 @@ public class GateMonitorServiceImpl implements GateMonitorService {
      */
     private static final List<String> GATE_STATION_STCDS = Arrays.asList(
             "QSJSZ", "SMH", "NSS", "9000000005", "9000000006", "9000000001", "9000000002");
-
-    /** -999 = 设备不存在：视为缺失不返回（-9991 设备异常保留，透传由前端展示 '--'） */
-    private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
-    /** -9991 = 设备异常：透传由前端展示 '--'；与 -999 一样视为无有效值 */
-    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
 
     /** 流量同批次对齐窗口（分钟）：报文按批次入库，流量 tm 应在开度/水位最新时刻 ±20 分钟内 */
     private static final long FLOW_ALIGN_MINUTES = 20;
@@ -112,45 +110,20 @@ public class GateMonitorServiceImpl implements GateMonitorService {
      * RECALLING，防止前端轮询误判为失败；任务结束（含异常）即清除，交回服务端真实状态判定 */
     private final Set<String> localRecalling = ConcurrentHashMap.newKeySet();
 
-    /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
-    private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
-            "南山寺节制闸", "渠首进水闸", "渠首电站防洪闸", "双庙湖节制闸"
-    ));
-
-    /** MQTT 站断联阈值：报文 10 分钟一次，30 分钟无更新判离线 */
-    private static final long MQTT_STALE_MINUTES = 30;
-    /** RabbitMQ 站断联阈值：报文 1 小时一次，70 分钟无更新判离线 */
-    private static final long RBT_STALE_MINUTES = 70;
-
-    /**
-     * 断联判定（与前端 isStaleTm 规则一致）：MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线；
-     * 无时间值（null）视为在线；时间在未来（时钟偏差）也视为在线
-     */
-    private boolean isStale(LocalDateTime tm, String siteName) {
-        if (tm == null) return false;
-        long threshold = MQTT_STATION_NAMES.contains(siteName) ? MQTT_STALE_MINUTES : RBT_STALE_MINUTES;
-        // 毫秒级严格大于，与前端 Date.now() - t > staleMs 语义一致（toMinutes 向下取整会导致边界差一分钟误判）
-        return Duration.between(tm, LocalDateTime.now()).toMillis() > threshold * 60_000L;
-    }
-
-    private static boolean isMissing(BigDecimal v) {
-        return v != null && v.compareTo(DEVICE_MISSING) == 0;
-    }
-
     /**
      * 累计流量展示换算：m³ → 万m³（3 位小数截断）。
      * <p>-999（设备不存在）→ null；-9991（设备异常）保留原值透传（前端展示 '--'），不参与换算。
      */
     private static BigDecimal toWanFlow(BigDecimal v) {
-        if (v == null || v.compareTo(DEVICE_ERROR) == 0) {
+        if (v == null || DeviceValueUtils.isError(v)) {
             return v;
         }
-        return isMissing(v) ? null : WaterVolumeUtils.m3ToWan(v);
+        return DeviceValueUtils.isMissing(v) ? null : WaterVolumeUtils.m3ToWan(v);
     }
 
     /** 是否有效值：null、-999（设备不存在）、-9991（设备异常）、0 均视为无效（0 多为设备异常兜底上报） */
     private static boolean isEffective(BigDecimal v) {
-        return v != null && v.signum() != 0 && !isMissing(v) && v.compareTo(DEVICE_ERROR) != 0;
+        return v != null && v.signum() != 0 && !DeviceValueUtils.isMissing(v) && !DeviceValueUtils.isError(v);
     }
 
     @Autowired
@@ -198,7 +171,7 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         for (Map.Entry<String, List<GateMonitor>> entry : siteGroup.entrySet()) {
             // -999 = 闸孔不存在：过滤后不参与返回（-9991 设备异常保留，透传由前端展示 '--'）
             List<GateMonitor> holes = entry.getValue().stream()
-                    .filter(h -> h.getOpenDegree() == null || !isMissing(h.getOpenDegree()))
+                    .filter(h -> h.getOpenDegree() == null || !DeviceValueUtils.isMissing(h.getOpenDegree()))
                     .collect(Collectors.toList());
             if (holes.isEmpty()) {
                 continue;
@@ -256,19 +229,19 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             // 窗口内取最新一条（受 startTime/endTime 范围约束）；批量查询已在步骤 3 完成，
             // 无窗口内记录的站点 q/ytf/ttf 均为 null（效果同无记录）
             Map<String, Object> flowRow = latestTm == null ? null : flowBySite.get(siteId);
-            BigDecimal flowQ = flowRow == null ? null : toBigDecimal(flowRow.get("q"));
-            BigDecimal flowYtf = flowRow == null ? null : toBigDecimal(flowRow.get("ytf"));
-            BigDecimal flowTtf = flowRow == null ? null : toBigDecimal(flowRow.get("ttf"));
+            BigDecimal flowQ = flowRow == null ? null : ValueConvertUtils.decimal(flowRow.get("q"));
+            BigDecimal flowYtf = flowRow == null ? null : ValueConvertUtils.decimal(flowRow.get("ytf"));
+            BigDecimal flowTtf = flowRow == null ? null : ValueConvertUtils.decimal(flowRow.get("ttf"));
 
             // 闸前/闸后水位：分别取最新一条有效值（-999 设备不存在视为无值跳过；-9991 设备异常保留）
             Comparator<GateMonitor> byTmDesc = Comparator.comparing(GateMonitor::getTm,
                     Comparator.nullsLast(LocalDateTime::compareTo));
             GateMonitor latestUpZ = holes.stream()
-                    .filter(h -> h.getUpZ() != null && !isMissing(h.getUpZ()))
+                    .filter(h -> h.getUpZ() != null && !DeviceValueUtils.isMissing(h.getUpZ()))
                     .max(byTmDesc)
                     .orElse(null);
             GateMonitor latestDownZ = holes.stream()
-                    .filter(h -> h.getDownZ() != null && !isMissing(h.getDownZ()))
+                    .filter(h -> h.getDownZ() != null && !DeviceValueUtils.isMissing(h.getDownZ()))
                     .max(byTmDesc)
                     .orElse(null);
 
@@ -296,16 +269,16 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             vo.setDownZ(latestDownZ != null ? latestDownZ.getDownZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             // 流量（瞬时/累计）取同批次窗口内的流量表记录（-999 设备不存在视为无值跳过；-9991 设备异常保留）；
             // 电压与经纬度为站点级数据，各孔子查询结果相同，取第一条有效值
-            vo.setQ(flowQ == null || isMissing(flowQ) ? null : flowQ);
+            vo.setQ(flowQ == null || DeviceValueUtils.isMissing(flowQ) ? null : flowQ);
             vo.setVol(holes.stream().map(GateMonitor::getVol)
-                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null));
+                    .filter(v -> v != null && !DeviceValueUtils.isMissing(v)).findFirst().orElse(null));
             // 累计流量（站点级）：默认（无起始时间）= 同批次 ytf（当年 1月1日 0点起至最新数据时间）；
             // 指定起始时间 = 时间框范围累计 = ttf(范围内末行) − ttf(起点前最近一行)，起点前无积分行基准按 0；
             // 先按 m³ 原值相减，最后一步再换算为万m³（缩放后相减会放大误差）
-            BigDecimal ytf = flowYtf == null || isMissing(flowYtf) ? null : flowYtf;
-            BigDecimal ttf = flowTtf == null || isMissing(flowTtf) ? null : flowTtf;
+            BigDecimal ytf = flowYtf == null || DeviceValueUtils.isMissing(flowYtf) ? null : flowYtf;
+            BigDecimal ttf = flowTtf == null || DeviceValueUtils.isMissing(flowTtf) ? null : flowTtf;
             BigDecimal prevTtf = holes.stream().map(GateMonitor::getPrevTtf)
-                    .filter(v -> v != null && !isMissing(v)).findFirst().orElse(null);
+                    .filter(v -> v != null && !DeviceValueUtils.isMissing(v)).findFirst().orElse(null);
             BigDecimal cumulativeFlow;
             if (startTime == null) {
                 cumulativeFlow = ytf;
@@ -323,7 +296,7 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             vo.setLon(holes.stream().map(GateMonitor::getLon).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setLat(holes.stream().map(GateMonitor::getLat).filter(Objects::nonNull).findFirst().orElse(null));
             // 在线状态：最新采集时间断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）
-            vo.setIsOnline(!isStale(latestTm, siteName));
+            vo.setIsOnline(!StationStatusUtils.isStale(latestTm, siteName));
             vo.setHoles(holeDataList);
             result.add(vo);
         }
@@ -357,8 +330,8 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             return null;
         }
         for (StationSiteVO archive : stStinfoMapper.selectArchiveSites(Collections.singletonList(key))) {
-            String archiveStcd = trimToNull(archive.getStcd());
-            String archiveId = trimToNull(archive.getSiteId());
+            String archiveStcd = CheckUtils.trim(archive.getStcd());
+            String archiveId = CheckUtils.trim(archive.getSiteId());
             if (key.equals(archiveStcd) && archiveId != null) {
                 return archiveId;
             }
@@ -376,28 +349,19 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         if (siteIds == null || siteIds.isEmpty()) {
             return codeBySiteId;
         }
-        List<String> keys = siteIds.stream().map(GateMonitorServiceImpl::trimToNull)
+        List<String> keys = siteIds.stream().map(CheckUtils::trim)
                 .filter(Objects::nonNull).distinct().collect(Collectors.toList());
         if (keys.isEmpty()) {
             return codeBySiteId;
         }
         for (StationSiteVO archive : stStinfoMapper.selectArchiveSites(keys)) {
-            String archiveId = trimToNull(archive.getSiteId());
-            String archiveStcd = trimToNull(archive.getStcd());
+            String archiveId = CheckUtils.trim(archive.getSiteId());
+            String archiveStcd = CheckUtils.trim(archive.getStcd());
             if (archiveId != null && archiveStcd != null) {
                 codeBySiteId.putIfAbsent(archiveId, archiveStcd);
             }
         }
         return codeBySiteId;
-    }
-
-    /** 站点标识归一：去首尾空白，空串按 null 处理 */
-    private static String trimToNull(String value) {
-        if (value == null) {
-            return null;
-        }
-        String s = value.trim();
-        return s.isEmpty() ? null : s;
     }
 
     @Override
@@ -462,7 +426,7 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("tm", r.getTm() != null ? r.getTm().format(fmt) : null);
             // -999 = 设备不存在：转 null 返回（-9991 设备异常保留透传由前端展示 '--'）
-            m.put("q", isMissing(r.getQ()) ? null : r.getQ());
+            m.put("q", DeviceValueUtils.isMissing(r.getQ()) ? null : r.getQ());
             m.put("tf", toWanFlow(r.getTf()));
             records.add(m);
         }
@@ -484,11 +448,11 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             });
             // -999 = 闸孔不存在：该时刻该孔不返回列（-9991 设备异常保留透传由前端展示 '--'）
             BigDecimal od = r.getOpenDegree();
-            if (od == null || !isMissing(od)) {
+            if (od == null || !DeviceValueUtils.isMissing(od)) {
                 record.put("open" + r.getGateNo(), od);
             }
             // 流量为站点级数据，同一时刻各孔相同，仅放入一次（-999 设备不存在跳过）
-            if (!record.containsKey("q") && r.getQ() != null && !isMissing(r.getQ())) {
+            if (!record.containsKey("q") && r.getQ() != null && !DeviceValueUtils.isMissing(r.getQ())) {
                 record.put("q", r.getQ());
             }
         }
@@ -508,13 +472,13 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                 return m;
             });
             // -999 = 设备不存在视为无值跳过（-9991 设备异常保留透传由前端展示 '--'），取首个有效值
-            if (!record.containsKey("upZ") && r.getUpZ() != null && !isMissing(r.getUpZ())) {
+            if (!record.containsKey("upZ") && r.getUpZ() != null && !DeviceValueUtils.isMissing(r.getUpZ())) {
                 record.put("upZ", r.getUpZ());
             }
-            if (!record.containsKey("downZ") && r.getDownZ() != null && !isMissing(r.getDownZ())) {
+            if (!record.containsKey("downZ") && r.getDownZ() != null && !DeviceValueUtils.isMissing(r.getDownZ())) {
                 record.put("downZ", r.getDownZ());
             }
-            if (!record.containsKey("q") && r.getQ() != null && !isMissing(r.getQ())) {
+            if (!record.containsKey("q") && r.getQ() != null && !DeviceValueUtils.isMissing(r.getQ())) {
                 record.put("q", r.getQ());
             }
         }
@@ -554,23 +518,12 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             }
             Map<String, Object> row = info != null && info.getId() != null ? rowBySite.get(info.getId()) : null;
             if (row != null) {
-                vo.setUpZ(toBigDecimal(row.get("up_z")));
-                vo.setDownZ(toBigDecimal(row.get("down_z")));
+                vo.setUpZ(ValueConvertUtils.decimal(row.get("up_z")));
+                vo.setDownZ(ValueConvertUtils.decimal(row.get("down_z")));
             }
             result.add(vo);
         }
         return result;
-    }
-
-    /** Map 值 → BigDecimal（null 安全；-9991 设备异常/-999 设备不存在由前端转 null 不绘制） */
-    private BigDecimal toBigDecimal(Object obj) {
-        if (obj == null) return null;
-        if (obj instanceof BigDecimal) return (BigDecimal) obj;
-        try {
-            return new BigDecimal(obj.toString());
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 
     /**
@@ -578,8 +531,8 @@ public class GateMonitorServiceImpl implements GateMonitorService {
      * -999（设备不存在）→ null；-9991（设备异常）保留原值透传（前端展示 '--'）
      */
     private BigDecimal rawFlowValue(Map<String, Object> row, String key) {
-        BigDecimal v = toBigDecimal(row != null ? row.get(key) : null);
-        return isMissing(v) ? null : v;
+        BigDecimal v = ValueConvertUtils.decimal(row != null ? row.get(key) : null);
+        return DeviceValueUtils.isMissing(v) ? null : v;
     }
 
     @Override
@@ -600,9 +553,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         // -9991（设备异常）不参与相减（相减结果无意义）：末行为异常原值透传，起点前为异常按无基准 0 处理
         BigDecimal totalFlow = rawFlowValue(row, "total_flow");
         BigDecimal monthPrev = rawFlowValue(row, "month_prev_ttf");
-        BigDecimal monthFlow = totalFlow == null || totalFlow.compareTo(DEVICE_ERROR) == 0
+        BigDecimal monthFlow = totalFlow == null || DeviceValueUtils.isError(totalFlow)
                 ? totalFlow
-                : totalFlow.subtract(monthPrev != null && monthPrev.compareTo(DEVICE_ERROR) != 0
+                : totalFlow.subtract(monthPrev != null && !DeviceValueUtils.isError(monthPrev)
                         ? monthPrev : BigDecimal.ZERO);
         vo.setMonthCumulativeFlow(toWanFlow(monthFlow));
         return vo;
@@ -638,9 +591,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             // 月初前无积分行（最早月无历史数据）基准按 0；月内无 ttf 数据 → null；先按 m³ 原值相减再换算
             BigDecimal endTtf = rawFlowValue(row, "end_ttf");
             BigDecimal startTtf = rawFlowValue(row, "start_ttf");
-            BigDecimal monthFlow = endTtf == null || endTtf.compareTo(DEVICE_ERROR) == 0
+            BigDecimal monthFlow = endTtf == null || DeviceValueUtils.isError(endTtf)
                     ? endTtf
-                    : endTtf.subtract(startTtf != null && startTtf.compareTo(DEVICE_ERROR) != 0
+                    : endTtf.subtract(startTtf != null && !DeviceValueUtils.isError(startTtf)
                             ? startTtf : BigDecimal.ZERO);
             vo.setCumulativeFlow(toWanFlow(monthFlow));
             result.add(vo);

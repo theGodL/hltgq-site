@@ -14,10 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 
 /**
  * 墒情监测接口
@@ -44,7 +42,7 @@ public class SoilMoistureController {
             @RequestParam(required = false) String stcds,
             @RequestParam(required = false) String canalId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date) {
-        return soilMoistureService.monitoring(parseStcds(stcds), canalId, date);
+        return soilMoistureService.monitoring(ValueConvertUtils.split(stcds, ","), canalId, date);
     }
 
     /**
@@ -89,18 +87,5 @@ public class SoilMoistureController {
     @GetMapping("/sites")
     public List<StationSiteVO> sites() {
         return soilMoistureService.sites();
-    }
-
-    /**
-     * 解析逗号分隔的站点编号字符串
-     */
-    private List<String> parseStcds(String stcds) {
-        if (stcds == null || stcds.trim().isEmpty()) {
-            return Collections.emptyList();
-        }
-        return Arrays.stream(stcds.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
     }
 }

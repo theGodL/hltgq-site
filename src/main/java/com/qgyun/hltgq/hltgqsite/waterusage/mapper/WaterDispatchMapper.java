@@ -1,9 +1,10 @@
 package com.qgyun.hltgq.hltgqsite.waterusage.mapper;
 
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.BillPlanRowVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.DispatchExecRowVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.DispatchOptionVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.PlanOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDispatchVO;
-import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanVO;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
@@ -40,7 +41,7 @@ public interface WaterDispatchMapper {
     String LIST_CONDITIONS =
             "<if test='keyword != null and keyword != \"\"'>AND (d.dispatch_no LIKE CONCAT('%', #{keyword}, '%') " +
             "OR u.name LIKE CONCAT('%', #{keyword}, '%') OR u.user_no LIKE CONCAT('%', #{keyword}, '%') " +
-            "OR s.zzkaec LIKE CONCAT('%', #{keyword}, '%') OR s.iofhpi LIKE CONCAT('%', #{keyword}, '%')) </if>" +
+            "OR s.zzkaec LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "<if test='status != null and status != \"\"'>AND d.status = #{status} </if>" +
             "<if test='planId != null and planId != \"\"'>AND d.plan_id = #{planId} </if>";
 
@@ -50,7 +51,7 @@ public interface WaterDispatchMapper {
             "d.plan_id AS planId, p.plan_no AS planNo, p.plan_name AS planName, " +
             "d.demand_id AS demandId, dm.demand_no AS demandNo, " +
             "d.water_user_id AS waterUserId, u.user_no AS waterUserNo, u.name AS waterUserName, " +
-            "d.gate_id AS gateId, s.iofhpi AS gateCode, s.zzkaec AS gateName, " +
+            "d.gate_id AS gateId, s.zzkaec AS gateName, " +
             "d.plan_amount AS planAmount, " +
             "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
             "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime, " +
@@ -201,12 +202,20 @@ public interface WaterDispatchMapper {
                             @Param("operator") String operator);
 
     /**
+     * 计划下未完结方案数（待执行 / 执行中；已生效计划作废前置校验用）。
+     * <p>已取消不计；「已完成」方案为历史事实（且不可取消）不纳入，避免作废死锁。
+     */
+    @Select("SELECT COUNT(*) FROM " + T_DISPATCH + " d WHERE d.plan_id = #{planId} " +
+            "AND d.corp_code = 'hltgq' AND d.status IN ('#1#', '#2#')")
+    int countUnfinishedByPlan(@Param("planId") String planId);
+
+    /**
      * 该户未取消方案明细（水费台账/明细/出账共用）。
      * <p>amount 暂载 billed_qty 计费快照（未计费为 null，由 Service 实时计量覆盖）；
      * billed = 已计费（bill_id 非空）；billNo 为挂接账单号。
      */
     @Select("SELECT d.id AS dispatchId, d.dispatch_no AS dispatchNo, d.plan_id AS planId, " +
-            "p.plan_name AS planName, d.gate_id AS gateId, s.iofhpi AS gateCode, s.zzkaec AS gateName, " +
+            "p.plan_name AS planName, d.gate_id AS gateId, s.zzkaec AS gateName, " +
             "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
             "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime, " +
             "d.plan_amount AS planAmount, d.billed_qty AS amount, b.bill_no AS billNo, " +
@@ -220,25 +229,65 @@ public interface WaterDispatchMapper {
             "ORDER BY d.start_time, d.dispatch_no")
     List<BillPlanRowVO> selectActivePlansByUser(@Param("userId") String userId);
 
+    /**
+     * 按计划批量取未取消方案行（用水计划「灌溉进度」实测聚合用）：
+     * 一行 = 方案闸口 × 执行时段，计量口径与账单出账同源（WaterUsageMeter.gateInterval）。
+     * <p>差额策略扣减闸口的符号判定由 Service 按用水户闸口配置完成。
+     */
+    @Select("<script>SELECT d.plan_id AS planId, d.water_user_id AS waterUserId, d.gate_id AS gateId, " +
+            "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
+            "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime " +
+            "FROM " + T_DISPATCH + " d " +
+            "WHERE d.corp_code = 'hltgq' AND d.status != '#4#' AND d.plan_id IN " +
+            "<foreach collection='planIds' item='pid' open='(' separator=',' close=')'>#{pid}</foreach>" +
+            "ORDER BY d.plan_id, d.water_user_id, d.start_time</script>")
+    List<DispatchExecRowVO> selectActiveDispatchRows(@Param("planIds") List<String> planIds);
+
+    /**
+     * 按户批量取未计费方案行（用水户列表「待出账水量」列装配用：未取消 + 未计费）。
+     * <p>计量口径与账单台账 pendingQty 同源（WaterUsageMeter）；差额扣减符号由 Service 按户配置判定。
+     */
+    @Select("<script>SELECT d.plan_id AS planId, d.water_user_id AS waterUserId, d.gate_id AS gateId, " +
+            "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
+            "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime " +
+            "FROM " + T_DISPATCH + " d " +
+            "WHERE d.corp_code = 'hltgq' AND d.status != '#4#' AND d.bill_id IS NULL AND d.water_user_id IN " +
+            "<foreach collection='userIds' item='uid' open='(' separator=',' close=')'>#{uid}</foreach>" +
+            "ORDER BY d.water_user_id, d.start_time</script>")
+    List<DispatchExecRowVO> selectUnbilledDispatchRows(@Param("userIds") List<String> userIds);
+
     /** 方案下拉（调度记录「关联调度方案」：未取消全部，编号倒序） */
     @Select("<script>SELECT d.id AS id, d.dispatch_no AS dispatchNo, d.water_user_id AS waterUserId, " +
             "u.user_no AS waterUserNo, u.name AS waterUserName, d.gate_id AS gateId, " +
-            "s.iofhpi AS gateCode, s.zzkaec AS gateName, d.status AS status " + BASE_JOINS +
+            "s.zzkaec AS gateName, d.status AS status " + BASE_JOINS +
             "WHERE d.corp_code = 'hltgq' AND d.status != '#4#' " +
             "<if test='keyword != null and keyword != \"\"'>AND (d.dispatch_no LIKE CONCAT('%', #{keyword}, '%') " +
             "OR u.name LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "ORDER BY d.dispatch_no DESC LIMIT 200</script>")
     List<DispatchOptionVO> selectActivePlanOptions(@Param("keyword") String keyword);
 
-    /** 已生效计划下拉（方案「关联用水计划」：仅已生效 #2#，编号倒序；planType 由 Service 转中文名） */
+    /**
+     * 已生效计划下拉（方案「关联用水计划」：仅已生效 #2#，编号倒序；planType 由 Service 转中文名）。
+     * <p>userId 非空时收敛为该户明细内的计划（编制弹窗「选户 → 计划下拉收敛」）并附该户配额
+     * （标量子查询，口径与配额校验一致）：userPlanWater = 该户在该计划中的明细合计（m³，配额分母）；
+     * userScheduledQty = 该户在该计划中已下达合计（未取消方案，m³，配额分子）。
+     */
     @Select("<script>SELECT p.id AS id, p.plan_no AS planNo, p.plan_name AS planName, " +
             "p.plan_type AS planType, p.total_water AS totalWater, " +
             "to_char(p.period_start, 'YYYY-MM-DD') AS periodStart, " +
             "to_char(p.period_end, 'YYYY-MM-DD') AS periodEnd " +
+            "<if test='userId != null and userId != \"\"'>, (SELECT COALESCE(SUM(i.plan_water), 0) " +
+            "FROM " + T_PLAN_ITEM + " i WHERE i.plan_id = p.id AND i.water_user_id = #{userId}) AS userPlanWater, " +
+            "(SELECT COALESCE(SUM(d.plan_amount), 0) FROM " + T_DISPATCH + " d " +
+            "WHERE d.plan_id = p.id AND d.water_user_id = #{userId} AND d.status != '#4#' " +
+            "AND d.corp_code = 'hltgq') AS userScheduledQty </if>" +
             "FROM " + T_PLAN + " p WHERE p.corp_code = 'hltgq' AND p.status = '#2#' " +
+            "<if test='userId != null and userId != \"\"'>AND EXISTS (SELECT 1 FROM " + T_PLAN_ITEM + " mi " +
+            "WHERE mi.plan_id = p.id AND mi.water_user_id = #{userId}) </if>" +
             "<if test='keyword != null and keyword != \"\"'>AND p.plan_name LIKE CONCAT('%', #{keyword}, '%') </if>" +
             "ORDER BY p.plan_no DESC LIMIT 200</script>")
-    List<WaterPlanVO> selectActivePlanOptionsForPick(@Param("keyword") String keyword);
+    List<PlanOptionVO> selectActivePlanOptionsForPick(@Param("keyword") String keyword,
+                                                      @Param("userId") String userId);
 
     /** 状态计数（Tab 角标：全部/待执行/执行中/已完成/已取消；key：status/total） */
     @Select("SELECT d.status AS status, COUNT(*) AS total FROM " + T_DISPATCH +

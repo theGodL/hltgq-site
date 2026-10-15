@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>节水指标体系</title>
+<link rel="stylesheet" href="./lib/water-saving-common.css">
+<style>
+/* ===== 平台变量：对齐平台「告警管理」；色值/圆角/层级集中在此，规则里禁止硬编码 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-hover:#f78989;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-color-warning:#fa8c16;
+  --el-color-warning-light:rgba(250,140,22,.1);
+  --el-color-success:#52c41a;
+  --el-color-success-light:rgba(82,196,26,.1);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-tertiary:#8c8c8c;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-text-color-icon:#606266;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-fill-color-disabled:#f5f5f5;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height:40px;
+  --el-control-height-sm:36px;
+  --el-table-header-bg:#f5f7fa;
+  --el-table-stripe-bg:#fafafa;
+  --el-table-row-height:52px;
+  --el-table-border:#f0f0f0;
+  --el-tag-bg:#f0f0f0;
+  --el-tag-color:#666;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+  --el-drawer-width:640px;
+}
+/* ===== 页级差异（公共样式统一见 lib/water-saving-common.css） ===== */
+.filter-item .field{width:220px}
+
+/* 骨架 / 面板 / 控件 / 表格基础 / 标签链接 / 空态：见 lib/water-saving-common.css */
+
+/* 分页与主抽屉：见 lib/water-saving-common.css */
+
+/* 标题 / 表单网格 / 标签 / 提示 / 值域框：见 lib/water-saving-common.css */
+
+/* 本页专属：下拉选项基准（min-height 36px；其余下拉样式见公共件） */
+.sel-opt{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer;line-height:20px}
+/* .sel-opt 状态与内部元素：见 lib/water-saving-common.css */
+
+/* 确认弹窗（.mbox）：见 lib/water-saving-common.css */
+
+/* 提示条：见 lib/water-saving-common.css */
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <!-- 筛选白卡：名称关键字 / 状态 -->
+  <div class="filter-card">
+    <div class="filter-item">
+      <span class="flt-label">指标名称</span>
+      <input class="field" id="f-name" placeholder="名称关键字" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">状态</span>
+      <div class="sel" id="f-enabled"></div>
+    </div>
+    <div class="filter-acts">
+      <button class="btn btn-primary" id="flt-search">查询</button>
+      <button class="btn btn-default" id="flt-reset">重置</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd">
+      <span class="hd-tip">计算方式固定三种（节水量 / 节水率 / 目标完成率），由服务端按公式驱动计算；名称全局唯一（含停用）；已关联方案的指标计算方式锁定、不可删除（可停用）；目标值变更、启停变更联动关联方案留痕。</span>
+      <div class="hd-acts">
+        <button class="btn btn-primary" id="btn-add">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>新增指标
+        </button>
+      </div>
+    </div>
+    <div class="panel-bd">
+      <div class="tbl-wrap">
+        <table>
+          <colgroup>
+            <col style="width:16%"><col style="width:20%"><col style="width:10%"><col style="width:16%">
+            <col style="width:9%"><col style="width:8%"><col style="width:10%"><col style="width:11%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>指标名称</th><th>计算方式</th><th>目标值</th><th>指标用途</th>
+              <th>关联方案</th><th>状态</th><th>更新时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="pg-bar"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 抽屉：指标（新增 / 编辑 两态共用） -->
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3 id="drawer-title">新增指标</h3>
+    <div class="hd-acts">
+      <button class="icon-btn" id="btn-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="drawer-bd">
+    <div class="sec-title">指标信息</div>
+    <div class="form-grid">
+      <div class="f-item span2">
+        <label class="f-label"><i class="req">*</i>指标名称</label>
+        <input class="field" id="in-name" maxlength="200" placeholder="如「渠系水利用系数」「年度节水量」" autocomplete="off">
+      </div>
+      <div class="f-item span2">
+        <label class="f-label"><i class="req">*</i>计算方式</label>
+        <div class="sel" id="sel-method"></div>
+        <div class="f-hint" id="method-hint">选定后由服务端按公式计算，不支持自由编辑</div>
+      </div>
+      <div class="f-item span2">
+        <label class="f-label">目标值</label>
+        <input class="field" id="in-target" inputmode="decimal" placeholder="选填，如 12.5" autocomplete="off">
+        <div class="f-hint">未设置目标的指标：关联方案展示「待设置目标」、不产生达标结论</div>
+      </div>
+      <div class="f-item span2">
+        <label class="f-label">指标用途</label>
+        <input class="field" id="in-purpose" maxlength="200" placeholder="选填，如「年度考核」" autocomplete="off">
+        <div class="f-hint">仅作说明展示</div>
+      </div>
+      <div class="f-item span4">
+        <div class="val-box" id="form-tip" hidden></div>
+      </div>
+    </div>
+  </div>
+  <div class="drawer-ft">
+    <button class="btn btn-default" id="btn-cancel">取消</button>
+    <button class="btn btn-primary" id="btn-save">保存</button>
+  </div>
+</aside>
+
+<!-- 确认弹窗（启停 / 删除） -->
+<div class="mask" id="dlg-mask">
+  <div class="mbox">
+    <div class="mbox-hd" id="dlg-title">提示</div>
+    <div class="mbox-bd" id="dlg-text"></div>
+    <div class="mbox-alert" id="dlg-alert" hidden></div>
+    <div class="mbox-ft">
+      <button class="btn btn-default" id="dlg-cancel">取消</button>
+      <button class="btn btn-danger" id="dlg-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="./lib/water-saving-common.js"></script>
+<script>
+/* ============================ 常量与状态 ============================ */
+const API = '/hltgq-site';
+const METHOD_HINT_DEFAULT = '选定后由服务端按公式计算，不支持自由编辑';
+const ICON = {
+  search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  tick: '<svg class="tick" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  pencil: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.6 9.4a2.12 2.12 0 0 0-3-3L5 17v3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.4 6.8l2.8 2.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.6 7V4.6h4.8V7M6.6 7l.9 12.3A1.6 1.6 0 0 0 9.1 20.8h5.8a1.6 1.6 0 0 0 1.6-1.5L17.4 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 10.8v5.6M13.6 10.8v5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  power: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3.6v8.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M6.3 6.9a8.2 8.2 0 1 0 11.4 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+const S = {
+  meta: { methods: [], flags: { yes: '#1#', no: '#2#' } },
+  all: [], filtered: [],
+  page: 1, size: 20, total: 0,
+  filter: { name: '', enabled: '' },
+  mode: '', row: null, saving: false, seq: 0
+};
+
+/* ===== 公共工具（唯一实现见 lib/water-saving-common.js；此处按原名解构，页面调用点保持不变） ===== */
+const { $, esc, showToast, api, fmtNum, createSelect, closeAllSelects, renderPager,
+  openDrawer, closeDrawer, showDlg, closeDlg, onDlgOk } = WSC;
+/* 页级参数化：公共逻辑 + 本页差异（空行 colspan=8；翻页/跳页后刷新 = renderTable + renderPager） */
+const refreshPage = () => { renderTable(); renderPager(); };
+const emptyRow = (text, plain) => WSC.emptyRow(text, plain, 8);
+const jumpToPage = val => WSC.jumpToPage(val, refreshPage);
+const onPagerClick = e => WSC.onPagerClick(e, refreshPage);
+
+/* —— 下拉组件 / 空行 / 分页 / 抽屉 / 弹窗：公共实现统一见 lib/water-saving-common.js（顶部已解构别名） —— */
+
+/* ============================ 列表（客户端过滤 + 分页） ============================ */
+/* 空行 emptyRow 见 lib/water-saving-common.js（顶部已按本页 colspan=8 包装） */
+
+async function loadList() {
+  const seq = ++S.seq;
+  $('tbl-body').innerHTML = emptyRow('加载中...', true);
+  try {
+    const data = await api('/water-saving/indicators/list');
+    if (seq !== S.seq) return;
+    S.all = Array.isArray(data) ? data : [];
+  } catch (e) {
+    if (seq !== S.seq) return;
+    S.all = [];
+    showToast(e.message || '数据加载失败', true);
+  }
+  applyFilter();
+}
+
+function applyFilter() {
+  const name = (S.filter.name || '').toLowerCase();
+  const enabled = S.filter.enabled;
+  S.filtered = S.all.filter(r => {
+    if (name && String(r.name || '').toLowerCase().indexOf(name) < 0) return false;
+    if (enabled && r.enabled !== enabled) return false;
+    return true;
+  });
+  S.total = S.filtered.length;
+  const pages = Math.max(1, Math.ceil(S.total / S.size));
+  if (S.page > pages) S.page = pages;
+  renderTable();
+  renderPager();
+}
+
+function currentPageRecords() {
+  const start = (S.page - 1) * S.size;
+  return S.filtered.slice(start, start + S.size);
+}
+
+function actsCell(r) {
+  const id = esc(r.id);
+  const enabled = r.enabled === '#1#';
+  return '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="编辑" aria-label="编辑">' + ICON.pencil + '</button>' +
+    '<button class="lnk-btn' + (enabled ? ' danger' : '') + '" data-act="toggle" data-id="' + id +
+    '" data-tip="' + (enabled ? '停用' : '启用') + '" aria-label="' + (enabled ? '停用' : '启用') + '">' + ICON.power + '</button>' +
+    '<button class="lnk-btn danger" data-act="del" data-id="' + id + '" data-tip="删除" aria-label="删除">' + ICON.trash + '</button>';
+}
+
+function renderTable() {
+  const tb = $('tbl-body');
+  const rows = currentPageRecords();
+  if (!rows.length) {
+    tb.innerHTML = emptyRow('暂无数据');
+    return;
+  }
+  tb.innerHTML = rows.map(r => {
+    const enabled = r.enabled === '#1#';
+    const refs = Number(r.schemeCount) || 0;
+    const target = (r.targetValue === null || r.targetValue === undefined)
+      ? '<span class="sub">未设置</span>'
+      : esc(fmtNum(r.targetValue)) + ' <span class="sub">' + esc(r.unit || '') + '</span>';
+    const method = esc(r.methodName || '--') +
+      '<span class="sub-line">' + esc((r.formula || '') + (r.unit ? ' · ' + r.unit : '')) + '</span>';
+    return '<tr data-key="' + esc(r.id) + '">' +
+      '<td><span class="lnk" data-act="edit" data-id="' + esc(r.id) + '">' + esc(r.name || '--') + '</span>' +
+      '<span class="sub-line">创建 ' + esc(r.createdText || '--') + '</span></td>' +
+      '<td>' + method + '</td>' +
+      '<td>' + target + '</td>' +
+      '<td>' + esc(r.purpose || '--') + '</td>' +
+      '<td>' + (refs ? refs + ' 个' : '<span class="sub">—</span>') + '</td>' +
+      '<td>' + (enabled ? '<span class="tag green">启用</span>' : '<span class="tag gray">停用</span>') + '</td>' +
+      '<td>' + esc(r.updatedText || '--') + '</td>' +
+      '<td class="col-act">' + actsCell(r) + '</td></tr>';
+  }).join('');
+}
+
+function onTableClick(e) {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const id = el.dataset.id;
+  const act = el.dataset.act;
+  if (act === 'edit') openEdit(id);
+  else if (act === 'toggle') askToggle(id);
+  else if (act === 'del') askDel(id);
+}
+
+/* ============================ 分页 ============================ */
+/* pageNumbers / renderPager 见 lib/water-saving-common.js（顶部已解构）；
+   jumpToPage / onPagerClick 顶部已按本页刷新方式（renderTable + renderPager）包装 */
+
+/* ============================ 抽屉与表单 ============================ */
+let selFEnabled, selMethod;
+
+function initSelects() {
+  selFEnabled = createSelect($('f-enabled')).setPlaceholder('全部状态');
+  selMethod = createSelect($('sel-method')).setPlaceholder('请选择计算方式');
+}
+
+function fillEnabledOptions() {
+  const flags = S.meta.flags || { yes: '#1#', no: '#2#' };
+  selFEnabled.setOptions([
+    { value: '', label: '全部状态' },
+    { value: flags.yes, label: '启用' },
+    { value: flags.no, label: '停用' }
+  ]).setValue('');
+}
+
+function fillMethodOptions() {
+  const opts = (S.meta.methods || []).map(m => ({
+    value: m.value,
+    label: m.label + (m.unit ? '（' + m.unit + '）' : ''),
+    sub: m.formula || ''
+  }));
+  selMethod.setOptions(opts);
+}
+
+/* openDrawer / closeDrawer 见 lib/water-saving-common.js（顶部已解构别名） */
+
+function setMode(mode) {
+  S.mode = mode;
+  $('drawer-title').textContent = mode === 'edit' ? '编辑指标' : '新增指标';
+  $('btn-save').textContent = mode === 'edit' ? '保存修改' : '保存';
+}
+
+function clearErrors() {
+  ['in-name', 'in-target', 'in-purpose'].forEach(id => $(id).classList.remove('is-err'));
+  if (selMethod) selMethod.setError(false);
+}
+
+function resetForm() {
+  clearErrors();
+  $('in-name').value = '';
+  $('in-target').value = '';
+  $('in-purpose').value = '';
+  selMethod.setValue('').setDisabled(false).setError(false);
+  $('method-hint').textContent = METHOD_HINT_DEFAULT;
+  $('form-tip').hidden = true;
+}
+
+function openCreate() {
+  S.row = null;
+  setMode('create');
+  resetForm();
+  openDrawer();
+}
+
+function openEdit(id) {
+  const r = S.all.filter(x => x.id === id)[0];
+  if (!r) {
+    showToast('指标不存在，请刷新后重试', true);
+    return;
+  }
+  S.row = r;
+  setMode('edit');
+  resetForm();
+  $('in-name').value = r.name || '';
+  selMethod.setValue(r.method || '', r.methodName || '');
+  $('in-target').value = (r.targetValue === null || r.targetValue === undefined) ? '' : fmtNum(r.targetValue);
+  $('in-purpose').value = r.purpose || '';
+  const refs = Number(r.schemeCount) || 0;
+  if (refs > 0) {
+    selMethod.setDisabled(true);
+    $('method-hint').textContent = '已被 ' + refs + ' 个方案关联，计算方式锁定不可修改（可新建指标替代）';
+    $('form-tip').hidden = false;
+    $('form-tip').classList.remove('warn');
+    $('form-tip').textContent = '该指标关联了 ' + refs + ' 个方案：修改目标值会联动方案留痕重算；名称可改，计算方式锁定。';
+  }
+  openDrawer();
+}
+
+function collectForm() {
+  clearErrors();
+  const name = $('in-name').value.trim();
+  if (!name) { $('in-name').classList.add('is-err'); throw new Error('请填写指标名称'); }
+  if (name.length > 200) { $('in-name').classList.add('is-err'); throw new Error('指标名称不能超过 200 字'); }
+  const method = selMethod.getValue();
+  if (!method) { selMethod.setError(true); throw new Error('请选择计算方式'); }
+  let target = null;
+  const raw = $('in-target').value.trim();
+  if (raw) {
+    target = Number(raw);
+    const dot = raw.indexOf('.');
+    if (isNaN(target) || target <= 0 || (dot >= 0 && raw.length - dot - 1 > 6)) {
+      $('in-target').classList.add('is-err');
+      throw new Error('目标值需为大于 0 的数字（最多 6 位小数）');
+    }
+  }
+  const purpose = $('in-purpose').value.trim();
+  if (purpose.length > 200) { $('in-purpose').classList.add('is-err'); throw new Error('指标用途不能超过 200 字'); }
+  return { name: name, method: method, targetValue: target, purpose: purpose || null };
+}
+
+async function save() {
+  if (S.saving) return;
+  let body;
+  try {
+    body = collectForm();
+  } catch (e) {
+    showToast(e.message, true);
+    return;
+  }
+  const isEdit = S.mode === 'edit' && S.row;
+  S.saving = true;
+  const btn = $('btn-save');
+  btn.classList.add('is-loading');
+  try {
+    if (isEdit) {
+      await api('/water-saving/indicators/update?id=' + encodeURIComponent(S.row.id), { method: 'PUT', body: body });
+    } else {
+      await api('/water-saving/indicators/create', { method: 'POST', body: body });
+    }
+    closeDrawer();
+    showToast(isEdit ? '指标已更新' : '指标已创建');
+    await loadList();
+  } catch (e) {
+    showToast(e.message || '保存失败', true);
+  } finally {
+    S.saving = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+/* ============================ 行操作（启停 / 删除） ============================ */
+function askToggle(id) {
+  const r = S.all.filter(x => x.id === id)[0];
+  if (!r) return;
+  const enabled = r.enabled === '#1#';
+  showDlg({
+    title: enabled ? '停用指标' : '启用指标',
+    text: enabled
+      ? '确定停用「' + (r.name || '') + '」？停用后新方案不可勾选（既有关联保留、已关联方案将留痕重算）。'
+      : '确定启用「' + (r.name || '') + '」？启用后新方案可勾选该指标。',
+    okText: enabled ? '停用' : '启用',
+    danger: enabled,
+    onOk: async () => {
+      await api('/water-saving/indicators/toggle?id=' + encodeURIComponent(id), { method: 'POST' });
+      showToast(enabled ? '指标已停用' : '指标已启用');
+      await loadList();
+    }
+  });
+}
+
+function askDel(id) {
+  const r = S.all.filter(x => x.id === id)[0];
+  if (!r) return;
+  showDlg({
+    title: '删除指标',
+    text: '确定删除指标「' + (r.name || '') + '」？删除后不可恢复。已关联方案的指标不可删除（可改为停用）。',
+    okText: '删除',
+    onOk: async () => {
+      await api('/water-saving/indicators/delete?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      showToast('指标已删除');
+      await loadList();
+    }
+  });
+}
+
+/* ============================ 确认弹窗 ============================ */
+/* showDlg / closeDlg / onDlgOk 见 lib/water-saving-common.js（顶部已解构别名） */
+
+/* ============================ 事件绑定与初始化 ============================ */
+function bindEvents() {
+  $('flt-search').addEventListener('click', () => {
+    S.filter.name = $('f-name').value.trim();
+    S.filter.enabled = selFEnabled.getValue();
+    S.page = 1;
+    applyFilter();
+  });
+  $('flt-reset').addEventListener('click', () => {
+    $('f-name').value = '';
+    selFEnabled.setValue('');
+    S.filter = { name: '', enabled: '' };
+    S.page = 1;
+    applyFilter();
+  });
+  $('f-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('flt-search').click();
+  });
+
+  $('btn-add').addEventListener('click', openCreate);
+  $('tbl-body').addEventListener('click', onTableClick);
+  $('pg-bar').addEventListener('click', e => {
+    if (e.target.id === 'pg-size') return;
+    onPagerClick(e);
+  });
+  $('pg-bar').addEventListener('change', e => {
+    if (e.target.id === 'pg-size') {
+      S.size = Number(e.target.value) || 20;
+      S.page = 1;
+      applyFilter();
+    }
+  });
+  $('pg-bar').addEventListener('keydown', e => {
+    if (e.target.id === 'pg-jump' && e.key === 'Enter') jumpToPage(e.target.value);
+  });
+
+  $('btn-close').addEventListener('click', closeDrawer);
+  $('drawer-mask').addEventListener('click', () => { if (!S.saving) closeDrawer(); });
+  $('btn-cancel').addEventListener('click', closeDrawer);
+  $('btn-save').addEventListener('click', save);
+
+  $('dlg-ok').addEventListener('click', onDlgOk);
+  $('dlg-cancel').addEventListener('click', closeDlg);
+  $('dlg-mask').addEventListener('click', e => {
+    if (e.target === $('dlg-mask')) closeDlg();
+  });
+
+  document.addEventListener('click', e => {
+    const sel = e.target && e.target.closest ? e.target.closest('.sel') : null;
+    closeAllSelects(sel);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    closeAllSelects(null);
+    if ($('dlg-mask').classList.contains('show')) { closeDlg(); return; }
+    if ($('drawer').classList.contains('show') && !S.saving) closeDrawer();
+  });
+}
+
+async function init() {
+  initSelects();
+  bindEvents();
+  try {
+    const meta = await api('/water-saving/meta');
+    S.meta = meta || S.meta;
+  } catch (e) {
+    showToast('字典加载失败：' + e.message, true);
+  }
+  fillEnabledOptions();
+  fillMethodOptions();
+  await loadList();
+}
+
+init();
+</script>
+</body>
+</html>

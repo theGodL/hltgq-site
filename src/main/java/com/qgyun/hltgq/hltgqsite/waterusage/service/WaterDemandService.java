@@ -58,11 +58,15 @@ public class WaterDemandService {
 
     // ==================== 元数据 / 统计 / 列表 / 详情 ====================
 
-    /** 表单元数据（审核状态字典 + 用途建议 + 当天日期） */
+    /**
+     * 表单元数据（审核状态字典 + 用途候选 + 当天日期）。
+     * <p>候选全部取后端**写死字典**（{@link WaterUsageDict#usageOptions()} 等），**不查库**、
+     * 不依赖库内是否已有上报数据；「用途」为封闭值域，提交时按同一字典白名单校验。
+     */
     public Map<String, Object> meta() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("statuses", WaterUsageDict.demandStatusOptions());
-        out.put("usages", demandMapper.selectUsageOptions());
+        out.put("usages", WaterUsageDict.usageOptions());
         out.put("today", LocalDate.now().toString());
         return out;
     }
@@ -107,7 +111,7 @@ public class WaterDemandService {
 
     /** 「用水户」下拉（仅正常状态） */
     public List<UserOptionVO> users(String keyword) {
-        return userMapper.selectUserOptions(WaterUsageSupport.trim(keyword));
+        return userMapper.selectUserOptions(WaterUsageSupport.trim(keyword), null);
     }
 
     /** 「关联需水申请」下拉（仅已通过；调度方案编制用） */
@@ -240,7 +244,7 @@ public class WaterDemandService {
         String remark;
     }
 
-    /** 上报/编辑共用校验：用水户正常、闸口归属该户闸口组、水量/日期/文本长度 */
+    /** 上报/编辑共用校验：用水户正常、闸口归属该户闸口组、水量/日期合法、用途属字典候选、备注长度 */
     private Validated validate(WaterDemandSaveVO req) {
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
@@ -270,9 +274,23 @@ public class WaterDemandService {
         if (v.endDate.isBefore(v.startDate)) {
             throw new IllegalArgumentException("用水时段止不能早于用水时段起");
         }
-        v.usage = WaterUsageSupport.maxLength(WaterUsageSupport.trim(req.getUsage()), 200, "用途");
+        v.usage = requireUsage(req.getUsage());
         v.remark = WaterUsageSupport.maxLength(WaterUsageSupport.trim(req.getRemark()), 200, "备注");
         return v;
+    }
+
+    /**
+     * 用途：选填，但**必须是字典写死 12 项之一**（内存白名单校验，不查库、不接受候选外的自输入值）。
+     */
+    private static String requireUsage(String raw) {
+        String usage = WaterUsageSupport.trim(raw);
+        if (usage == null) {
+            return null;
+        }
+        if (!WaterUsageDict.isValidUsage(usage)) {
+            throw new IllegalArgumentException("请从下拉列表中选择用途");
+        }
+        return usage;
     }
 
     /** 出口装饰：审核状态英文码 + 中文名、水量折算万m³ */

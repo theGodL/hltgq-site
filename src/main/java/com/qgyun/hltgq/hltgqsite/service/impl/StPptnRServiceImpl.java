@@ -33,7 +33,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -42,6 +41,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
+import com.qgyun.hltgq.hltgqsite.model.util.StationStatusUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DeviceValueUtils;
 
 @Service
 public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> implements StPptnRService {
@@ -100,16 +101,6 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             "弥陀", "姜家寨", "河图铺", "花凉亭坝上", "寺前", "牛镇"
     );
 
-    /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
-    private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
-            "南山寺节制闸", "渠首进水闸", "渠首电站防洪闸", "双庙湖节制闸"
-    ));
-
-    /** MQTT 站断联阈值：报文 10 分钟一次，30 分钟无更新判离线 */
-    private static final long MQTT_STALE_MINUTES = 30;
-    /** RabbitMQ 站断联阈值：报文 1 小时一次，70 分钟无更新判离线 */
-    private static final long RBT_STALE_MINUTES = 70;
-
     @Override
     public List<StPptnR> latestPerStation() {
         return baseMapper.selectLatestPerStation();
@@ -165,7 +156,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             if (key != null && reservoirOnline.containsKey(key)) {
                 vo.setIsOnline(reservoirOnline.get(key));
             } else {
-                vo.setIsOnline(!isStale(vo.getTm(), vo.getStnm()));
+                vo.setIsOnline(!StationStatusUtils.isStale(vo.getTm(), vo.getStnm()));
             }
         });
         // 填充昨日雨量 dailyDyp（分页前一次批量查询，避免翻页重复计算）
@@ -189,7 +180,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             if (key != null && reservoirOnline.containsKey(key)) {
                 vo.setIsOnline(reservoirOnline.get(key));
             } else {
-                vo.setIsOnline(!isStale(vo.getTm(), vo.getStnm()));
+                vo.setIsOnline(!StationStatusUtils.isStale(vo.getTm(), vo.getStnm()));
             }
         });
         fillDailyDyp(vos);
@@ -234,7 +225,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             vo.setTm(((Timestamp) tmObj).toLocalDateTime());
         }
         // -999 = 设备不存在：转 null 返回（-9991 设备异常保留透传由前端展示 '--'）
-        vo.setDyp(nullIfMissing(toBigDecimal(row.get("dyp"))));
+        vo.setDyp(DeviceValueUtils.nullIfMissing(toBigDecimal(row.get("dyp"))));
         // 时段增量计算：当前DYP - 历史DYP（DYP永不归零，计算结果准确）
         BigDecimal dypVal = toBigDecimal(row.get("dyp"));
         BigDecimal dyp1h = toBigDecimal(row.get("dyp_1h"));
@@ -251,17 +242,6 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         // 电压：取电压表最新一条（SQL 已关联）
         vo.setVol(toBigDecimal(row.get("vol")));
         return vo;
-    }
-
-    /**
-     * 断联判定（与前端 isStaleTm 规则一致）：MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线；
-     * 无时间值（null）视为在线（不判离线）；时间在未来（时钟偏差）也视为在线
-     */
-    private boolean isStale(LocalDateTime tm, String stnm) {
-        if (tm == null) return false;
-        long threshold = MQTT_STATION_NAMES.contains(stnm) ? MQTT_STALE_MINUTES : RBT_STALE_MINUTES;
-        // 毫秒级严格大于，与前端 Date.now() - t > staleMs 语义完全一致（toMinutes 向下取整会导致边界差一分钟误判）
-        return Duration.between(tm, LocalDateTime.now()).toMillis() > threshold * 60_000L;
     }
 
     /**
@@ -282,16 +262,10 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         wrapper.in("iofhpi", stcds);
         for (StStinfo s : stStinfoMapper.selectList(wrapper)) {
             if (s.getStcd() != null) {
-                map.put(s.getStcd().trim(), isZebpsuOnline(s.getZebpsu()));
+                map.put(s.getStcd().trim(), StationStatusUtils.isZebpsuOnline(s.getZebpsu()));
             }
         }
         return map;
-    }
-
-    /** zebpsu 站点状态：#1# 在线、#2# 离线；兼容 "#1#"/"1"/"#1" 格式，null 或未知值默认在线 */
-    private boolean isZebpsuOnline(String zebpsu) {
-        if (zebpsu == null) return true;
-        return !"2".equals(zebpsu.trim().replace("#", ""));
     }
 
     private BigDecimal toBigDecimal(Object val) {
@@ -300,33 +274,11 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         return new BigDecimal(val.toString());
     }
 
-    /**
-     * -9991 表示设备异常，此类数值一律视为缺失，不参与展示与计算；
-     * -999 表示设备不存在（报文原生），同样视为缺失
-     */
-    private boolean isDeviceError(BigDecimal v) {
-        return v != null && v.compareTo(DEVICE_ERROR) == 0;
-    }
-
-    private boolean isDeviceMissing(BigDecimal v) {
-        return v != null && v.compareTo(DEVICE_MISSING) == 0;
-    }
-
-    /** 设备异常标记（原 -999 语义迁移为 -9991） */
-    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
-    /** 设备不存在标记（报文原生 -999，前端不展示） */
-    private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
-
-    /** -999 = 设备不存在：转 null 返回（-9991 设备异常保留透传由前端展示 '--'） */
-    private BigDecimal nullIfMissing(BigDecimal v) {
-        return isDeviceMissing(v) ? null : v;
-    }
-
     /** 计算增量，结果不小于0；任一为null则返回null；任一为-9991（设备异常）则返回-9991透传标记；任一为-999（设备不存在）则返回null（前端不展示） */
     private BigDecimal subtractOrNull(BigDecimal current, BigDecimal prev) {
         if (current == null || prev == null) return null;
-        if (isDeviceError(current) || isDeviceError(prev)) return DEVICE_ERROR;
-        if (isDeviceMissing(current) || isDeviceMissing(prev)) return null;
+        if (DeviceValueUtils.isError(current) || DeviceValueUtils.isError(prev)) return DeviceValueUtils.ERROR;
+        if (DeviceValueUtils.isMissing(current) || DeviceValueUtils.isMissing(prev)) return null;
         BigDecimal diff = current.subtract(prev);
         return diff.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : diff;
     }
@@ -337,8 +289,8 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
      */
     private BigDecimal safeDypIncrement(BigDecimal curDyp, BigDecimal prevDyp) {
         if (curDyp == null || prevDyp == null) return BigDecimal.ZERO;
-        if (isDeviceError(curDyp) || isDeviceError(prevDyp)) return BigDecimal.ZERO;
-        if (isDeviceMissing(curDyp) || isDeviceMissing(prevDyp)) return BigDecimal.ZERO;
+        if (DeviceValueUtils.isError(curDyp) || DeviceValueUtils.isError(prevDyp)) return BigDecimal.ZERO;
+        if (DeviceValueUtils.isMissing(curDyp) || DeviceValueUtils.isMissing(prevDyp)) return BigDecimal.ZERO;
         return curDyp.compareTo(prevDyp) > 0 ? curDyp.subtract(prevDyp) : BigDecimal.ZERO;
     }
 

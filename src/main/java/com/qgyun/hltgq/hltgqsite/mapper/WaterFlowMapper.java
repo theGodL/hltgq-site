@@ -1,7 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.mapper;
 
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
-import com.qgyun.hltgq.hltgqsite.vo.PeriodRegimeVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;

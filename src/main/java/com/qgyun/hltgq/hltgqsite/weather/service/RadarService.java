@@ -31,6 +31,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
+import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
 
 /**
  * N2 雷达图服务（方案 §4）：帧列表缓存 + 瓦片代理 + 进程内 LRU + 上游令牌桶 + 并发信号量 + 终端限流。
@@ -255,7 +256,7 @@ public class RadarService {
     private void collectFrames(JsonNode array, String type, List<RadarFrameVO> target) {
         for (JsonNode item : array) {
             Long timestamp = longField(item, "time");
-            String path = textField(item, "path");
+            String path = JsonFieldUtils.textField(item, "path");
             if (timestamp == null || path == null) {
                 log.warn("雷达帧字段缺失，已跳过: time={} path={}", timestamp, path);
                 continue;
@@ -376,15 +377,5 @@ public class RadarService {
     private static Long longField(JsonNode node, String field) {
         JsonNode value = node == null ? null : node.get(field);
         return value != null && value.isNumber() ? value.asLong() : null;
-    }
-
-    /** 字段安全取字符串：缺失/JSON null/容器节点返回 null */
-    private static String textField(JsonNode node, String field) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || value.isNull() || value.isContainerNode()) {
-            return null;
-        }
-        String text = value.asText();
-        return text == null || text.isEmpty() ? null : text;
     }
 }

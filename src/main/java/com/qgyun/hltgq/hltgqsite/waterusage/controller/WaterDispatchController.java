@@ -3,9 +3,10 @@ package com.qgyun.hltgq.hltgqsite.waterusage.controller;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport;
 import com.qgyun.hltgq.hltgqsite.waterusage.service.WaterDispatchService;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.DemandOptionVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.PlanOptionVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.UserOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDispatchSaveVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDispatchVO;
-import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,10 +67,11 @@ public class WaterDispatchController {
         return dispatchService.detail(id);
     }
 
-    /** 「关联用水计划」下拉（仅已生效） */
+    /** 「关联用水计划」下拉（仅已生效；传 userId 时仅返回该户明细内的计划并附该户配额：该户明细合计 / 已下达合计，单位 m³） */
     @GetMapping("/plans")
-    public List<WaterPlanVO> plans(@RequestParam(required = false) String keyword) {
-        return dispatchService.plans(keyword);
+    public List<PlanOptionVO> plans(@RequestParam(required = false) String keyword,
+                                    @RequestParam(required = false) String userId) {
+        return dispatchService.plans(keyword, userId);
     }
 
     /** 「关联需水申请」下拉（仅已通过；可按用水户过滤） */
@@ -77,6 +79,13 @@ public class WaterDispatchController {
     public List<DemandOptionVO> demands(@RequestParam(required = false) String keyword,
                                         @RequestParam(required = false) String userId) {
         return dispatchService.demands(keyword, userId);
+    }
+
+    /** 「用水户」下拉（编制弹窗；仅正常状态；传 planId 时仅该计划明细内的户，与「选户收敛计划」构成双向联动） */
+    @GetMapping("/users")
+    public List<UserOptionVO> users(@RequestParam(required = false) String keyword,
+                                    @RequestParam(required = false) String planId) {
+        return dispatchService.users(keyword, planId);
     }
 
     /** 新增（待执行；编号冲突最多重试 3 次） */

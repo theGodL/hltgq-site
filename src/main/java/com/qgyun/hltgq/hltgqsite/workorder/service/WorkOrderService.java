@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 
 /**
  * 工单管理查询服务：类型/状态编码 → 中文（口径见《数据表结构汇总.md》第 7 节）。
@@ -56,34 +58,12 @@ public class WorkOrderService {
     public List<WorkOrderListVO> list(String site, LocalDate startDate, LocalDate endDate, String status) {
         LocalDateTime startTime = startDate == null ? null : startDate.atStartOfDay();
         LocalDateTime endTime = endDate == null ? null : endDate.plusDays(1).atStartOfDay();
-        List<WorkOrderListVO> rows = mapper.selectWorkOrderList(trimToNull(site), startTime, endTime,
-                resolveCode(STATUS_LABELS, status));
+        List<WorkOrderListVO> rows = mapper.selectWorkOrderList(CheckUtils.trim(site), startTime, endTime,
+                DictUtils.resolveCode(STATUS_LABELS, status));
         for (WorkOrderListVO row : rows) {
             row.setType(TYPE_LABELS.getOrDefault(row.getTypeCode(), row.getTypeCode()));
             row.setStatus(STATUS_LABELS.getOrDefault(row.getStatusCode(), row.getStatusCode()));
         }
         return rows;
-    }
-
-    /** 过滤值归一：空 → null；编码（#...#）原样；中文 → 编码；未知原样下传 */
-    private String resolveCode(Map<String, String> labels, String value) {
-        String v = trimToNull(value);
-        if (v == null || v.startsWith("#")) {
-            return v;
-        }
-        for (Map.Entry<String, String> e : labels.entrySet()) {
-            if (e.getValue().equals(v)) {
-                return e.getKey();
-            }
-        }
-        return v;
-    }
-
-    private String trimToNull(String s) {
-        if (s == null) {
-            return null;
-        }
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
     }
 }

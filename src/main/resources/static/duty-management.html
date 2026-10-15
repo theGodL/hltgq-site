@@ -818,11 +818,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
   }
 
-  /** 表单 → 保存请求体(§3.5):时间已是 'yyyy-MM-dd HH:mm';dutyDate 由开始时间推导(接口仍要求);结束不晚于开始时自动顺延次日 */
+  /** 表单 → 保存请求体(§3.5):时间已是 'yyyy-MM-dd HH:mm';dutyDate 由开始时间推导(接口仍要求);时段先后由保存前校验保证 */
   function collectForm() {
     var start = $('f-time-start').value;
     var end = $('f-time-end').value;
-    if (end <= start) end = addDays(end.slice(0, 10), 1) + ' ' + end.slice(11);
     return {
       dutyDate: start.slice(0, 10),
       shiftCode: $('f-shift').dataset.value,
@@ -839,6 +838,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     if (drawerState.mode === 'view') { closeDrawer(); return; }
     var missing = validateForm();
     if (missing) { toast('请填写「' + missing + '」'); return; }
+
+    // 时段校验:结束时间须晚于开始时间(跨天值班请在日历面板中选择次日日期)
+    if ($('f-time-end').value <= $('f-time-start').value) { toast('结束时间需晚于开始时间'); return; }
 
     var isEdit = drawerState.mode === 'edit';
     var payload = collectForm();

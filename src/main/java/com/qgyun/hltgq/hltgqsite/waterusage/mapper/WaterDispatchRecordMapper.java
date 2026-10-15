@@ -36,7 +36,7 @@ public interface WaterDispatchRecordMapper {
     /** 基础列（列表/详情共用；op_time 输出文本；op_type 出口映射英文码） */
     String BASE_COLS = "r.id AS id, r.dispatch_id AS dispatchId, d.dispatch_no AS dispatchNo, " +
             "r.water_user_id AS waterUserId, u.user_no AS waterUserNo, u.name AS waterUserName, " +
-            "r.gate_id AS gateId, s.iofhpi AS gateCode, s.zzkaec AS gateName, " +
+            "r.gate_id AS gateId, s.zzkaec AS gateName, " +
             "to_char(r.op_time, 'YYYY-MM-DD HH24:MI') AS opTime, r.op_type AS opType, r.height AS height, " +
             "r.operator AS operator, r.remark AS remark, " +
             "to_char(r.created_at, 'YYYY-MM-DD HH24:MI') AS createTime";
@@ -90,10 +90,4 @@ public interface WaterDispatchRecordMapper {
     /** 物理删除（留痕数据宽进，无状态守卫） */
     @Delete("DELETE FROM " + T_RECORD + " WHERE id = #{id} AND corp_code = 'hltgq'")
     int deleteRecord(@Param("id") String id);
-
-    /** 操作人建议（表单「操作人」下拉：历史值去重，最多 50 条） */
-    @Select("SELECT DISTINCT r.operator FROM " + T_RECORD + " r " +
-            "WHERE r.corp_code = 'hltgq' AND r.operator IS NOT NULL AND r.operator != '' " +
-            "ORDER BY r.operator LIMIT 50")
-    List<String> selectOperators();
 }

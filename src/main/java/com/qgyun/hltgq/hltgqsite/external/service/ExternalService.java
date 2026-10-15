@@ -29,6 +29,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 
 /**
  * 三维系统对接（/external）聚合逻辑。
@@ -125,12 +127,12 @@ public class ExternalService {
         if (station == null) {
             throw new IllegalArgumentException("站点不存在: " + key);
         }
-        String siteId = stringOf(station.get("id"));
+        String siteId = ValueConvertUtils.str(station.get("id"));
 
         ExternalVO.IntakeGate vo = new ExternalVO.IntakeGate();
         vo.setSite(siteId);
-        vo.setStcd(stringOf(station.get("iofhpi")));
-        vo.setStnm(stringOf(station.get("zzkaec")));
+        vo.setStcd(ValueConvertUtils.str(station.get("iofhpi")));
+        vo.setStnm(ValueConvertUtils.str(station.get("zzkaec")));
         vo.setManagementUnit(intakeGateUnit);
 
         Map<String, Object> gate = mapper.selectLatestGateLevel(siteId);
@@ -260,7 +262,7 @@ public class ExternalService {
      */
     public ExternalVO.StationMonitor stationMonitor(String type, String name) {
         String typeCode = monitorTypeCode(type);
-        List<Map<String, Object>> archives = mapper.selectArchiveByType(typeCode, trimToNull(name));
+        List<Map<String, Object>> archives = mapper.selectArchiveByType(typeCode, CheckUtils.trim(name));
         ExternalVO.StationMonitor vo = new ExternalVO.StationMonitor();
         if (archives.isEmpty()) {
             // 站名筛选无命中（或该类型下无档案站点）：不查实时值，直接返回空列表
@@ -281,12 +283,12 @@ public class ExternalService {
                 }
                 // isOnline 每行必有：个别实时值来源缺该字段时按档案状态兜底（防御，正常不应触发）
                 if (!row.containsKey("isOnline")) {
-                    row.put("isOnline", !"2".equals(stringOf(row.get("zebpsu"))));
+                    row.put("isOnline", !"2".equals(ValueConvertUtils.str(row.get("zebpsu"))));
                 }
             } else {
                 // 无实时值（hasData=false）的站点：isOnline 按档案状态兜底，1=在线 / 2=离线 / 未设置按在线
                 // （isOnline 每行必有：字段缺失时前端无法与人工离线站区分；未设置按在线，与水位接口档案口径一致）
-                row.put("isOnline", !"2".equals(stringOf(row.get("zebpsu"))));
+                row.put("isOnline", !"2".equals(ValueConvertUtils.str(row.get("zebpsu"))));
             }
             row.put("data", data);
             row.put("hasData", data != null);
@@ -415,8 +417,8 @@ public class ExternalService {
 
     /** 档案行匹配实时值：先按档案主键（id）匹配，再按站点编号（iofhpi）匹配，无数据返回 null */
     private Map<String, Object> matchMonitorData(Map<String, Map<String, Object>> index, Map<String, Object> row) {
-        Map<String, Object> data = index.get(stringOf(row.get("id")));
-        return data != null ? data : index.get(stringOf(row.get("iofhpi")));
+        Map<String, Object> data = index.get(ValueConvertUtils.str(row.get("id")));
+        return data != null ? data : index.get(ValueConvertUtils.str(row.get("iofhpi")));
     }
 
     /**
@@ -426,32 +428,32 @@ public class ExternalService {
     private Map<String, Object> toArchiveRow(Map<String, Object> archive) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("ywvyds", refOf(archive.get("ywvyds"), archive.get("ywvyds_title")));
-        row.put("ywvydsId", stringOf(archive.get("ywvyds")));
-        row.put("zzkaec", stringOf(archive.get("zzkaec")));
-        row.put("iofhpi", stringOf(archive.get("iofhpi")));
-        row.put("devicecode", stringOf(archive.get("devicecode")));
-        row.put("cadcode", stringOf(archive.get("cadcode")));
-        row.put("mivbcz", stringOf(archive.get("mivbcz")));
+        row.put("ywvydsId", ValueConvertUtils.str(archive.get("ywvyds")));
+        row.put("zzkaec", ValueConvertUtils.str(archive.get("zzkaec")));
+        row.put("iofhpi", ValueConvertUtils.str(archive.get("iofhpi")));
+        row.put("devicecode", ValueConvertUtils.str(archive.get("devicecode")));
+        row.put("cadcode", ValueConvertUtils.str(archive.get("cadcode")));
+        row.put("mivbcz", ValueConvertUtils.str(archive.get("mivbcz")));
         row.put("epjutj", codeArray(archive.get("epjutj")));
         row.put("bviiio", geoOf(archive));
         row.put("zebpsu", codeOf(archive.get("zebpsu")));
         row.put("ahieto", refOf(archive.get("ahieto"), archive.get("ahieto_title")));
-        row.put("ahietoId", stringOf(archive.get("ahieto")));
-        row.put("ccnhtm", stringOf(archive.get("ccnhtm")));
-        row.put("ijzsby", stringOf(archive.get("ijzsby")));
+        row.put("ahietoId", ValueConvertUtils.str(archive.get("ahieto")));
+        row.put("ccnhtm", ValueConvertUtils.str(archive.get("ccnhtm")));
+        row.put("ijzsby", ValueConvertUtils.str(archive.get("ijzsby")));
         row.put("waljdn", codeOf(archive.get("waljdn")));
         row.put("nxtggq", codeOf(archive.get("nxtggq")));
-        row.put("bhsqxd", stringOf(archive.get("bhsqxd")));
-        row.put("lhwhuc", stringOf(archive.get("lhwhuc")));
-        row.put("cbitue", stringOf(archive.get("cbitue")));
+        row.put("bhsqxd", ValueConvertUtils.str(archive.get("bhsqxd")));
+        row.put("lhwhuc", ValueConvertUtils.str(archive.get("lhwhuc")));
+        row.put("cbitue", ValueConvertUtils.str(archive.get("cbitue")));
         row.put("viwmmc", richTextOf(archive.get("viwmmc")));
-        row.put("dischargeType", stringOf(archive.get("discharge_type")));
+        row.put("dischargeType", ValueConvertUtils.str(archive.get("discharge_type")));
         row.put("badfhe", richTextOf(archive.get("badfhe")));
         // 闸门图片文件名需经文件服务换取，本期不做（结构保留，dataTitle 恒 null）
         row.put("nwbzla", refOf(archive.get("nwbzla"), null));
-        row.put("nwbzlaId", stringOf(archive.get("nwbzla")));
-        row.put("id", stringOf(archive.get("id")));
-        row.put("corpCode", stringOf(archive.get("corp_code")));
+        row.put("nwbzlaId", ValueConvertUtils.str(archive.get("nwbzla")));
+        row.put("id", ValueConvertUtils.str(archive.get("id")));
+        row.put("corpCode", ValueConvertUtils.str(archive.get("corp_code")));
         row.put("createdBy", refOf(archive.get("created_by"), archive.get("created_by_title")));
         row.put("updatedBy", refOf(archive.get("updated_by"), archive.get("updated_by_title")));
         row.put("createdAt", timeText(archive.get("created_at")));
@@ -462,7 +464,7 @@ public class ExternalService {
     /** 监测类型编码串（#N#|#N#）→ 去 # 包装的编码数组，如 "#1#|#2#" → ["1","2"]；空值返回空数组 */
     private List<String> codeArray(Object codes) {
         List<String> list = new ArrayList<>();
-        String text = stringOf(codes);
+        String text = ValueConvertUtils.str(codes);
         if (text == null) {
             return list;
         }
@@ -477,7 +479,7 @@ public class ExternalService {
 
     /** 单选枚举编码去 # 包装（#1# → 1）；空值返回 null */
     private String codeOf(Object code) {
-        String text = stringOf(code);
+        String text = ValueConvertUtils.str(code);
         return text == null ? null : text.trim().replace("#", "");
     }
 
@@ -491,14 +493,14 @@ public class ExternalService {
         Map<String, Object> geo = new LinkedHashMap<>();
         geo.put("x", numberOrNull(x));
         geo.put("y", numberOrNull(y));
-        geo.put("geohash", stringOf(archive.get("bviiio_geohash")));
+        geo.put("geohash", ValueConvertUtils.str(archive.get("bviiio_geohash")));
         return geo;
     }
 
     /** 关联行 → {dataTitle, id}；两值均空返回 null */
     private Map<String, Object> refOf(Object id, Object title) {
-        String idText = stringOf(id);
-        String titleText = stringOf(title);
+        String idText = ValueConvertUtils.str(id);
+        String titleText = ValueConvertUtils.str(title);
         if (idText == null && titleText == null) {
             return null;
         }
@@ -513,7 +515,7 @@ public class ExternalService {
      * 解析为对象输出（与原 qx-api 一致）；空值、非 JSON 文本原样返回。
      */
     private Object richTextOf(Object value) {
-        String text = stringOf(value);
+        String text = ValueConvertUtils.str(value);
         if (text == null || !text.trim().startsWith("{")) {
             return text;
         }
@@ -578,20 +580,6 @@ public class ExternalService {
         }
         double d = ((Number) value).doubleValue();
         return BigDecimal.valueOf(d).setScale(3, RoundingMode.DOWN);
-    }
-
-    /** Map 值转字符串：null 原样返回（避免 "null" 文本） */
-    private String stringOf(Object value) {
-        return value == null ? null : String.valueOf(value);
-    }
-
-    /** 查询参数归一：去首尾空白，空串按 null 处理（SQL 侧 null 表示该条件不参与筛选） */
-    private String trimToNull(String value) {
-        if (value == null) {
-            return null;
-        }
-        String text = value.trim();
-        return text.isEmpty() ? null : text;
     }
 
     private Long longOf(Object value) {

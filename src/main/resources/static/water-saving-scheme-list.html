@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>节水方案和措施</title>
+<link rel="stylesheet" href="./lib/water-saving-common.css">
+<style>
+/* ===== 平台变量：对齐平台「告警管理」；色值/圆角/层级集中在此，规则里禁止硬编码 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-hover:#f78989;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-color-warning:#fa8c16;
+  --el-color-warning-light:rgba(250,140,22,.1);
+  --el-color-success:#52c41a;
+  --el-color-success-light:rgba(82,196,26,.1);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-tertiary:#8c8c8c;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-text-color-icon:#606266;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-fill-color-disabled:#f5f5f5;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height:40px;
+  --el-control-height-sm:36px;
+  --el-table-header-bg:#f5f7fa;
+  --el-table-stripe-bg:#fafafa;
+  --el-table-row-height:52px;
+  --el-table-border:#f0f0f0;
+  --el-tag-bg:#f0f0f0;
+  --el-tag-color:#666;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+  --el-drawer-width:920px;
+}
+/* ===== 页级差异（公共样式统一见 lib/water-saving-common.css） ===== */
+.filter-item .field{width:200px}
+
+/* 骨架 / 面板 / 控件 / 表格基础：见 lib/water-saving-common.css */
+td .ind-line{display:block;font-size:12px;line-height:18px;color:var(--el-text-color-regular);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+td .ind-line .ok{color:var(--el-color-success)}
+td .ind-line .no{color:var(--el-color-danger)}
+td .ind-line .pend{color:var(--el-text-color-secondary)}
+/* 标签 / 链接 / 行按钮 / 空态：见 lib/water-saving-common.css */
+
+/* 分页与主抽屉公共样式见 lib/water-saving-common.css；下列为本页 #drawer2 年度水量抽屉层级 */
+#drawer2{z-index:2002}
+#drawer2-mask{z-index:2001}
+/* 抽屉头/体/脚：见 lib/water-saving-common.css */
+
+/* 本页专属：span3 步进 / 隐藏项 / 只读值 / 查看态两组栅格（其余表单样式见公共件） */
+.form-grid .span3{grid-column:span 3}
+.f-item[hidden]{display:none}
+.ro-val{height:var(--el-control-height-sm);line-height:34px;padding:0 12px;border-radius:var(--el-radius);background:var(--el-fill-color-light);border:1px solid var(--el-border-color-lighter);color:var(--el-text-color-primary);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.view-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 24px}
+.view-row{display:flex;flex-direction:column;gap:2px}
+.view-row .k{font-size:14px;color:var(--el-text-color-secondary);line-height:22px}
+.view-row .v{font-size:14px;color:var(--el-text-color-primary);line-height:22px;word-break:break-word;white-space:pre-wrap}
+
+/* ===== 指标勾选列表（表单内） ===== */
+.chk-wrap{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow-y:auto;border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);padding:8px}
+.chk-wrap.is-err{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.chk-wrap[hidden]{display:none}
+.chk-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--el-radius);font-size:13px;color:var(--el-text-color-primary);cursor:pointer;line-height:18px}
+.chk-item:hover{background:var(--el-fill-color-light)}
+.chk-item.disabled{color:var(--el-text-color-disabled);cursor:not-allowed}
+.chk-item input{accent-color:var(--el-color-primary);flex-shrink:0}
+.chk-item .c-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chk-item .c-sub{font-size:12px;color:var(--el-text-color-secondary);flex-shrink:0}
+.chk-item.disabled .c-sub{color:var(--el-text-color-disabled)}
+.chk-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+.chk-empty a{color:var(--el-color-primary);cursor:pointer}
+
+/* ===== 迷你表格（查看态指标表 / 年度水量列表） ===== */
+.m-wrap{overflow:auto}
+.m-tbl{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;border:1px solid var(--el-table-border)}
+.m-tbl th{position:static;height:40px;padding:0 8px;font-size:13px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:none;white-space:nowrap;text-align:left}
+.m-tbl td{height:auto;padding:8px;border-bottom:1px solid var(--el-table-border);font-size:13px;vertical-align:middle;overflow:visible;white-space:normal;color:var(--el-text-color-primary)}
+.m-tbl tbody tr:nth-child(even) td{background:transparent}
+.m-tbl tbody tr:hover td{background:var(--el-fill-color-light)}
+.m-tbl tr:last-child td{border-bottom:none}
+.m-empty{text-align:center !important;color:var(--el-text-color-secondary);padding:24px 0 !important}
+.m-acts{white-space:nowrap}
+.m-sub{font-size:12px;color:var(--el-text-color-secondary);line-height:16px}
+
+/* ===== 附件区 ===== */
+.att-box{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);background:var(--el-fill-color-light)}
+.att-name{font-size:13px;color:var(--el-text-color-primary);word-break:break-all;line-height:20px}
+.att-none{font-size:13px;color:var(--el-text-color-secondary)}
+.att-file{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.att-file input[type=file]{font-size:13px;color:var(--el-text-color-regular);max-width:280px}
+
+/* 本页专属：下拉选项基准（定高 36px；其余下拉样式见公共件） */
+.sel-opt{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+/* .sel-opt 状态与内部元素：见 lib/water-saving-common.css */
+
+/* ===== KPI 卡片：上一年计划/实际放水量、本年节水潜力（对齐产品稿 savingAnnualPanel，跟随年度筛选） ===== */
+.kpi-row{flex-shrink:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.kpi-card{background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 24px}
+.kpi-card .kt{font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+.kpi-card .kv{margin-top:6px;font-size:24px;font-weight:600;color:var(--el-text-color-primary);line-height:32px}
+.kpi-card .kv .u{font-size:12px;font-weight:400;color:var(--el-text-color-secondary);margin-left:4px}
+.kpi-card .kv.neg{color:var(--el-color-danger)}
+
+/* 确认弹窗（.mbox）：见 lib/water-saving-common.css */
+
+/* 提示条：见 lib/water-saving-common.css */
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <!-- 筛选白卡：年度 / 方案名称 / 负责人 / 状态 -->
+  <div class="filter-card">
+    <div class="filter-item">
+      <span class="flt-label">年度</span>
+      <div class="sel" id="f-year"></div>
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">方案名称</span>
+      <input class="field" id="f-name" placeholder="名称关键字" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">负责人</span>
+      <input class="field" id="f-owner" placeholder="负责人关键字" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">状态</span>
+      <div class="sel" id="f-status"></div>
+    </div>
+    <div class="filter-acts">
+      <button class="btn btn-primary" id="flt-search">查询</button>
+      <button class="btn btn-default" id="flt-reset">重置</button>
+    </div>
+  </div>
+
+  <!-- KPI 卡片：上一年计划放水量 / 上一年实际放水量 / 本年节水潜力（对齐产品稿 savingAnnualPanel，跟随年度筛选） -->
+  <div class="kpi-row" id="kpi-row">
+    <div class="kpi-card"><div class="kt">上一年计划放水量</div><div class="kv">—</div></div>
+    <div class="kpi-card"><div class="kt">上一年实际放水量</div><div class="kv">—</div></div>
+    <div class="kpi-card"><div class="kt">本年节水潜力</div><div class="kv">—</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd">
+      <span class="hd-tip">节水潜力 = 上一年实际放水量 − 上一年计划放水量（可为负）；达标状态按指标计算结果自动判定（待核验 &gt; 待设置目标 &gt; 待关联指标 &gt; 待复核 &gt; 不达标 &gt; 部分达标 &gt; 达标）；对比依据数据变更或换依据后，已核验数据自动作废并强制「待核验」。</span>
+      <div class="hd-acts">
+        <button class="btn btn-default" id="btn-annuals">年度水量设置</button>
+        <button class="btn btn-default" id="btn-export">导出</button>
+        <button class="btn btn-primary" id="btn-add">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>新增方案
+        </button>
+      </div>
+    </div>
+    <div class="panel-bd">
+      <div class="tbl-wrap">
+        <table>
+          <colgroup>
+            <col style="width:6%"><col style="width:15%"><col style="width:19%"><col style="width:9%">
+            <col style="width:10%"><col style="width:8%"><col style="width:10%"><col style="width:9%"><col style="width:14%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>年度</th><th>方案名称</th><th>指标结果</th><th>节水目标</th>
+              <th>负责人</th><th>状态</th><th>达标状态</th><th>附件</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="pg-bar"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 抽屉：方案（新增 / 编辑 / 查看 / 核验 四态共用） -->
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3 id="drawer-title">新增节水方案</h3>
+    <div class="hd-acts">
+      <button class="icon-btn" id="btn-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="drawer-bd">
+    <div id="form-box">
+      <div class="sec-title">基本信息</div>
+      <div class="form-grid">
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>方案名称</label>
+          <input class="field" id="in-name" maxlength="200" placeholder="如「2026 年度干支渠节水改造」" autocomplete="off">
+        </div>
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>对比依据（年度水量记录）</label>
+          <div class="sel" id="sel-evidence"></div>
+          <div class="f-hint" id="ev-hint">实施年度取记录的潜力年度；建方案时固化实施前实际用水量快照</div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>节水目标（万m³）</label>
+          <input class="field" id="in-target" inputmode="decimal" placeholder="0 &lt; 目标 ≤ 潜力" autocomplete="off">
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>负责人</label>
+          <input class="field" id="in-owner" maxlength="100" placeholder="如「工程管理处 / 张工」" autocomplete="off">
+        </div>
+        <div class="f-item">
+          <label class="f-label">状态</label>
+          <div class="sel" id="sel-status"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">数据标记</label>
+          <div class="sel" id="sel-demo"></div>
+        </div>
+        <div class="f-item span4">
+          <label class="f-label">测算提示</label>
+          <div id="potential-box" class="val-box" hidden></div>
+        </div>
+      </div>
+      <div class="sec-title">评估指标 <span class="f-hint" style="margin-top:0">核验后按各指标计算方式自动计算结果并判定达标</span></div>
+      <div class="chk-wrap" id="chk-indicators"></div>
+      <div class="sec-title">具体措施</div>
+      <textarea class="field" id="in-measure" maxlength="2000" placeholder="填写具体节水措施（如渠道衬砌、计量设施改造、轮灌制度等）"></textarea>
+    </div>
+
+    <div id="verify-box" hidden>
+      <div class="sec-title">方案核验</div>
+      <div class="form-grid">
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>实施后实际用水量（万m³）</label>
+          <input class="field" id="in-after" inputmode="decimal" placeholder="如 12.5" autocomplete="off">
+        </div>
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>对比条件确认</label>
+          <div class="sel" id="sel-comparable"></div>
+          <div class="f-hint">确认后按指标公式计算（方案 → 已完成）；未确认则标为待复核、不计算</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>核验资料来源</label>
+          <input class="field" id="in-source" maxlength="200" placeholder="如台账 / 报表编号" autocomplete="off">
+        </div>
+        <div class="f-item span4">
+          <label class="f-label">核验说明</label>
+          <textarea class="field" id="in-note" maxlength="500" placeholder="选填"></textarea>
+        </div>
+      </div>
+      <div class="val-box" id="verify-tip"></div>
+    </div>
+
+    <div id="view-box" hidden></div>
+  </div>
+  <div class="drawer-ft">
+    <button class="btn btn-default" id="btn-cancel">取消</button>
+    <button class="btn btn-primary" id="btn-save">保存</button>
+    <button class="btn btn-primary" id="btn-verify" hidden>提交核验</button>
+  </div>
+</aside>
+
+<!-- 抽屉2：年度水量设置（列表 / 表单两态） -->
+<div class="drawer-mask" id="drawer2-mask"></div>
+<aside class="drawer" id="drawer2" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3 id="drawer2-title">年度水量设置</h3>
+    <div class="hd-acts">
+      <button class="icon-btn" id="btn-close2" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="drawer-bd">
+    <div id="annual-list-box">
+      <div class="sec-title">潜力年度记录
+        <button class="btn btn-default btn-sm" id="btn-annual-add">＋ 新增记录</button>
+      </div>
+      <div class="m-wrap">
+        <table class="m-tbl">
+          <colgroup>
+            <col style="width:9%"><col style="width:9%"><col style="width:15%"><col style="width:15%">
+            <col style="width:14%"><col style="width:13%"><col style="width:11%"><col style="width:14%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>潜力年度</th><th>依据年度</th><th>上一年计划</th><th>上一年实际</th>
+              <th>节水潜力</th><th>计划来源</th><th>资料</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="annual-body"></tbody>
+        </table>
+      </div>
+      <div class="f-hint" style="margin-top:12px">潜力 = 上一年实际 − 上一年计划（万m³，可为负）；被方案引用的记录不可删除、潜力年度不可修改；记录水量变更会联动将引用方案的已核验数据作废。</div>
+    </div>
+    <div id="annual-form-box" hidden>
+      <div class="sec-title" id="annual-form-title">新增年度水量记录</div>
+      <div class="form-grid">
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>潜力年度</label>
+          <div class="sel" id="sel-a-year"></div>
+          <div class="f-hint">实施年度；依据年度 = 潜力年度 − 1（自动）</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">数据标记</label>
+          <div class="sel" id="sel-a-demo"></div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>上一年实际放水量（万m³）</label>
+          <input class="field" id="in-a-actual" inputmode="decimal" placeholder="如 120.5" autocomplete="off">
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">上一年计划放水量（万m³）</label>
+          <div style="display:flex;gap:8px">
+            <input class="field" id="in-a-plan" inputmode="decimal" placeholder="可手工录入" autocomplete="off" style="flex:1">
+            <button class="btn btn-default btn-sm" id="btn-fetch-plan" type="button" style="flex-shrink:0">从用水计划带出</button>
+          </div>
+          <div class="f-hint" id="a-plan-hint">从「灌区用水-用水计划」自动带出上一年的年度计划（排除已作废、多条取最新一条）</div>
+        </div>
+        <div class="f-item span4">
+          <div id="a-potential-box" class="val-box" hidden></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="drawer-ft">
+    <button class="btn btn-default" id="btn-annual-cancel">关闭</button>
+    <button class="btn btn-primary" id="btn-annual-save" hidden>保存</button>
+  </div>
+</aside>
+
+<!-- 确认弹窗（删除 / 刷新依据 / 移除附件等） -->
+<div class="mask" id="dlg-mask">
+  <div class="mbox">
+    <div class="mbox-hd" id="dlg-title">提示</div>
+    <div class="mbox-bd" id="dlg-text"></div>
+    <div class="mbox-alert" id="dlg-alert" hidden></div>
+    <div class="mbox-ft">
+      <button class="btn btn-default" id="dlg-cancel">取消</button>
+      <button class="btn btn-danger" id="dlg-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="./lib/water-saving-common.js"></script>
+<script>
+/* ============================ 常量与状态 ============================ */
+const API = '/hltgq-site';
+const ICON = {
+  search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  tick: '<svg class="tick" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  pencil: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.6 9.4a2.12 2.12 0 0 0-3-3L5 17v3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.4 6.8l2.8 2.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.6 7V4.6h4.8V7M6.6 7l.9 12.3A1.6 1.6 0 0 0 9.1 20.8h5.8a1.6 1.6 0 0 0 1.6-1.5L17.4 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 10.8v5.6M13.6 10.8v5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  check: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.6"/><path d="M8.2 12.3l2.7 2.7 5-5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  refresh: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19.8 12a7.8 7.8 0 1 1-2.3-5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M19.8 3.6v3.2h-3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  doc: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3.5h8l4 4V20a.9.9 0 0 1-.9.9H6.9A.9.9 0 0 1 6 20V4.4a.9.9 0 0 1 .9-.9z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 3.6V8h4.3M9 12h6M9 15.4h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+const S = {
+  meta: { schemeStatuses: [], methods: [], sources: {}, flags: {}, recheckReasons: [] },
+  baseYear: new Date().getFullYear(),
+  page: 1, size: 20, total: 0, records: [],
+  filter: { year: '', name: '', owner: '', status: '' },
+  mode: '',                      // 抽屉：create / edit / view / verify
+  row: null,                     // 当前方案
+  annuals: [], annualMap: {},    // 年度水量记录（id → 记录）
+  indicators: [], indicatorMap: {},
+  saving: false, seq: 0, listSeq: 0,
+  annualMode: '',                // 年度抽屉：list / create / edit
+  annualRow: null,
+  pendingAttFile: null
+};
+
+/* ===== 公共工具（唯一实现见 lib/water-saving-common.js；此处按原名解构，页面调用点保持不变） ===== */
+const { $, esc, showToast, api, fmtNum, createSelect, closeAllSelects, renderPager,
+  openDrawer, closeDrawer, showDlg, closeDlg, onDlgOk } = WSC;
+/* 页级参数化：公共逻辑 + 本页差异（空行 colspan=9；翻页/跳页后刷新 = loadList） */
+const refreshPage = () => loadList();
+const emptyRow = (text, plain) => WSC.emptyRow(text, plain, 9);
+const jumpToPage = val => WSC.jumpToPage(val, refreshPage);
+const onPagerClick = e => WSC.onPagerClick(e, refreshPage);
+
+function qs(obj) {
+  const p = new URLSearchParams();
+  Object.keys(obj).forEach(k => {
+    const v = obj[k];
+    if (v !== null && v !== undefined && String(v).trim() !== '') p.set(k, String(v).trim());
+  });
+  return p.toString();
+}
+
+/** fetch + blob 下载（附件 / 导出 / 措施文档统一入口） */
+async function downloadBlob(path, fallbackName) {
+  const res = await fetch(API + path, { credentials: 'include' });
+  if (!res.ok) {
+    const text = await res.text();
+    let data = null;
+    if (text) { try { data = JSON.parse(text); } catch (e) { data = null; } }
+    throw new Error((data && (data.message || data.error)) || '下载失败（HTTP ' + res.status + '）');
+  }
+  const dispo = res.headers.get('Content-Disposition') || '';
+  let name = fallbackName;
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(dispo);
+  if (star) { try { name = decodeURIComponent(star[1]); } catch (e) { /* 忽略 */ } }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name || 'download';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+/** 文本另存（措施文档：服务端返回 {fileName, content} 后前端落盘） */
+function saveText(fileName, content) {
+  const blob = new Blob([content], { type: 'text/plain;charset=UTF-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName || '节水方案措施.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+/* —— 下拉组件 / 空行 / 分页 / 抽屉 / 弹窗：公共实现统一见 lib/water-saving-common.js（顶部已解构别名） —— */
+
+/* ============================ 列表 ============================ */
+/* 空行 emptyRow 见 lib/water-saving-common.js（顶部已按本页 colspan=9 包装） */
+
+async function loadList() {
+  const seq = ++S.listSeq;
+  const params = new URLSearchParams(qs(S.filter));
+  params.set('page', String(S.page));
+  params.set('size', String(S.size));
+  $('tbl-body').innerHTML = emptyRow('加载中...', true);
+  try {
+    const data = await api('/water-saving/schemes/page?' + params.toString());
+    if (seq !== S.listSeq) return;
+    S.total = Number(data && data.total) || 0;
+    S.records = (data && Array.isArray(data.records)) ? data.records : [];
+    if (!S.records.length && S.page > 1) { S.page -= 1; return loadList(); }
+    renderTable();
+    renderPager();
+  } catch (e) {
+    if (seq !== S.listSeq) return;
+    S.records = []; S.total = 0;
+    $('tbl-body').innerHTML = emptyRow('数据加载失败');
+    renderPager();
+    showToast(e.message || '数据加载失败', true);
+  }
+}
+
+function statusTag(r) {
+  const map = { '#1#': 'blue', '#2#': 'green', '#3#': 'gray', '#4#': 'red' };
+  return '<span class="tag ' + (map[r.status] || 'gray') + '">' + esc(r.statusName || '--') + '</span>';
+}
+
+function attainTag(r) {
+  const map = { pass: 'green', partial: 'orange', fail: 'red', pending_verify: 'blue', pending_target: 'orange', pending_indicator: 'gray', uncomputable: 'orange' };
+  const reason = r.attainReason || (r.status === '#4#' ? r.statusReason : '');
+  return '<span class="tag ' + (map[r.attainLevel] || 'gray') + '">' + esc(r.attainLabel || '--') + '</span>' +
+    (reason ? '<span class="sub-line">' + esc(reason) + '</span>' : '');
+}
+
+/** 指标结果列：逐行展示「名称 结果+单位 状态」 */
+function indicatorCell(r) {
+  const rows = Array.isArray(r.indicators) ? r.indicators : [];
+  if (!rows.length) return '<span class="sub">待关联指标</span>';
+  const cls = st => st === 'pass' ? 'ok' : (st === 'fail' ? 'no' : 'pend');
+  return rows.map(ind => {
+    const val = ind.result === null || ind.result === undefined ? '' :
+      ' ' + esc(fmtNum(ind.result)) + esc(ind.unit || '');
+    return '<span class="ind-line">' + esc(ind.name) + '：<span class="' + cls(ind.state) + '">' +
+      esc(ind.stateName) + (val ? val : '') + '</span></span>';
+  }).join('');
+}
+
+function actsCell(r) {
+  const id = esc(r.id);
+  let html = '<button class="lnk-btn" data-act="view" data-id="' + id + '" data-tip="查看" aria-label="查看">' + ICON.search + '</button>' +
+    '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="编辑" aria-label="编辑">' + ICON.pencil + '</button>';
+  if (r.status !== '#1#') {
+    html += '<button class="lnk-btn" data-act="verify" data-id="' + id + '" data-tip="核验" aria-label="核验">' + ICON.check + '</button>';
+  }
+  html += '<button class="lnk-btn" data-act="refresh" data-id="' + id + '" data-tip="刷新对比依据" aria-label="刷新对比依据">' + ICON.refresh + '</button>' +
+    '<button class="lnk-btn" data-act="doc" data-id="' + id + '" data-tip="生成措施文档" aria-label="生成措施文档">' + ICON.doc + '</button>' +
+    '<button class="lnk-btn danger" data-act="del" data-id="' + id + '" data-tip="删除" aria-label="删除">' + ICON.trash + '</button>';
+  return html;
+}
+
+function attCell(r) {
+  if (!r.attachmentName) return '<span class="sub">—</span>';
+  return '<span class="lnk" data-act="att-download" data-id="' + esc(r.id) + '">' + esc(r.attachmentName) + '</span>';
+}
+
+function renderTable() {
+  const tb = $('tbl-body');
+  if (!S.records.length) {
+    tb.innerHTML = emptyRow('暂无数据');
+    return;
+  }
+  tb.innerHTML = S.records.map(r => {
+    const target = fmtNum(r.targetVolume);
+    return '<tr data-key="' + esc(r.id) + '">' +
+      '<td>' + (r.year === null || r.year === undefined ? '--' : esc(String(r.year))) + '</td>' +
+      '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.name || '--') + '</span>' +
+      '<span class="sub-line">' + esc((r.isDemo === '#1#' ? '虚拟演示 · ' : '') + (r.createdText || '')) + '</span></td>' +
+      '<td>' + indicatorCell(r) + '</td>' +
+      '<td>' + (target === null ? '--' : esc(target) + ' <span class="sub">万m³</span>') + '</td>' +
+      '<td>' + esc(r.owner || '--') + '</td>' +
+      '<td>' + statusTag(r) + '</td>' +
+      '<td>' + attainTag(r) + '</td>' +
+      '<td>' + attCell(r) + '</td>' +
+      '<td class="col-act">' + actsCell(r) + '</td></tr>';
+  }).join('');
+}
+
+function onTableClick(e) {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const id = el.dataset.id;
+  const act = el.dataset.act;
+  if (act === 'view') openView(id);
+  else if (act === 'edit') openEdit(id);
+  else if (act === 'verify') openVerify(id);
+  else if (act === 'refresh') askRefresh(id);
+  else if (act === 'doc') genDocument(id);
+  else if (act === 'del') askDel(id);
+  else if (act === 'att-download') downloadAttachment(id);
+}
+
+/* ============================ 分页 ============================ */
+/* pageNumbers / renderPager 见 lib/water-saving-common.js（顶部已解构）；
+   jumpToPage / onPagerClick 顶部已按本页刷新方式（loadList）包装 */
+
+/* ============================ 方案抽屉（新增/编辑/查看/核验 四态） ============================ */
+const DRAWER_TITLES = { create: '新增节水方案', edit: '编辑节水方案', view: '方案详情', verify: '方案核验' };
+const EV_HINT_DEFAULT = '实施年度取记录的潜力年度；建方案时固化实施前实际用水量快照';
+
+let selFYear, selFStatus, selEvidence, selStatus, selDemo, selComparable, selAYear, selADemo;
+let annualPlanId = null;      // 年度表单：auto_plan 带出的计划 id（手工录入时清空）
+let annualPlanSource = null;  // 年度表单：auto_plan / manual
+
+/* openDrawer / closeDrawer 见 lib/water-saving-common.js（顶部已解构别名） */
+
+function setDrawerMode(mode) {
+  S.mode = mode;
+  $('drawer-title').textContent = DRAWER_TITLES[mode] || '节水方案';
+  const isForm = mode === 'create' || mode === 'edit';
+  $('form-box').hidden = !isForm;
+  $('verify-box').hidden = mode !== 'verify';
+  $('view-box').hidden = mode !== 'view';
+  $('btn-save').hidden = !isForm;
+  $('btn-verify').hidden = mode !== 'verify';
+  $('btn-save').textContent = mode === 'edit' ? '保存修改' : '保存';
+  $('btn-cancel').textContent = mode === 'view' ? '关闭' : '取消';
+}
+
+function clearErrors() {
+  ['in-name', 'in-target', 'in-owner', 'in-measure', 'in-after', 'in-source'].forEach(id => $(id).classList.remove('is-err'));
+  $('chk-indicators').classList.remove('is-err');
+  if (selEvidence) selEvidence.setError(false);
+  if (selStatus) selStatus.setError(false);
+  if (selComparable) selComparable.setError(false);
+}
+
+/* ============================ 数值读取（带小数位校验） ============================ */
+function parseNum(raw) {
+  const s = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (!s) return null;
+  const n = Number(s);
+  if (isNaN(n)) return NaN;
+  const dot = s.indexOf('.');
+  if (dot >= 0 && s.length - dot - 1 > 6) return NaN;
+  return n;
+}
+
+function requireNum(el, label) {
+  const raw = el.value.trim();
+  if (!raw) { el.classList.add('is-err'); throw new Error('请填写' + label); }
+  const n = parseNum(raw);
+  if (isNaN(n)) { el.classList.add('is-err'); throw new Error(label + '格式不正确（数字且最多 6 位小数）'); }
+  return n;
+}
+
+function optionalNum(el, label) {
+  const raw = el.value.trim();
+  if (!raw) return null;
+  const n = parseNum(raw);
+  if (isNaN(n)) { el.classList.add('is-err'); throw new Error(label + '格式不正确（数字且最多 6 位小数）'); }
+  return n;
+}
+
+/* ============================ 下拉初始化与字典选项 ============================ */
+function initSelects() {
+  selFYear = createSelect($('f-year')).setPlaceholder('全部年度');
+  selFStatus = createSelect($('f-status')).setPlaceholder('全部状态');
+  selEvidence = createSelect($('sel-evidence')).setPlaceholder('请选择年度水量记录').setSearchable(true);
+  selStatus = createSelect($('sel-status')).setPlaceholder('请选择状态');
+  selDemo = createSelect($('sel-demo')).setPlaceholder('请选择');
+  selComparable = createSelect($('sel-comparable')).setPlaceholder('请选择是否确认');
+  selAYear = createSelect($('sel-a-year')).setPlaceholder('请选择潜力年度');
+  selADemo = createSelect($('sel-a-demo')).setPlaceholder('请选择');
+  selEvidence.onChange(() => updatePotentialHint());
+  selAYear.onChange(() => onAnnualYearChange());
+  selFYear.onChange(() => renderKpiCards());
+}
+
+function initStatusFilter() {
+  const opts = [{ value: '', label: '全部状态' }].concat(
+    (S.meta.schemeStatuses || []).map(s => ({ value: s.value, label: s.label })));
+  selFStatus.setOptions(opts).setValue('');
+}
+
+function fillFormStatusOptions() {
+  const list = (S.meta.schemeStatuses || []).filter(s => s.value === '#1#' || s.value === '#2#');
+  selStatus.setOptions(list.length ? list : [{ value: '#1#', label: '草稿' }, { value: '#2#', label: '实施中' }]);
+  selStatus.setValue('#1#');
+}
+
+function fillDemoOptions() {
+  const opts = [{ value: '#2#', label: '正式' }, { value: '#1#', label: '虚拟演示' }];
+  selDemo.setOptions(opts).setValue('#2#');
+  selADemo.setOptions(opts.slice()).setValue('#2#');
+}
+
+function fillComparableOptions() {
+  selComparable.setOptions([
+    { value: '#1#', label: '已确认（对比条件成立，按指标公式计算）' },
+    { value: '#2#', label: '未确认（不计算，方案标记待复核）' }
+  ]).setValue('');
+}
+
+/* ============================ 评估指标勾选 ============================ */
+function checkedIndicatorIds() {
+  return Array.prototype.map.call(
+    $('chk-indicators').querySelectorAll('input[type=checkbox]:checked'),
+    c => c.value);
+}
+
+/** 指标勾选列表：停用指标不可勾选（既有关联保持勾选展示，提交时保留） */
+function renderChkIndicators(selected) {
+  const box = $('chk-indicators');
+  box.classList.remove('is-err');
+  const sel = {};
+  (selected || []).forEach(id => { sel[id] = true; });
+  if (!S.indicators.length) {
+    box.innerHTML = '<div class="chk-empty">暂无评估指标，请先到「节水指标体系」页面维护</div>';
+    return;
+  }
+  box.innerHTML = S.indicators.map(ind => {
+    const enabled = ind.enabled === '#1#';
+    const checked = !!sel[ind.id];
+    const target = (ind.targetValue === null || ind.targetValue === undefined)
+      ? '未设目标' : '目标 ' + fmtNum(ind.targetValue) + (ind.unit || '');
+    const sub = (ind.methodName || '') + ' · ' + target + (enabled ? '' : ' · 已停用');
+    return '<label class="chk-item' + (enabled ? '' : ' disabled') + '" data-id="' + esc(ind.id) + '">' +
+      '<input type="checkbox" value="' + esc(ind.id) + '"' + (checked ? ' checked' : '') + (enabled ? '' : ' disabled') + '>' +
+      '<span class="c-name">' + esc(ind.name) + '</span>' +
+      '<span class="c-sub">' + esc(sub) + '</span>' +
+      '</label>';
+  }).join('');
+}
+
+/* ============================ 潜力提示与依据下拉 ============================ */
+function updatePotentialHint() {
+  const box = $('potential-box');
+  const id = selEvidence.getValue();
+  const ev = id ? S.annualMap[id] : null;
+  if (!ev) {
+    box.hidden = true;
+    box.classList.remove('warn');
+    return;
+  }
+  box.hidden = false;
+  if (ev.potential === null || ev.potential === undefined) {
+    box.classList.add('warn');
+    box.textContent = '该依据记录水量不完整（潜力不可计算），无法建立方案';
+    return;
+  }
+  const potential = Number(ev.potential);
+  const text = '节水潜力 = 上一年实际 ' + fmtNum(ev.prevActualVolume) + ' − 上一年计划 ' +
+    fmtNum(ev.prevPlanVolume) + ' = ' + fmtNum(potential) + ' 万m³';
+  if (potential <= 0) {
+    box.classList.add('warn');
+    box.textContent = text + '（≤0，无法建立方案）';
+  } else {
+    box.classList.remove('warn');
+    box.textContent = text + '（节水目标需 ≤ 潜力）';
+  }
+}
+
+function refreshEvidenceOptions(selectedId) {
+  const opts = S.annuals.map(a => ({
+    value: a.id,
+    label: a.potentialYear + ' 年度（依据 ' + (a.basisYear === null || a.basisYear === undefined ? '--' : a.basisYear) + '）',
+    sub: (a.potential === null || a.potential === undefined) ? '潜力不可计算' : '潜力 ' + fmtNum(a.potential) + ' 万m³'
+  }));
+  selEvidence.setOptions(opts).setValue(selectedId || '');
+  selEvidence.setError(false);
+  selEvidence.setDisabled(false);
+  updatePotentialHint();
+}
+
+/* ============================ 表单重置 / 收集 ============================ */
+function resetSchemeForm() {
+  clearErrors();
+  $('in-name').value = '';
+  $('in-target').value = '';
+  $('in-owner').value = '';
+  $('in-measure').value = '';
+  $('ev-hint').textContent = EV_HINT_DEFAULT;
+  $('in-name').classList.remove('is-err');
+  selStatus.setDisabled(false);
+  selDemo.setValue('#2#');
+  $('potential-box').hidden = true;
+  $('potential-box').classList.remove('warn');
+}
+
+function collectSchemeForm() {
+  clearErrors();
+  const name = $('in-name').value.trim();
+  if (!name) { $('in-name').classList.add('is-err'); throw new Error('请填写方案名称'); }
+  if (name.length > 200) { $('in-name').classList.add('is-err'); throw new Error('方案名称不能超过 200 字'); }
+  const evidenceId = selEvidence.getValue();
+  if (!evidenceId) { selEvidence.setError(true); throw new Error('请选择对比依据（年度水量记录）'); }
+  const ev = S.annualMap[evidenceId];
+  if (!ev) { selEvidence.setError(true); throw new Error('对比依据记录不存在，请刷新后重试'); }
+  if (ev.potential === null || ev.potential === undefined) {
+    throw new Error('所选依据记录水量不完整（潜力不可计算），无法建立方案');
+  }
+  const potential = Number(ev.potential);
+  if (potential <= 0) {
+    throw new Error('所选依据潜力为 ' + fmtNum(potential) + ' 万m³（≤0），无法建立方案');
+  }
+  const target = requireNum($('in-target'), '节水目标');
+  if (target <= 0) { $('in-target').classList.add('is-err'); throw new Error('节水目标必须大于 0'); }
+  if (target - potential > 1e-9) {
+    $('in-target').classList.add('is-err');
+    throw new Error('节水目标不能超过潜力（' + fmtNum(potential) + ' 万m³）');
+  }
+  const owner = $('in-owner').value.trim();
+  if (!owner) { $('in-owner').classList.add('is-err'); throw new Error('请填写负责人'); }
+  if (owner.length > 100) { $('in-owner').classList.add('is-err'); throw new Error('负责人不能超过 100 字'); }
+  const measure = $('in-measure').value.trim();
+  if (!measure) { $('in-measure').classList.add('is-err'); throw new Error('请填写具体措施'); }
+  if (measure.length > 2000) { $('in-measure').classList.add('is-err'); throw new Error('具体措施不能超过 2000 字'); }
+  const indicatorIds = checkedIndicatorIds();
+  if (!indicatorIds.length) { $('chk-indicators').classList.add('is-err'); throw new Error('请至少勾选一个评估指标'); }
+  return {
+    name: name,
+    evidenceId: evidenceId,
+    targetVolume: target,
+    owner: owner,
+    measure: measure,
+    status: selStatus.getValue() || '#1#',
+    indicatorIds: indicatorIds,
+    isDemo: selDemo.getValue() || '#2#'
+  };
+}
+
+function collectVerifyForm() {
+  const afterRaw = $('in-after').value.trim();
+  if (!afterRaw) { $('in-after').classList.add('is-err'); throw new Error('请填写实施后实际用水量'); }
+  const after = parseNum(afterRaw);
+  if (isNaN(after) || after < 0) {
+    $('in-after').classList.add('is-err');
+    throw new Error('实施后实际用水量需为非负数字（最多 6 位小数）');
+  }
+  const comparable = selComparable.getValue();
+  if (!comparable) { selComparable.setError(true); throw new Error('请选择对比条件确认结果'); }
+  const source = $('in-source').value.trim();
+  if (!source) { $('in-source').classList.add('is-err'); throw new Error('请填写核验资料来源'); }
+  if (source.length > 200) { $('in-source').classList.add('is-err'); throw new Error('核验资料来源不能超过 200 字'); }
+  const note = $('in-note').value.trim();
+  if (note.length > 500) { throw new Error('核验说明不能超过 500 字'); }
+  return { id: S.row.id, afterVolume: after, source: source, note: note || null, comparable: comparable };
+}
+
+/* ============================ 打开四态 ============================ */
+async function fetchDetail(id) {
+  const vo = await api('/water-saving/schemes/detail?id=' + encodeURIComponent(id));
+  if (!vo || !vo.id) throw new Error('方案不存在或已删除');
+  return vo;
+}
+
+async function openCreate() {
+  try {
+    await Promise.all([loadIndicators(), loadAnnuals()]);
+  } catch (e) {
+    showToast('基础数据加载失败：' + e.message, true);
+  }
+  S.row = null;
+  setDrawerMode('create');
+  resetSchemeForm();
+  refreshEvidenceOptions('');
+  renderChkIndicators([]);
+  openDrawer();
+}
+
+async function openEdit(id) {
+  let vo;
+  try {
+    const arr = await Promise.all([fetchDetail(id), loadIndicators(), loadAnnuals()]);
+    vo = arr[0];
+  } catch (e) {
+    showToast(e.message || '方案加载失败', true);
+    return;
+  }
+  S.row = vo;
+  setDrawerMode('edit');
+  resetSchemeForm();
+  refreshEvidenceOptions(vo.evidenceId || '');
+  $('in-name').value = vo.name || '';
+  $('in-target').value = vo.targetVolume === null || vo.targetVolume === undefined ? '' : fmtNum(vo.targetVolume);
+  $('in-owner').value = vo.owner || '';
+  $('in-measure').value = vo.measure || '';
+  selStatus.setValue(vo.status || '#1#', vo.statusName || '');
+  const hadVerify = vo.verifyAfterVolume !== null && vo.verifyAfterVolume !== undefined;
+  selStatus.setDisabled(!!hadVerify);
+  if (hadVerify) {
+    $('ev-hint').textContent = '已核验方案状态由核验动作驱动；对比依据仍可调整（换依据后核验将自动作废）';
+  }
+  selDemo.setValue(vo.isDemo || '#2#');
+  renderChkIndicators(vo.indicatorIds || []);
+  openDrawer();
+}
+
+async function openView(id) {
+  try {
+    S.row = await fetchDetail(id);
+  } catch (e) {
+    showToast(e.message || '方案加载失败', true);
+    return;
+  }
+  setDrawerMode('view');
+  renderSchemeView();
+  openDrawer();
+}
+
+async function openVerify(id) {
+  let vo;
+  try {
+    vo = await fetchDetail(id);
+  } catch (e) {
+    showToast(e.message || '方案加载失败', true);
+    return;
+  }
+  S.row = vo;
+  setDrawerMode('verify');
+  clearErrors();
+  $('in-after').value = vo.verifyAfterVolume === null || vo.verifyAfterVolume === undefined ? '' : fmtNum(vo.verifyAfterVolume);
+  $('in-source').value = vo.verifySource || '';
+  $('in-note').value = vo.verifyNote || '';
+  selComparable.setValue(vo.verifyComparable || '');
+  renderVerifyTip(vo);
+  openDrawer();
+}
+
+function renderVerifyTip(vo) {
+  const box = $('verify-tip');
+  const base = fmtNum(vo.baselineVolume);
+  const now = fmtNum(vo.evidenceActualVolume);
+  let text = '对比基准（实施前实际）：' + (base === null ? '--' : base + ' 万m³') +
+    '；依据记录现值：' + (now === null ? '--' : now + ' 万m³') +
+    '；节水目标：' + (fmtNum(vo.targetVolume) === null ? '--' : fmtNum(vo.targetVolume) + ' 万m³');
+  const stale = base !== null && now !== null && Number(base) !== Number(now);
+  if (stale) {
+    text += '。依据记录现值与快照不一致：建议先点「刷新对比依据」使其一致，再提交核验。';
+  }
+  box.textContent = text;
+  box.classList.toggle('warn', stale);
+}
+
+/* ============================ 保存 / 核验 ============================ */
+async function saveScheme() {
+  if (S.saving) return;
+  let body;
+  try {
+    body = collectSchemeForm();
+  } catch (e) {
+    showToast(e.message, true);
+    return;
+  }
+  const isEdit = S.mode === 'edit' && S.row;
+  S.saving = true;
+  const btn = $('btn-save');
+  btn.classList.add('is-loading');
+  try {
+    if (isEdit) {
+      await api('/water-saving/schemes/update?id=' + encodeURIComponent(S.row.id), { method: 'PUT', body: body });
+    } else {
+      await api('/water-saving/schemes/create', { method: 'POST', body: body });
+    }
+    closeDrawer();
+    showToast(isEdit ? '方案已更新' : '方案已创建');
+    await loadList();
+  } catch (e) {
+    showToast(e.message || '保存失败', true);
+  } finally {
+    S.saving = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+async function submitVerify() {
+  if (S.saving || !S.row) return;
+  clearErrors();
+  let body;
+  try {
+    body = collectVerifyForm();
+  } catch (e) {
+    showToast(e.message, true);
+    return;
+  }
+  S.saving = true;
+  const btn = $('btn-verify');
+  btn.classList.add('is-loading');
+  try {
+    await api('/water-saving/schemes/verify', { method: 'POST', body: body });
+    closeDrawer();
+    showToast(body.comparable === '#1#' ? '核验完成，已按指标公式计算' : '核验已保存（对比条件未确认 → 待复核）');
+    await loadList();
+  } catch (e) {
+    showToast(e.message || '核验失败', true);
+  } finally {
+    S.saving = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+/* ============================ 查看态渲染与附件管理 ============================ */
+function renderSchemeView() {
+  const vo = S.row;
+  if (!vo) return;
+  const dash = '--';
+  const kv = (k, v) => '<div class="view-row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
+  const g = [];
+
+  g.push('<div class="sec-title">基本信息</div><div class="view-grid">');
+  g.push(kv('方案名称', esc(vo.name || dash)));
+  g.push(kv('实施年度', vo.year === null || vo.year === undefined ? dash : esc(String(vo.year)) + ' 年度'));
+  g.push(kv('负责人', esc(vo.owner || dash)));
+  g.push(kv('方案状态', statusTag(vo) + (vo.statusReason ? '<span class="sub">' + esc(vo.statusReason) + '</span>' : '')));
+  g.push(kv('节水目标', vo.targetVolume === null || vo.targetVolume === undefined ? dash : esc(fmtNum(vo.targetVolume)) + ' 万m³'));
+  g.push(kv('达标状态', attainTag(vo)));
+  g.push(kv('数据标记', vo.isDemo === '#1#' ? '虚拟演示' : '正式'));
+  g.push(kv('更新时间', esc(vo.updatedText || dash)));
+  g.push('</div>');
+
+  g.push('<div class="sec-title">对比依据</div><div class="view-grid">');
+  g.push(kv('依据年度', vo.evidenceBasisYear === null || vo.evidenceBasisYear === undefined ? dash : esc(String(vo.evidenceBasisYear)) + ' 年度'));
+  g.push(kv('上一年计划放水量', vo.evidencePlanVolume === null || vo.evidencePlanVolume === undefined ? dash : esc(fmtNum(vo.evidencePlanVolume)) + ' 万m³'));
+  g.push(kv('上一年实际放水量', vo.evidenceActualVolume === null || vo.evidenceActualVolume === undefined ? dash : esc(fmtNum(vo.evidenceActualVolume)) + ' 万m³'));
+  g.push(kv('节水潜力', vo.evidencePotential === null || vo.evidencePotential === undefined ? dash : esc(fmtNum(vo.evidencePotential)) + ' 万m³'));
+  g.push(kv('实施前实际（快照）', vo.baselineVolume === null || vo.baselineVolume === undefined ? dash : esc(fmtNum(vo.baselineVolume)) + ' 万m³'));
+  g.push('</div>');
+
+  const inds = Array.isArray(vo.indicators) ? vo.indicators : [];
+  g.push('<div class="sec-title">评估指标（' + inds.length + '）</div>');
+  if (!inds.length) {
+    g.push('<div class="m-empty">（未关联评估指标）</div>');
+  } else {
+    g.push('<div class="m-wrap"><table class="m-tbl"><colgroup>' +
+      '<col style="width:26%"><col style="width:24%"><col style="width:16%"><col style="width:18%"><col style="width:16%">' +
+      '</colgroup><thead><tr><th>指标名称</th><th>计算方式</th><th>目标值</th><th>计算结果</th><th>状态</th></tr></thead><tbody>' +
+      inds.map(ind => {
+        const cls = ind.state === 'pass' ? 'green' : (ind.state === 'fail' ? 'red' : 'gray');
+        const val = (ind.result === null || ind.result === undefined) ? dash : esc(fmtNum(ind.result)) + (ind.unit ? ' ' + esc(ind.unit) : '');
+        const target = (ind.targetValue === null || ind.targetValue === undefined) ? '未设置' : esc(fmtNum(ind.targetValue)) + (ind.unit ? ' ' + esc(ind.unit) : '');
+        return '<tr><td>' + esc(ind.name || dash) + '</td>' +
+          '<td>' + esc(ind.methodName || dash) + '<div class="m-sub">' + esc(ind.formula || '') + '</div></td>' +
+          '<td>' + target + '</td>' +
+          '<td>' + val + '</td>' +
+          '<td><span class="tag ' + cls + '">' + esc(ind.stateName || dash) + '</span></td></tr>';
+      }).join('') +
+      '</tbody></table></div>');
+  }
+
+  g.push('<div class="sec-title">具体措施</div>');
+  g.push('<div class="view-row"><span class="v">' + esc(vo.measure || dash) + '</span></div>');
+
+  g.push('<div class="sec-title">核验信息</div>');
+  if (vo.verifyAfterVolume === null || vo.verifyAfterVolume === undefined) {
+    g.push('<div class="view-row"><span class="v">尚未核验</span></div>');
+  } else {
+    g.push('<div class="view-grid">');
+    g.push(kv('核验日期', esc(vo.verifyDate || dash)));
+    g.push(kv('实施后实际用水量', esc(fmtNum(vo.verifyAfterVolume)) + ' 万m³'));
+    g.push(kv('对比条件确认', vo.verifyComparable === '#1#' ? '已确认' : '未确认'));
+    g.push(kv('核验有效性', vo.verifyInvalid === '#1#'
+      ? '<span class="tag red">已作废（数据保留）</span>' : '<span class="tag green">有效</span>'));
+    g.push(kv('核验资料来源', esc(vo.verifySource || dash)));
+    g.push(kv('核验说明', esc(vo.verifyNote || dash)));
+    g.push('</div>');
+    if (vo.lastRecalcText || vo.lastRecalcReason) {
+      g.push('<div class="val-box' + (vo.verifyInvalid === '#1#' ? ' warn' : '') + '" style="margin-top:12px">' +
+        (vo.lastRecalcReason ? '最近变更原因：' + esc(vo.lastRecalcReason) + '；' : '') +
+        '时间：' + esc(vo.lastRecalcText || dash) + '</div>');
+    }
+  }
+
+  g.push('<div class="sec-title">附件</div>');
+  g.push('<div class="att-box">' + viewAttBoxHtml(vo) + '</div>');
+
+  $('view-box').innerHTML = g.join('');
+}
+
+function viewAttBoxHtml(vo) {
+  let html = '';
+  if (vo.attachmentName) {
+    html += '<span class="att-name">' + esc(vo.attachmentName) + '</span>' +
+      '<button class="btn btn-default btn-sm" type="button" data-vact="att-download">下载</button>' +
+      '<button class="btn btn-danger btn-sm" type="button" data-vact="att-remove">移除</button>';
+  } else {
+    html += '<span class="att-none">暂无附件</span>';
+  }
+  html += '<span style="flex:1"></span>' +
+    '<button class="btn btn-default btn-sm" type="button" data-vact="att-upload">' +
+    (vo.attachmentName ? '替换附件' : '上传附件') + '</button>' +
+    '<input type="file" id="att-file" hidden accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.pdf,.doc,.docx,.xls,.xlsx">';
+  return html;
+}
+
+function onViewBoxClick(e) {
+  const el = e.target.closest('[data-vact]');
+  if (!el || !S.row) return;
+  const act = el.dataset.vact;
+  if (act === 'att-download') downloadAttachment(S.row.id);
+  else if (act === 'att-remove') askRemoveAtt();
+  else if (act === 'att-upload') {
+    const input = $('att-file');
+    if (input) input.click();
+  }
+}
+
+async function uploadSchemeAtt(input) {
+  if (!S.row || !input.files || !input.files[0]) return;
+  const file = input.files[0];
+  if (file.size > 2 * 1024 * 1024) {
+    showToast('附件不能超过 2MB', true);
+    input.value = '';
+    return;
+  }
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const vo = await api('/water-saving/schemes/attachment/upload?id=' + encodeURIComponent(S.row.id),
+      { method: 'POST', body: fd });
+    if (vo && vo.id) S.row = vo;
+    renderSchemeView();
+    showToast('附件已上传');
+    loadList();
+  } catch (e) {
+    showToast(e.message || '附件上传失败', true);
+  } finally {
+    input.value = '';
+  }
+}
+
+function askRemoveAtt() {
+  if (!S.row) return;
+  showDlg({
+    title: '移除附件',
+    text: '确定移除附件「' + (S.row.attachmentName || '') + '」？文件将同时删除，删除后不可恢复。',
+    okText: '移除',
+    onOk: async () => {
+      const vo = await api('/water-saving/schemes/attachment/remove?id=' + encodeURIComponent(S.row.id), { method: 'POST' });
+      if (vo && vo.id) S.row = vo;
+      renderSchemeView();
+      showToast('附件已移除');
+      loadList();
+    }
+  });
+}
+
+/* ============================ 行操作（刷新依据 / 删除 / 文档 / 附件下载 / 导出） ============================ */
+function rowById(id) {
+  return S.records.filter(r => r.id === id)[0] || null;
+}
+
+function askRefresh(id) {
+  const r = rowById(id);
+  if (!r) return;
+  const ev = S.annualMap[r.evidenceId];
+  const base = fmtNum(r.baselineVolume);
+  const now = ev ? fmtNum(ev.prevActualVolume) : null;
+  let text = '将「' + (r.name || '') + '」的实施前实际用水量快照拉齐为当前依据记录的实际值';
+  if (base !== null && now !== null) {
+    text += '（' + base + ' → ' + now + ' 万m³）';
+  }
+  text += '。';
+  showDlg({
+    title: '刷新对比依据',
+    text: text,
+    alert: r.verifyAfterVolume !== null && r.verifyAfterVolume !== undefined
+      ? '该方案已核验：刷新后核验数据将作废（数据保留），达标状态回到「待核验」。' : '',
+    okText: '确认刷新',
+    onOk: async () => {
+      await api('/water-saving/schemes/refresh-basis?id=' + encodeURIComponent(id), { method: 'POST' });
+      showToast('对比依据已刷新');
+      await loadList();
+    }
+  });
+}
+
+function askDel(id) {
+  const r = rowById(id);
+  if (!r) return;
+  showDlg({
+    title: '删除方案',
+    text: '确定删除方案「' + (r.name || '') + '」？' +
+      (r.attachmentName ? '附件文件将同时删除，' : '') + '删除后不可恢复。',
+    okText: '删除',
+    onOk: async () => {
+      await api('/water-saving/schemes/delete?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      showToast('方案已删除');
+      await loadList();
+    }
+  });
+}
+
+async function genDocument(id) {
+  try {
+    const data = await api('/water-saving/schemes/document?id=' + encodeURIComponent(id));
+    if (!data || !data.content) {
+      showToast('文档生成失败', true);
+      return;
+    }
+    saveText(data.fileName, data.content);
+    showToast('措施文档已生成');
+  } catch (e) {
+    showToast(e.message || '文档生成失败', true);
+  }
+}
+
+async function downloadAttachment(id) {
+  const r = rowById(id) || (S.row && S.row.id === id ? S.row : null);
+  try {
+    await downloadBlob('/water-saving/schemes/attachment/download?id=' + encodeURIComponent(id),
+      (r && r.attachmentName) || 'attachment');
+  } catch (e) {
+    showToast(e.message || '附件下载失败', true);
+  }
+}
+
+async function onExport() {
+  try {
+    await downloadBlob('/water-saving/schemes/export', '节水方案.csv');
+    showToast('导出完成');
+  } catch (e) {
+    showToast(e.message || '导出失败', true);
+  }
+}
+
+/* ============================ 确认弹窗 ============================ */
+/* showDlg / closeDlg / onDlgOk 见 lib/water-saving-common.js（顶部已解构别名） */
+
+/* ============================ 基础数据装载 ============================ */
+async function loadIndicators() {
+  const data = await api('/water-saving/indicators/list');
+  S.indicators = Array.isArray(data) ? data : [];
+  S.indicatorMap = {};
+  S.indicators.forEach(ind => { S.indicatorMap[ind.id] = ind; });
+}
+
+async function loadAnnuals() {
+  const data = await api('/water-saving/annual-water/list');
+  S.annuals = Array.isArray(data) ? data : [];
+  S.annualMap = {};
+  S.annuals.forEach(a => { S.annualMap[a.id] = a; });
+  renderAnnuals();
+  fillYearFilter();
+  renderKpiCards();
+}
+
+function fillYearFilter() {
+  const years = [];
+  S.annuals.forEach(a => {
+    if (a.potentialYear !== null && a.potentialYear !== undefined && years.indexOf(a.potentialYear) < 0) {
+      years.push(a.potentialYear);
+    }
+  });
+  years.sort((a, b) => b - a);
+  const cur = selFYear.getValue();
+  const keep = cur && years.indexOf(Number(cur)) >= 0 ? cur : '';
+  selFYear.setOptions([{ value: '', label: '全部年度' }].concat(
+    years.map(y => ({ value: String(y), label: y + ' 年度' }))));
+  selFYear.setValue(keep);
+}
+
+/** KPI 卡片：上一年计划/实际放水量、本年节水潜力（跟随年度筛选；无记录或不可计算显示「—」） */
+function renderKpiCards() {
+  const box = $('kpi-row');
+  const y = Number(selFYear.getValue() || S.baseYear);
+  const rec = S.annuals.find(a => Number(a.potentialYear) === y) || null;
+  const val = v => (v === null || v === undefined) ? '—' : esc(fmtNum(v)) + '<span class="u">万m³</span>';
+  const neg = rec && rec.potential !== null && rec.potential !== undefined && Number(rec.potential) < 0;
+  box.innerHTML =
+    '<div class="kpi-card"><div class="kt">上一年计划放水量</div><div class="kv">' +
+      (rec ? val(rec.prevPlanVolume) : '—') + '</div></div>' +
+    '<div class="kpi-card"><div class="kt">上一年实际放水量</div><div class="kv">' +
+      (rec ? val(rec.prevActualVolume) : '—') + '</div></div>' +
+    '<div class="kpi-card"><div class="kt">本年节水潜力</div><div class="kv' + (neg ? ' neg' : '') + '">' +
+      (rec ? val(rec.potential) : '—') + '</div></div>';
+}
+
+/* ============================ 年度水量抽屉 ============================ */
+async function openAnnuals() {
+  try {
+    await loadAnnuals();
+  } catch (e) {
+    showToast('年度水量加载失败：' + e.message, true);
+  }
+  setAnnualMode('list');
+  $('drawer2-mask').classList.add('show');
+  $('drawer2').classList.add('show');
+  $('drawer2').setAttribute('aria-hidden', 'false');
+}
+
+function closeAnnuals() {
+  $('drawer2-mask').classList.remove('show');
+  $('drawer2').classList.remove('show');
+  $('drawer2').setAttribute('aria-hidden', 'true');
+  S.annualRow = null;
+}
+
+function setAnnualMode(mode) {
+  S.annualMode = mode;
+  const isForm = mode === 'create' || mode === 'edit';
+  $('annual-list-box').hidden = isForm;
+  $('annual-form-box').hidden = !isForm;
+  $('btn-annual-save').hidden = !isForm;
+  $('btn-annual-cancel').textContent = isForm ? '返回列表' : '关闭';
+  $('annual-form-title').textContent = mode === 'edit' ? '编辑年度水量记录' : '新增年度水量记录';
+}
+
+function renderAnnuals() {
+  const tb = $('annual-body');
+  if (!S.annuals.length) {
+    tb.innerHTML = '<tr><td colspan="8" class="m-empty">暂无年度水量记录，点击「新增记录」开始维护</td></tr>';
+    return;
+  }
+  const num = v => (v === null || v === undefined) ? '<span class="m-sub">--</span>' : esc(fmtNum(v));
+  tb.innerHTML = S.annuals.map(a => {
+    let pot = '<span class="m-sub">不可计算</span>';
+    if (a.potential !== null && a.potential !== undefined) {
+      const neg = Number(a.potential) < 0;
+      pot = '<span' + (neg ? ' style="color:var(--el-color-danger)"' : '') + '>' + esc(fmtNum(a.potential)) + '</span>';
+    }
+    return '<tr>' +
+      '<td>' + esc(String(a.potentialYear)) + ' 年度</td>' +
+      '<td>' + (a.basisYear === null || a.basisYear === undefined ? '--' : esc(String(a.basisYear)) + ' 年度') + '</td>' +
+      '<td>' + num(a.prevPlanVolume) + '</td>' +
+      '<td>' + num(a.prevActualVolume) + '</td>' +
+      '<td>' + pot + '</td>' +
+      '<td>' + esc(a.planSourceName || '--') + '</td>' +
+      '<td>' + (a.isDemo === '#1#' ? '虚拟演示' : '正式') + '</td>' +
+      '<td class="m-acts"><span class="lnk" data-aact="edit" data-id="' + esc(a.id) + '">编辑</span>' +
+      '<span class="lnk danger" data-aact="del" data-id="' + esc(a.id) + '" style="margin-left:10px">删除</span></td>' +
+      '</tr>';
+  }).join('');
+}
+
+function fillAnnualYearOptions(currentYear) {
+  const base = S.baseYear;
+  const years = [];
+  for (let y = base + 1; y >= base - 5; y--) years.push(y);
+  if (currentYear !== null && currentYear !== undefined && years.indexOf(currentYear) < 0) {
+    years.push(currentYear);
+  }
+  selAYear.setOptions(years.map(y => ({ value: String(y), label: y + ' 年度' + (y === base ? '（本年）' : '') })));
+}
+
+function openAnnualCreate() {
+  S.annualRow = null;
+  annualPlanId = null;
+  annualPlanSource = null;
+  setAnnualMode('create');
+  fillAnnualYearOptions(null);
+  selAYear.setDisabled(false).setValue(String(S.baseYear));
+  selAYear.setError(false);
+  selADemo.setValue('#2#');
+  $('in-a-actual').value = '';
+  $('in-a-plan').value = '';
+  $('in-a-actual').classList.remove('is-err');
+  $('in-a-plan').classList.remove('is-err');
+  $('a-potential-box').hidden = true;
+  onAnnualYearChange();
+}
+
+function openAnnualEdit(id) {
+  const a = S.annualMap[id];
+  if (!a) { showToast('记录不存在，请刷新后重试', true); return; }
+  S.annualRow = a;
+  annualPlanId = a.planId || null;
+  annualPlanSource = a.planSource || null;
+  setAnnualMode('edit');
+  fillAnnualYearOptions(a.potentialYear);
+  selAYear.setValue(String(a.potentialYear)).setDisabled(true);
+  selAYear.setError(false);
+  selADemo.setValue(a.isDemo || '#2#');
+  $('in-a-actual').value = (a.prevActualVolume === null || a.prevActualVolume === undefined) ? '' : fmtNum(a.prevActualVolume);
+  $('in-a-plan').value = (a.prevPlanVolume === null || a.prevPlanVolume === undefined) ? '' : fmtNum(a.prevPlanVolume);
+  $('in-a-actual').classList.remove('is-err');
+  $('in-a-plan').classList.remove('is-err');
+  updateAnnualPotential();
+}
+
+async function onAnnualYearChange() {
+  if (S.annualMode !== 'create') return;
+  if (!selAYear.getValue()) return;
+  await fetchPrevPlan(false);
+}
+
+async function fetchPrevPlan(force) {
+  const year = selAYear.getValue();
+  if (!year) {
+    if (force) showToast('请先选择潜力年度', true);
+    return;
+  }
+  let data;
+  try {
+    data = await api('/water-saving/annual-water/prev-plan?year=' + encodeURIComponent(year));
+  } catch (e) {
+    if (force) showToast(e.message || '查询用水计划失败', true);
+    return;
+  }
+  if (!data || !data.found) {
+    if (force) {
+      $('in-a-plan').value = '';
+      annualPlanId = null;
+      annualPlanSource = null;
+      updateAnnualPotential();
+      showToast('未找到 ' + ((data && data.basisYear) || (Number(year) - 1)) + ' 年度的用水计划，请手工录入', true);
+    }
+    return;
+  }
+  $('in-a-plan').value = fmtNum(data.planVolume);
+  annualPlanId = data.planId || null;
+  annualPlanSource = 'auto_plan';
+  updateAnnualPotential();
+  const tag = data.planNo || data.planName || '';
+  showToast((force ? '已从用水计划带出：' : '已自动带出 ' + data.basisYear + ' 年度计划：') +
+    (tag ? tag + ' ' : '') + fmtNum(data.planVolume) + ' 万m³（可手工修改）');
+}
+
+function optionalNumQuiet(el) {
+  const raw = el.value.trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  return isNaN(n) ? null : n;
+}
+
+function updateAnnualPotential() {
+  const box = $('a-potential-box');
+  const plan = optionalNumQuiet($('in-a-plan'));
+  const actual = optionalNumQuiet($('in-a-actual'));
+  if (plan === null || actual === null) {
+    box.hidden = true;
+    return;
+  }
+  const p = actual - plan;
+  box.hidden = false;
+  box.classList.toggle('warn', p < 0);
+  box.textContent = '节水潜力 = 上一年实际 ' + fmtNum(actual) + ' − 上一年计划 ' + fmtNum(plan) +
+    ' = ' + fmtNum(p) + ' 万m³' + (p < 0 ? '（为负：上一年实际低于计划）' : '');
+}
+
+function collectAnnualForm() {
+  selAYear.setError(false);
+  $('in-a-actual').classList.remove('is-err');
+  $('in-a-plan').classList.remove('is-err');
+  const yearRaw = selAYear.getValue();
+  if (!yearRaw) { selAYear.setError(true); throw new Error('请选择潜力年度'); }
+  const actual = requireNum($('in-a-actual'), '上一年实际放水量');
+  if (actual < 0) { $('in-a-actual').classList.add('is-err'); throw new Error('上一年实际放水量不能为负数'); }
+  const plan = optionalNum($('in-a-plan'), '上一年计划放水量');
+  if (plan !== null && plan < 0) { $('in-a-plan').classList.add('is-err'); throw new Error('上一年计划放水量不能为负数'); }
+  return {
+    id: S.annualRow ? S.annualRow.id : null,
+    potentialYear: Number(yearRaw),
+    prevPlanVolume: plan,
+    prevActualVolume: actual,
+    planSource: plan === null ? null : (annualPlanSource || 'manual'),
+    planId: plan === null ? null : annualPlanId,
+    isDemo: selADemo.getValue() || '#2#'
+  };
+}
+
+async function saveAnnual() {
+  let body;
+  try {
+    body = collectAnnualForm();
+  } catch (e) {
+    showToast(e.message, true);
+    return;
+  }
+  const btn = $('btn-annual-save');
+  btn.classList.add('is-loading');
+  try {
+    await api('/water-saving/annual-water/save', { method: 'POST', body: body });
+    showToast('年度水量已保存');
+    setAnnualMode('list');
+    await loadAnnuals();
+    await loadList();
+  } catch (e) {
+    showToast(e.message || '保存失败', true);
+  } finally {
+    btn.classList.remove('is-loading');
+  }
+}
+
+function askDelAnnual(id) {
+  const a = S.annualMap[id];
+  if (!a) return;
+  showDlg({
+    title: '删除年度水量记录',
+    text: '确定删除 ' + a.potentialYear + ' 年度的水量记录？删除后不可恢复。被方案引用的记录不可删除。',
+    okText: '删除',
+    onOk: async () => {
+      await api('/water-saving/annual-water/delete?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      showToast('记录已删除');
+      await loadAnnuals();
+    }
+  });
+}
+
+function onAnnualBodyClick(e) {
+  const el = e.target.closest('[data-aact]');
+  if (!el) return;
+  if (el.dataset.aact === 'edit') openAnnualEdit(el.dataset.id);
+  else if (el.dataset.aact === 'del') askDelAnnual(el.dataset.id);
+}
+
+/* ============================ 事件绑定与初始化 ============================ */
+function bindEvents() {
+  $('flt-search').addEventListener('click', () => {
+    S.filter.year = selFYear.getValue();
+    S.filter.name = $('f-name').value.trim();
+    S.filter.owner = $('f-owner').value.trim();
+    S.filter.status = selFStatus.getValue();
+    S.page = 1;
+    renderKpiCards();
+    loadList();
+  });
+  $('flt-reset').addEventListener('click', () => {
+    selFYear.setValue('');
+    selFStatus.setValue('');
+    $('f-name').value = '';
+    $('f-owner').value = '';
+    S.filter = { year: '', name: '', owner: '', status: '' };
+    S.page = 1;
+    renderKpiCards();
+    loadList();
+  });
+  ['f-name', 'f-owner'].forEach(fid => $(fid).addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('flt-search').click();
+  }));
+
+  $('btn-add').addEventListener('click', openCreate);
+  $('btn-annuals').addEventListener('click', openAnnuals);
+  $('btn-export').addEventListener('click', onExport);
+
+  $('tbl-body').addEventListener('click', onTableClick);
+  $('pg-bar').addEventListener('click', e => {
+    if (e.target.id === 'pg-size') return;
+    onPagerClick(e);
+  });
+  $('pg-bar').addEventListener('change', e => {
+    if (e.target.id === 'pg-size') {
+      S.size = Number(e.target.value) || 20;
+      S.page = 1;
+      loadList();
+    }
+  });
+  $('pg-bar').addEventListener('keydown', e => {
+    if (e.target.id === 'pg-jump' && e.key === 'Enter') jumpToPage(e.target.value);
+  });
+
+  $('btn-close').addEventListener('click', closeDrawer);
+  $('drawer-mask').addEventListener('click', () => { if (!S.saving) closeDrawer(); });
+  $('btn-cancel').addEventListener('click', closeDrawer);
+  $('btn-save').addEventListener('click', saveScheme);
+  $('btn-verify').addEventListener('click', submitVerify);
+  $('view-box').addEventListener('click', onViewBoxClick);
+  $('view-box').addEventListener('change', e => {
+    if (e.target.id === 'att-file') uploadSchemeAtt(e.target);
+  });
+
+  $('btn-close2').addEventListener('click', closeAnnuals);
+  $('drawer2-mask').addEventListener('click', closeAnnuals);
+  $('btn-annual-add').addEventListener('click', openAnnualCreate);
+  $('btn-annual-save').addEventListener('click', saveAnnual);
+  $('btn-fetch-plan').addEventListener('click', () => fetchPrevPlan(true));
+  $('annual-body').addEventListener('click', onAnnualBodyClick);
+  $('btn-annual-cancel').addEventListener('click', () => {
+    if (S.annualMode === 'create' || S.annualMode === 'edit') setAnnualMode('list');
+    else closeAnnuals();
+  });
+  $('in-a-actual').addEventListener('input', updateAnnualPotential);
+  $('in-a-plan').addEventListener('input', () => {
+    annualPlanId = null;
+    annualPlanSource = 'manual';
+    updateAnnualPotential();
+  });
+
+  $('dlg-ok').addEventListener('click', onDlgOk);
+  $('dlg-cancel').addEventListener('click', closeDlg);
+  $('dlg-mask').addEventListener('click', e => {
+    if (e.target === $('dlg-mask')) closeDlg();
+  });
+
+  document.addEventListener('click', e => {
+    const sel = e.target && e.target.closest ? e.target.closest('.sel') : null;
+    closeAllSelects(sel);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    closeAllSelects(null);
+    if ($('dlg-mask').classList.contains('show')) { closeDlg(); return; }
+    if ($('drawer2').classList.contains('show')) { closeAnnuals(); return; }
+    if ($('drawer').classList.contains('show') && !S.saving) closeDrawer();
+  });
+}
+
+async function init() {
+  initSelects();
+  bindEvents();
+  try {
+    const arr = await Promise.all([
+      api('/water-saving/meta'),
+      api('/water-saving/indicators/list'),
+      api('/water-saving/annual-water/list')
+    ]);
+    S.meta = arr[0] || S.meta;
+    S.indicators = Array.isArray(arr[1]) ? arr[1] : [];
+    S.indicatorMap = {};
+    S.indicators.forEach(ind => { S.indicatorMap[ind.id] = ind; });
+    S.annuals = Array.isArray(arr[2]) ? arr[2] : [];
+    S.annualMap = {};
+    S.annuals.forEach(a => { S.annualMap[a.id] = a; });
+  } catch (e) {
+    showToast('基础数据加载失败：' + e.message, true);
+  }
+  initStatusFilter();
+  fillFormStatusOptions();
+  fillDemoOptions();
+  fillComparableOptions();
+  renderAnnuals();
+  fillYearFilter();
+  renderKpiCards();
+  await loadList();
+}
+
+init();
+</script>
+</body>
+</html>

@@ -458,7 +458,7 @@ ALTER TABLE "qixiao-apaas"."t_auto_hltgq_yn8cm_igahxz_ahygpx_rel"
 -- 展示层换算万m³ 1 位）；面积亩（2 位）；水价 元/m³（3 位）；编号（YH/YJ + 3 位序号）由应用层生成，
 -- 唯一索引兜底并发（生成冲突重试）。与平台既有用水台账表 hjwwcb、水费预留体系 gfiidm/quaxiq 等无耦合。
 
--- 1.1 用水户：编号 YH+3位序号（YH001 起）
+-- 1.1 用水户：编号 YH+3位序号（YH001 起；系统自动生成默认值，可修改）
 CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_user (
     id              VARCHAR(64)  PRIMARY KEY,
     user_no         VARCHAR(32)  NOT NULL,          -- 编号：YH + 3 位序号（全局唯一）
@@ -472,7 +472,12 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_user (
     gate_config     TEXT         NOT NULL,          -- 关联闸口（JSON，闸站 id + 名称快照）：
                                                     --   累加 {"mode":"SUM","gates":[{"id":"…","name":"…"},…]}
                                                     --   差额 {"mode":"DIFF","main":{…},"deduct":[{…},…]}
+                                                    --   差额策略保存时校验：主闸口读数 − 扣减闸口读数合计 > 0
     settle_cycle    VARCHAR(16)  NOT NULL,          -- 统计周期：#1# 月度结算 / #2# 季度结算 / #3# 年度结算
+    lng             NUMERIC(10,6),                  -- 位置经度（可选，-180~180）
+    lat             NUMERIC(10,6),                  -- 位置纬度（可选，-90~90）
+    annual_plan_water NUMERIC(16,2),                -- 年度计划水量（m³；可空=未设定；对外展示万m³）
+    remark          VARCHAR(200),                   -- 备注
     status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 状态：#1# 正常 / #2# 停用
     corp_code       VARCHAR(64),
     created_at      TIMESTAMP,
@@ -489,7 +494,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_water_user_name
 CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_quota (
     id                VARCHAR(64)  PRIMARY KEY,
     crop_type         VARCHAR(100) NOT NULL,        -- 作物种类（水稻/冬小麦/…；亦含工业用水、城镇生活等行业类型）
-    irrigation_method VARCHAR(100),                 -- 灌溉方式（可空）
+    irrigation_method VARCHAR(16)  NOT NULL,        -- 灌溉方式（必填；字典型 #1#~#10#：淹灌/控制灌溉/畦灌/沟灌/喷灌/滴灌/膜下滴灌/微喷/泛水补水/计划直供）
     quota_value       NUMERIC(12,2) NOT NULL,       -- 定额标准（m³/亩，>0）
     remark            VARCHAR(200),                 -- 备注（如"泡田+生育期全周期定额"）
     corp_code         VARCHAR(64),
@@ -503,13 +508,14 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_quota (
 CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_plan (
     id              VARCHAR(64)  PRIMARY KEY,
     plan_no         VARCHAR(32)  NOT NULL,          -- 编号：YJ + 3 位序号（YJ001 起，全局唯一）
-    plan_name       VARCHAR(200) NOT NULL,          -- 计划名称（必填，全局唯一；可自动生成如"2026年10月中旬旬度调度计划"）
+    plan_name       VARCHAR(200) NOT NULL,          -- 计划名称（必填，全局唯一，不可自动生成；如"2026年度供水计划"）
     plan_type       VARCHAR(16)  NOT NULL,          -- 类型：#1# 年度 / #2# 月度 / #3# 旬度
     period_start    DATE         NOT NULL,          -- 计划周期起（按类型自动填充，不可修改）
     period_end      DATE         NOT NULL,          -- 计划周期止（年度=12-31；旬度按自然月末计算）
     total_water     NUMERIC(16,2) NOT NULL DEFAULT 0,  -- 计划总水量（m³，明细计划水量汇总，只读）
     scheduled_qty   NUMERIC(16,2) NOT NULL DEFAULT 0,  -- 已调度水量（m³，默认 0；调度模块后续回写）
     dispatch_ref_id VARCHAR(64),                    -- 调度方案关联引用（预留字段，本期不使用）
+    remark          VARCHAR(200),                   -- 备注
     status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- #1# 编制中 / #2# 已生效 / #3# 已归档 / #4# 已作废
     void_by         VARCHAR(64),                    -- 作废人（作废时记录）
     void_at         TIMESTAMP,                      -- 作废时间
@@ -529,7 +535,7 @@ CREATE INDEX IF NOT EXISTS idx_water_plan_status
 CREATE INDEX IF NOT EXISTS idx_water_plan_type_period
     ON "qixiao-apaas".t_auto_hltgq_water_plan(plan_type, period_start, period_end);
 
--- 1.4 用水计划明细：行 = 用水户 × 定额（同一期可多行，区分春灌/夏灌等阶段）
+-- 1.4 用水计划明细：行 = 用水户（同一用水户在同一计划中仅可出现一次，唯一索引 + 服务层校验双重保障）
 CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_plan_item (
     id              VARCHAR(64)  PRIMARY KEY,
     plan_id         VARCHAR(64)  NOT NULL,          -- 计划主表 ID（water_plan.id）
@@ -547,6 +553,8 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_plan_item (
     updated_at      TIMESTAMP,
     updated_by      VARCHAR(64)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_plan_item_user
+    ON "qixiao-apaas".t_auto_hltgq_water_plan_item(plan_id, water_user_id);
 CREATE INDEX IF NOT EXISTS idx_water_plan_item_plan
     ON "qixiao-apaas".t_auto_hltgq_water_plan_item(plan_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_water_plan_item_user
@@ -674,3 +682,87 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_water_bill_no
     ON "qixiao-apaas".t_auto_hltgq_water_bill(bill_no);
 CREATE INDEX IF NOT EXISTS idx_water_bill_user
     ON "qixiao-apaas".t_auto_hltgq_water_bill(water_user_id, cycle_key);
+
+-- ========== 节水管理（2026-10 新增，对应《节水潜力开发实施方案》V1.4 §3 数据模型） ==========
+-- 年度水量记录 / 节水方案 / 节水指标三张表；独立执行版见根目录 water-saving-ddl.sql。
+-- 平台低代码台账（bqinjk 节水方案 / iiitnh 节水体系 为平台表单存储、字段不满足）保持不动，不迁移不读写；
+-- water_saving_potential（潜力测算页专用）不复用。水量一律万m³（NUMERIC(18,6)；用水计划 total_water 为 m³，
+-- 接口层 ÷10000 换算）；字典字段 "#N#" 文本编码；布尔语义用 "#1#/#2#" 文本（项目惯例）。
+-- 核验作废（方案A）：年度记录水量被改 / 编辑换依据 / 刷新对比依据 → status 置 #4# 待复核、verify_* 保留、
+-- verify_invalid=#1#、达标强制"待核验"；达标优先级链：待核验 > 待设置目标 > 待关联指标 > 无法计算 > 不达标 > 部分达标 > 达标。
+
+-- 5.1 年度水量记录：行 = 一个潜力年度（potential_year 唯一）；潜力 = 实际 − 计划（可为负，不截断）
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_saving_annual (
+    id                 VARCHAR(64)  PRIMARY KEY,
+    potential_year     INTEGER      NOT NULL,       -- 潜力年度（如 2026；全表唯一，被方案引用后禁止修改）
+    basis_year         INTEGER      NOT NULL,       -- 依据年度（= potential_year − 1，自动带出只读）
+    prev_plan_volume   NUMERIC(18,6),               -- 上一年计划放水量（万m³；自动带出或手工覆盖，非负）
+    prev_actual_volume NUMERIC(18,6),               -- 上一年实际放水量（万m³；本期手工录入，非负）
+    plan_source        VARCHAR(20),                 -- 计划来源：auto_plan 用水计划带出 / manual 手工录入
+    plan_id            VARCHAR(64),                 -- 来源计划 id（plan_source=auto_plan 时留痕；water_plan.id）
+    actual_source      VARCHAR(30),                 -- 实际来源：manual 手工（canal_head_meter 渠首自动=本期预留）
+    is_demo            VARCHAR(8)   NOT NULL DEFAULT '#2#',  -- 演示数据标记：#1# 虚拟演示 / #2# 正式数据（导出默认排除 #1#）
+    corp_code          VARCHAR(64),
+    created_at         TIMESTAMP,
+    created_by         VARCHAR(64),
+    updated_at         TIMESTAMP,
+    updated_by         VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_saving_annual_year
+    ON "qixiao-apaas".t_auto_hltgq_water_saving_annual(potential_year);
+
+-- 5.2 节水方案：baseline 建方案时快照固化（不随年度记录改动更新）；核验数据保留 + verify_invalid 作废标记（方案A）
+--     状态机：#1# 草稿 / #2# 实施中 —（核验 comparable=#1#）→ #3# 已完成；—（comparable=#2#）→ #4# 待复核
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_saving_scheme (
+    id                  VARCHAR(64)  PRIMARY KEY,
+    name                VARCHAR(200) NOT NULL,      -- 方案名称（同一年度内唯一）
+    "year"              INTEGER      NOT NULL,      -- 实施年度（= 关联记录的 potential_year；保留字，SQL 全程加引号）
+    evidence_id         VARCHAR(64)  NOT NULL,      -- 关联年度水量记录（saving_annual.id；被引用记录禁止删除）
+    baseline_volume     NUMERIC(18,6),              -- 实施前实际用水量快照（建方案时 = 记录.prev_actual_volume；仅"刷新对比依据"才更新）
+    target_volume       NUMERIC(18,6) NOT NULL,     -- 节水目标（万m³；0 < 目标 ≤ 潜力）
+    owner               VARCHAR(100) NOT NULL,      -- 负责人（如"工程管理处 / 张工"）
+    measure             TEXT         NOT NULL,      -- 具体措施
+    status              VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- #1# 草稿 / #2# 实施中 / #3# 已完成 / #4# 待复核
+    indicator_ids       TEXT         NOT NULL DEFAULT '[]',   -- 关联评估指标 id 数组（JSON；核验时按公式自动计算）
+    verify_after_volume NUMERIC(18,6),              -- 核验：实施后实际用水量（万m³；核验动作写入）
+    verify_source       VARCHAR(200),               -- 核验资料来源（核验必填，如台账/报表编号）
+    verify_note         TEXT,                       -- 核验说明（选填）
+    verify_date         DATE,                       -- 核验日期（核验动作当天）
+    verify_comparable   VARCHAR(8),                 -- 对比条件确认：#1# 已确认（计算指标）/ #2# 未确认（待复核、不计算）；NULL=未核验
+    verify_invalid      VARCHAR(8)   NOT NULL DEFAULT '#2#',  -- 核验作废标记（方案A）：#1# 已作废（数据保留、达标强制待核验）/ #2# 有效
+    last_recalc_at      TIMESTAMP,                  -- 达标重算/核验作废最近时间（留痕）
+    last_recalc_reason  VARCHAR(200),               -- 重算/作废原因（如"核验依据已变更"）
+    is_demo             VARCHAR(8)   NOT NULL DEFAULT '#2#',  -- 演示数据标记：#1# 虚拟演示 / #2# 正式数据
+    attachment_name     VARCHAR(255),               -- 附件原始文件名（下载展示）
+    attachment_url      VARCHAR(500),               -- 附件存储路径（file-dir 相对路径：saving/{yyyy-MM}/{uuid}_{原名}）
+    corp_code           VARCHAR(64),
+    created_at          TIMESTAMP,
+    created_by          VARCHAR(64),
+    updated_at          TIMESTAMP,
+    updated_by          VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_saving_scheme_year_name
+    ON "qixiao-apaas".t_auto_hltgq_water_saving_scheme("year", name);
+CREATE INDEX IF NOT EXISTS idx_water_saving_scheme_evidence
+    ON "qixiao-apaas".t_auto_hltgq_water_saving_scheme(evidence_id);
+CREATE INDEX IF NOT EXISTS idx_water_saving_scheme_status
+    ON "qixiao-apaas".t_auto_hltgq_water_saving_scheme(status);
+
+-- 5.3 节水指标：计算方式固定三种（下拉选择后单位/公式自动确定，不可自由编辑）；名称全局唯一（含停用）
+--     节水量(#1#)：万m³ = 实施前 − 实施后；节水率(#2#)：% = 节水量 ÷ 实施前 × 100；目标完成率(#3#)：% = 节水量 ÷ 方案目标 × 100
+--     分母为 0 → 结果 null（展示"无法计算"，不参与判定）；已关联方案的指标计算方式锁定、不可删除
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_saving_indicator (
+    id           VARCHAR(64)  PRIMARY KEY,
+    name         VARCHAR(200) NOT NULL,             -- 指标名称（全局唯一，含停用指标）
+    method       VARCHAR(16)  NOT NULL,             -- 计算方式：#1# 节水量(万m³) / #2# 节水率(%) / #3# 目标完成率(%)
+    target_value NUMERIC(18,6),                     -- 目标值（可空；未设目标 → 方案"待设置目标"、不出达标结论）
+    purpose      TEXT,                              -- 指标用途（选填）
+    enabled      VARCHAR(8)   NOT NULL DEFAULT '#1#',  -- 状态：#1# 启用 / #2# 停用（停用后新方案不可勾选，既有关联保留）
+    corp_code    VARCHAR(64),
+    created_at   TIMESTAMP,
+    created_by   VARCHAR(64),
+    updated_at   TIMESTAMP,
+    updated_by   VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_saving_indicator_name
+    ON "qixiao-apaas".t_auto_hltgq_water_saving_indicator(name);

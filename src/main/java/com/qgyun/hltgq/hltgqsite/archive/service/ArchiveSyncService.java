@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 
 /**
  * 档案系统同步服务：企效 UC 表 → 浩微档案系统。
@@ -141,7 +142,7 @@ public class ArchiveSyncService {
             return;
         }
         toSync.put(id, org);
-        String parentId = str(org.get("parent_id"));
+        String parentId = ValueConvertUtils.str(org.get("parent_id"));
         if (!isRootParent(parentId, id)) {
             Map<String, Object> parent = orgMap.get(parentId);
             if (parent != null) {
@@ -153,15 +154,15 @@ public class ArchiveSyncService {
     /** 单条组织行：parentDeptId 引用父部门编码（根传 null），dpLv 从根递归累加 */
     private Map<String, Object> buildDeptRow(Map<String, Object> org, Map<String, Map<String, Object>> orgMap) {
         Map<String, Object> row = new LinkedHashMap<>();
-        String code = str(org.get("code"));
-        String name = str(org.get("name"));
-        String parentId = str(org.get("parent_id"));
+        String code = ValueConvertUtils.str(org.get("code"));
+        String name = ValueConvertUtils.str(org.get("name"));
+        String parentId = ValueConvertUtils.str(org.get("parent_id"));
 
         String parentCode = null;
         if (!isRootParent(parentId, String.valueOf(org.get("id")))) {
             Map<String, Object> parent = orgMap.get(parentId);
             if (parent != null) {
-                parentCode = str(parent.get("code"));
+                parentCode = ValueConvertUtils.str(parent.get("code"));
             }
         }
 
@@ -186,7 +187,7 @@ public class ArchiveSyncService {
         if (!visited.add(id)) {
             return 1;
         }
-        String parentId = str(org.get("parent_id"));
+        String parentId = ValueConvertUtils.str(org.get("parent_id"));
         if (isRootParent(parentId, id)) {
             return 1;
         }
@@ -200,14 +201,14 @@ public class ArchiveSyncService {
     /** fullName：根=name，子=父路径_name；父缺失/环路防御兜底本名 */
     private String calcFullName(Map<String, Object> org, Map<String, Map<String, Object>> orgMap, Set<String> visited) {
         String id = String.valueOf(org.get("id"));
-        String name = str(org.get("name"));
+        String name = ValueConvertUtils.str(org.get("name"));
         if (name == null) {
             name = "";
         }
         if (!visited.add(id)) {
             return name;
         }
-        String parentId = str(org.get("parent_id"));
+        String parentId = ValueConvertUtils.str(org.get("parent_id"));
         if (isRootParent(parentId, id)) {
             return name;
         }
@@ -242,8 +243,8 @@ public class ArchiveSyncService {
         }
         List<Map<String, Object>> result = client.syncUsers(client.getToken(), rows);
         for (Map<String, Object> item : result) {
-            String userId = str(item.get("userId"));
-            if (loginName.equals(str(item.get("loginId"))) && userId != null && !userId.isEmpty()) {
+            String userId = ValueConvertUtils.str(item.get("userId"));
+            if (loginName.equals(ValueConvertUtils.str(item.get("loginId"))) && userId != null && !userId.isEmpty()) {
                 mapper.updateNameSpell(loginName, userId);
                 log.info("archive sso: backfilled userId for loginName={}", loginName);
                 return userId;
@@ -256,8 +257,8 @@ public class ArchiveSyncService {
     private void backfillNameSpell(List<Map<String, Object>> userIdList) {
         int updated = 0;
         for (Map<String, Object> item : userIdList) {
-            String loginId = str(item.get("loginId"));
-            String userId = str(item.get("userId"));
+            String loginId = ValueConvertUtils.str(item.get("loginId"));
+            String userId = ValueConvertUtils.str(item.get("userId"));
             if (loginId == null || loginId.isEmpty() || userId == null || userId.isEmpty()) {
                 continue;
             }
@@ -274,25 +275,25 @@ public class ArchiveSyncService {
         List<Map<String, Object>> rows = new ArrayList<>();
         int skipped = 0;
         for (Map<String, Object> user : users) {
-            String deptCode = str(user.get("dept_code"));
+            String deptCode = ValueConvertUtils.str(user.get("dept_code"));
             if (deptCode == null || deptCode.isEmpty()) {
                 skipped++;
                 log.error("archive user skipped: no main dept, loginName={}, name={}",
-                        str(user.get("login_name")), str(user.get("name")));
+                        ValueConvertUtils.str(user.get("login_name")), ValueConvertUtils.str(user.get("name")));
                 continue;
             }
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("loginId", str(user.get("login_name")));
-            row.put("userName", str(user.get("name")));
+            row.put("loginId", ValueConvertUtils.str(user.get("login_name")));
+            row.put("userName", ValueConvertUtils.str(user.get("name")));
             row.put("telephone", null);
-            row.put("mobile", str(user.get("mobile")));
-            row.put("sex", mapSex(str(user.get("sex"))));
-            row.put("cardId", str(user.get("id_card")));
-            String position = str(user.get("position_name"));
+            row.put("mobile", ValueConvertUtils.str(user.get("mobile")));
+            row.put("sex", mapSex(ValueConvertUtils.str(user.get("sex"))));
+            row.put("cardId", ValueConvertUtils.str(user.get("id_card")));
+            String position = ValueConvertUtils.str(user.get("position_name"));
             row.put("employeeName", position == null || position.isEmpty() ? DEFAULT_POSITION : position);
-            row.put("email", str(user.get("email")));
+            row.put("email", ValueConvertUtils.str(user.get("email")));
             row.put("departmentCode", deptCode);
-            row.put("birthDay", str(user.get("birthday")));
+            row.put("birthDay", ValueConvertUtils.str(user.get("birthday")));
             rows.add(row);
         }
         if (skipped > 0) {
@@ -307,10 +308,5 @@ public class ArchiveSyncService {
             return sex;
         }
         return null;
-    }
-
-    /** Map 取值：null 安全转 String */
-    private String str(Object value) {
-        return value == null ? null : String.valueOf(value);
     }
 }

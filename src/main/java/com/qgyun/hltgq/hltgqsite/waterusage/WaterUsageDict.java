@@ -4,21 +4,25 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 
 /**
  * 灌区用水业务字典与周期口径（单一维护点，前端经 meta 接口获取，不写死）。
  * <p>字典编码统一 "#N#" 文本（与平台字段风格一致）：
- * 用水类型 / 计算策略 / 统计周期 / 用水户状态 / 计划类型 / 计划状态。
+ * 用水类型 / 计算策略 / 统计周期 / 用水户状态 / 灌溉方式 / 计划类型 / 计划状态。
  * <p>闸口计算策略 JSON 结构（gate_config 列，与设计方案 2.1 一致）：
  * <pre>
  * 累加 {"mode":"SUM","gates":[{"id":"…","name":"…"},…]}
  * 差额 {"mode":"DIFF","main":{"id":"…","name":"…"},"deduct":[{…},…]}
  * </pre>
- * <p>计划周期由类型自动推导（年度=自然年；月度=自然月；旬度=上旬 1-10 / 中旬 11-20 / 下旬 21-自然月末），
- * 前后端同公式（前端以纯函数复制同一口径，见设计方案 2.4 裁剪版：不做 rules.json / 版本黄条）。
+ * <p>计划周期由类型自动推导（年度=自然年；月度=自然月；旬度=上旬 1-10 / 中旬 11-20 / 下旬 21-自然月末）。
+ * <p>规则同源（设计方案 2.4）：前端 static/rules.js（纯函数 + rules_version）与后端读取的
+ * static/rules.json（同一版本号与规则值）成对维护；页面加载时对比版本，不一致显示黄条提示。
  */
 public final class WaterUsageDict {
 
@@ -40,6 +44,8 @@ public final class WaterUsageDict {
     private static final Map<String, String> SETTLE_CYCLES = new LinkedHashMap<>();
     /** 用水户状态 */
     private static final Map<String, String> USER_STATUS = new LinkedHashMap<>();
+    /** 灌溉方式（定额标准库；#N# → 中文） */
+    private static final Map<String, String> IRRIGATION_METHODS = new LinkedHashMap<>();
     /** 计划类型 */
     private static final Map<String, String> PLAN_TYPES = new LinkedHashMap<>();
     /** 计划状态 */
@@ -108,6 +114,11 @@ public final class WaterUsageDict {
     /** 账单状态：已缴清 */
     public static final String BILL_STATUS_PAID = "#2#";
 
+    /** 需水上报用途候选（产品稿写死 12 项，与页面原型 water-demand-report.html 的 USAGES 同口径） */
+    private static final List<String> USAGE_OPTIONS = Collections.unmodifiableList(Arrays.asList(
+            "秋收后补水", "冬灌前补水", "湿地生态补水", "工业循环补水", "城乡生活供水", "蔬菜滴灌补水",
+            "秋粮灌溉", "秋播底墒水", "水稻泡田灌溉", "返青水灌溉", "渠系生态补水", "春灌泡田水"));
+
     /** 统计周期：月度结算（对应 water_user.settle_cycle 列 #1#） */
     public static final String SETTLE_CYCLE_MONTH = "#1#";
     /** 统计周期：季度结算 */
@@ -130,6 +141,18 @@ public final class WaterUsageDict {
 
         USER_STATUS.put("#1#", "正常");
         USER_STATUS.put("#2#", "停用");
+
+        IRRIGATION_METHODS.put("#1#", "淹灌");
+        IRRIGATION_METHODS.put("#2#", "控制灌溉");
+        IRRIGATION_METHODS.put("#3#", "畦灌");
+        IRRIGATION_METHODS.put("#4#", "沟灌");
+        IRRIGATION_METHODS.put("#5#", "喷灌");
+        IRRIGATION_METHODS.put("#6#", "滴灌");
+        IRRIGATION_METHODS.put("#7#", "膜下滴灌");
+        IRRIGATION_METHODS.put("#8#", "微喷");
+        IRRIGATION_METHODS.put("#9#", "泛水补水");
+        IRRIGATION_METHODS.put("#10#", "计划直供");
+        IRRIGATION_METHODS.put("#11#", "管网输送");
 
         PLAN_TYPES.put(PLAN_TYPE_YEAR, "年度");
         PLAN_TYPES.put(PLAN_TYPE_MONTH, "月度");
@@ -174,32 +197,78 @@ public final class WaterUsageDict {
 
     /** 用水类型名称 */
     public static String userTypeName(String code) {
-        return nameOf(USER_TYPES, code);
+        return DictUtils.nameOf(USER_TYPES, code);
     }
 
     /** 计算策略名称 */
     public static String calcModeName(String code) {
-        return nameOf(CALC_MODES, code);
+        return DictUtils.nameOf(CALC_MODES, code);
     }
 
     /** 统计周期名称 */
     public static String settleCycleName(String code) {
-        return nameOf(SETTLE_CYCLES, code);
+        return DictUtils.nameOf(SETTLE_CYCLES, code);
     }
 
     /** 用水户状态名称 */
     public static String userStatusName(String code) {
-        return nameOf(USER_STATUS, code);
+        return DictUtils.nameOf(USER_STATUS, code);
+    }
+
+    /** 用水户状态编码合法性（正常/停用） */
+    public static boolean isValidUserStatus(String code) {
+        return USER_STATUS.containsKey(code);
+    }
+
+    /** 灌溉方式名称 */
+    public static String irrigationMethodName(String code) {
+        return DictUtils.nameOf(IRRIGATION_METHODS, code);
+    }
+
+    /**
+     * 需水上报「用途」下拉候选（**写死值**，不随库内数据变化）。
+     * <p>候选与校验均在内存字典完成，不查库；提交值必须是本列表的一项（见 {@link #isValidUsage}）。
+     */
+    public static List<String> usageOptions() {
+        return USAGE_OPTIONS;
+    }
+
+    /** 需水上报「用途」合法性：必须是 {@link #usageOptions()} 写死 12 项之一（不允许自行输入候选外的值） */
+    public static boolean isValidUsage(String usage) {
+        return usage != null && USAGE_OPTIONS.contains(usage);
+    }
+
+    /** 灌溉方式编码合法性（#1# ~ #11#） */
+    public static boolean isValidIrrigationMethod(String code) {
+        return IRRIGATION_METHODS.containsKey(code);
+    }
+
+    /**
+     * 灌溉方式关键字 → 候选编码列表（定额列表检索用：库内存储编码，关键字需按中文名映射后参与匹配）。
+     * 关键字等于编码原样命中；取中文名包含关键字的全部编码；无命中返回空列表。
+     */
+    public static List<String> irrigationMethodCodesOfKeyword(String keyword) {
+        List<String> codes = new ArrayList<>();
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return codes;
+        }
+        String kw = keyword.trim();
+        for (Map.Entry<String, String> e : IRRIGATION_METHODS.entrySet()) {
+            if (e.getKey().equals(kw) || e.getValue().contains(kw)) {
+                codes.add(e.getKey());
+            }
+        }
+        return codes;
     }
 
     /** 计划类型名称 */
     public static String planTypeName(String code) {
-        return nameOf(PLAN_TYPES, code);
+        return DictUtils.nameOf(PLAN_TYPES, code);
     }
 
     /** 计划状态名称 */
     public static String planStatusName(String code) {
-        return nameOf(PLAN_STATUS, code);
+        return DictUtils.nameOf(PLAN_STATUS, code);
     }
 
     /** 用水类型编码合法性（农业/生态需灌溉面积，见 {@link #requireIrrigationArea}） */
@@ -290,30 +359,16 @@ public final class WaterUsageDict {
         return null;
     }
 
-    /** 计划名称自动生成（如「2026年10月中旬旬度调度计划」；规则缺失返回 null） */
-    public static String autoPlanName(String planType, Integer year, Integer month, Integer xun) {
-        if (periodOf(planType, year, month, xun) == null) {
-            return null;
-        }
-        if (PLAN_TYPE_YEAR.equals(planType)) {
-            return year + "年度调度计划";
-        }
-        if (PLAN_TYPE_MONTH.equals(planType)) {
-            return year + "年" + month + "月月度调度计划";
-        }
-        return year + "年" + month + "月" + xunName(xun) + "旬旬度调度计划";
-    }
-
     // ==================== 调度与水费四页面字典（接口对外输出前端英文码 + 中文名） ====================
 
     /** 需水上报审核状态名称 */
     public static String demandStatusName(String code) {
-        return nameOf(DEMAND_STATUS, code);
+        return DictUtils.nameOf(DEMAND_STATUS, code);
     }
 
     /** 需水上报审核状态 → 前端英文码（wait/pass/reject） */
     public static String demandStatusCodeOf(String code) {
-        return nameOf(DEMAND_STATUS_CODE, code);
+        return DictUtils.nameOf(DEMAND_STATUS_CODE, code);
     }
 
     /** 前端英文码 → 需水上报审核状态（非法返回 null） */
@@ -323,12 +378,12 @@ public final class WaterUsageDict {
 
     /** 调度方案执行状态名称 */
     public static String dispatchStatusName(String code) {
-        return nameOf(DISPATCH_STATUS, code);
+        return DictUtils.nameOf(DISPATCH_STATUS, code);
     }
 
     /** 调度方案执行状态 → 前端英文码（pending/running/done/canceled） */
     public static String dispatchStatusCodeOf(String code) {
-        return nameOf(DISPATCH_STATUS_CODE, code);
+        return DictUtils.nameOf(DISPATCH_STATUS_CODE, code);
     }
 
     /** 前端英文码 → 调度方案执行状态（非法返回 null） */
@@ -338,12 +393,12 @@ public final class WaterUsageDict {
 
     /** 调度记录操作类型名称 */
     public static String recordTypeName(String code) {
-        return nameOf(RECORD_TYPES, code);
+        return DictUtils.nameOf(RECORD_TYPES, code);
     }
 
     /** 调度记录操作类型 → 前端英文码（up/down/adjust） */
     public static String recordTypeCodeOf(String code) {
-        return nameOf(RECORD_TYPE_CODE, code);
+        return DictUtils.nameOf(RECORD_TYPE_CODE, code);
     }
 
     /** 前端英文码 → 调度记录操作类型（非法返回 null） */
@@ -353,12 +408,12 @@ public final class WaterUsageDict {
 
     /** 账单状态名称 */
     public static String billStatusName(String code) {
-        return nameOf(BILL_STATUS, code);
+        return DictUtils.nameOf(BILL_STATUS, code);
     }
 
     /** 账单状态 → 前端英文码（generated/paid） */
     public static String billStatusCodeOf(String code) {
-        return nameOf(BILL_STATUS_CODE, code);
+        return DictUtils.nameOf(BILL_STATUS_CODE, code);
     }
 
     /** 前端英文码 → 账单状态（非法返回 null） */
@@ -491,6 +546,16 @@ public final class WaterUsageDict {
         return options(SETTLE_CYCLES);
     }
 
+    /** 用水户状态选项（正常/停用） */
+    public static List<Map<String, String>> userStatusOptions() {
+        return options(USER_STATUS);
+    }
+
+    /** 灌溉方式选项（#1# ~ #10#，定额标准库表单下拉） */
+    public static List<Map<String, String>> irrigationMethodOptions() {
+        return options(IRRIGATION_METHODS);
+    }
+
     /** 计划类型选项 */
     public static List<Map<String, String>> planTypeOptions() {
         return options(PLAN_TYPES);
@@ -568,9 +633,5 @@ public final class WaterUsageDict {
             }
         }
         return null;
-    }
-
-    private static String nameOf(Map<String, String> dict, String code) {
-        return dict.getOrDefault(code == null ? "" : code, code == null ? "" : code);
     }
 }

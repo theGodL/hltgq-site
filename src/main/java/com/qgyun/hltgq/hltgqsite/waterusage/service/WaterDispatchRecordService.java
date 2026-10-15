@@ -39,6 +39,8 @@ public class WaterDispatchRecordService {
 
     private final ShortIdGenerator shortIdGenerator;
 
+    private final PlatformUserService platformUsers;
+
     /** 操作人兜底（会话缺失时使用，审计列 NOT NULL） */
     @Value("${hltgq.created-by}")
     private String fallbackOperator;
@@ -46,20 +48,22 @@ public class WaterDispatchRecordService {
     public WaterDispatchRecordService(WaterDispatchRecordMapper recordMapper,
                                       WaterDispatchMapper dispatchMapper,
                                       WaterUserMapper userMapper,
-                                      ShortIdGenerator shortIdGenerator) {
+                                      ShortIdGenerator shortIdGenerator,
+                                      PlatformUserService platformUsers) {
         this.recordMapper = recordMapper;
         this.dispatchMapper = dispatchMapper;
         this.userMapper = userMapper;
         this.shortIdGenerator = shortIdGenerator;
+        this.platformUsers = platformUsers;
     }
 
     // ==================== 元数据 / 列表 / 详情 ====================
 
-    /** 表单元数据（操作类型字典 + 操作人建议 + 当天日期） */
+    /** 表单元数据（操作类型字典 + 操作人候选（平台用户）+ 当天日期） */
     public Map<String, Object> meta() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("opTypes", WaterUsageDict.recordTypeOptions());
-        out.put("operators", recordMapper.selectOperators());
+        out.put("operators", platformUsers.options());
         out.put("today", LocalDate.now().toString());
         return out;
     }
@@ -217,8 +221,10 @@ public class WaterDispatchRecordService {
             throw new IllegalArgumentException("升降高度需在 0~999 cm 之间");
         }
         d.height = height;
-        d.operator = WaterUsageSupport.maxLength(
-                WaterUsageSupport.requireText(req.getOperator(), "请填写操作人"), 50, "操作人");
+        // 操作人必填：传 operatorUserId 时按平台用户回查固化姓名（不信任前端文本）；
+        // 仅回传姓名（未换人/存量手填的闸管员）时按文本入库，不阻塞留痕
+        d.operator = platformUsers.resolveName(
+                req.getOperatorUserId(), req.getOperator(), "操作人 / 闸管员", true);
         d.remark = WaterUsageSupport.maxLength(WaterUsageSupport.trim(req.getRemark()), 200, "备注");
         return d;
     }

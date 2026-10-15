@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
 
 /**
  * N1 未来 40 天日级预报服务（方案 §3）。
@@ -365,25 +366,25 @@ public class WeatherDailyService {
         int size = times.size();
         List<WeatherDailyVO> list = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
-            String date = textAt(times, i);
+            String date = JsonFieldUtils.textAt(times, i);
             if (date == null) {
                 continue;
             }
-            Integer code = intAt(codes, i);
-            Double rainfall = doubleAt(precips, i);
-            Double windSpeed = doubleAt(windSpeeds, i);
-            Integer windDegree = intAt(windDirs, i);
+            Integer code = JsonFieldUtils.intAt(codes, i);
+            Double rainfall = JsonFieldUtils.doubleAt(precips, i);
+            Double windSpeed = JsonFieldUtils.doubleAt(windSpeeds, i);
+            Integer windDegree = JsonFieldUtils.intAt(windDirs, i);
 
             WeatherDailyVO vo = new WeatherDailyVO();
             vo.setDate(date);
             vo.setWeekday(weekdayOf(date));
             vo.setWeather(code == null ? null : WeatherConvertUtils.translateWeatherCode(code));
             vo.setWeatherIcon(code == null ? null : String.valueOf(code));
-            vo.setTempMax(roundInt(doubleAt(tempMaxes, i)));
-            vo.setTempMin(roundInt(doubleAt(tempMins, i)));
+            vo.setTempMax(roundInt(JsonFieldUtils.doubleAt(tempMaxes, i)));
+            vo.setTempMin(roundInt(JsonFieldUtils.doubleAt(tempMins, i)));
             vo.setRainfall(rainfall == null ? null : WeatherConvertUtils.truncateRainfall(rainfall));
-            vo.setRainProbability(intAt(probabilities, i));
-            vo.setHumidity(roundInt(doubleAt(humidities, i)));
+            vo.setRainProbability(JsonFieldUtils.intAt(probabilities, i));
+            vo.setHumidity(roundInt(JsonFieldUtils.doubleAt(humidities, i)));
             vo.setWindDirection(windDegree == null ? null : WeatherConvertUtils.translateWindDirection(windDegree));
             vo.setWindLevel(windSpeed == null ? null : WeatherConvertUtils.calculateWindLevel(windSpeed));
             vo.setWindSpeed(roundInt(windSpeed));
@@ -432,7 +433,7 @@ public class WeatherDailyService {
         List<WeatherDailyVO> list = new ArrayList<>();
         StringBuilder memberLog = new StringBuilder();
         for (int i = 0; i < size; i++) {
-            String date = textAt(times, i);
+            String date = JsonFieldUtils.textAt(times, i);
             if (date == null) {
                 continue;
             }
@@ -509,7 +510,7 @@ public class WeatherDailyService {
         double sum = 0D;
         int valid = 0;
         for (int k = 1; k <= members; k++) {
-            Double value = doubleAt(memberArray(daily, variable, k), dayIndex);
+            Double value = JsonFieldUtils.doubleAt(memberArray(daily, variable, k), dayIndex);
             if (value != null) {
                 sum += value;
                 valid++;
@@ -523,7 +524,7 @@ public class WeatherDailyService {
         int valid = 0;
         int rainy = 0;
         for (int k = 1; k <= members; k++) {
-            Double value = doubleAt(memberArray(daily, variable, k), dayIndex);
+            Double value = JsonFieldUtils.doubleAt(memberArray(daily, variable, k), dayIndex);
             if (value == null) {
                 continue;
             }
@@ -539,7 +540,7 @@ public class WeatherDailyService {
     private int validMemberCount(JsonNode daily, String variable, int dayIndex, int members) {
         int valid = 0;
         for (int k = 1; k <= members; k++) {
-            if (doubleAt(memberArray(daily, variable, k), dayIndex) != null) {
+            if (JsonFieldUtils.doubleAt(memberArray(daily, variable, k), dayIndex) != null) {
                 valid++;
             }
         }
@@ -670,36 +671,6 @@ public class WeatherDailyService {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private static String textAt(JsonNode array, int index) {
-        if (array == null || index < 0 || index >= array.size()) {
-            return null;
-        }
-        JsonNode node = array.get(index);
-        if (node == null || node.isNull() || node.isContainerNode()) {
-            return null;
-        }
-        String text = node.asText();
-        return text == null || text.isEmpty() ? null : text;
-    }
-
-    /** 数组下标取小数：越界/JSON null/非数值返回 null（文本节点不得经 asDouble() 变成 0，与 current/hourly 同口径） */
-    private static Double doubleAt(JsonNode array, int index) {
-        if (array == null || index < 0 || index >= array.size()) {
-            return null;
-        }
-        JsonNode node = array.get(index);
-        return node != null && node.isNumber() ? node.asDouble() : null;
-    }
-
-    /** 数组下标取整数：越界/JSON null/非数值返回 null */
-    private static Integer intAt(JsonNode array, int index) {
-        if (array == null || index < 0 || index >= array.size()) {
-            return null;
-        }
-        JsonNode node = array.get(index);
-        return node != null && node.isNumber() ? node.asInt() : null;
     }
 
     private static Integer roundInt(Double value) {

@@ -106,7 +106,7 @@ public interface WaterBillMapper {
      * amount 取 billed_qty 计费快照、sign 由快照符号推导；cycleKey/cycleLabel 由 Service 按账单期填充。
      */
     @Select("SELECT d.id AS dispatchId, d.dispatch_no AS dispatchNo, d.plan_id AS planId, " +
-            "p.plan_name AS planName, d.gate_id AS gateId, s.iofhpi AS gateCode, s.zzkaec AS gateName, " +
+            "p.plan_name AS planName, d.gate_id AS gateId, s.zzkaec AS gateName, " +
             "CASE WHEN d.billed_qty < 0 THEN -1 ELSE 1 END AS sign, " +
             "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
             "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime, " +
@@ -124,7 +124,9 @@ public interface WaterBillMapper {
     /**
      * 单闸口区间流量取数（计入水量计量核心）。
      * <p>站点标识 skey = COALESCE(stcd, site)：入参闸口 id 对 f.stcd / f.site 双列匹配（任一命中）。
-     * 窗口内无有效行不返回；有行时 ttf 为窗口内末行值、prevTtf 为起点前最近一条 ttf 非空行（可为 null 按 0）。
+     * 窗口内无有效行不返回；有行时 ttf 为窗口内**末条有效累计流量行**、prevTtf 为起点前最近一条有效累计流量行
+     * （可为 null 按 0）。两端同口径过滤 ttf 缺失（NULL / 哨兵 -999 设备不存在 / -9991 设备异常），
+     * 否则末行缺报会被判为计量不可得、起点前命中哨兵会算出虚高水量。
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) t.skey AS site, t.stnm, t.tm, t.ttf, fq_prev.prev_ttf " +
@@ -133,6 +135,7 @@ public interface WaterBillMapper {
             "  FROM " + T_FLOW + " f " +
             "  LEFT JOIN " + T_STATION + " s ON f.site = s.id " +
             "  WHERE (f.stcd = #{gateId} OR f.site = #{gateId}) " +
+            "  AND f.ttf IS NOT NULL AND f.ttf NOT IN (-999, -9991) " +
             "  AND f.tm &gt;= #{startTime} AND f.tm &lt;= #{endTime} " +
             ") t " +
             "LEFT JOIN ( " +
@@ -140,7 +143,7 @@ public interface WaterBillMapper {
             "  FROM ( " +
             "    SELECT COALESCE(f.stcd, f.site) AS skey, f.tm, f.ttf " +
             "    FROM " + T_FLOW + " f " +
-            "    WHERE f.ttf IS NOT NULL AND f.tm &lt; #{startTime} " +
+            "    WHERE f.ttf IS NOT NULL AND f.ttf NOT IN (-999, -9991) AND f.tm &lt; #{startTime} " +
             "    AND (f.stcd = #{gateId} OR f.site = #{gateId}) " +
             "  ) t2 " +
             "  ORDER BY t2.skey, t2.tm DESC " +
@@ -166,4 +169,14 @@ public interface WaterBillMapper {
             "COALESCE(SUM(b.amount), 0) AS amt, COALESCE(SUM(b.paid), 0) AS paid " +
             "FROM " + T_BILL + " b WHERE b.corp_code = 'hltgq' GROUP BY b.water_user_id")
     List<Map<String, Object>> selectBillAggAll();
+
+    /**
+     * 账单全量汇总（列表统计条，无筛选参数）：cnt 账单总数、qty Σ计费水量（m³）、
+     * amt Σ应收（元）、paid Σ已收（元）。
+     * <p>列别名全小写（同 selectBillAggAll），Service 按小写读取并折算万m³、计算收缴率。
+     */
+    @Select("SELECT COUNT(*) AS cnt, COALESCE(SUM(b.quantity), 0) AS qty, " +
+            "COALESCE(SUM(b.amount), 0) AS amt, COALESCE(SUM(b.paid), 0) AS paid " +
+            "FROM " + T_BILL + " b WHERE b.corp_code = 'hltgq'")
+    Map<String, Object> selectBillStats();
 }

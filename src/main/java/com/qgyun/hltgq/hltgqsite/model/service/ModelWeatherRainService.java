@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 
 /**
  * 模型计算用气象逐小时降雨辅助：坐标解析 + 逐小时降雨对齐填充。
@@ -39,8 +40,8 @@ public class ModelWeatherRainService {
                                    @Value("${flood-drought.weather-lat:}") String weatherLat) {
         this.weatherService = weatherService;
         this.floodDroughtMapper = floodDroughtMapper;
-        this.weatherLon = trimToNull(weatherLon);
-        this.weatherLat = trimToNull(weatherLat);
+        this.weatherLon = CheckUtils.trim(weatherLon);
+        this.weatherLat = CheckUtils.trim(weatherLat);
     }
 
     /**
@@ -120,13 +121,5 @@ public class ModelWeatherRainService {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private static String trimToNull(String text) {
-        if (text == null) {
-            return null;
-        }
-        String trimmed = text.trim();
-        return trimmed.isEmpty() ? null : trimmed;
     }
 }

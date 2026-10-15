@@ -20,7 +20,8 @@ import java.util.Map;
 
 /**
  * 用水定额标准库（灌区用水模块页面二）。
- * <p>定额编辑不回溯既有计划（计划明细为快照）；删除保护两级规则同用水户。
+ * <p>灌溉方式为必填字典（meta 下发选项，前端下拉不写死）；定额编辑不回溯既有计划（计划明细为快照）；
+ * 删除保护两级规则同用水户。
  */
 @RestController
 @RequestMapping("/water-quota")
@@ -31,8 +32,14 @@ public class WaterQuotaController {
     @Autowired
     private WaterQuotaService quotaService;
 
+    /** 表单元数据（灌溉方式字典 + 规则版本） */
+    @GetMapping("/meta")
+    public Map<String, Object> meta() {
+        return quotaService.meta();
+    }
+
     /**
-     * 列表分页（关键字：作物种类 / 灌溉方式 / 备注）。
+     * 列表分页（关键字：作物种类 / 灌溉方式 / 备注；灌溉方式关键字由后端映射字典编码匹配）。
      *
      * @return total / page / size / pages / records（含被引用计划数 refCount）
      */

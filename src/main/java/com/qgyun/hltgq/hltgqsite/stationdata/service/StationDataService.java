@@ -13,6 +13,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 
 /**
  * 站点数据查询服务：编码 → 中文翻译（口径见《数据表结构汇总.md》第 1 节）。
@@ -64,66 +66,17 @@ public class StationDataService {
      * @param status 站点状态：在线/离线 或编码 #1#/#2#，可选
      */
     public List<StationDataVO> list(String name, String code, String status) {
-        List<StationDataVO> rows = mapper.selectStationList(trimToNull(name), trimToNull(code),
-                resolveCode(STATUS_LABELS, status));
+        List<StationDataVO> rows = mapper.selectStationList(CheckUtils.trim(name), CheckUtils.trim(code),
+                DictUtils.resolveCode(STATUS_LABELS, status));
         for (StationDataVO row : rows) {
-            row.setType(translateMulti(TYPE_LABELS, row.getTypeCodes()));
-            row.setStatus(translate(STATUS_LABELS, row.getStatusCode()));
-            row.setMethod(translateMulti(METHOD_LABELS, row.getMethodCodes()));
+            row.setType(DictUtils.labelMulti(TYPE_LABELS, row.getTypeCodes()));
+            row.setStatus(DictUtils.label(STATUS_LABELS, row.getStatusCode()));
+            row.setMethod(DictUtils.labelMulti(METHOD_LABELS, row.getMethodCodes()));
             if (row.getLon() != null && row.getLat() != null) {
                 row.setLnglat(row.getLon().toPlainString() + ", " + row.getLat().toPlainString());
             }
         }
         return rows;
-    }
-
-    /** 单值编码 → 中文（未知编码原样返回） */
-    private String translate(Map<String, String> labels, String code) {
-        if (code == null || code.isEmpty()) {
-            return code;
-        }
-        return labels.getOrDefault(code, code);
-    }
-
-    /** 多选编码（| 分隔）→ 中文顿号拼接（空段跳过，未知段原样保留） */
-    private String translateMulti(Map<String, String> labels, String codes) {
-        if (codes == null || codes.isEmpty()) {
-            return codes;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (String part : codes.split("\\|")) {
-            String token = part.trim();
-            if (token.isEmpty()) {
-                continue;
-            }
-            if (sb.length() > 0) {
-                sb.append("、");
-            }
-            sb.append(translate(labels, token));
-        }
-        return sb.toString();
-    }
-
-    /** 过滤值归一：空 → null；编码（#...#）原样；中文 → 编码；未知原样下传 */
-    private String resolveCode(Map<String, String> labels, String value) {
-        String v = trimToNull(value);
-        if (v == null || v.startsWith("#")) {
-            return v;
-        }
-        for (Map.Entry<String, String> e : labels.entrySet()) {
-            if (e.getValue().equals(v)) {
-                return e.getKey();
-            }
-        }
-        return v;
-    }
-
-    private String trimToNull(String s) {
-        if (s == null) {
-            return null;
-        }
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
     }
 
     /**
@@ -137,7 +90,7 @@ public class StationDataService {
         Set<String> unique = new LinkedHashSet<>();
         if (ids != null) {
             for (String id : ids) {
-                String t = trimToNull(id);
+                String t = CheckUtils.trim(id);
                 if (t != null) {
                     unique.add(t);
                 }

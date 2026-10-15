@@ -38,13 +38,13 @@ public interface WaterDemandMapper {
     /** 基础列（列表/详情共用；别名 d；amount 为库内 m³，Service 出口折算万m³；status 出口映射英文码） */
     String BASE_COLS = "d.id AS id, d.demand_no AS demandNo, d.water_user_id AS waterUserId, " +
             "u.user_no AS waterUserNo, u.name AS waterUserName, d.gate_id AS gateId, " +
-            "s.iofhpi AS gateCode, s.zzkaec AS gateName, d.amount AS amount, " +
+            "s.zzkaec AS gateName, d.amount AS amount, " +
             "to_char(d.start_date, 'YYYY-MM-DD') AS startDate, to_char(d.end_date, 'YYYY-MM-DD') AS endDate, " +
             "d.usage_desc AS usage, d.status AS status, d.audit_opinion AS auditOpinion, d.audit_by AS auditBy, " +
             "to_char(d.audit_at, 'YYYY-MM-DD HH24:MI') AS auditAt, " +
             "to_char(d.created_at, 'YYYY-MM-DD HH24:MI') AS applyTime, d.remark AS remark";
 
-    /** 基础联表（户名/号 + 站档闸口名/码；别名 d/u/s） */
+    /** 基础联表（户名/号 + 站档闸口名；别名 d/u/s） */
     String BASE_JOINS = " FROM " + T_DEMAND + " d " +
             "LEFT JOIN " + T_USER + " u ON u.id = d.water_user_id " +
             "LEFT JOIN " + T_STATION + " s ON s.id = d.gate_id ";
@@ -65,6 +65,14 @@ public interface WaterDemandMapper {
     /** 按 ID 查（详情/流转前置校验共用） */
     @Select("SELECT " + BASE_COLS + BASE_JOINS + "WHERE d.id = #{id} AND d.corp_code = 'hltgq'")
     WaterDemandVO selectDemandById(@Param("id") String id);
+
+    /**
+     * 全部已通过申请（用水计划「实际保证率」统计用）：amount 库内 m³；
+     * 按用水户 + 开始日期排序，Service 据此做时段重叠检测与户级计量。
+     */
+    @Select("SELECT " + BASE_COLS + BASE_JOINS + "WHERE d.corp_code = 'hltgq' AND d.status = '#2#' " +
+            "ORDER BY d.water_user_id, d.start_date, d.demand_no")
+    List<WaterDemandVO> selectApprovedDemands();
 
     /** 当前最大编号序号（XS + 4 位；表空返回 0） */
     @Select("SELECT COALESCE(MAX(CAST(substr(demand_no, 3) AS INTEGER)), 0) FROM " + T_DEMAND +
@@ -125,10 +133,4 @@ public interface WaterDemandMapper {
             "ORDER BY d.demand_no DESC LIMIT 200</script>")
     List<DemandOptionVO> selectPassedOptions(@Param("keyword") String keyword,
                                              @Param("userId") String userId);
-
-    /** 用途建议（表单「用途」下拉：历史值去重，最多 50 条） */
-    @Select("SELECT DISTINCT d.usage_desc FROM " + T_DEMAND + " d " +
-            "WHERE d.corp_code = 'hltgq' AND d.usage_desc IS NOT NULL AND d.usage_desc != '' " +
-            "ORDER BY d.usage_desc LIMIT 50")
-    List<String> selectUsageOptions();
 }

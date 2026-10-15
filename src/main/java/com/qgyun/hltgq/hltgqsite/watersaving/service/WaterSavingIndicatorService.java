@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 
 /**
  * 节水体系查询服务：状态编码 → 中文（口径见《数据表结构汇总.md》第 9.1 节）。
@@ -39,8 +41,8 @@ public class WaterSavingIndicatorService {
      * @param status 状态：待填报/已填报/审核中/已退回/已归档 或编码，可选
      */
     public List<WaterSavingIndicatorVO> list(String name, String year, String status) {
-        List<WaterSavingIndicatorVO> rows = mapper.selectIndicatorList(trimToNull(name),
-                trimToNull(year), resolveCode(STATUS_LABELS, status));
+        List<WaterSavingIndicatorVO> rows = mapper.selectIndicatorList(CheckUtils.trim(name),
+                CheckUtils.trim(year), DictUtils.resolveCode(STATUS_LABELS, status));
         for (WaterSavingIndicatorVO row : rows) {
             row.setStatus(STATUS_LABELS.getOrDefault(row.getStatusCode(), row.getStatusCode()));
             row.setYear(normalizeYear(row.getYearRaw()));
@@ -55,27 +57,5 @@ public class WaterSavingIndicatorService {
             return raw;
         }
         return raw.length() > 4 && raw.charAt(4) == '-' ? raw.substring(0, 4) : raw;
-    }
-
-    /** 过滤值归一：空 → null；编码（#...#）原样；中文 → 编码；未知原样下传 */
-    private String resolveCode(Map<String, String> labels, String value) {
-        String v = trimToNull(value);
-        if (v == null || v.startsWith("#")) {
-            return v;
-        }
-        for (Map.Entry<String, String> e : labels.entrySet()) {
-            if (e.getValue().equals(v)) {
-                return e.getKey();
-            }
-        }
-        return v;
-    }
-
-    private String trimToNull(String s) {
-        if (s == null) {
-            return null;
-        }
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
     }
 }

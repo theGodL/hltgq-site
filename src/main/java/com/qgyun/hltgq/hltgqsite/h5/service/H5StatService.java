@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 
 /**
  * H5 统计服务：巡查及问题统计（柱状图，近 12 个月）、维修养护统计（饼状图，巡检结果 6 档）。
@@ -51,11 +52,11 @@ public class H5StatService {
         // 聚合查询：month 键（yyyy-MM）→ 计数
         Map<String, long[]> patrolByMonth = new LinkedHashMap<>();
         for (Map<String, Object> row : statMapper.selectPatrolMonthly(windowStart, windowEnd)) {
-            patrolByMonth.put(str(row.get("month")), new long[]{num(row.get("cnt"))});
+            patrolByMonth.put(ValueConvertUtils.str(row.get("month")), new long[]{num(row.get("cnt"))});
         }
         Map<String, long[]> issueByMonth = new LinkedHashMap<>();
         for (Map<String, Object> row : statMapper.selectIssueMonthly(windowStart, windowEnd)) {
-            issueByMonth.put(str(row.get("month")), new long[]{
+            issueByMonth.put(ValueConvertUtils.str(row.get("month")), new long[]{
                     num(row.get("cnt")), num(row.get("low")), num(row.get("mid")), num(row.get("high"))});
         }
 
@@ -91,7 +92,7 @@ public class H5StatService {
 
         Map<String, Long> countByResult = new LinkedHashMap<>();
         for (Map<String, Object> row : statMapper.selectInspectionResultStats(startTime, endTime)) {
-            countByResult.put(str(row.get("name")), num(row.get("value")));
+            countByResult.put(ValueConvertUtils.str(row.get("name")), num(row.get("value")));
         }
 
         InspectionResultStatsVO vo = new InspectionResultStatsVO();
@@ -121,10 +122,6 @@ public class H5StatService {
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException("endMonth 格式错误，应为 yyyy-MM");
         }
-    }
-
-    private static String str(Object v) {
-        return v == null ? null : String.valueOf(v);
     }
 
     private static long num(Object v) {

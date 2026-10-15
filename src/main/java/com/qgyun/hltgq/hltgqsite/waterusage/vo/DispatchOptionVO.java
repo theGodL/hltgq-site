@@ -21,8 +21,6 @@ public class DispatchOptionVO {
 
     private String gateId;
 
-    private String gateCode;
-
     private String gateName;
 
     /** 执行状态（前端英文码） */

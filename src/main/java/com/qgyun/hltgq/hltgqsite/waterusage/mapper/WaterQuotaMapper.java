@@ -23,11 +23,18 @@ public interface WaterQuotaMapper {
     String T_PLAN = "\"qixiao-apaas\".\"t_auto_hltgq_water_plan\"";
     String T_ITEM = "\"qixiao-apaas\".\"t_auto_hltgq_water_plan_item\"";
 
-    /** 列表条件（page/count 共用，作用于别名 q） */
+    /**
+     * 列表条件（page/count 共用，作用于别名 q）。
+     * <p>灌溉方式为字典型编码（{@code #N#}），关键字不能直接 LIKE：由 Service 经
+     * {@code WaterUsageDict.irrigationMethodCodesOfKeyword} 把关键字映射为编码列表后以
+     * {@code methodCodes} 传入（关键字命中中文名/编码其一即匹配）。
+     */
     String LIST_CONDITIONS =
             "<if test='keyword != null and keyword != \"\"'>AND (q.crop_type LIKE CONCAT('%', #{keyword}, '%') " +
-            "OR q.irrigation_method LIKE CONCAT('%', #{keyword}, '%') " +
-            "OR q.remark LIKE CONCAT('%', #{keyword}, '%')) </if>";
+            "OR q.remark LIKE CONCAT('%', #{keyword}, '%') " +
+            "<if test='methodCodes != null and methodCodes.size() > 0'>" +
+            "OR q.irrigation_method IN <foreach collection='methodCodes' item='mc' open='(' separator=',' close=')'>#{mc}</foreach> " +
+            "</if>) </if>";
 
     /** 基础列（列表/详情共用；别名 q） */
     String BASE_COLS = "q.id AS id, q.crop_type AS cropType, q.irrigation_method AS irrigationMethod, " +
@@ -41,26 +48,31 @@ public interface WaterQuotaMapper {
             "WHERE q.corp_code = 'hltgq' " + LIST_CONDITIONS +
             "ORDER BY q.created_at DESC, q.id DESC LIMIT #{size} OFFSET #{offset}</script>")
     List<WaterQuotaVO> selectQuotaPage(@Param("keyword") String keyword,
+                                       @Param("methodCodes") List<String> methodCodes,
                                        @Param("size") int size,
                                        @Param("offset") long offset);
 
     /** 列表计数（条件与 {@link #selectQuotaPage} 一致） */
     @Select("<script>SELECT COUNT(*) FROM " + T_QUOTA + " q WHERE q.corp_code = 'hltgq' " +
             LIST_CONDITIONS + "</script>")
-    long countQuotas(@Param("keyword") String keyword);
+    long countQuotas(@Param("keyword") String keyword,
+                     @Param("methodCodes") List<String> methodCodes);
 
     /** 按 ID 查（详情/校验/测算共用） */
     @Select("SELECT " + BASE_COLS + ", " + REF_COUNT + " FROM " + T_QUOTA + " q " +
             "WHERE q.id = #{id} AND q.corp_code = 'hltgq'")
     WaterQuotaVO selectQuotaById(@Param("id") String id);
 
-    /** 定额下拉选项（计划明细「适用定额」；按作物种类排序） */
+    /** 定额下拉选项（计划明细「适用定额」；按作物种类排序；灌溉方式关键字同样经编码映射匹配） */
     @Select("<script>SELECT q.id AS id, q.crop_type AS cropType, q.irrigation_method AS irrigationMethod, " +
             "q.quota_value AS quotaValue FROM " + T_QUOTA + " q WHERE q.corp_code = 'hltgq' " +
             "<if test='keyword != null and keyword != \"\"'>AND (q.crop_type LIKE CONCAT('%', #{keyword}, '%') " +
-            "OR q.irrigation_method LIKE CONCAT('%', #{keyword}, '%')) </if>" +
+            "<if test='methodCodes != null and methodCodes.size() > 0'>" +
+            "OR q.irrigation_method IN <foreach collection='methodCodes' item='mc' open='(' separator=',' close=')'>#{mc}</foreach>" +
+            "</if>) </if>" +
             "ORDER BY q.crop_type, q.irrigation_method, q.id</script>")
-    List<QuotaOptionVO> selectQuotaOptions(@Param("keyword") String keyword);
+    List<QuotaOptionVO> selectQuotaOptions(@Param("keyword") String keyword,
+                                           @Param("methodCodes") List<String> methodCodes);
 
     /** 新增（row key：id/crop_type/irrigation_method/quota_value/remark/now/operator） */
     @Insert("INSERT INTO " + T_QUOTA + " " +

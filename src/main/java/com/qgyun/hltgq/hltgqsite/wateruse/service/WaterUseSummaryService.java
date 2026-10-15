@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.DeviceValueUtils;
 
 /**
  * 用水总结服务：水费表单按统计桶聚合（用水量/应收水费）+ 灌溉水利用系数实测近似值。
@@ -55,10 +56,6 @@ import java.util.Map;
 public class WaterUseSummaryService {
 
     private static final Logger log = LoggerFactory.getLogger(WaterUseSummaryService.class);
-
-    /** 设备哨兵值：-999 设备不存在、-9991 设备异常；区间累计场景下均视为缺失 */
-    private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
-    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
 
     /** 查询区间上限（月）：防御大跨度聚合，10 年 */
     private static final long MAX_RANGE_MONTHS = 120L;
@@ -403,13 +400,13 @@ public class WaterUseSummaryService {
 
         Map<String, BigDecimal> volumes = new HashMap<>();
         for (IrrigationIntervalVO row : rows) {
-            BigDecimal ttf = usable(row.getTtf());
+            BigDecimal ttf = DeviceValueUtils.usable(row.getTtf());
             if (ttf == null) {
                 log.info("[用水总结] 区间取数 站点={}({}) 窗口={} ~ {} 末行无累计流量（ttf 为空或哨兵值）",
                         row.getStnm(), row.getSite(), start, end);
                 continue;
             }
-            BigDecimal prevTtf = usable(row.getPrevTtf());
+            BigDecimal prevTtf = DeviceValueUtils.usable(row.getPrevTtf());
             BigDecimal interval = ttf.subtract(prevTtf != null ? prevTtf : BigDecimal.ZERO);
             volumes.put(row.getSite(), interval);
             log.info("[用水总结] 区间取数 站点={}({}) 末行时间={} 区间累计={} m³（起点前基准 ttf={}）",
@@ -454,14 +451,6 @@ public class WaterUseSummaryService {
             }
         }
         return sum;
-    }
-
-    /** 哨兵/空值过滤：返回可用的累计流量值或无 */
-    private BigDecimal usable(BigDecimal value) {
-        if (value == null || DEVICE_MISSING.compareTo(value) == 0 || DEVICE_ERROR.compareTo(value) == 0) {
-            return null;
-        }
-        return value;
     }
 
     /** 统计桶（内部使用） */

@@ -25,8 +25,6 @@ public class BillPlanRowVO {
 
     private String gateId;
 
-    private String gateCode;
-
     private String gateName;
 
     /** 计入符号：1 累加 / -1 扣减（差额策略扣减闸口） */
@@ -41,8 +39,11 @@ public class BillPlanRowVO {
     /** 计划放水量（万m³） */
     private BigDecimal planAmount;
 
-    /** 计入水量（万m³，带符号） */
+    /** 计入水量（万m³，带符号）；未计费行实时计量不可得时为 null */
     private BigDecimal amount;
+
+    /** 计量不可得原因（仅未计费行、amount 为空时有值，如「执行时段内该闸口无流量记录」；已计费 / 可计量为 null） */
+    private String meterIssue;
 
     /** 计费账单编号（未计费为空） */
     private String billNo;

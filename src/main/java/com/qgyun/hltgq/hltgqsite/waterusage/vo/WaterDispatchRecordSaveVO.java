@@ -26,7 +26,10 @@ public class WaterDispatchRecordSaveVO {
     /** 升降高度（cm，0~999；可空） */
     private Integer height;
 
-    /** 操作人 / 闸管员（必填） */
+    /** 操作人 / 闸管员（选人下拉的 id；传了则后端按 id 回查固化姓名，不信任 operator 文本） */
+    private String operatorUserId;
+
+    /** 操作人 / 闸管员姓名（必填；未换人时回传原值） */
     private String operator;
 
     private String remark;

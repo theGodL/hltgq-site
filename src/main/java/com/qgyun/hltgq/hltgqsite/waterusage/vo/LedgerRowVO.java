@@ -61,7 +61,7 @@ public class LedgerRowVO {
     /** 已出账金额（元，Σ 账单应收金额；汇总视图「应收金额」） */
     private BigDecimal billedAmount;
 
-    /** 年度计划（万m³，当年已生效+已归档年度计划核定水量合计；无则 null 显示「—」） */
+    /** 年度计划（万m³，用水户档案年度计划水量 annual_plan_water 折算；未设定则 null 显示「—」） */
     private BigDecimal yearPlan;
 
     /** 账单数（张；汇总视图） */

@@ -10,6 +10,8 @@ import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterDispatchMapper;
 import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterPlanMapper;
 import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterUserMapper;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.DemandOptionVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.PlanOptionVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.UserOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDemandVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDispatchSaveVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDispatchVO;
@@ -53,6 +55,8 @@ public class WaterDispatchService {
 
     private final ObjectMapper objectMapper;
 
+    private final PlatformUserService platformUsers;
+
     /** 操作人兜底（会话缺失时使用，审计列 NOT NULL） */
     @Value("${hltgq.created-by}")
     private String fallbackOperator;
@@ -63,7 +67,8 @@ public class WaterDispatchService {
                                 WaterUserMapper userMapper,
                                 WaterPlanMapper planMapper,
                                 ShortIdGenerator shortIdGenerator,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                PlatformUserService platformUsers) {
         this.dispatchMapper = dispatchMapper;
         this.demandMapper = demandMapper;
         this.demandService = demandService;
@@ -71,14 +76,16 @@ public class WaterDispatchService {
         this.planMapper = planMapper;
         this.shortIdGenerator = shortIdGenerator;
         this.objectMapper = objectMapper;
+        this.platformUsers = platformUsers;
     }
 
     // ==================== 元数据 / 统计 / 列表 / 详情 ====================
 
-    /** 表单元数据（执行状态字典 + 当天日期） */
+    /** 表单元数据（执行状态字典 + 调度负责人候选 + 当天日期） */
     public Map<String, Object> meta() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("statuses", WaterUsageDict.dispatchStatusOptions());
+        out.put("owners", platformUsers.options());
         out.put("today", LocalDate.now().toString());
         return out;
     }
@@ -122,10 +129,11 @@ public class WaterDispatchService {
         return vo;
     }
 
-    /** 「关联用水计划」下拉（仅已生效） */
-    public List<WaterPlanVO> plans(String keyword) {
-        List<WaterPlanVO> rows = dispatchMapper.selectActivePlanOptionsForPick(WaterUsageSupport.trim(keyword));
-        for (WaterPlanVO row : rows) {
+    /** 「关联用水计划」下拉（仅已生效；userId 非空时附该户配额：该户明细合计 / 已下达合计，单位 m³） */
+    public List<PlanOptionVO> plans(String keyword, String userId) {
+        List<PlanOptionVO> rows = dispatchMapper.selectActivePlanOptionsForPick(
+                WaterUsageSupport.trim(keyword), WaterUsageSupport.trim(userId));
+        for (PlanOptionVO row : rows) {
             row.setPlanTypeName(WaterUsageDict.planTypeName(row.getPlanType()));
         }
         return rows;
@@ -134,6 +142,14 @@ public class WaterDispatchService {
     /** 「关联需水申请」下拉（仅已通过；可按用水户过滤；实现复用需水上报服务） */
     public List<DemandOptionVO> demands(String keyword, String userId) {
         return demandService.demands(keyword, userId);
+    }
+
+    /**
+     * 「用水户」下拉（编制弹窗：仅正常状态）。planId 非空时仅返回该计划明细内的户——
+     * 与 {@link #plans} 的按户收敛构成双向联动（选计划 → 户收敛；选户 → 计划收敛）。
+     */
+    public List<UserOptionVO> users(String keyword, String planId) {
+        return userMapper.selectUserOptions(WaterUsageSupport.trim(keyword), WaterUsageSupport.trim(planId));
     }
 
     // ==================== 新增 / 编辑 / 调整 ====================
@@ -398,7 +414,8 @@ public class WaterDispatchService {
         if (d.endTime.isBefore(d.startTime)) {
             throw new IllegalArgumentException("执行时段止不能早于执行时段起");
         }
-        d.owner = WaterUsageSupport.maxLength(WaterUsageSupport.trim(req.getOwner()), 50, "调度负责人");
+        // 负责人：传 ownerUserId 时按平台用户回查固化姓名快照（不信任前端文本）；仅回传姓名（未换人/存量值）时按文本入库
+        d.owner = platformUsers.resolveName(req.getOwnerUserId(), req.getOwner(), "调度负责人", false);
         d.remark = WaterUsageSupport.maxLength(WaterUsageSupport.trim(req.getRemark()), 200, "备注");
         checkQuota(d.planId, d.userId, d.planAmount, excludeId);
         return d;

@@ -30,6 +30,10 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
+import com.qgyun.hltgq.hltgqsite.model.util.StationStatusUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DeviceValueUtils;
 
 /**
  * 流量监测服务实现
@@ -77,22 +81,6 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         LEGACY_TO_NEW_STCD.put("00000007", "3206400007");
     }
 
-    /** -999 = 设备不存在：视为缺失转 null 返回（-9991 设备异常保留，透传由前端展示 '--'） */
-    private static final BigDecimal DEVICE_MISSING = new BigDecimal("-999");
-
-    /** -9991 = 设备异常：保留原值透传（前端展示 '--'），不参与单位换算 */
-    private static final BigDecimal DEVICE_ERROR = new BigDecimal("-9991");
-
-    /** MQTT 站点固定清单（站点名匹配，其余为 RabbitMQ）：与前端 isStaleTm 标红规则一致 */
-    private static final Set<String> MQTT_STATION_NAMES = new HashSet<>(Arrays.asList(
-            "南山寺节制闸", "渠首进水闸", "渠首电站防洪闸", "双庙湖节制闸"
-    ));
-
-    /** MQTT 站断联阈值：报文 10 分钟一次，30 分钟无更新判离线 */
-    private static final long MQTT_STALE_MINUTES = 30;
-    /** RabbitMQ 站断联阈值：报文 1 小时一次，70 分钟无更新判离线 */
-    private static final long RBT_STALE_MINUTES = 70;
-
     /**
      * 水位水情站默认展示顺序（业主口径）：周家河 > 花凉亭坝上 > 花凉亭坝下。
      * 日时段水情表默认按此顺序分组输出（不受前端传入 stcds 顺序影响）；
@@ -119,37 +107,16 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         return configuredStcds.size();
     }
 
-    private static BigDecimal nullIfMissing(BigDecimal v) {
-        return (v != null && v.compareTo(DEVICE_MISSING) == 0) ? null : v;
-    }
-
     /**
      * 累计流量展示换算：m³ → 万m³（3 位小数截断）。
      * <p>-999（设备不存在）→ null；-9991（设备异常）保留原值透传（前端展示 '--'），不参与换算。
      */
     private static BigDecimal toWanFlow(BigDecimal v) {
-        BigDecimal m3 = nullIfMissing(v);
-        if (m3 == null || m3.compareTo(DEVICE_ERROR) == 0) {
+        BigDecimal m3 = DeviceValueUtils.nullIfMissing(v);
+        if (m3 == null || DeviceValueUtils.isError(m3)) {
             return m3;
         }
         return WaterVolumeUtils.m3ToWan(m3);
-    }
-
-    /**
-     * 断联判定（与前端 isStaleTm 规则一致）：MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线；
-     * 无时间值（null）视为在线（不判离线）；时间在未来（时钟偏差）也视为在线
-     */
-    private boolean isStale(LocalDateTime tm, String stnm) {
-        if (tm == null) return false;
-        long threshold = MQTT_STATION_NAMES.contains(stnm) ? MQTT_STALE_MINUTES : RBT_STALE_MINUTES;
-        // 毫秒级严格大于，与前端 Date.now() - t > staleMs 语义完全一致（toMinutes 向下取整会导致边界差一分钟误判）
-        return Duration.between(tm, LocalDateTime.now()).toMillis() > threshold * 60_000L;
-    }
-
-    /** zebpsu 站点状态：#1# 在线、#2# 离线；兼容 "#1#"/"1"/"#1" 格式，null 或未知值默认在线 */
-    private boolean isZebpsuOnline(String zebpsu) {
-        if (zebpsu == null) return true;
-        return !"2".equals(zebpsu.trim().replace("#", ""));
     }
 
     /**
@@ -196,14 +163,14 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         List<FlowMonitoringVO> rows = waterFlowMapper.selectLatestPerStation(stcds, canalIds, startTime, endTime);
         // -999 = 设备不存在：转 null 返回（-9991 设备异常保留，透传由前端展示 '--'）
         rows.forEach(r -> {
-            r.setQ(nullIfMissing(r.getQ()));
+            r.setQ(DeviceValueUtils.nullIfMissing(r.getQ()));
             r.setTf(toWanFlow(r.getTf()));
             // 累计流量（站点级，与闸门监测同口径）：默认（无起始时间）= 末行 ytf（当年 1月1日 0点起至最新数据时间）；
             // 指定起始时间 = 时间框范围累计 = ttf(范围内末行) − ttf(起点前最近一行)，起点前无积分行基准按 0；
             // 先按 m³ 原值相减，最后一步再换算为万m³（缩放后相减会放大误差）
-            BigDecimal ytf = nullIfMissing(r.getYtf());
-            BigDecimal ttf = nullIfMissing(r.getTtf());
-            BigDecimal prevTtf = nullIfMissing(r.getPrevTtf());
+            BigDecimal ytf = DeviceValueUtils.nullIfMissing(r.getYtf());
+            BigDecimal ttf = DeviceValueUtils.nullIfMissing(r.getTtf());
+            BigDecimal prevTtf = DeviceValueUtils.nullIfMissing(r.getPrevTtf());
             BigDecimal cumulativeFlow;
             if (startTime == null) {
                 cumulativeFlow = ytf;
@@ -214,7 +181,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             }
             r.setCumulativeFlow(toWanFlow(cumulativeFlow));
             // 在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则按最新采集时间断联判定
-            r.setIsOnline(isZebpsuOnline(r.getZebpsu()) && !isStale(r.getTm(), r.getStnm()));
+            r.setIsOnline(StationStatusUtils.isZebpsuOnline(r.getZebpsu()) && !StationStatusUtils.isStale(r.getTm(), r.getStnm()));
         });
         // 站点排序配置（流量监测类型）：已配置站点按配置顺序，未配置站点保持 SQL 默认顺序排在其后；
         // 站点标识 = 站点管理主键（档案缺失时为 null，该行保持默认位置）
@@ -267,8 +234,8 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             }
 
             // -9991 设备异常、-999 设备不存在，均视为缺失不参与聚合
-            if (q.compareTo(DEVICE_ERROR) == 0
-                    || q.compareTo(DEVICE_MISSING) == 0) continue;
+            if (DeviceValueUtils.isError(q)
+                    || DeviceValueUtils.isMissing(q)) continue;
 
             String hourKey = tm.truncatedTo(ChronoUnit.HOURS)
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00"));
@@ -330,7 +297,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         int limit = (int) size;
         List<FlowMonitoringVO> records = waterFlowMapper.selectHistoryPage(stcd, startTime, endTime, limit, offset);
         records.forEach(r -> {
-            r.setQ(nullIfMissing(r.getQ()));
+            r.setQ(DeviceValueUtils.nullIfMissing(r.getQ()));
             r.setTf(toWanFlow(r.getTf()));
         });
         result.setRecords(records);
@@ -374,7 +341,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         Arrays.fill(hitDistance, Long.MAX_VALUE);
         for (Map<String, Object> row : rows) {
             Integer idx = codeToIndex.get(String.valueOf(row.get("skey")));
-            BigDecimal q = toBigDecimal(row.get("q"));
+            BigDecimal q = ValueConvertUtils.decimal(row.get("q"));
             if (idx == null || q == null) continue;
             LocalDateTime tm = toLocalDateTime(row.get("tm"));
             long distance = tm == null ? Long.MAX_VALUE : Math.abs(Duration.between(time, tm).toMillis());
@@ -501,9 +468,9 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
                     if (recordTm.isAfter(prevSlot) && !recordTm.isAfter(slot)) {
                         SlotVal v = new SlotVal();
                         // -999 = 设备不存在：转 null 返回（-9991 设备异常保留透传由前端展示 '--'）
-                        v.z = nullIfMissing(toBigDecimal(row.get("z")));
+                        v.z = DeviceValueUtils.nullIfMissing(ValueConvertUtils.decimal(row.get("z")));
                         v.wptn = row.get("wptn") != null ? String.valueOf(row.get("wptn")) : null;
-                        v.q = nullIfMissing(toBigDecimal(row.get("q")));
+                        v.q = DeviceValueUtils.nullIfMissing(ValueConvertUtils.decimal(row.get("q")));
                         // 同槽位多条时，后扫描的（tm 更大）覆盖前者
                         slotBest.put(slot, v);
                         break;
@@ -520,7 +487,7 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
                 vo.setTm(slot);
                 SlotVal v = slotBest.get(slot);
                 vo.setZ(v != null ? v.z : null);
-                vo.setWptn(v != null ? mapWptn(v.wptn) : null);
+                vo.setWptn(v != null ? DictUtils.mapWptn(v.wptn) : null);
                 vo.setQ(v != null ? v.q : null);
                 // msqmt/msamt/msvmt 无数据源，留空
                 result.add(vo);
@@ -537,36 +504,11 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         BigDecimal q;
     }
 
-    /** Map 值 → BigDecimal（null 安全） */
-    private BigDecimal toBigDecimal(Object obj) {
-        if (obj == null) return null;
-        if (obj instanceof BigDecimal) return (BigDecimal) obj;
-        try {
-            return new BigDecimal(obj.toString());
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
     /** Map 值 → LocalDateTime（null 安全，兼容驱动返回 Timestamp / LocalDateTime 两种类型） */
     private LocalDateTime toLocalDateTime(Object obj) {
         if (obj instanceof Timestamp) return ((Timestamp) obj).toLocalDateTime();
         if (obj instanceof LocalDateTime) return (LocalDateTime) obj;
         return null;
-    }
-
-    /** 水势代码 → 中文 */
-    private String mapWptn(String wptn) {
-        if (wptn == null || wptn.isEmpty()) return "无涨落信息";
-        switch (wptn.trim()) {
-            case "4":
-            case "涨": return "涨";
-            case "5":
-            case "落": return "落";
-            case "6":
-            case "平": return "平";
-            default:  return "无涨落信息";
-        }
     }
 
 }

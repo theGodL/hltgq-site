@@ -147,7 +147,7 @@ td.empty:hover{background:transparent}
 .icon-btn:hover{color:var(--el-text-color-primary);background:var(--el-fill-color-light)}
 .drawer-bd{flex:1;min-height:0;overflow-y:auto;padding:24px}
 .drawer-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
-.drawer-bd .field{height:var(--el-control-height-sm);border-radius:var(--el-radius)}
+.drawer-bd .field,.drawer-bd .sel-box{height:var(--el-control-height-sm);border-radius:var(--el-radius)}
 .drawer-bd textarea.field{height:auto;min-height:88px;padding:8px 12px;line-height:22px;resize:vertical}
 .drawer-ft .btn,.mbox-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
 
@@ -176,6 +176,35 @@ td.empty:hover{background:transparent}
 .mbox-alert{margin:0 20px 12px;padding:10px 12px;border-radius:var(--el-radius);background:var(--el-color-warning-light);border:1px solid rgba(230,162,60,.35);color:#b88230;font-size:13px;line-height:20px;white-space:pre-wrap;max-height:30vh;overflow:auto}
 .mbox-alert[hidden]{display:none}
 .mbox-ft{padding:0 20px 16px;display:flex;justify-content:flex-end;gap:12px}
+
+/* ===== 下拉组件（单选，表单灌溉方式） ===== */
+.sel{position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 12px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box:hover{border-color:var(--el-border-color-hover)}
+.sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sel.is-err .sel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.sel-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-text.placeholder{color:var(--el-text-color-placeholder)}
+.sel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.sel.open .sel-arrow{transform:rotate(180deg)}
+.sel.is-disabled .sel-box{background:var(--el-fill-color-disabled);border-color:var(--el-border-color-light);cursor:not-allowed}
+.sel.is-disabled .sel-text{color:var(--el-text-color-disabled)}
+.sel.is-disabled .sel-arrow{border-top-color:var(--el-text-color-disabled)}
+.sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.sel.open .sel-panel{display:block}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search[hidden]{display:none}
+.sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.sel-search input::placeholder{color:var(--el-text-color-placeholder)}
+.sel-list{max-height:274px;overflow-y:auto;padding:4px 0}
+.sel-opt{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt:hover{background:var(--el-fill-color-light)}
+.sel-opt.active{color:var(--el-color-primary)}
+.sel-opt .opt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{margin-left:auto;flex-shrink:0;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt .tick{flex-shrink:0;margin-left:auto;color:var(--el-color-primary)}
+.sel-opt .opt-sub+.tick{margin-left:8px}
+.sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
 
 /* 提示条 */
 .toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
@@ -248,8 +277,9 @@ td.empty:hover{background:transparent}
           <div class="f-err" id="err-crop"></div>
         </div>
         <div class="f-item span2">
-          <label class="f-label">灌溉方式</label>
-          <input class="field" id="in-method" maxlength="100" placeholder="如：渠灌 / 喷灌 / 滴灌（可空）" autocomplete="off">
+          <label class="f-label"><i class="req">*</i>灌溉方式</label>
+          <div class="sel" id="sel-method"></div>
+          <div class="f-hint">必填；计划明细按灌溉方式匹配适用定额</div>
           <div class="f-err" id="err-method"></div>
         </div>
         <div class="f-item span2">
@@ -287,10 +317,13 @@ td.empty:hover{background:transparent}
 </div>
 
 <div class="toast" id="toast"></div>
+<script src="./lib/rules.js"></script>
 <script>
 /* ============================ 常量与状态 ============================ */
 const API = '/hltgq-site';
 const ICON = {
+  search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  tick: '<svg class="tick" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   err: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.6v4.2M8 11.1v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
   pencil: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.6 9.4a2.12 2.12 0 0 0-3-3L5 17v3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.4 6.8l2.8 2.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.6 7V4.6h4.8V7M6.6 7l.9 12.3A1.6 1.6 0 0 0 9.1 20.8h5.8a1.6 1.6 0 0 0 1.6-1.5L17.4 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 10.8v5.6M13.6 10.8v5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
@@ -299,6 +332,7 @@ const ICON = {
 
 const S = {
   page: 1, size: 20, total: 0, records: [],
+  meta: { irrigationMethods: [], today: '', rulesVersion: '' },
   filter: { keyword: '' },
   mode: '',                      // 抽屉：create / edit / view
   row: null,                     // 当前编辑/查看行
@@ -356,6 +390,93 @@ function fmtNum(v, digits) {
   return n.toFixed(digits === undefined ? 2 : digits);
 }
 
+/* ============================ 下拉组件（单选） ============================ */
+function selShell(el) {
+  el.innerHTML =
+    '<div class="sel-box" tabindex="0"><span class="sel-text placeholder"></span><span class="sel-arrow"></span></div>' +
+    '<div class="sel-panel"><div class="sel-search" hidden>' + ICON.search +
+    '<input type="text" placeholder="搜索" autocomplete="off"></div><div class="sel-list"></div></div>';
+  return {
+    el: el,
+    box: el.querySelector('.sel-box'),
+    textEl: el.querySelector('.sel-text'),
+    searchWrap: el.querySelector('.sel-search'),
+    searchInput: el.querySelector('.sel-search input'),
+    list: el.querySelector('.sel-list')
+  };
+}
+
+function optHtml(o, active) {
+  return '<div class="sel-opt' + (active ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+    '<span class="opt-name">' + esc(o.label) + '</span>' +
+    (o.sub ? '<span class="opt-sub">' + esc(o.sub) + '</span>' : '') +
+    (active ? ICON.tick : '') + '</div>';
+}
+
+function filterOpts(st, kw) {
+  if (!kw) return st.options;
+  const k = kw.trim().toLowerCase();
+  return st.options.filter(o => (o.label + ' ' + (o.sub || '')).toLowerCase().indexOf(k) >= 0);
+}
+
+function createSelect(el) {
+  const d = selShell(el);
+  const st = { value: '', label: '', options: [], placeholder: '请选择', emptyText: '无匹配数据', searchable: false, disabled: false, onChange: null };
+
+  function sync() {
+    const hit = st.options.filter(o => o.value === st.value)[0];
+    const label = st.value ? (hit ? hit.label : (st.label || st.value)) : '';
+    d.textEl.textContent = label || st.placeholder;
+    d.textEl.classList.toggle('placeholder', !label);
+  }
+  function render() {
+    const opts = filterOpts(st, st.searchable ? d.searchInput.value : '');
+    d.list.innerHTML = opts.length
+      ? opts.map(o => optHtml(o, o.value === st.value)).join('')
+      : '<div class="sel-empty">' + esc(st.emptyText) + '</div>';
+  }
+  function open() {
+    if (st.disabled) return;
+    closeAllSelects(el);
+    el.classList.add('open');
+    if (st.searchable) d.searchInput.value = '';
+    render();
+    if (st.searchable) setTimeout(() => { try { d.searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+  }
+  function close() { el.classList.remove('open'); }
+
+  d.box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  d.searchInput.addEventListener('input', render);
+  d.list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.sel-opt');
+    if (!opt) return;
+    e.preventDefault();
+    st.value = opt.dataset.value;
+    st.label = '';
+    sync(); render(); close();
+    if (st.onChange) st.onChange(st.value);
+  });
+  el._close = close;
+
+  return {
+    getValue: () => st.value,
+    setOptions(list) { st.options = list || []; sync(); render(); return this; },
+    setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
+    setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+    setEmptyText(t) { st.emptyText = t; render(); return this; },
+    setSearchable(on) { st.searchable = !!on; d.searchWrap.hidden = !on; return this; },
+    setDisabled(on) { st.disabled = !!on; el.classList.toggle('is-disabled', !!on); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+function closeAllSelects(except) {
+  document.querySelectorAll('.sel.open').forEach(s => {
+    if (s !== except && typeof s._close === 'function') s._close();
+  });
+}
+
 /* ============================ 列表 ============================ */
 function emptyRow(text, plain) {
   return '<tr><td colspan="6" class="empty"><div class="empty-box">' +
@@ -405,7 +526,7 @@ function renderTable() {
     const quota = fmtNum(r.quotaValue, 2);
     return '<tr data-key="' + esc(r.id) + '">' +
       '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.cropType || '--') + '</span></td>' +
-      '<td>' + esc(r.irrigationMethod || '--') + '</td>' +
+      '<td>' + esc(r.irrigationMethodName || r.irrigationMethod || '--') + '</td>' +
       '<td>' + (quota === null ? '--' : esc(quota) + ' <span class="sub">m³/亩</span>') + '</td>' +
       '<td title="' + esc(r.remark || '') + '">' + esc(r.remark || '--') + '</td>' +
       '<td>' + refCell(r) + '</td>' +
@@ -491,6 +612,8 @@ function onPagerClick(e) {
 }
 
 /* ============================ 表单（抽屉） ============================ */
+let selMethod = null;
+
 function showDrawer() {
   $('drawer-mask').classList.add('show');
   $('drawer').classList.add('show');
@@ -501,6 +624,7 @@ function closeDrawer() {
   $('drawer-mask').classList.remove('show');
   $('drawer').classList.remove('show');
   $('drawer').setAttribute('aria-hidden', 'true');
+  closeAllSelects(null);
   S.row = null;
   S.mode = '';
 }
@@ -560,14 +684,15 @@ async function openView(id) {
 
 function resetForm() {
   S.row = null;
-  ['in-crop', 'in-method', 'in-quota', 'in-remark'].forEach(id => { $(id).value = ''; });
+  ['in-crop', 'in-quota', 'in-remark'].forEach(id => { $(id).value = ''; });
+  selMethod.setValue('');
   clearFormErrors();
 }
 
 function fillForm(d) {
   S.row = d;
   $('in-crop').value = d.cropType || '';
-  $('in-method').value = d.irrigationMethod || '';
+  selMethod.setValue(d.irrigationMethod || '', d.irrigationMethodName || '');
   $('in-quota').value = d.quotaValue === null || d.quotaValue === undefined ? '' : String(d.quotaValue);
   $('in-remark').value = d.remark || '';
 }
@@ -575,7 +700,7 @@ function fillForm(d) {
 /* ---------------- 表单校验 ---------------- */
 const FORM_ERR = {
   crop: { box: 'err-crop', field: () => $('in-crop') },
-  method: { box: 'err-method', field: () => $('in-method') },
+  method: { box: 'err-method', sel: () => selMethod },
   quota: { box: 'err-quota', field: () => $('in-quota') },
   remark: { box: 'err-remark', field: () => $('in-remark') }
 };
@@ -583,6 +708,7 @@ const FORM_ERR = {
 function setFormError(key, msg) {
   const cfg = FORM_ERR[key];
   if (!cfg) return;
+  if (cfg.sel) cfg.sel().setError(!!msg);
   if (cfg.field) cfg.field().classList.toggle('is-err', !!msg);
   const box = $(cfg.box);
   box.innerHTML = msg ? ICON.err + '<span>' + esc(msg) + '</span>' : '';
@@ -598,16 +724,18 @@ function validateForm() {
   let bad = false;
   const crop = $('in-crop').value.trim();
   if (!crop) { setFormError('crop', '请填写作物种类'); bad = true; }
-  const method = $('in-method').value.trim();
+  const method = selMethod.getValue();
+  if (!method) { setFormError('method', '请选择灌溉方式'); bad = true; }
   const quotaRaw = $('in-quota').value.trim();
   if (!quotaRaw) { setFormError('quota', '请输入定额标准'); bad = true; }
   else if (!/^\d+(\.\d{1,2})?$/.test(quotaRaw)) { setFormError('quota', '定额标准最多保留 2 位小数'); bad = true; }
   else if (Number(quotaRaw) <= 0) { setFormError('quota', '定额标准必须大于 0'); bad = true; }
   const remark = $('in-remark').value.trim();
+  if (remark.length > 200) { setFormError('remark', '备注不能超过 200 字'); bad = true; }
   if (bad) return null;
   return {
     cropType: crop,
-    irrigationMethod: method || null,
+    irrigationMethod: method,
     quotaValue: Number(quotaRaw),
     remark: remark || null
   };
@@ -653,7 +781,7 @@ function renderView(d) {
   const quota = fmtNum(d.quotaValue, 2);
   const pairs = [
     ['作物种类', d.cropType],
-    ['灌溉方式', d.irrigationMethod],
+    ['灌溉方式', d.irrigationMethodName || d.irrigationMethod],
     ['定额标准', quota === null ? null : quota + ' m³/亩'],
     ['被引用计划', (Number(d.refCount) || 0) + ' 个'],
     ['备注', d.remark]
@@ -794,22 +922,37 @@ function bindEvents() {
   $('drawer-mask').addEventListener('click', closeDrawer);
 
   $('in-crop').addEventListener('input', () => clearFormError('crop'));
-  $('in-method').addEventListener('input', () => clearFormError('method'));
   $('in-quota').addEventListener('input', () => clearFormError('quota'));
   $('in-remark').addEventListener('input', () => clearFormError('remark'));
+  selMethod.onChange(() => clearFormError('method'));
 
   $('dlg-cancel').addEventListener('click', closeDlg);
   $('dlg-ok').addEventListener('click', onDlgOk);
   $('dlg-mask').addEventListener('click', e => { if (e.target === $('dlg-mask')) closeDlg(); });
 
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.sel')) closeAllSelects(null);
+  });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     if ($('dlg-mask').classList.contains('show')) { closeDlg(); return; }
+    if (document.querySelector('.sel.open')) { closeAllSelects(null); return; }
     if ($('drawer').classList.contains('show')) closeDrawer();
   });
 }
 
 (async function init() {
+  try {
+    const meta = await api('/water-quota/meta');
+    S.meta = Object.assign(S.meta, meta || {});
+    WaterRules.assertVersion(S.meta.rulesVersion);
+  } catch (e) {
+    showToast(e.message || '基础数据加载失败', true);
+  }
+  selMethod = createSelect($('sel-method'));
+  selMethod.setOptions((S.meta.irrigationMethods || []).map(o => ({ value: o.value, label: o.label })));
+  selMethod.setPlaceholder('请选择灌溉方式');
+
   bindEvents();
   await loadList();
 })();

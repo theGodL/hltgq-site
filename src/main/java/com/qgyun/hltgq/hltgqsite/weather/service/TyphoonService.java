@@ -30,6 +30,7 @@ import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
 
 /**
  * N3 台风观测服务（方案 §5）。
@@ -454,7 +455,7 @@ public class TyphoonService {
             // 移向/移速仅最新点有效（上游实况路径点不带这两个字段）
             if (latestPoint != null) {
                 current.setMoveDirection(moveDirection(cleanStr(latestPoint, 8)));
-                current.setMoveSpeed(intAt(latestPoint, 9));
+                current.setMoveSpeed(JsonFieldUtils.intAt(latestPoint, 9));
             }
             vo.setCurrent(current);
         }
@@ -512,8 +513,8 @@ public class TyphoonService {
     }
 
     private TyphoonDetailVO.TrackPoint parseTrackPoint(JsonNode point) {
-        Double lon = doubleAt(point, 4);
-        Double lat = doubleAt(point, 5);
+        Double lon = JsonFieldUtils.doubleAt(point, 4);
+        Double lat = JsonFieldUtils.doubleAt(point, 5);
         String time = pointTime(point);
         if (lon == null || lat == null || time == null) {
             return null;
@@ -525,8 +526,8 @@ public class TyphoonService {
         vo.setLevelName(levelName(level));
         vo.setLon(lon);
         vo.setLat(lat);
-        vo.setPressure(intAt(point, 6));
-        vo.setWindSpeed(intAt(point, 7));
+        vo.setPressure(JsonFieldUtils.intAt(point, 6));
+        vo.setWindSpeed(JsonFieldUtils.intAt(point, 7));
         return vo;
     }
 
@@ -557,12 +558,12 @@ public class TyphoonService {
             if (entry == null || !entry.isArray() || entry.size() < 5) {
                 continue;
             }
-            Double lon = doubleAt(entry, 2);
-            Double lat = doubleAt(entry, 3);
+            Double lon = JsonFieldUtils.doubleAt(entry, 2);
+            Double lat = JsonFieldUtils.doubleAt(entry, 3);
             if (lon == null || lat == null) {
                 continue;
             }
-            Integer hourOffset = intAt(entry, 0);
+            Integer hourOffset = JsonFieldUtils.intAt(entry, 0);
             String level = cleanStr(entry, 7);
             TyphoonDetailVO.ForecastPoint vo = new TyphoonDetailVO.ForecastPoint();
             vo.setHourOffset(hourOffset);
@@ -571,8 +572,8 @@ public class TyphoonService {
             vo.setLevelName(levelName(level));
             vo.setLon(lon);
             vo.setLat(lat);
-            vo.setPressure(intAt(entry, 4));
-            vo.setWindSpeed(intAt(entry, 5));
+            vo.setPressure(JsonFieldUtils.intAt(entry, 4));
+            vo.setWindSpeed(JsonFieldUtils.intAt(entry, 5));
             vo.setAgency(cleanStr(entry, 6) == null ? agency : cleanStr(entry, 6));
             list.add(vo);
         }
@@ -706,7 +707,7 @@ public class TyphoonService {
 
     /** 下标取值 + 空值归一：`""`、`"pass"`、`"null"` 统一为 null（方案 §5.4） */
     private String cleanStr(JsonNode array, int index) {
-        return clean(textAt(array, index));
+        return clean(JsonFieldUtils.textAt(array, index));
     }
 
     private String clean(String value) {
@@ -722,33 +723,6 @@ public class TyphoonService {
 
     private boolean numeric(JsonNode node) {
         return node != null && node.isNumber();
-    }
-
-    private String textAt(JsonNode array, int index) {
-        if (array == null || index < 0 || index >= array.size()) {
-            return null;
-        }
-        JsonNode node = array.get(index);
-        if (node == null || node.isNull() || node.isContainerNode()) {
-            return null;
-        }
-        return node.asText();
-    }
-
-    private Double doubleAt(JsonNode array, int index) {
-        if (array == null || index < 0 || index >= array.size()) {
-            return null;
-        }
-        JsonNode node = array.get(index);
-        return node != null && node.isNumber() ? node.asDouble() : null;
-    }
-
-    private Integer intAt(JsonNode array, int index) {
-        if (array == null || index < 0 || index >= array.size()) {
-            return null;
-        }
-        JsonNode node = array.get(index);
-        return node != null && node.isNumber() ? node.asInt() : null;
     }
 
     private Long longAt(JsonNode array, int index) {

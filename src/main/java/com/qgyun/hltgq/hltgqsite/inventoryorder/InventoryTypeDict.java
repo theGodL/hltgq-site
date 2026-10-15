@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 
 /**
  * 出入库业务类型字典与单据状态口径（单一维护点，前端经 /inventory-order/meta 获取，不写死）。
@@ -74,12 +75,12 @@ public final class InventoryTypeDict {
 
     /** 入库类型名称（未知编码原样返回，空返回 ''） */
     public static String inboundTypeName(String code) {
-        return nameOf(INBOUND_TYPES, code);
+        return DictUtils.nameOf(INBOUND_TYPES, code);
     }
 
     /** 出库类型名称（未知编码原样返回，空返回 ''） */
     public static String outboundTypeName(String code) {
-        return nameOf(OUTBOUND_TYPES, code);
+        return DictUtils.nameOf(OUTBOUND_TYPES, code);
     }
 
     /** 按来源（RK/CK）联合映射业务类型名称（避免两表同值歧义） */
@@ -121,17 +122,17 @@ public final class InventoryTypeDict {
 
     /** 库存状态名称（#1# 正常 / #2# 偏低） */
     public static String stockStatusName(String code) {
-        return nameOf(STOCK_STATUS, code);
+        return DictUtils.nameOf(STOCK_STATUS, code);
     }
 
     /** 库存状态编码归一：接受中文（正常/偏低）或编码（#1#/#2#），未知原样返回（命中空结果） */
     public static String resolveStockStatus(String value) {
-        return resolveCode(STOCK_STATUS, value);
+        return DictUtils.resolveCode(STOCK_STATUS, value);
     }
 
     /** 流水变动类型名称 */
     public static String changeTypeName(String code) {
-        return nameOf(CHANGE_TYPES, code);
+        return DictUtils.nameOf(CHANGE_TYPES, code);
     }
 
     /**
@@ -168,26 +169,5 @@ public final class InventoryTypeDict {
         vo.setLabel(label);
         vo.setGroup(group);
         return vo;
-    }
-
-    private static String nameOf(Map<String, String> dict, String code) {
-        return dict.getOrDefault(code == null ? "" : code, code == null ? "" : code);
-    }
-
-    /** 过滤值归一为编码：空 → null；已是编码/中文 → 对应编码；未知原样下传 */
-    private static String resolveCode(Map<String, String> labels, String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return null;
-        }
-        String text = value.trim();
-        if (labels.containsKey(text)) {
-            return text;
-        }
-        for (Map.Entry<String, String> entry : labels.entrySet()) {
-            if (entry.getValue().equals(text)) {
-                return entry.getKey();
-            }
-        }
-        return text;
     }
 }

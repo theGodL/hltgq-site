@@ -17,6 +17,9 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 
 /**
  * 设备盘点导出服务：himanc 明细 JSON 防御解析 + 附件文件服务尽力解析。
@@ -58,8 +61,8 @@ public class StocktakeExportService {
         String dayEnd = endDate == null ? null : endDate.plusDays(1).toString();
         String sessionId = sessionContextService.extractSessionId(request);
 
-        log.info("[设备盘点] 导出查询参数 code={}, dayStart={}, dayEnd={}", trimToNull(code), dayStart, dayEnd);
-        List<InventoryCheckExportVO> rows = mapper.selectCheckList(trimToNull(code), dayStart, dayEnd);
+        log.info("[设备盘点] 导出查询参数 code={}, dayStart={}, dayEnd={}", CheckUtils.trim(code), dayStart, dayEnd);
+        List<InventoryCheckExportVO> rows = mapper.selectCheckList(CheckUtils.trim(code), dayStart, dayEnd);
         for (InventoryCheckExportVO row : rows) {
             row.setCheckDate(normalizeDate(row.getCheckDateRaw()));
             row.setDetails(parseDetails(row.getDetailsJson()));
@@ -84,13 +87,13 @@ public class StocktakeExportService {
             List<InventoryCheckExportVO.Detail> details = new ArrayList<>(root.size());
             for (JsonNode node : root) {
                 InventoryCheckExportVO.Detail detail = new InventoryCheckExportVO.Detail();
-                detail.setItemCode(textOf(node, "iwckqw"));
-                detail.setItemName(textOf(node, "acsoil"));
+                detail.setItemCode(JsonFieldUtils.textOf(node, "iwckqw"));
+                detail.setItemName(JsonFieldUtils.textOf(node, "acsoil"));
                 detail.setBookQty(decimalOf(node, "ezzjcs"));
                 detail.setCheckQty(decimalOf(node, "ekfgwh"));
                 detail.setProfitQty(decimalOf(node, "eihdbh"));
                 detail.setLossQty(decimalOf(node, "yuwdms"));
-                String unit = textOf(node, "vbcddc");
+                String unit = JsonFieldUtils.textOf(node, "vbcddc");
                 detail.setUnit(unit == null || unit.isEmpty() ? DEFAULT_UNIT : unit);
                 details.add(detail);
             }
@@ -106,7 +109,7 @@ public class StocktakeExportService {
      * 引用为空 / 复合引用 / 无会话 / 服务失败均降级（id 原样返回，name/url 为 null）。
      */
     private void resolveAttachment(InventoryCheckExportVO row, String sessionId) {
-        String ref = trimToNull(row.getAttachmentId());
+        String ref = CheckUtils.trim(row.getAttachmentId());
         if (ref == null) {
             return;
         }
@@ -128,27 +131,9 @@ public class StocktakeExportService {
         }
     }
 
-    /** JSON 节点文本值（键缺失/空节点恒 null） */
-    private String textOf(JsonNode node, String key) {
-        JsonNode value = node.get(key);
-        return value == null || value.isNull() ? null : value.asText();
-    }
-
     /** JSON 节点数值（文本解析失败/空恒 null） */
     private BigDecimal decimalOf(JsonNode node, String key) {
-        return toDecimal(textOf(node, key));
-    }
-
-    /** 文本转数值（空串/非法恒 null） */
-    private BigDecimal toDecimal(String text) {
-        if (text == null || text.trim().isEmpty()) {
-            return null;
-        }
-        try {
-            return new BigDecimal(text.trim());
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return ValueConvertUtils.decimalOf(JsonFieldUtils.textOf(node, key));
     }
 
     /** 盘点日期规范化：时间戳形态取前 10 位（如 2026-09-01 00:00:00 → 2026-09-01），其余原样 */
@@ -157,13 +142,5 @@ public class StocktakeExportService {
             return raw;
         }
         return raw.length() > 10 ? raw.substring(0, 10) : raw;
-    }
-
-    private String trimToNull(String s) {
-        if (s == null) {
-            return null;
-        }
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
     }
 }
