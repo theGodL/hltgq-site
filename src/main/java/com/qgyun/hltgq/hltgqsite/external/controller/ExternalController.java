@@ -78,6 +78,17 @@ public class ExternalController {
     }
 
     /**
+     * 视频通道清单（设备级）：每台视频设备一行，含通道号/名称/在线状态/经纬度/管理所/
+     * 安装位置/所属站点档案信息，供三方视频接入使用。
+     * <p>siteName：可选，按站点名称模糊匹配（如「双庙湖」命中「双庙湖管理所」「双庙湖节制闸」）；
+     * 不传或空白表示不筛选（全量返回）。
+     */
+    @GetMapping("/video-devices")
+    public List<ExternalVO.VideoDeviceItem> videoDevices(@RequestParam(required = false) String siteName) {
+        return externalService.videoDevices(siteName);
+    }
+
+    /**
      * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
      * 每行 = 档案字段（原字段名）+ 该站实时监测值（平铺 + data 子对象）；站点顺序按「站点排序」配置输出。
      * <p>type：1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 7 墒情 / 8 水质（兼容 #N# 编码与语义串）；非法值返回 400。

@@ -52,19 +52,19 @@
 html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
 
-/* ===== 页面骨架：筛选白卡 + 表格卡 ===== */
-.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%;overflow:hidden}
+/* ===== 页面骨架：筛选白卡 + 表格卡（纵向随内容滚动，分页跟随列表；同调度方案页） ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%;overflow-x:hidden;overflow-y:auto}
 .filter-card{flex-shrink:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 24px;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
 .filter-item{display:flex;align-items:center;gap:8px}
 .flt-label{font-size:14px;color:var(--el-text-color-title);text-align:right;white-space:nowrap}
 .filter-item .field{width:240px}
 .filter-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
 
-.panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.panel{flex:1 0 auto;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px 0;flex-shrink:0}
 .panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
 .panel-hd .hd-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
-.panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
+.panel-bd{flex:1 0 auto;display:flex;flex-direction:column;padding:16px 24px}
 
 /* ===== 控件 ===== */
 .field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%;font-family:inherit}
@@ -88,8 +88,8 @@ textarea.field{height:auto;min-height:88px;padding:8px 12px;line-height:22px;res
 .btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ===== 表格 ===== */
-.tbl-wrap{flex:1;min-height:0;overflow:auto;max-width:100%}
+/* ===== 表格（自然高度随内容展开，分页跟随列表；横向宽度只增不减，收窄时本容器出横向滚动条） ===== */
+.tbl-wrap{overflow-x:auto;max-width:100%}
 table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
 thead tr{background:var(--el-table-header-bg)}
 th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
@@ -97,7 +97,12 @@ td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(
 th:first-child,td:first-child{padding-left:16px}
 tbody tr:nth-child(even) td{background:var(--el-table-stripe-bg)}
 tbody tr:hover td{background:var(--el-fill-color-light)}
-td.col-act{white-space:nowrap;overflow:visible}
+/* 操作列文字链接（同调度方案页；换行时由 gap 控制行距/列距，行首不缩进） */
+td.col-act{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;white-space:normal;overflow:visible}
+.act{color:var(--el-color-primary);cursor:pointer;white-space:nowrap;transition:color .2s}
+.act:hover{color:var(--el-color-primary-hover)}
+.act.del{color:var(--el-color-danger)}
+.act.del:hover{color:var(--el-color-danger-hover)}
 td .sub{margin-left:4px;font-size:12px;color:var(--el-text-color-secondary)}
 td .tag{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-tag-bg);color:var(--el-tag-color);font-size:12px;line-height:1;border:none;vertical-align:middle}
 td .tag::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
@@ -520,9 +525,9 @@ function renderTable() {
     return;
   }
   tb.innerHTML = S.records.map(r => {
-    const acts = '<button class="lnk-btn" data-act="view" data-id="' + esc(r.id) + '" data-tip="查看" aria-label="查看">' + ICON.eye + '</button>' +
-      '<button class="lnk-btn" data-act="edit" data-id="' + esc(r.id) + '" data-tip="编辑" aria-label="编辑">' + ICON.pencil + '</button>' +
-      '<button class="lnk-btn danger" data-act="del" data-id="' + esc(r.id) + '" data-tip="删除" aria-label="删除">' + ICON.trash + '</button>';
+    const acts = '<span class="act" data-act="view" data-id="' + esc(r.id) + '">查看</span>' +
+      '<span class="act" data-act="edit" data-id="' + esc(r.id) + '">编辑</span>' +
+      '<span class="act del" data-act="del" data-id="' + esc(r.id) + '">删除</span>';
     const quota = fmtNum(r.quotaValue, 2);
     return '<tr data-key="' + esc(r.id) + '">' +
       '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.cropType || '--') + '</span></td>' +

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>雨量数据</title>
 <script src="/hltgq-site/lib/xlsx.full.min.js"></script>
+<script src="/hltgq-site/lib/monitor-export.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -666,6 +667,7 @@ function exportPivot(type) {
 
   const sheetName = type === 'pptn' ? '实时雨情' : isDaily ? '日雨情' : '时段雨情';
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = MonitorExport.fitCols(header);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `${sheetName}_${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}.xlsx`);

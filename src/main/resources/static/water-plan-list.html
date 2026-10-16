@@ -52,8 +52,8 @@
 html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
 
-/* ===== 页面骨架：筛选白卡 + 表格卡 ===== */
-.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%;overflow:hidden}
+/* ===== 页面骨架：筛选白卡 + 表格卡（纵向随内容滚动，分页跟随列表；同调度方案页） ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%;overflow-x:hidden;overflow-y:auto}
 .filter-card{flex-shrink:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 24px;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
 .filter-item{display:flex;align-items:center;gap:8px}
 .flt-label{font-size:14px;color:var(--el-text-color-title);text-align:right;white-space:nowrap}
@@ -70,11 +70,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .kpi-v .txt{font-size:18px;font-weight:500;color:var(--el-text-color-primary)}
 .kpi-f{font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
 
-.panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.panel{flex:1 0 auto;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px 0;flex-shrink:0}
 .panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
 .panel-hd .hd-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
-.panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
+.panel-bd{flex:1 0 auto;display:flex;flex-direction:column;padding:16px 24px}
 
 /* ===== 控件 ===== */
 .field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%;font-family:inherit}
@@ -99,8 +99,8 @@ textarea.field{height:auto;min-height:88px;padding:8px 12px;line-height:22px;res
 .btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ===== 表格 ===== */
-.tbl-wrap{flex:1;min-height:0;overflow:auto;max-width:100%}
+/* ===== 表格（自然高度随内容展开，分页跟随列表；横向宽度只增不减，收窄时本容器出横向滚动条） ===== */
+.tbl-wrap{overflow-x:auto;max-width:100%}
 /* 隐藏竖直滚动条（仍支持滚轮滚动），仅保留横向滚动条 */
 .tbl-wrap::-webkit-scrollbar:vertical{width:0}
 /* 主表格宽度只增不减（脚本 initTblGrowOnlyWidth 控制）：铺满可用宽度；页面收窄时宽度保持不动（不跟随缩，无容忍区间），由 .tbl-wrap 立即出现横向滚动条 */
@@ -111,7 +111,12 @@ td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(
 th:first-child,td:first-child{padding-left:16px}
 tbody tr:nth-child(even) td{background:var(--el-table-stripe-bg)}
 tbody tr:hover td{background:var(--el-fill-color-light)}
-td.col-act{white-space:nowrap;overflow:visible}
+/* 操作列文字链接（同调度方案页；换行时由 gap 控制行距/列距，行首不缩进） */
+td.col-act{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;white-space:normal;overflow:visible}
+.act{color:var(--el-color-primary);cursor:pointer;white-space:nowrap;transition:color .2s}
+.act:hover{color:var(--el-color-primary-hover)}
+.act.del{color:var(--el-color-danger)}
+.act.del:hover{color:var(--el-color-danger-hover)}
 td .sub{margin-left:4px;font-size:12px;color:var(--el-text-color-secondary)}
 td .sub-line{display:block;margin-top:2px;font-size:12px;color:var(--el-text-color-secondary);overflow:hidden;text-overflow:ellipsis}
 td .tag{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-tag-bg);color:var(--el-tag-color);font-size:12px;line-height:1;border:none;vertical-align:middle}
@@ -293,7 +298,7 @@ td.empty:hover{background:transparent}
       <div class="kpi-f">固定设计指标</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-t">实际保证率 · 全部审核通过申请</div>
+      <div class="kpi-t" id="kpi-guarantee-title">实际保证率 · 本年度审核通过申请</div>
       <div class="kpi-v" id="kpi-actual"><span class="txt">加载中...</span></div>
       <div class="kpi-f" id="kpi-foot">--</div>
     </div>
@@ -652,21 +657,25 @@ function typeTag(r) {
 }
 
 /* ============================ KPI：实际保证率 ============================ */
-/** 实际保证率（全部审核通过申请，不随列表筛选变化；need / actual 出口口径 m³） */
+/** 实际保证率（按当前自然年度、仅该年度审核通过申请，不随列表筛选变化；need / actual 出口口径 m³；year 服务端下发） */
 async function loadGuarantee() {
   const vEl = $('kpi-actual');
   const fEl = $('kpi-foot');
+  const tEl = $('kpi-guarantee-title');
   try {
     const g = await api('/water-plan/guarantee');
+    const year = Number(g && g.year) || new Date().getFullYear();
     const need = Number(g && g.need) || 0;
     const actual = Number(g && g.actual) || 0;
     const missing = Number(g && g.missing) || 0;
+    if (tEl) tEl.textContent = year + ' 年实际保证率 · 审核通过申请';
     if (!need) vEl.innerHTML = '<span class="txt">暂无审核通过需水</span>';
     else if (g && g.overlap) vEl.innerHTML = '<span class="txt">申请时段重叠，待核对</span>';
     else if (missing) vEl.innerHTML = '<span class="txt">待补计量数据</span>';
     else vEl.innerHTML = esc(fmt2(actual / need * 100)) + '<span class="u">%</span>';
     fEl.textContent = '应供 ' + fmtWan(need) + ' 万m³ · 已有计量 ' + fmtWan(actual) + ' 万m³ · ' + missing + ' 条待补';
   } catch (e) {
+    if (tEl) tEl.textContent = new Date().getFullYear() + ' 年实际保证率 · 审核通过申请';
     vEl.innerHTML = '<span class="txt">加载失败</span>';
     fEl.textContent = '';
   }
@@ -688,15 +697,15 @@ function progressCell(r) {
 function actsCell(r) {
   const id = esc(r.id);
   // 查看为只读操作,所有状态均可用
-  let html = '<button class="lnk-btn" data-act="view" data-id="' + id + '" data-tip="查看" aria-label="查看">' + ICON.eye + '</button>';
+  let html = '<span class="act" data-act="view" data-id="' + id + '">查看</span>';
   if (r.status === '#1#') {
-    html += '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="编辑" aria-label="编辑">' + ICON.pencil + '</button>' +
-      '<button class="lnk-btn" data-act="activate" data-id="' + id + '" data-tip="生效" aria-label="生效">' + ICON.check + '</button>' +
-      '<button class="lnk-btn danger" data-act="del" data-id="' + id + '" data-tip="删除" aria-label="删除">' + ICON.trash + '</button>';
+    html += '<span class="act" data-act="edit" data-id="' + id + '">编辑</span>' +
+      '<span class="act" data-act="activate" data-id="' + id + '">生效</span>' +
+      '<span class="act del" data-act="del" data-id="' + id + '">删除</span>';
   } else if (r.status === '#2#') {
-    html += '<button class="lnk-btn" data-act="edit" data-id="' + id + '" data-tip="调整计划水量 / 备注" aria-label="编辑">' + ICON.pencil + '</button>' +
-      '<button class="lnk-btn" data-act="archive" data-id="' + id + '" data-tip="归档" aria-label="归档">' + ICON.archive + '</button>' +
-      '<button class="lnk-btn danger" data-act="void" data-id="' + id + '" data-tip="作废" aria-label="作废">' + ICON.ban + '</button>';
+    html += '<span class="act" data-act="edit" data-id="' + id + '">编辑</span>' +
+      '<span class="act" data-act="archive" data-id="' + id + '">归档</span>' +
+      '<span class="act del" data-act="void" data-id="' + id + '">作废</span>';
   }
   return html;
 }

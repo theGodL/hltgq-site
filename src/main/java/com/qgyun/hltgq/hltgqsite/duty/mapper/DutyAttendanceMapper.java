@@ -317,11 +317,12 @@ public interface DutyAttendanceMapper {
 
     /**
      * 今日值守中行（当日 #2# 记录，按班组聚合：同单位 + 同班次起止时间合并为一行，
-     * 人员 = 各记录归属人（历史记录回退 rel 人员聚合），按最早实际开始时间升序取组）。
+     * orgKey/membersRaw = 组内各记录人员聚合（新记录归属人；历史记录回退 rel 人员），
+     * 服务层据此反查排班名册并标注各人签到状态；按最早实际开始时间升序取组）。
      */
     @Select("SELECT min(x.id) AS id, min(x.actualStartRaw) AS actualStartRaw, " +
             "x.shiftMinRaw AS shiftMinRaw, x.shiftMaxRaw AS shiftMaxRaw, " +
-            "min(x.legacyShift) AS legacyShift, " +
+            "min(x.legacyShift) AS legacyShift, min(x.orgKey) AS orgKey, " +
             "string_agg(x.mem, '、' ORDER BY x.actualStartRaw NULLS LAST, x.id) AS membersRaw " +
             "FROM (SELECT d.id AS id, " +
             "to_char(d.jlailj, 'YYYY-MM-DD HH24:MI:SS') AS actualStartRaw, " +

@@ -247,6 +247,42 @@ public class ExternalService {
     }
 
     /**
+     * 视频通道清单（设备级，全量）：一台视频设备一行，含通道号/名称/设备状态/管理所/
+     * 安装位置/所属站点档案（主键/站名/编号/站点状态/站点经纬度/管理单位）/设备经纬度。
+     * <p>siteName 非空时按站点名称模糊过滤（null/空白 = 全量，向后兼容）。
+     * 口径与视频聚合接口一致：设备表 type 含 #5#；org = 安装位置首段（空归「未知」）；
+     * isOnline = status #1#（status 原值同步返回）；站点状态取档案 zebpsu 原值（#1# 在线 / #2# 离线）；
+     * 站点经纬度取所属站点档案 bviiio_x/y（未配置为 null）；
+     * 设备经纬度取设备表 hkkwwa_x/y（预留坐标列、当前未登记为 null）。
+     *
+     * @param siteName 站点名称模糊词，null/空白表示不筛选
+     */
+    public List<ExternalVO.VideoDeviceItem> videoDevices(String siteName) {
+        List<ExternalVO.VideoDeviceItem> list = new ArrayList<>();
+        for (Map<String, Object> row : mapper.selectVideoDevices(CheckUtils.trim(siteName))) {
+            ExternalVO.VideoDeviceItem item = new ExternalVO.VideoDeviceItem();
+            item.setCode(ValueConvertUtils.str(row.get("code")));
+            item.setName(ValueConvertUtils.str(row.get("name")));
+            item.setIsOnline("#1#".equals(ValueConvertUtils.str(row.get("status"))));
+            item.setStatus(ValueConvertUtils.str(row.get("status")));
+            item.setLon(numberOrNull(row.get("lon")));
+            item.setLat(numberOrNull(row.get("lat")));
+            item.setDeviceLon(numberOrNull(row.get("device_lon")));
+            item.setDeviceLat(numberOrNull(row.get("device_lat")));
+            String org = ValueConvertUtils.str(row.get("org"));
+            item.setOrg(org == null || org.trim().isEmpty() ? "未知" : org);
+            item.setLocation(ValueConvertUtils.str(row.get("wlcvig")));
+            item.setSiteId(ValueConvertUtils.str(row.get("site_id")));
+            item.setSiteName(ValueConvertUtils.str(row.get("site_name")));
+            item.setStcd(ValueConvertUtils.str(row.get("stcd")));
+            item.setSiteStatus(ValueConvertUtils.str(row.get("site_status")));
+            item.setManagementUnit(ValueConvertUtils.str(row.get("unit_name")));
+            list.add(item);
+        }
+        return list;
+    }
+
+    /**
      * 监测站点列表（按监测类型合并）：type 与站点档案监测类型编码同口径
      * （1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 7 墒情 / 8 水质，另兼容 #N# 编码与语义串便于联调）。
      * <p>站点集合取站点档案（含当前无数据的站点，与原 qx-api 列表一致），name 非空时按站名模糊过滤

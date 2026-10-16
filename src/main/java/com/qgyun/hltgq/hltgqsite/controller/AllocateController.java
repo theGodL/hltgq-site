@@ -9,6 +9,7 @@ import com.qgyun.hltgq.hltgqsite.model.service.AllocateService;
 import com.qgyun.hltgq.hltgqsite.model.service.ModelRecordCommonService;
 import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ExcelParseUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.ExcelTemplateUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.TenDayMapUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.AllocateSubmitRequest;
 import org.apache.poi.ss.usermodel.Row;
@@ -105,16 +106,20 @@ public class AllocateController {
                 .body(bytes);
     }
 
-    /** POI 生成模板：表头 + 36 行（日期列预填 1月上旬~12月下旬） */
+    /** POI 生成模板：表头（列宽按表头自适应） + 36 行（日期列预填 1月上旬~12月下旬） */
     private byte[] buildTemplate() {
         try (XSSFWorkbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("配水基础数据");
+            String[] headers = new String[MANUAL_REQUIRED_COLUMNS.length + 1];
+            System.arraycopy(MANUAL_REQUIRED_COLUMNS, 0, headers, 0, MANUAL_REQUIRED_COLUMNS.length);
+            headers[MANUAL_REQUIRED_COLUMNS.length] = "弃水";
             Row header = sheet.createRow(0);
-            for (int i = 0; i < MANUAL_REQUIRED_COLUMNS.length; i++) {
-                header.createCell(i).setCellValue(MANUAL_REQUIRED_COLUMNS[i]);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
             }
-            header.createCell(MANUAL_REQUIRED_COLUMNS.length).setCellValue("弃水");
+            // 列宽按表头自适应（与巡查计划 / 站点信息模板同口径）
+            ExcelTemplateUtils.fitColumnWidths(sheet, headers);
             int rowIdx = 1;
             for (String label : TenDayMapUtils.FULL_TEN_DAY_MAP.keySet()) {
                 Row row = sheet.createRow(rowIdx++);

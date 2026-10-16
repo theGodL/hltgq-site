@@ -248,7 +248,12 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         </div>
         <div class="form-item">
           <label>操作人 / 闸管员 <i class="req">*</i></label>
-          <input type="text" class="ipt" id="f-r-operator" placeholder="如 闸管-马强" autocomplete="off" maxlength="50">
+          <div class="select-wrap">
+            <input type="text" class="sel-input" id="f-r-operator" placeholder="搜索并选择操作人 / 闸管员" autocomplete="off" maxlength="50">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="sel-dd" id="r-operator-dd"></div>
+          </div>
+          <div class="f-tip">候选为平台用户（6.1 operators），与调度方案「调度负责人」同源</div>
         </div>
         <div class="form-item span2">
           <label>备注</label>
@@ -319,6 +324,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   /* 下拉/字典数据源(初始化或联动时自接口加载,前端不写死) */
   var USERS = [];       // 用水户 4.5 /water-demand/users: {id,name,userNo}
   var GATES = [];       // 闸口池 1.1 /water-user/meta: {id,code,name}
+  var OPERATORS = [];   // 操作人 / 闸管员候选 6.1 /water-dispatch-record/meta operators: {id,name}(平台用户)
 
   var LINK_PLANS = [];  // 未取消方案 6.4 /water-dispatch-record/plans
   var OP_TYPE_LIST = [  // 操作类型下拉(6.1 meta.opTypes 覆盖;默认与 0.4 一致)
@@ -389,6 +395,20 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   /** 操作类型下拉(6.1 meta.opTypes) */
   function opTypeOptions() { return OP_TYPE_LIST; }
+
+  /** 操作人候选:平台用户(6.1 operators),value=用户 id、label=姓名;与调度方案负责人同源 */
+  function operatorOptions() { return OPERATORS.map(function (o) { return { value: o.id, label: o.name }; }); }
+  function operatorNameOf(id) {
+    for (var i = 0; i < OPERATORS.length; i++) { if (OPERATORS[i].id === id) return OPERATORS[i].name; }
+    return '';
+  }
+  /** 存量姓名回填:能在候选池命中时一并记录 id(重新保存即固化姓名快照),否则仅按文本展示 */
+  function setSelOperatorByName(name) {
+    var text = name || '';
+    var id = '';
+    for (var i = 0; i < OPERATORS.length; i++) { if (OPERATORS[i].name === text) { id = OPERATORS[i].id; break; } }
+    setSel('f-r-operator', text, id);
+  }
 
   /* ==================== 通用模糊搜索下拉 ==================== */
 
@@ -596,7 +616,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       $('f-r-time').value = String(row.opTime || '').replace(' ', 'T');
       setSel('f-r-type', row.opTypeName || (OP_TYPES[row.opType] || {}).text || '闸门提升', row.opType || 'up');
       $('f-r-height').value = (row.height === null || row.height === undefined) ? '' : row.height;
-      $('f-r-operator').value = row.operator || '';
+      setSelOperatorByName(row.operator);
       $('f-r-remark').value = row.remark || '';
     } else {
       setSel('f-r-plan', '不关联（独立操作）', '');
@@ -605,7 +625,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       $('f-r-time').value = nowInputStr();
       setSel('f-r-type', '闸门提升', 'up');
       $('f-r-height').value = '';
-      $('f-r-operator').value = '';
+      setSel('f-r-operator', '', '');
       $('f-r-remark').value = '';
     }
     openModal('form-ov');
@@ -619,12 +639,13 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var opType = $('f-r-type').dataset.value || 'up';
     var heightRaw = $('f-r-height').value.trim();
     var operator = $('f-r-operator').value.trim();
+    var operatorId = $('f-r-operator').dataset.value;
     var remark = $('f-r-remark').value.trim();
 
     if (!userId) { toast('请选择「用水户」'); return; }
     if (!gateId) { toast('请选择「操作闸口」'); return; }
     if (!opTime) { toast('请选择「操作时间」'); return; }
-    if (!operator) { toast('请输入「操作人 / 闸管员」'); return; }
+    if (!operator) { toast('请选择「操作人 / 闸管员」'); return; }
     var height = null;
     if (heightRaw !== '') {
       height = Number(heightRaw);
@@ -636,8 +657,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       gateId: gateId,
       opTime: opTime,
       opType: opType,
-      operator: operator
+      // 操作人:下拉选中时传 id(后端按 id 回查固化姓名快照,不信任文本);存量/手填值仅按文本入库
+      operator: operatorId ? (operatorNameOf(operatorId) || operator) : operator
     };
+    if (operatorId) payload.operatorUserId = operatorId;
     if (dispatchId) payload.dispatchId = dispatchId;
     if (height != null) payload.height = height;
     if (remark) payload.remark = remark;
@@ -718,6 +741,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   bindSearchSelect('f-r-farmer', 'r-farmer-dd', userOptions, '无匹配用水户', null);
   bindSearchSelect('f-r-gate', 'r-gate-dd', gateOptions, '无匹配闸口', null);
   bindSearchSelect('f-r-type', 'r-type-dd', opTypeOptions, '无匹配类型', null);
+  bindSearchSelect('f-r-operator', 'r-operator-dd', operatorOptions, '无匹配人员');
 
   // 表单按钮
   $('btn-form-cancel').addEventListener('click', function () { closeModal('form-ov'); });
@@ -781,9 +805,14 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   setSel('f-flt-farmer', '全部用水户', '');
   setSel('f-flt-gate', '全部闸口', '');
 
-  // 6.1 操作类型字典(操作人 / 闸管员为纯文本输入,不做联想)
+  // 6.1 表单元数据:操作类型字典 + 操作人 / 闸管员候选(平台用户,与调度方案负责人同源)
   api('GET', '/water-dispatch-record/meta', null, function (err, d) {
-    if (!err && d && d.opTypes && d.opTypes.length) OP_TYPE_LIST = d.opTypes;
+    if (err || !d) return;
+    if (d.opTypes && d.opTypes.length) OP_TYPE_LIST = d.opTypes;
+    OPERATORS = d.operators || [];
+    // 候选晚于弹窗打开到达时补记 id:输入框仍为回填文案(未手动改动)且此前未命中候选池
+    var op = $('f-r-operator');
+    if (op && !op.dataset.value && op.dataset.label) setSelOperatorByName(op.dataset.label);
   });
   // 1.1 闸口池(操作闸口只能从该池选择)
   api('GET', '/water-user/meta', null, function (err, d) {

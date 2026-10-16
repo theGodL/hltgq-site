@@ -5,8 +5,9 @@ import lombok.Data;
 /**
  * 物资台账行（P4 列表 / 台账导出）。
  * <p>列口径：物资编号=slaifi.higsdd（JOIN jzikio）、品牌=qhtxml、名称=wpxwwi、规格=hughww、
- * 单位=mddokm、所属仓库=oywydb→twufyx.xoysox、库存数量=ejgxlq、安全库存=vhvhja、
- * 状态=mojktw（#1# 正常 / #2# 偏低，Service 翻译）。
+ * 单位=mddokm、所属仓库=oywydb→twufyx.xoysox、库存数量=ejgxlq、
+ * 安全库存=slaifi.unqvqe 实时取值（目录调整即时生效；台账 vhvhja 仅建账存档）、
+ * 状态=数量与安全库存实时比较（#1# 正常 / #2# 偏低，Service 翻译）。
  */
 @Data
 public class LedgerPageItemVO {
@@ -38,10 +39,10 @@ public class LedgerPageItemVO {
     /** 库存数量（tzkioe.ejgxlq） */
     private Integer quantity;
 
-    /** 安全库存（tzkioe.vhvhja，可空） */
+    /** 安全库存（实时取物资目录 slaifi.unqvqe，可空） */
     private Integer safetyStock;
 
-    /** 库存状态编码（mojktw：#1# 正常 / #2# 偏低） */
+    /** 库存状态编码（实时计算：#1# 正常 / #2# 偏低） */
     private String statusCode;
 
     /** 库存状态中文（Service 翻译） */

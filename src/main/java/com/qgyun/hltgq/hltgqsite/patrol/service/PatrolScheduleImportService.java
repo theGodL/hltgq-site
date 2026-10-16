@@ -37,10 +37,11 @@ import java.util.Set;
  * <p>逐行规则（契约定稿见 src/main/resources/导入-导出对接接口.md）：
  * <ul>
  *   <li>计划编号：留空自动生成 XCJH + 13 位毫秒时间戳（批内与库中防重）；填写须唯一</li>
- *   <li>计划类型：年度计划/#1#、月度计划/#zjgg#；状态忽略填写值统一落 #1# 草稿</li>
+ *   <li>计划类型：年度计划/#1#、月度计划/#zjgg#（模板下拉单选）</li>
+ *   <li>状态：留空默认草稿 #1#；可填 草稿/进行中/已完成/已取消（模板下拉单选，或编码 #1#~#4#）</li>
  *   <li>起止时间：兼容 yyyy-M-d、yyyy/M/d、带时间串取日期段；按当日零点落库；结束不得早于开始</li>
- *   <li>创建人：留空 = 当前登录人；填写按姓名精确匹配（未匹配/重名判行失败）</li>
- *   <li>巡查范围/巡检人员：逐项按站点名称或编号 / 用户姓名精确匹配；
+ *   <li>创建人：留空 = 当前登录人；填写按登录名精确匹配（未匹配/重复判行失败）</li>
+ *   <li>巡查范围/巡检人员：逐项按站点名称或编号 / 用户登录名精确匹配；
  *       未匹配、重名的项忽略并在行结果提示；全部项均未匹配判行失败</li>
  * </ul>
  *
@@ -53,7 +54,7 @@ public class PatrolScheduleImportService {
 
     private static final Logger log = LoggerFactory.getLogger(PatrolScheduleImportService.class);
 
-    /** 模板列名（与 PatrolScheduleImport_Template.xlsx 表头一致） */
+    /** 模板列名（TEMPLATE_HEADERS 与解析共用，模板由 PatrolScheduleController 动态生成） */
     private static final String COL_CODE = "计划编号";
     private static final String COL_TITLE = "计划名称";
     private static final String COL_TYPE = "计划类型";
@@ -63,13 +64,24 @@ public class PatrolScheduleImportService {
     private static final String COL_END = "计划结束时间";
     private static final String COL_CREATOR = "创建人";
     private static final String COL_USERS = "巡检人员";
+    private static final String COL_STATUS = "状态";
+
+    /** 模板表头（按列序，供控制器生成模板引用——单一口径防漂移） */
+    public static final String[] TEMPLATE_HEADERS = {
+            COL_CODE, COL_TITLE, COL_TYPE, COL_SCOPE, COL_CONTENT, COL_START, COL_END, COL_CREATOR, COL_USERS, COL_STATUS};
+
+    /** 计划类型下拉选项（模板单选列） */
+    public static final String[] PLAN_TYPE_OPTIONS = {"年度计划", "月度计划"};
+
+    /** 状态下拉选项（模板单选列，留空默认草稿） */
+    public static final String[] STATUS_OPTIONS = {"草稿", "进行中", "已完成", "已取消"};
 
     /** 必需表头列（缺失直接 400，按模板列序输出提示） */
     private static final String[] REQUIRED_COLUMNS = {
             COL_TITLE, COL_TYPE, COL_SCOPE, COL_CONTENT, COL_START, COL_END, COL_USERS};
 
     /** 数据行上限（与模板预留区域一致） */
-    private static final int MAX_ROWS = 300;
+    public static final int MAX_ROWS = 300;
 
     /** 巡查内容长度上限（平台字段定义 ≤1000） */
     private static final int CONTENT_MAX_LENGTH = 1000;
@@ -77,17 +89,29 @@ public class PatrolScheduleImportService {
     /** 计划编号前缀：自动生成 = XCJH + 13 位毫秒时间戳（与平台表单默认值同形态） */
     private static final String CODE_PREFIX = "XCJH";
 
-    /** 导入统一落草稿 */
+    /** 导入默认落草稿 */
     private static final String DRAFT_STATUS = "#1#";
 
     /** 计划类型：填写值（中文或编码）→ 落库编码 */
     private static final Map<String, String> PLAN_TYPE_CODES = new LinkedHashMap<>();
+
+    /** 状态：填写值（中文或编码）→ 落库编码（#1# 草稿、#2# 进行中、#3# 已完成、#4# 已取消） */
+    private static final Map<String, String> STATUS_CODES = new LinkedHashMap<>();
 
     static {
         PLAN_TYPE_CODES.put("年度计划", "#1#");
         PLAN_TYPE_CODES.put("月度计划", "#zjgg#");
         PLAN_TYPE_CODES.put("#1#", "#1#");
         PLAN_TYPE_CODES.put("#zjgg#", "#zjgg#");
+
+        STATUS_CODES.put("草稿", "#1#");
+        STATUS_CODES.put("进行中", "#2#");
+        STATUS_CODES.put("已完成", "#3#");
+        STATUS_CODES.put("已取消", "#4#");
+        STATUS_CODES.put("#1#", "#1#");
+        STATUS_CODES.put("#2#", "#2#");
+        STATUS_CODES.put("#3#", "#3#");
+        STATUS_CODES.put("#4#", "#4#");
     }
 
     /** 多值分隔符：顿号为主，兼容逗号/竖线/全角分号 */
@@ -217,7 +241,7 @@ public class PatrolScheduleImportService {
             throw new IllegalArgumentException("计划结束时间早于开始时间");
         }
 
-        // 6. 创建人：留空 = 当前登录人；填写按姓名精确匹配（未匹配/重名判行失败）
+        // 6. 创建人：留空 = 当前登录人；填写按登录名精确匹配（未匹配/重复判行失败）
         String creatorRaw = value(data, COL_CREATOR);
         String creatorId;
         if (creatorRaw.isEmpty()) {
@@ -225,7 +249,7 @@ public class PatrolScheduleImportService {
         } else {
             List<Map<String, Object>> matches = mapper.selectUserMatches(creatorRaw);
             if (matches.isEmpty()) {
-                throw new IllegalArgumentException("创建人「" + creatorRaw + "」未匹配到用户");
+                throw new IllegalArgumentException("创建人「" + creatorRaw + "」未匹配到用户（按登录名匹配）");
             }
             if (matches.size() > 1) {
                 throw new IllegalArgumentException("创建人「" + creatorRaw + "」存在多个匹配用户");
@@ -253,7 +277,7 @@ public class PatrolScheduleImportService {
             throw new IllegalArgumentException("巡查范围未匹配到任何站点");
         }
 
-        // 8. 巡检人员：逐项按姓名匹配，部分未匹配忽略并提示，全未匹配判行失败
+        // 8. 巡检人员：逐项按登录名匹配，部分未匹配忽略并提示，全未匹配判行失败
         String usersRaw = value(data, COL_USERS);
         if (usersRaw.isEmpty()) {
             throw new IllegalArgumentException("巡检人员为空");
@@ -264,7 +288,7 @@ public class PatrolScheduleImportService {
             if (matches.size() == 1) {
                 inspectorIds.add((String) matches.get(0).get("id"));
             } else if (matches.isEmpty()) {
-                notes.add("巡检人员「" + item + "」未匹配，已忽略");
+                notes.add("巡检人员「" + item + "」未匹配到用户（按登录名匹配），已忽略");
             } else {
                 notes.add("巡检人员「" + item + "」存在多个匹配，已忽略");
             }
@@ -273,7 +297,14 @@ public class PatrolScheduleImportService {
             throw new IllegalArgumentException("巡检人员未匹配到任何用户");
         }
 
-        // 9. 入库：主表 + 关系中间表（单行事务，关系写入失败整行回滚并给出原因）
+        // 9. 状态：留空默认草稿；填写须为 草稿/进行中/已完成/已取消（或编码 #1#~#4#）
+        String statusRaw = value(data, COL_STATUS);
+        String status = statusRaw.isEmpty() ? DRAFT_STATUS : STATUS_CODES.get(statusRaw);
+        if (status == null) {
+            throw new IllegalArgumentException("状态无效（应为 草稿/进行中/已完成/已取消）：" + statusRaw);
+        }
+
+        // 10. 入库：主表 + 关系中间表（单行事务，关系写入失败整行回滚并给出原因）
         LocalDateTime now = LocalDateTime.now();
         PatrolSchedule entity = new PatrolSchedule();
         entity.setCode(code);
@@ -282,7 +313,7 @@ public class PatrolScheduleImportService {
         entity.setStartTime(startDate.atStartOfDay());
         entity.setEndTime(endDate.atStartOfDay());
         entity.setPlanType(planType);
-        entity.setStatus(DRAFT_STATUS);
+        entity.setStatus(status);
         entity.setCorpCode(corpCode);
         entity.setCreatedAt(now);
         entity.setCreatedBy(creatorId);

@@ -137,4 +137,30 @@ public interface ExternalMapper {
             "GROUP BY split_part(wlcvig, '-', 1) " +
             "ORDER BY org")
     List<Map<String, Object>> selectVideoSummary();
+
+    /**
+     * 视频通道清单（设备级，全量）：通道号 code、名称 name、设备状态 status、安装位置 wlcvig、
+     * 管理所 org（安装位置按「-」截取首段，与视频聚合同口径）、所属站点档案关联信息
+     * （主键 site_id / 站名 site_name / 站点编号 stcd / 站点状态 site_status / 站点经纬度 lon·lat /
+     * 管理单位 unit_name）、设备自身经纬度 device_lon·device_lat（设备表坐标列，预留未登记时为 null）。
+     * <p>site_name 非空时按站点名称 zzkaec 模糊过滤（不传 = 全量，向后兼容）。
+     * 站点经纬度取所属站点档案 bviiio_x/y（档案未配置为 null）；站点状态取档案 zebpsu
+     * （#1# 在线 / #2# 离线，人工维护值）；站点档案未配置单位时为 null。按安装位置、名称、通道号排序。
+     */
+    @Select("<script>" +
+            "SELECT d.code AS code, d.name AS name, d.status AS status, " +
+            "d.wlcvig AS wlcvig, split_part(d.wlcvig, '-', 1) AS org, " +
+            "s.id AS site_id, s.zzkaec AS site_name, s.iofhpi AS stcd, " +
+            "s.zebpsu AS site_status, " +
+            "s.bviiio_x AS lon, s.bviiio_y AS lat, " +
+            "d.hkkwwa_x AS device_lon, d.hkkwwa_y AS device_lat, " +
+            "u.zzkaec AS unit_name " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON d.site = s.id " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" u ON s.ahieto = u.id " +
+            "WHERE d.type LIKE '%#5#%' " +
+            "<if test='siteName != null and siteName != \"\"'>AND s.zzkaec LIKE CONCAT('%', #{siteName}, '%') </if>" +
+            "ORDER BY d.wlcvig, d.name, d.code" +
+            "</script>")
+    List<Map<String, Object>> selectVideoDevices(@Param("siteName") String siteName);
 }

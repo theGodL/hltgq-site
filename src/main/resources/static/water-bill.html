@@ -270,8 +270,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       <div class="tbl-wrap">
         <table class="tbl">
           <colgroup>
-            <col style="width:10%"><col style="width:13%"><col style="width:9%"><col style="width:7%"><col style="width:7%">
-            <col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:14%">
+            <col style="width:8%"><col style="width:13%"><col style="width:7%"><col style="width:7%"><col style="width:9%">
+            <col style="width:10%"><col style="width:9%"><col style="width:10%"><col style="width:8%"><col style="width:6%"><col style="width:13%">
           </colgroup>
           <thead>
             <tr>
@@ -771,7 +771,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     list.forEach(function (r) {
       var hasPending = r.pendingCount > 0;
       html += '<tr>' +
-        '<td><span class="cell-main">' + esc(r.userName) + (r.userNo ? '（' + esc(r.userNo) + '）' : '') + '</span></td>' +
+        '<td><span class="cell-main">' + esc(r.userName) + '</span></td>' +
         '<td><div class="cell-ellip" title="' + esc((r.strategy || '') + (r.gateText ? ' ' + r.gateText : '')) + '"><span class="tag ' + (r.strategy === '指定闸口累加' ? 'tag-blue' : 'tag-purple') + '">' + esc(r.strategy || '-') + '</span>' +
           (r.gateText ? ' <span style="color:#8c8c8c">' + esc(r.gateText) + '</span>' : '') + '</div></td>' +
         '<td><span class="tag ' + (CYCLE_TAG[r.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[r.cycle] || esc(r.cycleName || r.cycle || '')) + '</span></td>' +
@@ -996,7 +996,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       S2.rows.forEach(function (b) {
         html += '<tr>' +
           '<td><span class="cell-main">' + esc(b.billNo) + '</span></td>' +
-          '<td><span class="cell-main">' + esc(b.waterUserName || '-') + (b.waterUserNo ? '（' + esc(b.waterUserNo) + '）' : '') + '</span></td>' +
+          '<td><span class="cell-main">' + esc(b.waterUserName || '-') + '</span></td>' +
           '<td><span class="tag ' + (CYCLE_TAG[b.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[b.cycle] || esc(b.cycleName || '')) + '</span></td>' +
           '<td>' + esc(b.startDate || '') + ' ~ ' + esc(b.endDate || '') + '</td>' +
           '<td>' + fmtQty(b.quantity) + ' 万m³</td>' +
@@ -1075,7 +1075,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var html = '';
     SUM_ROWS.forEach(function (r) {
       html += '<tr>' +
-        '<td><span class="cell-main">' + esc(r.userName) + (r.userNo ? '（' + esc(r.userNo) + '）' : '') + '</span></td>' +
+        '<td><span class="cell-main">' + esc(r.userName) + '</span></td>' +
         '<td><div class="cell-ellip" title="' + esc((r.strategy || '') + ' ' + (CYCLE_SHORT[r.cycle] || r.cycleName || '')) + '"><span class="tag ' + (r.strategy === '指定闸口累加' ? 'tag-blue' : 'tag-purple') + '">' + esc(r.strategy || '-') + '</span> <span class="tag ' + (CYCLE_TAG[r.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[r.cycle] || esc(r.cycleName || '')) + '</span></div></td>' +
         '<td>' + (r.yearPlan == null ? '<span style="color:#bfbfbf">—</span>' : fmtQty(r.yearPlan)) + '</td>' +
         '<td>' + fmtPrice(r.price) + ' 元/m³</td>' +
@@ -1655,19 +1655,39 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
 /* ==================== 表格宽度只增不减(四个视图列表共用) ==================== */
 
-/* 初始与变宽时铺满可用宽度;页面收窄时表格宽度保持不动(一个像素都不跟随缩),由 .tbl-wrap 立即出现横向滚动条。 */
+/* 初始与变宽时铺满可用宽度;可用宽度不足时保持"表头文字完整显示"的最小宽度(容器出横向滚动条);页面收窄时表格宽度保持不动(一个像素都不跟随缩)。 */
+
+/** 表头文字完整显示所需的最小表格宽度(表头 14px/600 字重 + 每列 16px 左右内边距与边框预留) */
+function headerMinWidth(tbl) {
+  var ths = tbl.querySelectorAll('thead th');
+  if (!ths.length) return 0;
+  var meas = document.createElement('span');
+  meas.style.cssText = 'position:absolute;left:-9999px;top:-9999px;visibility:hidden;white-space:nowrap;font-size:14px;font-weight:600';
+  document.body.appendChild(meas);
+  var total = 0;
+  for (var i = 0; i < ths.length; i++) {
+    meas.textContent = ths[i].textContent;
+    total += Math.ceil(meas.getBoundingClientRect().width) + 34; // 左右 16px 内边距 + 边框预留
+  }
+  document.body.removeChild(meas);
+  return total;
+}
+
 (function initTblGrowOnlyWidth() {
   var wraps = document.querySelectorAll('.tbl-wrap');
   for (var i = 0; i < wraps.length; i++) {
     (function (wrap) {
       var tbl = wrap.querySelector('table');
       if (!tbl) return;
+      var minW = headerMinWidth(tbl); // 表头完整显示的最低宽度(小屏兜底)
       var highW = 0; // 铺满基准:见过的最大可用宽度(只增不减)
       function sync() {
         var avail = wrap.clientWidth;
-        if (avail <= 0 || avail <= highW) return; // 未超过历史最大宽度:宽度保持不动,交由横向滚动条
-        highW = avail;
-        tbl.style.width = avail + 'px'; // 铺满当前可用宽度
+        if (avail <= 0) return;
+        var target = Math.max(avail, minW); // 可用宽度不足时不压缩到表头放不下,交由横向滚动条
+        if (target <= highW) return; // 未超过历史最大宽度:宽度保持不动
+        highW = target;
+        tbl.style.width = target + 'px'; // 铺满当前可用宽度(不低于表头最小宽度)
       }
       sync();
       if (window.ResizeObserver) new ResizeObserver(sync).observe(wrap);

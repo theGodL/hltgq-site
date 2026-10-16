@@ -106,6 +106,44 @@ public final class ExternalVO {
     }
 
     /**
+     * 视频通道（设备级，一台设备一行）：供三方视频接入取通道号/名称/经纬度等基础信息，
+     * 与 /external/video-summary（按管理所聚合）互补，口径一致。
+     */
+    @Data
+    public static class VideoDeviceItem {
+        /** 通道号（设备表 code，三方视频平台对接主键，如 1000219$1$0$3） */
+        private String code;
+        /** 设备名称（即通道名称，设备表 name 原样返回，部分含尾部 #） */
+        private String name;
+        /** 是否在线（status=#1# 为 true，其余为 false；与视频聚合口径一致） */
+        private Boolean isOnline;
+        /** 设备状态（设备表 status 原值：#1# 在线 / #2# 离线；与 isOnline 同源） */
+        private String status;
+        /** 站点经度（所属站点档案 bviiio_x，未配置为 null） */
+        private BigDecimal lon;
+        /** 站点纬度（所属站点档案 bviiio_y，未配置为 null） */
+        private BigDecimal lat;
+        /** 设备经度（设备表 hkkwwa_x；预留坐标列、当前未登记为 null，设备档案登记后自动返回） */
+        private BigDecimal deviceLon;
+        /** 设备纬度（设备表 hkkwwa_y；预留坐标列、当前未登记为 null，设备档案登记后自动返回） */
+        private BigDecimal deviceLat;
+        /** 管理所（安装位置按「-」截取首段，空归「未知」，与视频聚合同口径） */
+        private String org;
+        /** 安装位置（设备表 wlcvig 原文，如「双庙湖电站-信息化机房」） */
+        private String location;
+        /** 所属站点档案主键 id */
+        private String siteId;
+        /** 所属站点名称（档案 zzkaec） */
+        private String siteName;
+        /** 所属站点编号（档案 iofhpi，可能为 null） */
+        private String stcd;
+        /** 站点状态（站点档案 zebpsu 原值：#1# 在线 / #2# 离线；档案人工维护值） */
+        private String siteStatus;
+        /** 所属站点管理单位名称（档案 ahieto 自关联，未配置为 null） */
+        private String managementUnit;
+    }
+
+    /**
      * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
      * 每行 = 档案字段（保持 qx-api 原字段名）+ 该站实时监测值（平铺）+ data 子对象；
      * 响应信封与 qx-api 一致（success/status/data/msg/errCode/time/errorCode/errorMsg），便于前端沿用原解析逻辑。

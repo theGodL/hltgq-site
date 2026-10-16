@@ -23,6 +23,9 @@ public class OngoingTimelineRowVO {
     /** 旧班次时间文本（lzcjgq，新列为空时展示兜底） */
     private String legacyShift;
 
-    /** 值班人员姓名聚合文本（顿号连接，rel 表） */
+    /** 单位 id（cfszln；用于反查排班取本班全员名册） */
+    private String orgKey;
+
+    /** 组内各记录人员聚合（新记录 = 归属人姓名；历史记录回退 rel 人员），顿号连接 */
     private String membersRaw;
 }

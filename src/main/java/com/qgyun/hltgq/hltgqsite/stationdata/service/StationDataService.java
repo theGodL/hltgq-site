@@ -30,6 +30,8 @@ public class StationDataService {
     private static final Map<String, String> METHOD_LABELS = new LinkedHashMap<>();
     /** 在线状态：#1# 在线、#2# 离线（zebpsu） */
     private static final Map<String, String> STATUS_LABELS = new LinkedHashMap<>();
+    /** 是否接通市电：#1# 是、#2# 否（waljdn） */
+    private static final Map<String, String> POWER_LABELS = new LinkedHashMap<>();
 
     static {
         TYPE_LABELS.put("#1#", "水位站");
@@ -53,6 +55,9 @@ public class StationDataService {
 
         STATUS_LABELS.put("#1#", "在线");
         STATUS_LABELS.put("#2#", "离线");
+
+        POWER_LABELS.put("#1#", "是");
+        POWER_LABELS.put("#2#", "否");
     }
 
     @Autowired
@@ -72,9 +77,7 @@ public class StationDataService {
             row.setType(DictUtils.labelMulti(TYPE_LABELS, row.getTypeCodes()));
             row.setStatus(DictUtils.label(STATUS_LABELS, row.getStatusCode()));
             row.setMethod(DictUtils.labelMulti(METHOD_LABELS, row.getMethodCodes()));
-            if (row.getLon() != null && row.getLat() != null) {
-                row.setLnglat(row.getLon().toPlainString() + ", " + row.getLat().toPlainString());
-            }
+            row.setMainsPower(DictUtils.label(POWER_LABELS, row.getMainsPowerCode()));
         }
         return rows;
     }

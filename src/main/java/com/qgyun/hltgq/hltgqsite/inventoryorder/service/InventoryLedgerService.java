@@ -19,6 +19,7 @@ import static com.qgyun.hltgq.hltgqsite.inventoryorder.InventorySupport.trim;
 /**
  * 物资台账服务（P4 台账列表/导出、P5 出入库记录/导出、左树仓库）。
  * <p>只读查询：台账/流水均为单据写入的产物，本服务不做任何写操作；
+ * 安全库存与库存状态按物资目录（slaifi.unqvqe）实时计算，目录调整即时生效；
  * 翻译口径统一走 {@link InventoryTypeDict}（状态：正常/偏低，与设计方案一致）。
  */
 @Service

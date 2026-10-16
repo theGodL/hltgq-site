@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>工单管理导出</title>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;overflow:hidden}
@@ -405,6 +406,7 @@ body{
       ];
     });
     var ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+    ws['!cols'] = MonitorExport.fitCols(header);
     data.forEach(function (_, i) {
       var c = ws['A' + (i + 2)];
       if (c) { c.t = 's'; c.z = '@'; c.v = String(c.v == null ? '' : c.v); }

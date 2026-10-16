@@ -359,7 +359,7 @@ public class DutyAttendanceService {
             item.put("time", DutySupport.fmtHm(row.getActualStartRaw()));
             item.put("title", titleOrFallback(DutySupport.shiftNameOfTime(row.getShiftMinRaw())));
             item.put("shiftTime", shiftTimeText(row.getShiftMinRaw(), row.getShiftMaxRaw(), row.getLegacyShift()));
-            item.put("dutyUsers", DutySupport.splitNames(row.getMembersRaw()));
+            item.put("dutyUsers", ongoingUsers(row));
             items.add(item);
         }
         for (PendingTimelineRowVO row : mapper.selectTimelinePending(day, dayEnd, now)) {
@@ -379,6 +379,60 @@ public class DutyAttendanceService {
         out.put("date", day);
         out.put("items", items);
         return out;
+    }
+
+    /**
+     * 值守中人员（含带班领导，领导在前并标注 leader=true）：按「单位 + 班次时间」反查排班取本班全员名册，
+     * 各人按「是否已有归属自己的在途记录」标注 checkedIn（true=正在值守 / false=待签到）；
+     * 反查不到排班（历史数据）时回退「记录人员聚合」并均视为已签到；
+     * 名册外已有记录者（排班人员被编辑）追加到尾部，保证值守人员不漏。
+     */
+    private List<Map<String, Object>> ongoingUsers(OngoingTimelineRowVO row) {
+        List<String> checkedIn = DutySupport.splitNames(row.getMembersRaw());
+        List<String> roster = new ArrayList<>();
+        String leaderName = null;
+        String orgKey = DutySupport.trim(row.getOrgKey());
+        String startRaw = DutySupport.trim(row.getShiftMinRaw());
+        String endRaw = DutySupport.trim(row.getShiftMaxRaw());
+        if (orgKey != null && startRaw != null && endRaw != null) {
+            String scheduleId = scheduleMapper.selectScheduleIdByMatch(orgKey, startRaw, endRaw);
+            if (scheduleId != null) {
+                ScheduleRowVO sched = scheduleMapper.selectScheduleRow(scheduleId);
+                if (sched != null) {
+                    leaderName = DutySupport.trim(sched.getLeaderName());
+                    addName(roster, leaderName);
+                }
+                List<String> memberIds = scheduleMapper.selectMemberIds(scheduleId);
+                Map<String, String> nameById = userNames(memberIds);
+                for (String id : memberIds) {
+                    addName(roster, nameById.get(id));
+                }
+            }
+        }
+        if (roster.isEmpty()) {
+            roster = checkedIn;
+        } else {
+            for (String name : checkedIn) {
+                addName(roster, name);
+            }
+        }
+        List<Map<String, Object>> users = new ArrayList<>();
+        for (String name : roster) {
+            Map<String, Object> u = new LinkedHashMap<>();
+            u.put("name", name);
+            u.put("checkedIn", checkedIn.contains(name));
+            u.put("leader", name.equals(leaderName));
+            users.add(u);
+        }
+        return users;
+    }
+
+    /** 名册去重追加（姓名非空且未存在时追加，保持先领导后成员顺序）。 */
+    private void addName(List<String> list, String name) {
+        String n = DutySupport.trim(name);
+        if (n != null && !list.contains(n)) {
+            list.add(n);
+        }
     }
 
     // ==================== #12 取号（下一个编号查询） ====================

@@ -67,12 +67,16 @@ public interface WaterDemandMapper {
     WaterDemandVO selectDemandById(@Param("id") String id);
 
     /**
-     * 全部已通过申请（用水计划「实际保证率」统计用）：amount 库内 m³；
+     * 指定年度已通过申请（用水计划「实际保证率」统计用）：amount 库内 m³；
+     * 按**需水开始日期所属年度**归集（`[yearStart, yearEnd)` 左闭右开，跨年申请整条归入开始年份、不拆分）；
      * 按用水户 + 开始日期排序，Service 据此做时段重叠检测与户级计量。
+     * <p>分子、分母共用本查询结果（同一批申请）。
      */
     @Select("SELECT " + BASE_COLS + BASE_JOINS + "WHERE d.corp_code = 'hltgq' AND d.status = '#2#' " +
+            "AND d.start_date >= CAST(#{yearStart} AS date) AND d.start_date < CAST(#{yearEnd} AS date) " +
             "ORDER BY d.water_user_id, d.start_date, d.demand_no")
-    List<WaterDemandVO> selectApprovedDemands();
+    List<WaterDemandVO> selectApprovedDemandsOfYear(@Param("yearStart") String yearStart,
+                                                    @Param("yearEnd") String yearEnd);
 
     /** 当前最大编号序号（XS + 4 位；表空返回 0） */
     @Select("SELECT COALESCE(MAX(CAST(substr(demand_no, 3) AS INTEGER)), 0) FROM " + T_DEMAND +

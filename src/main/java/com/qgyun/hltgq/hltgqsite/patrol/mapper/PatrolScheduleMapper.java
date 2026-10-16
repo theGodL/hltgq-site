@@ -14,7 +14,7 @@ import java.util.Map;
 /**
  * 巡查计划导入 Mapper（t_auto_hltgq_water_patrol_schedule + 多选关系中间表）。
  * <p>主表新增走 MyBatis-Plus 内建（insert，主键 ASSIGN_UUID 短ID）；
- * 其余为手写 SQL：编号查重、站点/用户按名称（或站点编号）精确匹配、关系中间表插入。
+ * 其余为手写 SQL：编号查重、站点按名称/编号精确匹配、用户按登录名精确匹配、关系中间表插入。
  *
  * <p><b>关系中间表（表名已实证）</b>：巡查范围 / 巡检人员为多选多对多，主表无列（也无 _d_ 动态列，
  * 已由 INSERT 样例确认）。表名取平台元数据实证：t_lcode_model 中巡检计划模型 fun_code=nlbdju
@@ -51,12 +51,12 @@ public interface PatrolScheduleMapper extends BaseMapper<PatrolSchedule> {
     List<Map<String, Object>> selectSiteMatches(@Param("key") String key);
 
     /**
-     * 用户匹配（巡检人员 / 创建人）：按姓名精确匹配，返回全部命中行。
-     * <p>0 行 = 未匹配；1 行 = 命中；多行 = 重名，调用方忽略（多选项）或判行失败（创建人）。
+     * 用户匹配（巡检人员 / 创建人）：按登录名精确匹配，返回全部命中行。
+     * <p>0 行 = 未匹配；1 行 = 命中；多行 = 登录名重复（异常数据），调用方忽略（多选项）或判行失败（创建人）。
      */
-    @Select("SELECT id, name FROM \"qixiao-apaas\".\"t_apaas_uc_user\" " +
-            "WHERE corp_code = 'hltgq' AND name = #{name}")
-    List<Map<String, Object>> selectUserMatches(@Param("name") String name);
+    @Select("SELECT id, name, login_name FROM \"qixiao-apaas\".\"t_apaas_uc_user\" " +
+            "WHERE corp_code = 'hltgq' AND login_name = #{loginName}")
+    List<Map<String, Object>> selectUserMatches(@Param("loginName") String loginName);
 
     /**
      * 巡查范围关系写入（多选多对多）：biz_id = 计划 id，rel_id = 站点 id，nature_order = 顺序号（1 起）。

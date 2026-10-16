@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.inventorystocktake.mapper;
 
+import com.qgyun.hltgq.hltgqsite.inventoryorder.mapper.InventoryLedgerMapper;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.StockLedgerOptionVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeAttachmentVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeDetailVO;
@@ -228,11 +229,12 @@ public interface InventoryStocktakeMapper {
                                  @Param("now") LocalDateTime now);
 
     /** 盘点带出：当前仓库台账行（含 0 库存与偏低行；明细默认账面即本查询 quantity）。
+     * <p>安全库存与出入库/台账同口径：实时取物资目录（{@link InventoryLedgerMapper#SAFE_STOCK_EXPR}）。
      * <p>LIMIT 501 = 明细上限 500 + 1 行截断探测（超出由前端截至 500 行并提示分批另建盘点单）。 */
     @Select("<script>" +
             "SELECT t.id AS ledgerId, t.jzikio AS materialId, m.higsdd AS code, t.wpxwwi AS name, " +
             "t.qhtxml AS brand, t.hughww AS spec, t.mddokm AS unit, " +
-            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, CAST(t.vhvhja AS numeric(20,0)) AS safetyStock, " +
+            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, " + InventoryLedgerMapper.SAFE_STOCK_EXPR + " AS safetyStock, " +
             "t.oywydb AS warehouseId " +
             "FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +

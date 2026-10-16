@@ -7,6 +7,7 @@
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
 <script src="./lib/model-api.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -874,6 +875,7 @@ tbody tr:hover td{background:#fafafa}
     });
     if (window.XLSX) {
       const ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+      ws['!cols'] = MonitorExport.fitCols(header);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '配置明细');
       XLSX.writeFile(wb, '水资源配置预测详细结果.xlsx');

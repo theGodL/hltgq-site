@@ -33,13 +33,12 @@ import java.util.Set;
  * <p>逐行规则（契约定稿见 src/main/resources/导入-导出对接接口.md）：
  * <ul>
  *   <li>站点名称 / 站点编号：必填；编号批内与库中双重防重（重复行失败）</li>
- *   <li>渠系类别 / 管理单位：按名称精确匹配（渠系管理表 gfaegg / 档案表 zzkaec），
- *       未匹配或重名判行失败；留空不关联</li>
  *   <li>监测类型 / 监测方法：多选（顿号分隔，兼容 , | ；），每项按中文名称映射为编码
  *       （#N#|#N# 落库）；未知名称判行失败；留空不写</li>
  *   <li>经度 / 纬度：须成对填写，数字且经度 -180~180、纬度 -90~90</li>
  *   <li>站点状态（在线/离线）、是否接通市电（是/否）：中文或编码均可；其他值判行失败</li>
  *   <li>联系电话：11 位手机号（1 开头）</li>
+ *   <li>其余文本列（站点位置 / 负责人 / 传输方式 / 介绍 / 操作规程）：原样写入，留空不写</li>
  * </ul>
  */
 @Service
@@ -47,30 +46,47 @@ public class StationImportService {
 
     private static final Logger log = LoggerFactory.getLogger(StationImportService.class);
 
-    /** 模板列名（与 StationImport_Template.xlsx 表头一致） */
-    private static final String COL_CANAL = "渠系类别";
+    /** 模板列名（与动态生成模板 / 导出列一致，顺序即模板列序） */
     private static final String COL_NAME = "站点名称";
     private static final String COL_CODE = "站点编号";
     private static final String COL_LOCATION = "站点位置";
-    private static final String COL_TYPE = "监测类型";
     private static final String COL_LON = "经度";
     private static final String COL_LAT = "纬度";
+    private static final String COL_TYPE = "监测类型";
     private static final String COL_STATUS = "站点状态";
-    private static final String COL_UNIT = "管理单位";
-    private static final String COL_POWER = "是否接通市电";
     private static final String COL_METHOD = "监测方法";
-    private static final String COL_COMM = "传输方式";
     private static final String COL_OWNER = "负责人";
     private static final String COL_PHONE = "联系电话";
+    private static final String COL_POWER = "是否接通市电";
+    private static final String COL_COMM = "传输方式";
     private static final String COL_INTRO = "介绍";
-    private static final String COL_MODEL = "模型类型";
-    private static final String COL_NOTE = "操作说明";
+    private static final String COL_NOTE = "操作规程";
+
+    /** 模板表头（顺序即模板列序；模板块与解析列名共用，防止两处漂移） */
+    public static final String[] TEMPLATE_HEADERS = {
+            COL_NAME, COL_CODE, COL_LOCATION, COL_LON, COL_LAT, COL_TYPE, COL_STATUS, COL_METHOD,
+            COL_OWNER, COL_PHONE, COL_POWER, COL_COMM, COL_INTRO, COL_NOTE};
+
+    /** 监测类型选项（模板下拉与解析映射共用） */
+    public static final String[] TYPE_OPTIONS = {
+            "水位站", "雨量站", "流量站", "闸站", "视频站", "模型", "墒情", "水质", "气象"};
+
+    /** 监测方法选项（模板下拉与解析映射共用） */
+    public static final String[] METHOD_OPTIONS = {
+            "水工建筑物法", "全自动测流车", "单垂线流速分布法", "雷达波量水",
+            "雷达测流矩阵", "ADCP 测流", "一体化闸门", "土壤墒情"};
+
+    /** 站点状态选项（模板下拉与解析映射共用） */
+    public static final String[] STATUS_OPTIONS = {"在线", "离线"};
+
+    /** 是否接通市电选项（模板下拉与解析映射共用） */
+    public static final String[] POWER_OPTIONS = {"是", "否"};
 
     /** 必需表头列（缺失直接 400） */
     private static final String[] REQUIRED_COLUMNS = {COL_NAME, COL_CODE};
 
-    /** 数据行上限（与模板预留区域一致） */
-    private static final int MAX_ROWS = 300;
+    /** 数据行上限（与模板预留区域一致；控制器生成模板时引用） */
+    public static final int MAX_ROWS = 300;
 
     /** 监测类型：填写值（中文或编码）→ 落库编码（epjutj，9 档） */
     private static final Map<String, String> TYPE_CODES = new LinkedHashMap<>();
@@ -85,40 +101,29 @@ public class StationImportService {
     private static final Map<String, String> POWER_CODES = new LinkedHashMap<>();
 
     static {
-        TYPE_CODES.put("水位站", "#1#");
-        TYPE_CODES.put("雨量站", "#2#");
-        TYPE_CODES.put("流量站", "#3#");
-        TYPE_CODES.put("闸站", "#4#");
-        TYPE_CODES.put("视频站", "#5#");
-        TYPE_CODES.put("模型", "#6#");
-        TYPE_CODES.put("墒情", "#7#");
-        TYPE_CODES.put("水质", "#8#");
-        TYPE_CODES.put("气象", "#9#");
-        for (int i = 1; i <= 9; i++) {
+        for (int i = 0; i < TYPE_OPTIONS.length; i++) {
+            TYPE_CODES.put(TYPE_OPTIONS[i], "#" + (i + 1) + "#");
+        }
+        for (int i = 1; i <= TYPE_OPTIONS.length; i++) {
             TYPE_CODES.put("#" + i + "#", "#" + i + "#");
         }
 
-        METHOD_CODES.put("水工建筑物法", "#1#");
-        METHOD_CODES.put("全自动测流车", "#2#");
-        METHOD_CODES.put("单垂线流速分布法", "#3#");
-        METHOD_CODES.put("雷达波量水", "#4#");
-        METHOD_CODES.put("雷达测流矩阵", "#5#");
-        METHOD_CODES.put("ADCP 测流", "#6#");
-        METHOD_CODES.put("一体化闸门", "#7#");
-        METHOD_CODES.put("土壤墒情", "#8#");
-        for (int i = 1; i <= 8; i++) {
+        for (int i = 0; i < METHOD_OPTIONS.length; i++) {
+            METHOD_CODES.put(METHOD_OPTIONS[i], "#" + (i + 1) + "#");
+        }
+        for (int i = 1; i <= METHOD_OPTIONS.length; i++) {
             METHOD_CODES.put("#" + i + "#", "#" + i + "#");
         }
 
-        STATUS_CODES.put("在线", "#1#");
-        STATUS_CODES.put("离线", "#2#");
-        STATUS_CODES.put("#1#", "#1#");
-        STATUS_CODES.put("#2#", "#2#");
+        for (int i = 0; i < STATUS_OPTIONS.length; i++) {
+            STATUS_CODES.put(STATUS_OPTIONS[i], "#" + (i + 1) + "#");
+            STATUS_CODES.put("#" + (i + 1) + "#", "#" + (i + 1) + "#");
+        }
 
-        POWER_CODES.put("是", "#1#");
-        POWER_CODES.put("否", "#2#");
-        POWER_CODES.put("#1#", "#1#");
-        POWER_CODES.put("#2#", "#2#");
+        for (int i = 0; i < POWER_OPTIONS.length; i++) {
+            POWER_CODES.put(POWER_OPTIONS[i], "#" + (i + 1) + "#");
+            POWER_CODES.put("#" + (i + 1) + "#", "#" + (i + 1) + "#");
+        }
     }
 
     /** 多值分隔符：顿号为主，兼容逗号/竖线/全角分号 */
@@ -207,24 +212,14 @@ public class StationImportService {
             throw new IllegalArgumentException("站点编号已存在：" + code);
         }
 
-        // 3. 渠系类别（按渠系名称精确匹配渠系管理表；留空不关联）
-        String canalRaw = value(data, COL_CANAL);
-        String canalId = canalRaw.isEmpty() ? null
-                : matchSingleId(canalRaw, "渠系", mapper.selectCanalIds(canalRaw));
-
-        // 4. 管理单位（按名称精确匹配档案表自关联记录；留空不关联）
-        String unitRaw = value(data, COL_UNIT);
-        String unitId = unitRaw.isEmpty() ? null
-                : matchSingleId(unitRaw, "管理单位", mapper.selectUnitIds(unitRaw));
-
-        // 5. 监测类型 / 监测方法（多选，名称 → 编码拼接）
+        // 3. 监测类型 / 监测方法（多选，名称 → 编码拼接）
         String typeCodes = parseMultiCodes(value(data, COL_TYPE), TYPE_CODES, "监测类型");
         String methodCodes = parseMultiCodes(value(data, COL_METHOD), METHOD_CODES, "监测方法");
 
-        // 6. 坐标定位（经度/纬度须成对填写）
+        // 4. 经度 / 纬度（须成对填写）
         BigDecimal[] coords = parseCoords(value(data, COL_LON), value(data, COL_LAT));
 
-        // 7. 站点状态 / 是否接通市电（中文或编码；留空不写）
+        // 5. 站点状态 / 是否接通市电（中文或编码；留空不写）
         String statusRaw = value(data, COL_STATUS);
         String status = statusRaw.isEmpty() ? null
                 : requireCode(statusRaw, STATUS_CODES, "站点状态无效（应为 在线/离线）：");
@@ -232,13 +227,13 @@ public class StationImportService {
         String power = powerRaw.isEmpty() ? null
                 : requireCode(powerRaw, POWER_CODES, "是否接通市电无效（应为 是/否）：");
 
-        // 8. 联系电话（11 位手机号）
+        // 6. 联系电话（11 位手机号）
         String phone = value(data, COL_PHONE);
         if (!phone.isEmpty() && !phone.matches("1\\d{10}")) {
             throw new IllegalArgumentException("联系电话格式无效（应为 11 位手机号）：" + phone);
         }
 
-        // 9. 组装入库（系统字段后端生成；null 字段不写入）
+        // 7. 组装入库（系统字段后端生成；null 字段不写入）
         StationArchive entity = new StationArchive();
         entity.setName(name);
         entity.setCode(code);
@@ -247,15 +242,12 @@ public class StationImportService {
         entity.setLon(coords[0]);
         entity.setLat(coords[1]);
         entity.setStatus(status);
-        entity.setUnitId(unitId);
-        entity.setCanalId(canalId);
         entity.setMainsPower(power);
         entity.setMethodCodes(methodCodes);
         entity.setComm(emptyToNull(value(data, COL_COMM)));
         entity.setOwner(emptyToNull(value(data, COL_OWNER)));
         entity.setPhone(emptyToNull(phone));
         entity.setIntro(emptyToNull(value(data, COL_INTRO)));
-        entity.setModelType(emptyToNull(value(data, COL_MODEL)));
         entity.setOperationNote(emptyToNull(value(data, COL_NOTE)));
         LocalDateTime now = LocalDateTime.now();
         entity.setCorpCode(corpCode);
@@ -273,17 +265,6 @@ public class StationImportService {
     }
 
     // ==================== 私有工具 ====================
-
-    /** 单选名称匹配：0 行未匹配 / 多行重名均判行失败；1 行返回 id */
-    private String matchSingleId(String raw, String label, List<String> ids) {
-        if (ids.isEmpty()) {
-            throw new IllegalArgumentException(label + "「" + raw + "」未匹配");
-        }
-        if (ids.size() > 1) {
-            throw new IllegalArgumentException(label + "「" + raw + "」存在多个匹配");
-        }
-        return ids.get(0);
-    }
 
     /** 多选：按顿号/逗号/竖线/全角分号拆分 → 逐项映射编码（未知值抛异常）→ 去重保序拼接（| 分隔）；全空返回 null */
     private String parseMultiCodes(String raw, Map<String, String> codes, String label) {

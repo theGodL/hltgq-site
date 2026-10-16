@@ -6,9 +6,9 @@ import java.math.BigDecimal;
 
 /**
  * 站点数据查询列表行（站点档案表 t_auto_hltgq_5nw74_vnqqef）。
- * <p>枚举字段返回中文（监测类型/站点状态/监测方法）并附编码原文（权威值）；
+ * <p>枚举字段返回中文（监测类型/站点状态/监测方法/是否接通市电）并附编码原文（权威值）；
  * 监测类型/监测方法为多选，库中以 | 分隔，译文以「、」拼接；
- * 核心指标（ccnhtm/ijzsby）类型未确认，原样文本返回。
+ * 经纬度分列返回（lon/lat），核心指标（ccnhtm/ijzsby）类型未确认，原样文本返回。
  */
 @Data
 public class StationDataVO {
@@ -24,9 +24,6 @@ public class StationDataVO {
 
     /** 站点位置（mivbcz） */
     private String location;
-
-    /** 坐标定位「经度, 纬度」（bviiio_x/bviiio_y 拼接，缺一为 null） */
-    private String lnglat;
 
     /** 站点经度（bviiio_x） */
     private BigDecimal lon;
@@ -63,4 +60,19 @@ public class StationDataVO {
 
     /** 联系电话（cbitue） */
     private String phone;
+
+    /** 是否接通市电翻译（waljdn：#1# 是、#2# 否） */
+    private String mainsPower;
+
+    /** 是否接通市电编码原文（waljdn，权威值） */
+    private String mainsPowerCode;
+
+    /** 传输方式（bhsqxd，原样文本） */
+    private String comm;
+
+    /** 介绍（viwmmc，原样文本） */
+    private String intro;
+
+    /** 操作规程（badfhe，原样文本） */
+    private String operationNote;
 }

@@ -7,6 +7,7 @@
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
 <link rel="stylesheet" href="./lib/canal-topo.css">
 <script src="./lib/model-api.js"></script>
 <script src="./lib/canal-topo.js"></script>
@@ -2527,6 +2528,7 @@ tbody tr:hover td{background:#fafafa}
     const data = rows.map(r => cols.map(c => (c.periodIndex != null ? r.v[c.periodIndex] : r[c.key])));
     if (window.XLSX) {
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+      ws['!cols'] = MonitorExport.fitCols(header);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '需水明细');
       XLSX.writeFile(wb, '需水预报详细结果.xlsx');
@@ -2732,6 +2734,7 @@ tbody tr:hover td{background:#fafafa}
     const data = rows.map(r => [r.date, r.predict, r.loss]);
     if (window.XLSX) {
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+      ws['!cols'] = MonitorExport.fitCols(header);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '损失明细');
       XLSX.writeFile(wb, '水量损失预报详细结果.xlsx');
@@ -3082,6 +3085,7 @@ tbody tr:hover td{background:#fafafa}
     const data = rows.map(r => [r.date, r.siteName, r.m10, r.m20, r.m30, r.drought]);
     if (window.XLSX) {
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+      ws['!cols'] = MonitorExport.fitCols(header);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '墒情明细');
       XLSX.writeFile(wb, '墒情预报详细结果.xlsx');
@@ -3306,6 +3310,7 @@ tbody tr:hover td{background:#fafafa}
     const header = ['时间', '降雨量(mm)', '入库流量(m³/s)', '出库流量(m³/s)', '水位(m)', '库容(万方)', '入库水量(万方)', '出库水量(万方)'];
     const data = rows.map(r => [r.date, r.rain, r.inFlow, r.outFlow, r.level, r.capacity, r.inflow, r.outflow]);
     const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+    ws['!cols'] = MonitorExport.fitCols(header);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '明细');
     XLSX.writeFile(wb, '短期来水预报明细.xlsx');
@@ -3336,6 +3341,7 @@ tbody tr:hover td{background:#fafafa}
       const data = rows.map(r => [r.label, r.predict, r.actual]);
       if (window.XLSX) {
         const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+        ws['!cols'] = MonitorExport.fitCols(header);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, '中长期明细');
         XLSX.writeFile(wb, '中长期来水预报明细.xlsx');

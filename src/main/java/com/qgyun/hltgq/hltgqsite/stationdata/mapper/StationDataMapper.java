@@ -20,7 +20,8 @@ public interface StationDataMapper {
             "SELECT s.id AS id, s.zzkaec AS name, s.iofhpi AS code, s.mivbcz AS location, " +
             "s.bviiio_x AS lon, s.bviiio_y AS lat, s.epjutj AS typeCodes, s.zebpsu AS statusCode, " +
             "s.ccnhtm AS waterIndicator, s.ijzsby AS rainIndicator, s.nxtggq AS methodCodes, " +
-            "s.lhwhuc AS owner, s.cbitue AS phone " +
+            "s.lhwhuc AS owner, s.cbitue AS phone, s.waljdn AS mainsPowerCode, s.bhsqxd AS comm, " +
+            "s.viwmmc AS intro, s.badfhe AS operationNote " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s " +
             "WHERE s.corp_code = 'hltgq' " +
             "<if test='name != null and name != \"\"'>AND s.zzkaec LIKE CONCAT('%', #{name}, '%') </if>" +

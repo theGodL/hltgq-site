@@ -1587,6 +1587,7 @@ function exportResExcel() {
     return;
   }
   const ws = XLSX.utils.aoa_to_sheet(aoaForExcel(RES.aoa));
+  ws['!cols'] = MonitorExport.fitCols(RES.aoa[0]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, RES.name);
   const s = $('res-start').value || '';

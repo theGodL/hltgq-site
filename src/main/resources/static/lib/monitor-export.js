@@ -18,6 +18,9 @@
  * 用法三（动态列表头导出：日雨情等透视表，aoa[0] 为表头）：
  *   MonitorExport.downloadAoa({ aoa, filename: '灌区日雨情', sheetName: '日雨情' });
  *
+ * 用法四（页面自建 aoa 导出，补列宽保持表头不挤）：
+ *   ws['!cols'] = MonitorExport.fitCols(header); // header 为表头文本数组
+ *
  * 取值口径：null/undefined/'' → 空白单元格；-9991（设备异常）→ '--'；-999（设备不存在）→ 空白；
  * 纯数字长码（站点编号等）按文本写入，避免 Excel 显示成科学计数法。
  */
@@ -192,15 +195,24 @@
     return s;
   }
 
+  /**
+   * 列宽设置：按表头文本估算（中文按 2 字符宽），限 10~30 字符——
+   * 保证导出文件表头不挤在一起（与后端模板 ExcelTemplateUtils.fitColumnWidths 同口径）。
+   */
+  function fitCols(labels) {
+    return (labels || []).map(function (label) {
+      var s = String(label == null ? '' : label);
+      return { wch: Math.min(30, Math.max(10, s.replace(/[^\x00-\xff]/g, 'aa').length + 4)) };
+    });
+  }
+
   function buildBook(fields, rows, sheetName) {
     var aoa = [fields.map(function (f) { return f.label; })];
     rows.forEach(function (r) {
       aoa.push(fields.map(function (f) { return cellValue(r ? r[f.key] : ''); }));
     });
     var ws = window.XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = fields.map(function (f) {
-      return { wch: Math.min(30, Math.max(10, String(f.label).replace(/[^\x00-\xff]/g, 'aa').length + 4)) };
-    });
+    ws['!cols'] = fitCols(fields.map(function (f) { return f.label; }));
     var wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, String(sheetName || '数据').slice(0, 30));
     return wb;
@@ -270,5 +282,5 @@
     }
   }
 
-  window.MonitorExport = { open: open, download: download, downloadAoa: downloadAoa, close: close };
+  window.MonitorExport = { open: open, download: download, downloadAoa: downloadAoa, fitCols: fitCols, close: close };
 })();

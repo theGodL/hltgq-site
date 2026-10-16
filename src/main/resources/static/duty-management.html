@@ -40,7 +40,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .drawer.show{transform:translateX(0)}
 .drawer-x{position:absolute;top:16px;right:16px;z-index:2;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:4px;background:none;color:#595959;cursor:pointer;transition:color .2s,background .2s}
 .drawer-x:hover{color:#262626;background:#f5f5f5}
-.drawer-bd{flex:1;min-height:0;overflow-y:auto;padding:80px 24px 32px}
+.drawer-hd{flex-shrink:0;display:flex;align-items:center;height:56px;padding:0 24px;border-bottom:1px solid #f0f0f0}
+.drawer-hd h3{font-size:16px;font-weight:500;color:#333}
+.drawer-bd{flex:1;min-height:0;overflow-y:auto;padding:24px 24px 32px}
 .drawer-ft{flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 24px;border-top:1px solid #f0f0f0}
 .drawer-ft .btn{height:36px;padding:0 18px}
 
@@ -175,6 +177,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       <path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
     </svg>
   </button>
+  <div class="drawer-hd"><h3 id="drawer-title">新增值班排班</h3></div>
   <div class="drawer-bd">
     <div class="form-item">
       <label>班次 <i class="req">*</i></label>
@@ -797,6 +800,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   }
 
   function openDrawerUI(mode) {
+    var TITLES = { add: '新增值班排班', edit: '编辑值班排班', view: '查看值班排班' };
+    $('drawer-title').textContent = TITLES[mode] || '值班排班';
     drawer.classList.toggle('is-view', mode === 'view');
     if (mode === 'view') {
       $('btn-drawer-cancel').style.display = 'none';

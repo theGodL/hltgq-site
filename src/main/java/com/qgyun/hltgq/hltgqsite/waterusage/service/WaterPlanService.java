@@ -140,18 +140,23 @@ public class WaterPlanService {
     }
 
     /**
-     * 实际保证率（全部审核通过需水申请，不随列表筛选变化；口径全 m³，前端按需折算万m³）：
+     * 实际保证率（**按当前自然年度统计**，仅该年度内审核通过的需水申请，不随列表筛选变化；口径全 m³，前端按需折算万m³）：
      * <pre>
-     * need   = Σ 已通过申请 amount（应供水量）
-     * actual = Σ 单条申请实测供水量（户级全部闸口区间累计，[{@code startDate 00:00}, {endDate+1 00:00}]）
+     * 年度归集 = 申请「需水开始日期(startDate)」所属年份；跨年申请本期不拆分，整条归入开始日期所属年度
+     *           （故跨年申请不能严格代表该自然年度内实际发生的水量——已知简化，接口文档已注明）
+     * need   = Σ 本年度已通过申请 amount（应供水量）
+     * actual = Σ 本年度单条申请实测供水量（户级全部闸口区间累计，半开区间 [{@code startDate 00:00}, {@code endDate 00:00})）
      * missing = 计量不可得的申请条数（闸口未配置 / 时段缺失 / 任一闸口缺读数或读数回退）
-     * overlap = 同户两条已通过申请时段相交（含端点；时段缺失的申请不参与检测）
+     * overlap = 同户两条本年度已通过申请时段严格相交（半开区间 [起,止)，相邻共用边界不算；时段缺失的申请不参与检测）
      * </pre>
-     * 前端四态：need ≤ 0 → 暂无数据；overlap → 申请时段重叠待核对；
-     * missing &gt; 0 → 待补计量数据；否则 actual ÷ need 为保证率。
+     * 分子、分母共用同一批本年度已通过申请。前端四态：need ≤ 0 → 暂无数据；overlap → 申请时段重叠待核对；
+     * missing &gt; 0 → 待补计量数据；否则 actual ÷ need 为保证率（直接相除，允许超过 100%）。
      */
     public Map<String, Object> guarantee() {
-        List<WaterDemandVO> demands = demandMapper.selectApprovedDemands();
+        int year = LocalDate.now().getYear();
+        List<WaterDemandVO> demands = demandMapper.selectApprovedDemandsOfYear(
+                LocalDate.of(year, 1, 1).toString(),
+                LocalDate.of(year + 1, 1, 1).toString());
         BigDecimal need = BigDecimal.ZERO;
         List<String> userIds = new ArrayList<>();
         Map<String, List<WaterDemandVO>> byUser = new LinkedHashMap<>();
@@ -174,6 +179,7 @@ public class WaterPlanService {
             }
         }
         Map<String, Object> out = new LinkedHashMap<>();
+        out.put("year", year);
         out.put("need", need);
         out.put("actual", actual);
         out.put("missing", missing);
@@ -769,7 +775,8 @@ public class WaterPlanService {
         return out;
     }
 
-    /** 单条已通过申请的实测供水量（m³；闸口未配置 / 时段缺失或非法 / 计量不可得 → null） */
+    /** 单条已通过申请的实测供水量（m³；闸口未配置 / 时段缺失或非法 / 计量不可得 → null）
+     * <p>时段按半开区间 {@code [起 00:00, 止 00:00)} 计：结束日期为下一条申请的起点，不再按「次日 00:00」计入本日放量。 */
     private BigDecimal demandActual(WaterDemandVO demand, GateConfig config) {
         if (config == null || config.allIds == null || config.allIds.isEmpty()) {
             return null;
@@ -780,10 +787,10 @@ public class WaterPlanService {
             return null;
         }
         return meter.userInterval(config,
-                start.toString() + " 00:00", end.plusDays(1).toString() + " 00:00");
+                start.toString() + " 00:00", end.toString() + " 00:00");
     }
 
-    /** 同户已通过申请时段重叠检测（含端点：a 与 b 相交 ⇔ a 止 ≥ b 起 且 b 止 ≥ a 起） */
+    /** 同户已通过申请时段重叠检测（半开区间 {@code [起,止)}：仅严格相交才算重叠，相邻共用边界不算） */
     private boolean hasUserOverlap(Map<String, List<WaterDemandVO>> byUser) {
         for (List<WaterDemandVO> list : byUser.values()) {
             if (list.size() < 2) {
@@ -803,7 +810,7 @@ public class WaterPlanService {
                     if (starts[j] == null || ends[j] == null) {
                         continue;
                     }
-                    if (!ends[i].isBefore(starts[j]) && !ends[j].isBefore(starts[i])) {
+                    if (starts[i].isBefore(ends[j]) && starts[j].isBefore(ends[i])) {
                         return true;
                     }
                 }

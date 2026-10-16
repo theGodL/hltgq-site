@@ -5,7 +5,7 @@ import lombok.Data;
 /**
  * 出库台账候选（tzkioe 行，oywydb = 所选仓库 且 库存 > 0）：出库单明细选择器数据源。
  * <p>ledgerId 为台账行主键（保存时出库明细按台账行提交，乐观锁扣减依据）；
- * quantity 为当前可用库存（前端行内只读提示）；safetyStock 为安全库存（低于提示用）。
+ * quantity 为当前可用库存（前端行内只读提示）；safetyStock 为安全库存（实时取物资目录，低于提示用）。
  */
 @Data
 public class StockLedgerOptionVO {
@@ -33,7 +33,7 @@ public class StockLedgerOptionVO {
     /** 当前可用库存（tzkioe.ejgxlq） */
     private Integer quantity;
 
-    /** 安全库存（tzkioe.vhvhja，可空） */
+    /** 安全库存（实时取物资目录 slaifi.unqvqe，可空） */
     private Integer safetyStock;
 
     private String warehouseId;

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>站点管理导出</title>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;overflow:hidden}
@@ -149,16 +150,17 @@ body{
   function exportRows(rows) {
     if (!rows.length) return toast('暂无数据可导出');
     if (!window.XLSX) return toast('导出组件未加载');
-    var header = ['站点名称', '站点编号', '站点位置', '坐标定位', '经度', '纬度', '监测类型', '站点状态', '核心指标-水位', '核心指标-雨量', '监测方法', '负责人', '联系电话'];
+    var header = ['站点名称', '站点编号', '站点位置', '经度', '纬度', '监测类型', '站点状态', '监测方法', '负责人', '联系电话', '是否接通市电', '传输方式', '介绍', '操作规程'];
     var data = rows.map(function (r) {
       return [
-        cell(r.name), String(cell(r.code)), cell(r.location), cell(r.lnglat),
-        cell(r.lon), cell(r.lat), cell(r.type), cell(r.status),
-        cell(r.waterIndicator), cell(r.rainIndicator), cell(r.method),
-        cell(r.owner), cell(r.phone)
+        cell(r.name), String(cell(r.code)), cell(r.location), cell(r.lon), cell(r.lat),
+        cell(r.type), cell(r.status), cell(r.method),
+        cell(r.owner), cell(r.phone), cell(r.mainsPower), cell(r.comm),
+        cell(r.intro), cell(r.operationNote)
       ];
     });
     var ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+    ws['!cols'] = MonitorExport.fitCols(header);
     data.forEach(function (_, i) {
       var cellB = ws['B' + (i + 2)];
       if (cellB) { cellB.t = 's'; cellB.z = '@'; cellB.v = String(cellB.v == null ? '' : cellB.v); }

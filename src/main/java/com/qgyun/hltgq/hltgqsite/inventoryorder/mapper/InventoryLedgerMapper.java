@@ -26,6 +26,9 @@ import java.util.Map;
  *   <li><b>出库乐观锁</b>：UPDATE 带 {@code COALESCE(ejgxlq,0) >= qty} 条件 + RETURNING；
  *       返回 null = 库存不足 → Service 整单回滚提示；</li>
  *   <li><b>mojktw 重算</b>：SET 表达式引用旧值（新量 > COALESCE(vhvhja,0) → #1# 正常，否则含等于 → #2# 偏低）；</li>
+ *   <li><b>安全库存读取口径</b>：列表/导出/出库候选的安全库存与库存状态一律实时取物资目录
+ *       {@code slaifi.unqvqe}（{@link #SAFE_STOCK_EXPR} 文本正则安全转换）并与数量实时比较；
+ *       台账存储列 vhvhja/mojktw 仅在建账/增减时写入（历史快照留存，不再参与读取判定）；</li>
  *   <li>数量列 double precision 读出统一 CAST numeric(20,0)；模糊匹配一律 CONCAT，禁用 {@code ||}。</li>
  * </ul>
  */
@@ -38,6 +41,18 @@ public interface InventoryLedgerMapper {
     String T_ORG = "\"qixiao-apaas\".\"t_apaas_uc_org\"";
     String T_USER = "\"qixiao-apaas\".\"t_apaas_uc_user\"";
     String T_CHANGE = "\"qixiao-apaas\".\"t_auto_hltgq_water_stock_change_log\"";
+
+    /**
+     * 安全库存实时表达式（权威源=物资目录 {@code slaifi.unqvqe}，varchar）：非数字/空/null → NULL；
+     * trunc 取整与建账解析口径（BigDecimal.intValue）一致；目录调整即时反映到台账读取。
+     * <p>要求所在查询已 JOIN 目录表并起别名 {@code m}。
+     */
+    String SAFE_STOCK_EXPR = "CASE WHEN trim(m.unqvqe) ~ '^-?[0-9]+(\\.[0-9]+)?$' "
+            + "THEN trunc(CAST(trim(m.unqvqe) AS numeric)) ELSE NULL END";
+
+    /** 实时库存状态编码（库存 > 安全库存(空视0) → '#1#' 正常，否则含等于 → '#2#' 偏低）。要求台账行别名 {@code t}。 */
+    String STOCK_STATUS_EXPR = "CASE WHEN COALESCE(t.ejgxlq, 0) > COALESCE(" + SAFE_STOCK_EXPR + ", 0) "
+            + "THEN '#1#' ELSE '#2#' END";
 
     // ==================== 取号 ====================
 
@@ -175,20 +190,20 @@ public interface InventoryLedgerMapper {
 
     // ==================== P4 台账列表 ====================
 
-    /** 台账分页（左树仓库过滤 + 编号/名称模糊 + 状态筛选；物资编号取 slaifi.higsdd，其余取台账快照）。 */
+    /** 台账分页（左树仓库过滤 + 编号/名称模糊 + 实时状态筛选；编号取 slaifi.higsdd，安全库存/状态实时取目录）。 */
     @Select("<script>" +
             "SELECT t.id AS id, t.jzikio AS materialId, m.higsdd AS materialCode, " +
             "t.qhtxml AS brand, t.wpxwwi AS name, t.hughww AS spec, t.mddokm AS unit, " +
             "t.oywydb AS warehouseId, w.xoysox AS warehouseName, " +
-            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, CAST(t.vhvhja AS numeric(20,0)) AS safetyStock, " +
-            "t.mojktw AS statusCode, t.czdwpj AS departmentId " +
+            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, " + SAFE_STOCK_EXPR + " AS safetyStock, " +
+            STOCK_STATUS_EXPR + " AS statusCode, t.czdwpj AS departmentId " +
             "FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_WAREHOUSE + " w ON w.id = t.oywydb AND w.corp_code = 'hltgq' " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
             "WHERE t.corp_code = 'hltgq' " +
             "<if test='warehouseId != null and warehouseId != \"\"'>AND t.oywydb = #{warehouseId} </if>" +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR t.wpxwwi LIKE CONCAT('%', #{keyword}, '%')) </if>" +
-            "<if test='statusCode != null and statusCode != \"\"'>AND t.mojktw = #{statusCode} </if>" +
+            "<if test='statusCode != null and statusCode != \"\"'>AND (" + STOCK_STATUS_EXPR + ") = #{statusCode} </if>" +
             "ORDER BY t.created_at DESC, t.id DESC " +
             "LIMIT #{size} OFFSET #{offset}" +
             "</script>")
@@ -198,33 +213,33 @@ public interface InventoryLedgerMapper {
                                             @Param("size") int size,
                                             @Param("offset") long offset);
 
-    /** 台账计数（条件与 {@link #selectLedgerPage} 一致）。 */
+    /** 台账计数（条件与 {@link #selectLedgerPage} 一致，状态筛选为实时口径）。 */
     @Select("<script>" +
             "SELECT COUNT(*) FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
             "WHERE t.corp_code = 'hltgq' " +
             "<if test='warehouseId != null and warehouseId != \"\"'>AND t.oywydb = #{warehouseId} </if>" +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR t.wpxwwi LIKE CONCAT('%', #{keyword}, '%')) </if>" +
-            "<if test='statusCode != null and statusCode != \"\"'>AND t.mojktw = #{statusCode} </if>" +
+            "<if test='statusCode != null and statusCode != \"\"'>AND (" + STOCK_STATUS_EXPR + ") = #{statusCode} </if>" +
             "</script>")
     long countLedgers(@Param("warehouseId") String warehouseId,
                       @Param("keyword") String keyword,
                       @Param("statusCode") String statusCode);
 
-    /** 台账导出（同 P4 条件，全量无分页；前端生成 Excel）。 */
+    /** 台账导出（同 P4 条件，全量无分页；前端生成 Excel；安全库存/状态实时口径）。 */
     @Select("<script>" +
             "SELECT t.id AS id, t.jzikio AS materialId, m.higsdd AS materialCode, " +
             "t.qhtxml AS brand, t.wpxwwi AS name, t.hughww AS spec, t.mddokm AS unit, " +
             "t.oywydb AS warehouseId, w.xoysox AS warehouseName, " +
-            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, CAST(t.vhvhja AS numeric(20,0)) AS safetyStock, " +
-            "t.mojktw AS statusCode, t.czdwpj AS departmentId " +
+            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, " + SAFE_STOCK_EXPR + " AS safetyStock, " +
+            STOCK_STATUS_EXPR + " AS statusCode, t.czdwpj AS departmentId " +
             "FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_WAREHOUSE + " w ON w.id = t.oywydb AND w.corp_code = 'hltgq' " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
             "WHERE t.corp_code = 'hltgq' " +
             "<if test='warehouseId != null and warehouseId != \"\"'>AND t.oywydb = #{warehouseId} </if>" +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR t.wpxwwi LIKE CONCAT('%', #{keyword}, '%')) </if>" +
-            "<if test='statusCode != null and statusCode != \"\"'>AND t.mojktw = #{statusCode} </if>" +
+            "<if test='statusCode != null and statusCode != \"\"'>AND (" + STOCK_STATUS_EXPR + ") = #{statusCode} </if>" +
             "ORDER BY t.created_at DESC, t.id DESC" +
             "</script>")
     List<LedgerPageItemVO> selectLedgerExportRows(@Param("warehouseId") String warehouseId,
@@ -309,11 +324,11 @@ public interface InventoryLedgerMapper {
             "WHERE m.id = #{id} AND m.corp_code = 'hltgq'")
     MaterialVO selectMaterialById(@Param("id") String id);
 
-    /** 出库台账候选（当前仓库且可用库存 &gt; 0 的物资）。 */
+    /** 出库台账候选（当前仓库且可用库存 &gt; 0 的物资；安全库存实时取物资目录）。 */
     @Select("<script>" +
             "SELECT t.id AS ledgerId, t.jzikio AS materialId, m.higsdd AS code, t.wpxwwi AS name, " +
             "t.qhtxml AS brand, t.hughww AS spec, t.mddokm AS unit, " +
-            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, CAST(t.vhvhja AS numeric(20,0)) AS safetyStock, " +
+            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, " + SAFE_STOCK_EXPR + " AS safetyStock, " +
             "t.oywydb AS warehouseId " +
             "FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
@@ -324,10 +339,10 @@ public interface InventoryLedgerMapper {
     List<StockLedgerOptionVO> selectStockLedgerOptions(@Param("warehouseId") String warehouseId,
                                                        @Param("keyword") String keyword);
 
-    /** 出库保存按台账行 id 取快照（校验行归属仓库、取物资六字段快照与可用库存）。 */
+    /** 出库保存按台账行 id 取快照（校验行归属仓库、取物资六字段快照与可用库存；安全库存实时取物资目录）。 */
     @Select("SELECT t.id AS ledgerId, t.jzikio AS materialId, m.higsdd AS code, t.wpxwwi AS name, " +
             "t.qhtxml AS brand, t.hughww AS spec, t.mddokm AS unit, " +
-            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, CAST(t.vhvhja AS numeric(20,0)) AS safetyStock, " +
+            "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, " + SAFE_STOCK_EXPR + " AS safetyStock, " +
             "t.oywydb AS warehouseId " +
             "FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
