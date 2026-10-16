@@ -68,7 +68,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .kpi-v{font-size:26px;font-weight:600;color:var(--el-color-primary);line-height:38px;display:flex;align-items:baseline;gap:2px}
 .kpi-v .u{font-size:13px;font-weight:400;color:var(--el-text-color-secondary)}
 .kpi-v .txt{font-size:18px;font-weight:500;color:var(--el-text-color-primary)}
-.kpi-f{font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
 
 .panel{flex:1 0 auto;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px 0;flex-shrink:0}
@@ -295,12 +294,10 @@ td.empty:hover{background:transparent}
     <div class="kpi-card">
       <div class="kpi-t">设计保证率</div>
       <div class="kpi-v">90<span class="u">%</span></div>
-      <div class="kpi-f">固定设计指标</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-t" id="kpi-guarantee-title">实际保证率 · 本年度审核通过申请</div>
+      <div class="kpi-t" id="kpi-guarantee-title">实际保证率</div>
       <div class="kpi-v" id="kpi-actual"><span class="txt">加载中...</span></div>
-      <div class="kpi-f" id="kpi-foot">--</div>
     </div>
   </div>
 
@@ -660,7 +657,6 @@ function typeTag(r) {
 /** 实际保证率（按当前自然年度、仅该年度审核通过申请，不随列表筛选变化；need / actual 出口口径 m³；year 服务端下发） */
 async function loadGuarantee() {
   const vEl = $('kpi-actual');
-  const fEl = $('kpi-foot');
   const tEl = $('kpi-guarantee-title');
   try {
     const g = await api('/water-plan/guarantee');
@@ -668,16 +664,14 @@ async function loadGuarantee() {
     const need = Number(g && g.need) || 0;
     const actual = Number(g && g.actual) || 0;
     const missing = Number(g && g.missing) || 0;
-    if (tEl) tEl.textContent = year + ' 年实际保证率 · 审核通过申请';
+    if (tEl) tEl.textContent = year + ' 年实际保证率';
     if (!need) vEl.innerHTML = '<span class="txt">暂无审核通过需水</span>';
     else if (g && g.overlap) vEl.innerHTML = '<span class="txt">申请时段重叠，待核对</span>';
     else if (missing) vEl.innerHTML = '<span class="txt">待补计量数据</span>';
     else vEl.innerHTML = esc(fmt2(actual / need * 100)) + '<span class="u">%</span>';
-    fEl.textContent = '应供 ' + fmtWan(need) + ' 万m³ · 已有计量 ' + fmtWan(actual) + ' 万m³ · ' + missing + ' 条待补';
   } catch (e) {
-    if (tEl) tEl.textContent = new Date().getFullYear() + ' 年实际保证率 · 审核通过申请';
+    if (tEl) tEl.textContent = new Date().getFullYear() + ' 年实际保证率';
     vEl.innerHTML = '<span class="txt">加载失败</span>';
-    fEl.textContent = '';
   }
 }
 

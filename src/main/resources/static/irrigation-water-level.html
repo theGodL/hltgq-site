@@ -169,7 +169,7 @@ tbody tr:hover td{background:#fafafa}
 .act-btn:hover{opacity:.7}
 
 /* ---- 灌区水位详情弹窗（历史水位，样式对齐闸门监测详情） ---- */
-.overlay{display:none;position:fixed;inset:0;background:transparent;z-index:1000;align-items:center;justify-content:center;padding:20px}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .overlay.show{display:flex}
 .modal{background:#fff;border-radius:10px;width:1100px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;border:1px solid #e8e8e8;box-shadow:0 8px 28px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06)}
 /* 详情弹窗固定尺寸，不随数据多少伸缩 */
@@ -1653,7 +1653,6 @@ async function exportResExcel() {
     return v;
   }))];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = MonitorExport.fitCols(headers);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, meta.name);
   const s = $('res-start').value || '';

@@ -64,8 +64,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .panel{flex:1 0 auto;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
 .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px 0;flex-shrink:0}
 .panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
-.panel-hd .hd-acts{display:flex;align-items:center;gap:8px}
-.hd-tip{font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
+.panel-hd .hd-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
 .panel-bd{flex:1 0 auto;display:flex;flex-direction:column;padding:16px 24px}
 
 /* ===== 控件 ===== */
@@ -266,7 +265,6 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
 
   <div class="panel">
     <div class="panel-hd">
-      <span class="hd-tip">用水户档案：关联闸口决定用水量计量口径；被计划引用的用水户删除时需二次确认。</span>
       <div class="hd-acts">
         <button class="btn btn-primary" id="btn-add">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>新增用水户
@@ -351,21 +349,6 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
           <label class="f-label"><i class="req">*</i>状态</label>
           <div class="sel" id="sel-status"></div>
           <div class="f-err" id="err-status"></div>
-        </div>
-        <div class="f-item span2">
-          <label class="f-label">年度计划水量（万m³）</label>
-          <input class="field" id="in-annual" inputmode="decimal" placeholder="如 12.50（可空；0 视为未设定）" autocomplete="off">
-          <div class="f-err" id="err-annual"></div>
-        </div>
-        <div class="f-item">
-          <label class="f-label">位置经度</label>
-          <input class="field" id="in-lng" inputmode="decimal" placeholder="-180 ~ 180（可空）" autocomplete="off">
-          <div class="f-err" id="err-lng"></div>
-        </div>
-        <div class="f-item">
-          <label class="f-label">位置纬度</label>
-          <input class="field" id="in-lat" inputmode="decimal" placeholder="-90 ~ 90（可空）" autocomplete="off">
-          <div class="f-err" id="err-lat"></div>
         </div>
         <div class="f-item span2">
           <label class="f-label">备注</label>
@@ -499,15 +482,6 @@ function qs(obj) {
     if (v !== null && v !== undefined && String(v).trim() !== '') p.set(k, String(v).trim());
   });
   return p.toString();
-}
-
-/* ============================ 数值口径（与 lib/rules.js 同源） ============================ */
-/** m³ → 万m³ 录入框值（去尾零；null/非法 → ''） */
-function wanInput(m3) {
-  if (m3 === null || m3 === undefined || m3 === '') return '';
-  const n = Number(m3);
-  if (isNaN(n)) return '';
-  return String(parseFloat((n / 10000).toFixed(6)));
 }
 
 /* ============================ 下拉组件（单选 / 多选） ============================ */
@@ -948,7 +922,7 @@ function resetForm() {
   S.row = null;
   S.contactDirty = false;
   ['in-no', 'in-name', 'in-phone', 'in-area', 'in-price',
-    'in-annual', 'in-lng', 'in-lat', 'in-remark'].forEach(id => { $(id).value = ''; });
+    'in-remark'].forEach(id => { $(id).value = ''; });
   selUserType.setOptions((S.meta.userTypes || []).map(o => ({ value: o.value, label: o.label })));
   selUserType.setPlaceholder('请选择用水类型').setValue('');
   selContact.setOptions(contactOptions()).setPlaceholder('请选择联系人').setValue('');
@@ -972,9 +946,6 @@ function fillForm(d) {
   applyContactValue(d.contactName || '', d.contactPhone || '');
   $('in-area').value = d.irrigationArea === null || d.irrigationArea === undefined ? '' : String(d.irrigationArea);
   $('in-price').value = d.waterPrice === null || d.waterPrice === undefined ? '' : String(d.waterPrice);
-  $('in-annual').value = wanInput(d.annualPlanWater);
-  $('in-lng').value = d.lng === null || d.lng === undefined ? '' : String(d.lng);
-  $('in-lat').value = d.lat === null || d.lat === undefined ? '' : String(d.lat);
   $('in-remark').value = d.remark || '';
   selUserType.setValue(d.userType || '');
   selSettle.setValue(d.settleCycle || '');
@@ -999,9 +970,6 @@ const FORM_ERR = {
   price: { box: 'err-price', field: () => $('in-price') },
   settle: { box: 'err-settle-cycle', sel: () => selSettle },
   status: { box: 'err-status', sel: () => selStatus },
-  annual: { box: 'err-annual', field: () => $('in-annual') },
-  lng: { box: 'err-lng', field: () => $('in-lng') },
-  lat: { box: 'err-lat', field: () => $('in-lat') },
   remark: { box: 'err-remark', field: () => $('in-remark') },
   mode: { box: 'err-calc-mode', sel: () => selMode },
   gates: { box: 'err-gates', sel: () => selGates },
@@ -1044,20 +1012,6 @@ function validateForm() {
   else if (Number(priceRaw) <= 0) { setFormError('price', '水价必须大于 0'); bad = true; }
   if (!selSettle.getValue()) { setFormError('settle', '请选择统计周期'); bad = true; }
   if (!selStatus.getValue()) { setFormError('status', '请选择状态'); bad = true; }
-  const annualRaw = $('in-annual').value.trim();
-  if (annualRaw && !/^\d+(\.\d{1,2})?$/.test(annualRaw)) {
-    setFormError('annual', '年度计划水量最多保留 2 位小数（万m³）'); bad = true;
-  }
-  const lngRaw = $('in-lng').value.trim();
-  if (lngRaw) {
-    if (!/^-?\d+(\.\d{1,6})?$/.test(lngRaw)) { setFormError('lng', '经度最多保留 6 位小数'); bad = true; }
-    else if (Number(lngRaw) < -180 || Number(lngRaw) > 180) { setFormError('lng', '经度须在 -180 ~ 180 之间'); bad = true; }
-  }
-  const latRaw = $('in-lat').value.trim();
-  if (latRaw) {
-    if (!/^-?\d+(\.\d{1,6})?$/.test(latRaw)) { setFormError('lat', '纬度最多保留 6 位小数'); bad = true; }
-    else if (Number(latRaw) < -90 || Number(latRaw) > 90) { setFormError('lat', '纬度须在 -90 ~ 90 之间'); bad = true; }
-  }
   const remark = $('in-remark').value.trim();
   if (remark.length > 200) { setFormError('remark', '备注不能超过 200 字'); bad = true; }
   const mode = selMode.getValue();
@@ -1078,6 +1032,8 @@ function validateForm() {
   if (bad) return null;
   // 编辑且未主动换人：不回传 contactUserId，后端保持库内快照（不随平台改名/换机刷新）
   const keepContactSnapshot = S.mode === 'edit' && !!S.row && !S.contactDirty;
+  // 年度计划水量 / 经纬度已不在表单录入：编辑时回传原值防止后端清空（新增时为 null）
+  const keepMeta = S.mode === 'edit' && S.row ? S.row : {};
   return {
     name,
     userType: selUserType.getValue(),
@@ -1086,9 +1042,9 @@ function validateForm() {
     contactName: contactLabel || null,
     contactPhone: phone || null,
     irrigationArea: areaRaw ? Number(areaRaw) : null,
-    lng: lngRaw ? Number(lngRaw) : null,
-    lat: latRaw ? Number(latRaw) : null,
-    annualPlanWater: annualRaw ? Number(annualRaw) : null,
+    lng: keepMeta.lng === undefined ? null : keepMeta.lng,
+    lat: keepMeta.lat === undefined ? null : keepMeta.lat,
+    annualPlanWater: keepMeta.annualPlanWater === undefined ? null : keepMeta.annualPlanWater,
     waterPrice: Number(priceRaw),
     calcMode: mode,
     gateConfig,
@@ -1393,9 +1349,6 @@ function bindEvents() {
   $('in-name').addEventListener('input', () => clearFormError('name'));
   $('in-area').addEventListener('input', () => clearFormError('area'));
   $('in-price').addEventListener('input', () => clearFormError('price'));
-  $('in-annual').addEventListener('input', () => clearFormError('annual'));
-  $('in-lng').addEventListener('input', () => clearFormError('lng'));
-  $('in-lat').addEventListener('input', () => clearFormError('lat'));
   $('in-remark').addEventListener('input', () => clearFormError('remark'));
   selUserType.onChange(() => clearFormError('userType'));
   selContact.onChange(v => { S.contactDirty = true; clearFormError('contact'); applyContactPhone(v); });

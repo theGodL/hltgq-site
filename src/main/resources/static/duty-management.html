@@ -34,7 +34,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .sep{color:#d9d9d9;margin:0 10px}
 
 /* 值班排班抽屉(新增/编辑/查看共用) */
-.drawer-mask{position:fixed;inset:0;z-index:1050;background:transparent;opacity:0;visibility:hidden;transition:opacity .3s,visibility .3s}
+.drawer-mask{position:fixed;inset:0;z-index:1050;background:rgba(0,0,0,.45);opacity:0;visibility:hidden;transition:opacity .3s,visibility .3s}
 .drawer-mask.show{opacity:1;visibility:visible}
 .drawer{position:fixed;top:0;right:0;z-index:1060;display:flex;flex-direction:column;width:660px;max-width:100vw;height:100vh;background:#fff;box-shadow:-6px 0 24px rgba(0,0,0,.1);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
 .drawer.show{transform:translateX(0)}
@@ -445,9 +445,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       }
     }
   }
+  // 面板内点选会重渲染(innerHTML),冒泡阶段 e.target 已脱离 DOM,closest 失效会误关面板;故用捕获阶段判断外部点击
   document.addEventListener('click', function (e) {
     if (!e.target.closest('.select-wrap')) closeDd();
-  });
+  }, true);
 
   function openDdPanel(dd) {
     if (openDd === dd) { closeDd(); return; }
@@ -519,12 +520,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   bindSearchSelect('f-leader', 'leader-dd', function () {
     return OPTIONS.users.map(function (u) { return { value: u.id, label: u.name }; });
   });
-  // 班次:选项来自接口字典(白班/中班/夜班);历史班次名不在字典时并入显示;切换班次不改动已填时间
+  // 班次:选项来自接口字典(白班/中班/夜班);历史班次名不在字典时并入显示
   bindSingleSelect('f-shift', 'shift-dd', function () {
     var opts = OPTIONS.shifts.map(function (s) { return { value: s.code, label: s.label }; });
     var cur = $('f-shift').value.trim();
     if (cur && !opts.some(function (o) { return o.label === cur; })) opts.unshift({ value: '', label: cur });
     return opts;
+  }, function (code) {
+    // 选中班次:时间为空时按字典默认时段预填(日期今天;24:00 折算次日 00:00);已有值不覆盖,不自动调整用户已填时间
+    if ($('f-time-start').value || $('f-time-end').value) return;
+    var s = null;
+    for (var i = 0; i < OPTIONS.shifts.length; i++) {
+      if (OPTIONS.shifts[i].code === code) { s = OPTIONS.shifts[i]; break; }
+    }
+    if (!s || !s.defaultStart || !s.defaultEnd) return;
+    var d = todayStr();
+    var hm = String(s.defaultEnd).slice(0, 5);
+    var endDate = hm === '24:00' ? addDays(d, 1) : d;
+    if (hm === '24:00') hm = '00:00';
+    setField('f-time-start', d + ' ' + String(s.defaultStart).slice(0, 5));
+    setField('f-time-end', endDate + ' ' + hm);
+    checkTimeOrder();
   });
 
   /* ===== 多选(值班人员,框内直接输入搜索) ===== */
@@ -598,6 +614,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   memberDd.addEventListener('click', function (e) {
     var opt = e.target.closest('.dd-opt');
     if (!opt) return;
+    // 点选后面板已重渲染,e.target 脱离 DOM;阻止冒泡,避免外层 select-wrap 的开合逻辑把它误判成点击框体而收起面板
+    e.stopPropagation();
     toggleMember(opt.dataset.m);
   });
   memberBox.addEventListener('input', function (e) {
@@ -823,6 +841,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
   $('drawer-close').addEventListener('click', closeDrawer);
   $('btn-drawer-cancel').addEventListener('click', closeDrawer);
+  $('drawer-mask').addEventListener('click', closeDrawer);
 
   /* ===== 表单收集与校验 ===== */
   function validateForm() {

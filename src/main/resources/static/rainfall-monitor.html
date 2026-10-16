@@ -166,7 +166,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
 .result-card.res-result{padding-top:0}
 
 /* 详情弹窗 */
-.overlay{display:none;position:fixed;inset:0;background:transparent;z-index:1000;align-items:center;justify-content:center;padding:20px}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .overlay.show{display:flex}
 .modal{background:#fff;border-radius:10px;width:860px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;border:1px solid #e8e8e8;box-shadow:0 8px 28px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06)}
 .modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#fff}
@@ -1587,7 +1587,6 @@ function exportResExcel() {
     return;
   }
   const ws = XLSX.utils.aoa_to_sheet(aoaForExcel(RES.aoa));
-  ws['!cols'] = MonitorExport.fitCols(RES.aoa[0]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, RES.name);
   const s = $('res-start').value || '';

@@ -9,11 +9,10 @@
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#fff;color:#333;font-size:14px;-webkit-font-smoothing:antialiased}
 .page-wrap{padding:20px 24px 48px}
 
-/* 页面头部:左侧标题 + 统计小字,右侧「新增调度记录」 */
+/* 页面头部:左侧标题,右侧「新增调度记录」 */
 .page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
 .head-left{display:flex;align-items:baseline;gap:10px;min-width:0}
 .page-title{font-size:18px;font-weight:600;color:#1f1f1f}
-.head-sub{font-size:13px;color:#8c8c8c;white-space:nowrap}
 
 /* 按钮(与需水上报/调度方案页保持一致) */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border:1px solid transparent;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .2s}
@@ -55,12 +54,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .st-tag.down{background:#fff7e6;color:#fa8c16}
 .st-tag.adjust{background:#e6f4ff;color:#1677ff}
 
-/* 操作列链接 */
+/* 操作列链接(td 保持标准单元格与其余列对齐;内层 .act-box 承载 flex 排布:固定单行不换行,gap 控制列距/行距) */
 .act{color:#1677ff;cursor:pointer;transition:color .2s;white-space:nowrap}
 .act:hover{color:#4096ff}
 .act.del{color:#ff4d4f}
 .act.del:hover{color:#ff7875}
-.tbl td .act + .act{margin-left:14px}
+.col-act .act-box{display:flex;flex-wrap:nowrap;align-items:center;gap:8px 14px}
 
 /* 分页栏(居右:共 N 条 / 页码 / 每页条数 / 跳页) */
 .pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:16px 0 0;gap:8px;flex-wrap:wrap}
@@ -81,15 +80,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 /* 弹窗(居中模态:新增/编辑、删除确认共用) */
 .ov{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto}
 .ov.show{display:flex}
-.modal{position:relative;background:#fff;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.16);width:100%}
+/* 弹窗(内容超高时:内容区内部滚动,底部按钮固定在弹窗下方) */
+.modal{position:relative;background:#fff;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.16);width:100%;display:flex;flex-direction:column;max-height:calc(100vh - 48px)}
 .modal-sm{max-width:460px;margin-top:16vh}
-.modal-lg{max-width:720px;margin-top:6vh}
+.modal-lg{max-width:720px;margin-top:6vh;max-height:78vh}
 .modal-x{position:absolute;top:16px;right:16px;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:4px;background:none;color:#595959;cursor:pointer;transition:color .2s,background .2s}
 .modal-x:hover{color:#262626;background:#f5f5f5}
-.modal-hd{padding:20px 24px 0;font-size:18px;font-weight:600;color:#1f1f1f}
-.modal-sub{margin-top:4px;font-size:13px;color:#8c8c8c;font-weight:400}
-.modal-bd{padding:16px 24px 0}
-.modal-ft{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px 20px;border-top:1px solid #f0f0f0;margin-top:18px}
+.modal-hd{padding:20px 24px 0;font-size:18px;font-weight:600;color:#1f1f1f;flex-shrink:0}
+.modal-bd{padding:16px 24px 0;flex:1;min-height:0;overflow-y:auto}
+.modal-ft{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px 20px;border-top:1px solid #f0f0f0;margin-top:18px;flex-shrink:0}
 .modal-ft .btn{height:36px;padding:0 18px}
 .confirm-text{font-size:14px;color:#333;line-height:22px;word-break:break-all}
 
@@ -128,11 +127,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 </head>
 <body>
 <div class="page-wrap">
-  <!-- 页面头部:标题 + 统计,右侧新增按钮 -->
+  <!-- 页面头部:标题,右侧新增按钮 -->
   <div class="page-head">
     <div class="head-left">
       <h1 class="page-title">调度记录</h1>
-      <span class="head-sub" id="head-sub">共 0 条 · 闸口操作留痕，不涉及水量与费用</span>
     </div>
     <button type="button" class="btn btn-primary" id="btn-add">
       <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -174,7 +172,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     <table class="tbl">
       <colgroup>
         <col style="width:13%"><col style="width:11%"><col style="width:8%"><col style="width:11%"><col style="width:10%">
-        <col style="width:8%"><col style="width:10%"><col style="width:21%"><col style="width:8%">
+        <col style="width:8%"><col style="width:10%"><col style="width:16%"><col style="width:13%">
       </colgroup>
       <thead>
         <tr>
@@ -200,7 +198,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     </button>
     <div class="modal-hd">
       <div id="form-title">新增调度记录</div>
-      <div class="modal-sub">闸口操作留痕：记录操作人、操作时间、操作闸口、升降高度等信息</div>
     </div>
     <div class="modal-bd">
       <div class="form-grid">
@@ -504,7 +501,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       if (S.page > S.pages) { S.page = S.pages; loadList(); return; }
       renderRows(S.rows);
       renderPager();
-      $('head-sub').textContent = '共 ' + S.total + ' 条 · 闸口操作留痕，不涉及水量与费用';
     });
   }
 
@@ -515,8 +511,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   function actionCell(r) {
     var id = esc(r.id);
-    return '<td><span class="act" data-action="edit" data-id="' + id + '">编辑</span>'
-      + '<span class="act del" data-action="delete" data-id="' + id + '">删除</span></td>';
+    return '<td class="col-act"><div class="act-box">'
+      + '<span class="act" data-action="edit" data-id="' + id + '">编辑</span>'
+      + '<span class="act del" data-action="delete" data-id="' + id + '">删除</span>'
+      + '</div></td>';
   }
 
   function renderRows(rows) {
