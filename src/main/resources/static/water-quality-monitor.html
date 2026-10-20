@@ -272,7 +272,16 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
 
       <div class="modal-pane" id="pane-hist">
         <div class="modal-filter">
-          <span style="color:#999;font-size:12px">导出取数区间与「水质历史趋势」的日期筛选一致</span>
+          <div class="filter-item">
+            <label>日期</label>
+            <div class="date-range">
+              <input type="date" id="h-start">
+              <span class="date-sep">—</span>
+              <input type="date" id="h-end">
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary" id="h-query">查询</button>
+          <button type="button" class="btn btn-default" id="h-reset">重置</button>
           <button type="button" class="btn btn-default" id="hist-export-btn" style="margin-left:auto">导出</button>
         </div>
         <div class="hist-table-wrap">
@@ -333,6 +342,9 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   let chartDo = null;
   let chartWt = null;
 
+  /** 历史数据默认回看天数（趋势图按 24 小时口径，历史列表取更宽区间，避免只看到一两条） */
+  const HIST_DEFAULT_DAYS = 30;
+
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
   function todayStr() {
     const d = new Date();
@@ -343,6 +355,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     d.setDate(d.getDate() - n);
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   }
+
   function toast(msg) {
     const el = $('toast');
     el.textContent = msg;
@@ -744,8 +757,8 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     if (!state.current) return;
     const stcd = state.current.stcd || state.current.site;
     if (!stcd) return;
-    const s = $('m-start').value;
-    const e = $('m-end').value;
+    const s = $('h-start').value;
+    const e = $('h-end').value;
     const p = new URLSearchParams();
     p.set('stcd', stcd);
     p.set('page', String(page || 1));
@@ -784,9 +797,11 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     state.current = row;
     $('detail-title').textContent = `水质详情 · ${row.stnm || row.stcd || ''}`;
     const end = todayStr();
-    const start = daysAgo(1);
-    $('m-start').value = start;
+    // 趋势图按 24 小时口径；历史列表默认回看 HIST_DEFAULT_DAYS 天，可自行改日期或清空查全部
+    $('m-start').value = daysAgo(1);
     $('m-end').value = end;
+    $('h-start').value = daysAgo(HIST_DEFAULT_DAYS);
+    $('h-end').value = end;
     $('detail-overlay').classList.add('show');
     switchTab('trend');
     await loadTrend();
@@ -891,8 +906,8 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     const rows = [];
     const size = 500;
     const stcd = state.current.stcd || state.current.site;
-    const s = $('m-start').value;
-    const e = $('m-end').value;
+    const s = $('h-start').value;
+    const e = $('h-end').value;
     for (let page = 1; page <= 40; page++) {
       const p = new URLSearchParams();
       p.set('stcd', stcd);
@@ -912,11 +927,11 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   function exportWqHistory() {
     if (!state.current) { toast('请先打开站点详情'); return; }
     const name = state.current.stnm || state.current.stcd || '站点';
-    const s = $('m-start').value || '';
-    const e = $('m-end').value || '';
+    const s = $('h-start').value || '';
+    const e = $('h-end').value || '';
     MonitorExport.open({
       title: `${name} · 导出历史数据`,
-      tip: '勾选需要的字段（氨氮 / 高锰酸盐指数 / 五日生化需氧量 / 溶解氧 / 水温等），导出表头只包含勾选字段；取数区间与「水质历史趋势」日期一致',
+      tip: '勾选需要的字段（氨氮 / 高锰酸盐指数 / 五日生化需氧量 / 溶解氧 / 水温等），导出表头只包含勾选字段；取数区间与「历史数据」页签的日期筛选一致',
       fields: WQ_EXPORT_FIELDS.map(f => f.key === 'stnm' ? { ...f, checked: false } : f),
       fetchRows: async () => (await fetchAllWqHistory()).map(wqExportRow),
       filename: () => `${name}_水质历史${s && e ? `_${s}~${e}` : ''}`,
@@ -978,13 +993,19 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   });
   $('m-query').addEventListener('click', async () => {
     await loadTrend();
-    if ($('pane-hist').classList.contains('active')) await loadHistory(1);
   });
   $('m-reset').addEventListener('click', async () => {
     $('m-start').value = daysAgo(1);
     $('m-end').value = todayStr();
     await loadTrend();
-    if ($('pane-hist').classList.contains('active')) await loadHistory(1);
+  });
+  $('h-query').addEventListener('click', async () => {
+    await loadHistory(1);
+  });
+  $('h-reset').addEventListener('click', async () => {
+    $('h-start').value = daysAgo(HIST_DEFAULT_DAYS);
+    $('h-end').value = todayStr();
+    await loadHistory(1);
   });
 
   window.addEventListener('resize', () => {
