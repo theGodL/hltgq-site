@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>站点二维码批量下载</title>
+<script src="./lib/qrcode.min.js"></script>
+<script src="./lib/jszip.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:#fff;color:#333;font-size:14px;
+}
+.page{height:100%;display:flex;flex-direction:column;min-height:0}
+
+.body{
+  flex:1;min-height:0;overflow:auto;padding:20px 20px 16px;background:#f6f7fb;
+}
+.lead{
+  margin-bottom:16px;padding:16px 18px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
+}
+.lead h2{font-size:16px;font-weight:600;color:#262626;line-height:24px}
+.lead p{margin-top:6px;font-size:13px;color:#8c8c8c;line-height:20px}
+
+.fields{display:flex;flex-direction:column;gap:16px}
+.field{
+  display:flex;flex-direction:column;gap:10px;
+  padding:18px 18px 20px;border-radius:10px;background:#fff;
+  box-shadow:0 1px 2px rgba(15,35,52,.04),0 6px 16px rgba(15,35,52,.06);
+}
+.field label{color:#262626;font-weight:500;line-height:22px}
+.field input,.field select{
+  width:100%;height:40px;border:1px solid #e6e8eb;border-radius:8px;
+  padding:0 12px;font-size:14px;outline:none;background:#fafbfc;color:#333;font-family:inherit;
+}
+.field select{
+  padding-right:28px;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238c8c8c' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;
+}
+.field input:hover,.field select:hover{border-color:#d0d5dd}
+.field input:focus,.field select:focus{
+  background:#fff;border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12);
+}
+.field input::placeholder{color:#bfbfbf}
+
+.foot{
+  flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:8px;
+  padding:12px 24px;border-top:1px solid #f0f0f0;background:#fff;
+}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:64px;height:32px;padding:0 16px;border:1px solid transparent;border-radius:6px;
+  cursor:pointer;font-size:14px;white-space:nowrap;background:#fff;font-family:inherit;
+}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
+.btn-primary:hover{background:#4096ff}
+.btn-default{color:#595959;border-color:#d9d9d9}
+.btn-default:hover{color:#1677ff;border-color:#1677ff}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+.toast{
+  position:fixed;left:50%;bottom:72px;transform:translateX(-50%);
+  background:rgba(0,0,0,.72);color:#fff;padding:8px 16px;border-radius:6px;
+  font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="body">
+    <div class="lead">
+      <h2>二维码批量下载</h2>
+      <p>按条件筛选站点后批量生成站点二维码图片（内容为手机端站点详情页地址），打包为 zip 下载，图片以站点名称命名。不填的条件不参与筛选。</p>
+    </div>
+    <div class="fields">
+      <div class="field">
+        <label for="f-code">站点编号</label>
+        <input type="text" id="f-code" placeholder="不填则不按编号筛选" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-name">站点名称</label>
+        <input type="text" id="f-name" placeholder="不填则不按名称筛选" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-status">站点状态</label>
+        <select id="f-status">
+          <option value="">全部（不按状态筛选）</option>
+          <option value="在线">在线</option>
+          <option value="离线">离线</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <button type="button" class="btn btn-default" id="reset-btn">重置</button>
+    <button type="button" class="btn btn-primary" id="download-btn">批量下载</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var API = '/hltgq-site/station-data/list';
+
+  /** 二维码内容：手机端站点详情页地址（按站点主键打开），与站点详情页展示的二维码同口径；
+   *  协议/域名/端口/上下文路径随当前访问地址实时生成（同域部署换域名无需改代码） */
+  function h5PageUrl(id) {
+    var dir = location.pathname.replace(/[^/]*$/, '');
+    return location.origin + dir + 'station-detail-h5.html?id=' + encodeURIComponent(id);
+  }
+  /** 图片像素（打印/贴牌清晰），页面展示尺寸另算 */
+  var QR_SIZE = 320;
+  /** 每生成多少张让出一次 UI（更新进度提示） */
+  var BATCH = 20;
+
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  function getQuery() {
+    var q = {};
+    var code = ($('f-code').value || '').trim();
+    var name = ($('f-name').value || '').trim();
+    var status = $('f-status').value || '';
+    if (code) q.code = code;
+    if (name) q.name = name;
+    if (status) q.status = status;
+    return q;
+  }
+
+  function fetchRows(q) {
+    var p = new URLSearchParams(q);
+    return fetch(API + (p.toString() ? '?' + p : ''), { credentials: 'include' })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = text ? JSON.parse(text) : null; } catch (e) {}
+          if (!res.ok) throw new Error((json && json.message) || text || ('HTTP ' + res.status));
+          if (Array.isArray(json)) return json;
+          if (json && Array.isArray(json.data)) return json.data;
+          if (json && Array.isArray(json.list)) return json.list;
+          return [];
+        });
+      });
+  }
+
+  /** 文件名安全化：去掉 Windows 不允许的字符；空名兜底 */
+  function safeName(s) {
+    var name = String(s == null ? '' : s).replace(/[\\/:*?"<>|\r\n\t]/g, '_').trim();
+    return name || '未命名站点';
+  }
+
+  /** 生成一张二维码 PNG（dataURL）：qrcodejs 优先取 canvas，退化取 img（老环境）；单张失败不中断整批 */
+  function qrPngDataUrl(text) {
+    try {
+      var holder = document.createElement('div');
+      new QRCode(holder, {
+        text: text,
+        width: QR_SIZE,
+        height: QR_SIZE,
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      var canvas = holder.querySelector('canvas');
+      if (canvas && typeof canvas.toDataURL === 'function') {
+        return canvas.toDataURL('image/png');
+      }
+      var img = holder.querySelector('img');
+      return (img && img.src) || '';
+    } catch (e) {
+      console.warn('二维码生成失败：' + text, e);
+      return '';
+    }
+  }
+
+  /** base64 dataURL → Uint8Array（JSZip 入参） */
+  function dataUrlToU8(dataUrl) {
+    var base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    var bin = atob(base64);
+    var u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return u8;
+  }
+
+  function saveBlob(blob, filename) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  }
+
+  function nextTick() {
+    return new Promise(function (resolve) { setTimeout(resolve, 0); });
+  }
+
+  async function downloadAll() {
+    var btn = $('download-btn');
+    btn.disabled = true;
+    try {
+      if (!window.QRCode) return toast('二维码组件未加载，请刷新页面后重试');
+      if (!window.JSZip) return toast('压缩组件未加载，请刷新页面后重试');
+      var rows = await fetchRows(getQuery());
+      var valid = (rows || []).filter(function (r) { return r && r.id; });
+      if (!valid.length) return toast('暂无数据可生成');
+
+      var zip = new JSZip();
+      var used = {};
+      var done = 0;
+      toast('正在生成 0/' + valid.length + '…');
+      for (var i = 0; i < valid.length; i++) {
+        var r = valid[i];
+        var png = qrPngDataUrl(h5PageUrl(r.id));
+        if (!png) continue;
+        var base = safeName(r.name);
+        used[base] = (used[base] || 0) + 1;
+        var fileName = used[base] > 1 ? base + '_' + used[base] : base;
+        zip.file(fileName + '.png', dataUrlToU8(png));
+        done++;
+        if (done % BATCH === 0) {
+          toast('正在生成 ' + done + '/' + valid.length + '…');
+          await nextTick();
+        }
+      }
+      if (!done) return toast('二维码生成失败');
+
+      var blob = await zip.generateAsync(
+        { type: 'blob', compression: 'STORE' },
+        function (meta) { toast('正在打包 ' + Math.round(meta.percent) + '%…'); }
+      );
+      saveBlob(blob, '站点二维码.zip');
+      toast('已生成 ' + done + ' 张二维码');
+    } catch (err) {
+      toast((err && err.message) || '批量下载失败');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  $('reset-btn').addEventListener('click', function () {
+    $('f-code').value = '';
+    $('f-name').value = '';
+    $('f-status').value = '';
+  });
+
+  $('download-btn').addEventListener('click', downloadAll);
+})();
+</script>
+</body>
+</html>

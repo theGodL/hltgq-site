@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>站点详情</title>
+<script src="./lib/qrcode.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;background:#fff;color:#333;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;font-size:14px}
@@ -48,6 +49,11 @@ body{display:flex;flex-direction:column;overflow:hidden}
 .gate-image img{display:block;max-width:100%;max-height:320px;border:1px solid #f0f0f0;border-radius:6px;background:#f5f7fa;transition:border-color .2s}
 .gate-image:hover img{border-color:#1677ff}
 .gate-image-name{margin-top:8px;color:#8c8c8c;font-size:13px;line-height:20px}
+/* ===== 站点二维码（内容为手机端详情页地址，扫码在手机上查看） ===== */
+.qr-wrap{margin-top:14px;padding-top:14px;border-top:1px dashed #f0f0f0;text-align:center}
+.qr-box{display:inline-block;line-height:0}
+.qr-box img,.qr-box canvas{display:block;width:160px;height:160px}
+.qr-tip{margin-top:8px;color:#8c8c8c;font-size:12px;line-height:18px}
 
 /* ===== shared table ===== */
 .data-table{width:100%;border-collapse:collapse;font-size:14px}
@@ -191,6 +197,10 @@ a.photo-thumb:hover{border-color:#1677ff}
         <div class="sec-title">位置信息</div>
         <div class="kv"><span class="k">站点位置</span><span class="v" id="f-loc">—</span></div>
         <div class="kv"><span class="k">经纬度</span><span class="v" id="f-lnglat">—</span></div>
+        <div class="qr-wrap" id="qr-wrap" style="display:none">
+          <div class="qr-box" id="station-qr"></div>
+          <div class="qr-tip">扫码在手机上查看本站详情</div>
+        </div>
       </div>
     </div>
 
@@ -573,6 +583,34 @@ a.photo-thumb:hover{border-color:#1677ff}
   document.getElementById('debug-id').textContent = stationId
     ? ('stationId=' + stationId)
     : '未传 id / stationId，无法加载';
+
+  /* 站点二维码：内容为手机端详情页地址（H5 按 id 打开），仅在带 id 打开详情页时展示。
+     协议/域名/端口/上下文路径随当前访问地址实时生成（同域部署换域名无需改代码） */
+  function h5PageUrl(id) {
+    var dir = location.pathname.replace(/[^/]*$/, '');
+    return location.origin + dir + 'station-detail-h5.html?id=' + encodeURIComponent(id);
+  }
+  function renderStationQrcode() {
+    var wrap = document.getElementById('qr-wrap');
+    var box = document.getElementById('station-qr');
+    if (!wrap || !box || !stationId) return;
+    if (!window.QRCode) {
+      console.warn('二维码组件未加载（lib/qrcode.min.js）');
+      return;
+    }
+    box.innerHTML = '';
+    try {
+      new QRCode(box, {
+        text: h5PageUrl(stationId),
+        width: 160,
+        height: 160,
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      wrap.style.display = '';
+    } catch (e) {
+      console.warn('二维码生成失败', e);
+    }
+  }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -1282,6 +1320,7 @@ a.photo-thumb:hover{border-color:#1677ff}
     loadOptions();
     loaded.basic = true;
     loadBasic();
+    renderStationQrcode();
     /* 绑定入口仅管理员可见：admin 标记由后端统一判定（与 @RequireAdmin 校验同口径） */
     fetchApi('/auth/current-user').then(function (u) {
       if (u && u.admin === true) {
