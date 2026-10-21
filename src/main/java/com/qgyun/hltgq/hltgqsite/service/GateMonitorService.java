@@ -41,6 +41,17 @@ public interface GateMonitorService {
                                        long page, long size);
 
     /**
+     * 闸站报文：按站点 + 监测时间查询该时刻入库的原始报文（供设备厂家核对数据口径）
+     * <p>查询窗口：监测时间前 1 分钟 ~ 后 2 分钟（报文入库 tm 相对监测时间有固定偏差）；
+     * RabbitMQ 站一次返回原始十六进制帧 + 各标签解析 JSON，MQTT 站返回整包点位 JSON。
+     *
+     * @param siteId 站点 UUID（必填）
+     * @param tm     监测时间（历史统计行的时间）
+     * @return 报文列表（type=frame 原始帧 / json 解析报文，含 tag/tm/sendtm/afn/msgText）
+     */
+    List<Map<String, Object>> messages(String siteId, LocalDateTime tm);
+
+    /**
      * 闸站图表：固定七站在选中时间点的闸前/闸后水位
      * <p>命中规则：取各站距选中时间点最近（±30 分钟内）的闸门入库数据；
      * 半小时内无入库数据则该站水位为 null（表示该时间点无报文）。

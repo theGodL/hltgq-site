@@ -534,6 +534,8 @@ const fmtAvg = v => {
   if (!Number.isFinite(n)) return '';
   return n.toFixed(2);
 };
+/** 截断保留 2 位小数（不四舍五入；加极小量抵消浮点乘法尾差） */
+const trunc2 = v => Math.floor(v * 100 + 1e-9) / 100;
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 let chart = null;
@@ -1318,7 +1320,6 @@ function buildPivotAoa(stations, rows, opts) {
   const aoa = [headers];
   const colSums = stations.map(() => 0);
   let sumTotal = 0;
-  let avgTotal = 0;
 
   rows.forEach(r => {
     const vals = stations.map(s => {
@@ -1332,7 +1333,6 @@ function buildPivotAoa(stations, rows, opts) {
     const sum = vals.reduce((a, b) => a + (b == null || b === -999 || b === -9991 ? 0 : b), 0);
     const avg = r.avg != null ? +r.avg : (stations.length ? sum / stations.length : 0);
     sumTotal += sum;
-    avgTotal += avg;
     const displayVals = vals.map(v => (v == null ? (showEmpty ? '-' : '') : (v === -9991 ? '--' : (v === -999 ? '' : (showEmpty ? v : fmtRain(v))))));
     if (withSum) {
       const sumDisp = showEmpty ? sum : (fmtRain(sum) || '0');
@@ -1344,18 +1344,20 @@ function buildPivotAoa(stations, rows, opts) {
   });
 
   if (withTotal && rows.length) {
+    // 总计平均值 = 合计 ÷ 站数，保留 2 位小数且截断、不四舍五入（逐行 avg 相加会累积舍入误差）
+    const totalAvg = stations.length ? trunc2(sumTotal / stations.length) : 0;
     if (withSum) {
       aoa.push([
         '总计',
         ...colSums.map(v => +v.toFixed(1)),
         +sumTotal.toFixed(1),
-        +avgTotal.toFixed(1),
+        totalAvg,
       ]);
     } else {
       aoa.push([
         '总计',
         ...colSums.map(v => +v.toFixed(1)),
-        +avgTotal.toFixed(1),
+        totalAvg,
       ]);
     }
   }

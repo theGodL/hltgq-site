@@ -59,6 +59,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     /** 流量同批次对齐窗口（分钟）：报文按批次入库，流量 tm 应在开度/水位最新时刻 ±20 分钟内 */
     private static final long FLOW_ALIGN_MINUTES = 20;
 
+    /** 报文查询条数上限：单时刻入库报文最多 8 条（RabbitMQ 站原始帧 + 各标签），留足余量 */
+    private static final int MESSAGE_QUERY_LIMIT = 60;
+
     /** 召测四站（stcd → 站名）：仅 RabbitMQ 四站支持召测，报文 1 小时一次 */
     private static final Map<String, String> RECALL_STATIONS = new LinkedHashMap<>();
 
@@ -402,6 +405,30 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         }
 
         return result;
+    }
+
+    @Override
+    public List<Map<String, Object>> messages(String siteId, LocalDateTime tm) {
+        if (siteId == null || siteId.trim().isEmpty() || tm == null) {
+            return Collections.emptyList();
+        }
+        // 报文入库 tm 相对监测时间有固定偏差：RabbitMQ 站闸门 tm = 报文 sendtm（入库 tm 约晚 20 秒），
+        // MQTT 站闸门 tm = 报文 tm；统一取 [tm - 1 分钟, tm + 2 分钟] 窗口按 site 捞取该时刻全部报文
+        List<Map<String, Object>> rows = gateMonitorMapper.selectMessagesBySiteWindow(
+                siteId.trim(), tm.minusMinutes(1), tm.plusMinutes(2), MESSAGE_QUERY_LIMIT);
+        List<Map<String, Object>> records = new ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("type", r.get("type"));
+            m.put("tag", r.get("tag"));
+            m.put("frame", r.get("frame"));
+            m.put("tm", r.get("tm"));
+            m.put("sendtm", r.get("sendtm"));
+            m.put("afn", r.get("afn"));
+            m.put("msgText", r.get("msg_text"));
+            records.add(m);
+        }
+        return records;
     }
 
     /**

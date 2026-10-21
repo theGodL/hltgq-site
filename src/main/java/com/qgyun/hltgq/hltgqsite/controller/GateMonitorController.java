@@ -128,6 +128,22 @@ public class GateMonitorController {
     }
 
     /**
+     * 闸站报文：按站点 + 监测时间查询该时刻入库的原始报文（供设备厂家核对数据口径）
+     * <p>查询窗口：监测时间前 1 分钟 ~ 后 2 分钟（报文入库 tm 相对监测时间有固定偏差：
+     * RabbitMQ 站闸门 tm = 报文 sendtm，MQTT 站闸门 tm = 报文 tm）。
+     *
+     * @param siteId 站点 UUID（必填，与历史统计接口同一取值）
+     * @param tm     监测时间（历史统计行的监测日期），格式 yyyy-MM-dd HH:mm:ss
+     * @return 报文列表（type=frame 原始十六进制帧 / json 解析报文，含 tag/tm/sendtm/afn/msgText）
+     */
+    @GetMapping("/messages")
+    public List<Map<String, Object>> messages(
+            @RequestParam String siteId,
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime tm) {
+        return gateMonitorService.messages(siteId, tm);
+    }
+
+    /**
      * 闸站图表-固定七站闸前/闸后水位（按日期时间点查询）
      * <p>返回固定顺序七站（渠首进水闸、双庙湖节制闸、南山寺节制闸、毕岭节制闸、
      * 汪元节制闸、北干渠进水闸、南干渠进水闸），每站取距选中时间点最近（±30 分钟内）

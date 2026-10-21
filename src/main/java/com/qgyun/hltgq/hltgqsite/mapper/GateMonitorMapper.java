@@ -301,4 +301,34 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             @Param("time") LocalDateTime time,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 闸站报文：按站点 + 入库时间窗口查询原始报文（t_auto_hltgq_water_msg_info）
+     * <p>关联口径：报文入库时间 tm 与监测数据时间存在固定偏差——RabbitMQ 站闸门 tm = 报文 sendtm
+     * （入库 tm 约晚 20 秒），MQTT 站闸门 tm = 报文 tm；因此统一按 site + tm 窗口捞取该时刻全部报文
+     * （走 idx_water_msg_info_site_tm / idx_msg_info_site_tm）。
+     * <p>msg 列为报文标签（gateInfo/rainInfo/wtInfo...）；RabbitMQ 站另有原始十六进制帧行
+     * （msg 以 7E 开头），此类行 msg 即完整帧、msg_text 为 msgInfo 包装的 JSON。
+     *
+     * @param siteId    站点 UUID（报文表 site 与闸门/流量表同源）
+     * @param startTime 窗口起点（含）
+     * @param endTime   窗口终点（含）
+     * @param limit     最大返回条数
+     */
+    @Select("SELECT CASE WHEN m.msg LIKE '7E%' THEN 'frame' ELSE 'json' END AS type, " +
+            "CASE WHEN m.msg LIKE '7E%' THEN 'rawHex' ELSE m.msg END AS tag, " +
+            "CASE WHEN m.msg LIKE '7E%' THEN m.msg ELSE NULL END AS frame, " +
+            "to_char(m.tm::timestamp, 'YYYY-MM-DD HH24:MI:SS') AS tm, " +
+            "to_char(m.sendtm::timestamp, 'YYYY-MM-DD HH24:MI:SS') AS sendtm, " +
+            "m.afn, m.msg_text AS msg_text " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_msg_info\" m " +
+            "WHERE m.site = #{siteId} " +
+            "AND m.tm::timestamp >= #{startTime}::timestamp " +
+            "AND m.tm::timestamp <= #{endTime}::timestamp " +
+            "ORDER BY m.tm, m.sendtm " +
+            "LIMIT #{limit}")
+    List<Map<String, Object>> selectMessagesBySiteWindow(@Param("siteId") String siteId,
+                                                         @Param("startTime") LocalDateTime startTime,
+                                                         @Param("endTime") LocalDateTime endTime,
+                                                         @Param("limit") int limit);
 }
