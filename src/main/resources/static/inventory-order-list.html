@@ -129,12 +129,9 @@ td .tag.out{color:var(--el-color-warning);background:var(--el-color-warning-ligh
 .lnk:hover{text-decoration:underline}
 tr.flash td{animation:flash 1s ease}
 @keyframes flash{0%{background:var(--el-color-primary-light)}100%{background:transparent}}
-/* 操作列图标按钮（仅图标，hover 浮层提示） */
-.lnk-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:var(--el-radius);background:transparent;color:var(--el-color-primary);cursor:pointer;transition:background .2s;font-family:inherit;vertical-align:middle}
-.lnk-btn:hover{background:var(--el-color-primary-light)}
-.lnk-btn::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;font-size:12px;line-height:18px;padding:5px 9px;border-radius:var(--el-radius);white-space:nowrap;opacity:0;visibility:hidden;transition:opacity .2s;pointer-events:none;z-index:6}
-.lnk-btn:last-child::after{left:auto;right:0;transform:none}
-.lnk-btn:hover::after{opacity:1;visibility:visible}
+/* 操作列文字按钮（蓝色文字，hover 浅底） */
+.lnk-text{padding:0 4px;border:none;border-radius:var(--el-radius);background:transparent;color:var(--el-color-primary);font-size:14px;font-family:inherit;line-height:22px;cursor:pointer;transition:background .2s;vertical-align:middle}
+.lnk-text:hover{background:var(--el-color-primary-light)}
 /* 图标按钮（明细行删除）：18px 图标、热区 32×32、hover 底色 + tooltip */
 .act-btn{position:relative;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-color-primary);cursor:pointer;transition:background .2s,color .2s;vertical-align:middle}
 .act-btn.danger{color:var(--el-text-color-secondary)}
@@ -256,12 +253,12 @@ td.empty:hover{background:transparent}
 .sel.is-disabled .sel-arrow{border-top-color:var(--el-text-color-disabled)}
 .sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
 .sel.open .sel-panel{display:block}
-.sel-search{display:flex;align-items:center;gap:6px;padding:8px 16px 8px 24px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 0px 8px 0px !important;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
 .sel-search[hidden]{display:none}
 .sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
 .sel-search input::placeholder{color:var(--el-text-color-placeholder)}
 /* 下拉列表滚动条：固定滚动槽位(内容宽度恒定、不因滚动条出现/消失而挤动) + 细滚动条、透明轨道，不再贴边发闷 */
-.sel-list{max-height:274px;overflow-y:auto;padding:4px 0;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#d0d4dc transparent}
+.sel-list{max-height:260px;overflow-y:auto;padding:4px 0 0 0px;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#d0d4dc transparent}
 .sel-list::-webkit-scrollbar{width:6px}
 .sel-list::-webkit-scrollbar-track{background:transparent}
 .sel-list::-webkit-scrollbar-thumb{background:#d0d4dc;border-radius:3px}
@@ -718,8 +715,8 @@ function renderTable() {
     return;
   }
   tb.innerHTML = S.records.map(r => {
-    const acts = '<button class="lnk-btn" data-act="view" data-source="' + esc(r.source) +
-      '" data-id="' + esc(r.id) + '" data-tip="查看" aria-label="查看">' + ICON.eye + '</button>';
+    const acts = '<button class="lnk-text" data-act="view" data-source="' + esc(r.source) +
+      '" data-id="' + esc(r.id) + '">查看</button>';
     return '<tr data-key="' + esc(rowKey(r)) + '">' +
       '<td><span class="lnk" data-act="view" data-source="' + esc(r.source) + '" data-id="' + esc(r.id) +
       '">' + esc(r.orderNo || '--') + '</span></td>' +
@@ -977,7 +974,7 @@ function resetForm() {
   selType.setOptions(((S.meta && S.meta.types) || []).filter(t => t.group === group)
     .map(t => ({ value: t.value, label: t.label })));
   selType.setPlaceholder('请选择' + typeLabel).setEmptyText('请选择' + typeLabel).setValue('');
-  selWh.setOptions(((S.meta && S.meta.warehouses) || []).map(w => ({ value: w.id, label: w.name, sub: w.code || '' })));
+  selWh.setOptions(((S.meta && S.meta.warehouses) || []).map(w => ({ value: w.id, label: w.name })));
   selWh.setPlaceholder('请选择仓库').setEmptyText('暂无启用仓库').setValue('');
   selDep.setOptions(S.departments.map(d => ({ value: d.value, label: d.label })));
   selDep.setPlaceholder('请选择归口科室').setEmptyText('暂无科室数据').setValue('');
@@ -1548,5 +1545,6 @@ async function loadPickers() {
   await loadList();
 })();
 </script>
+<script src="./lib/date-placeholder.js"></script>
 </body>
 </html>

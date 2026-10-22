@@ -1245,7 +1245,6 @@ const MOISTURE_EXPORT_FIELDS = [
   { key: 'mtwenty', label: '20cm含水量 (%)' },
   { key: 'mthirty', label: '30cm含水量 (%)' },
   { key: 'status', label: '状态' },
-  { key: 'vol', label: '电压 (V)' },
 ];
 
 /** 导出取值：正常值保留数值（便于 Excel 计算），-9991/-999 交给 MonitorExport 统一转换 */
@@ -1264,7 +1263,7 @@ function exportMoistureList() {
     rows: list.map(r => ({
       siteName: r.siteName, siteCode: r.siteCode, tm: fmtTm(r.tm),
       mten: exportNum(r.mten), mtwenty: exportNum(r.mtwenty), mthirty: exportNum(r.mthirty),
-      status: r.status, vol: exportNum(r.vol),
+      status: r.status,
     })),
     filename: () => `墒情监测_${fmtDate(new Date())}`,
     sheetName: '墒情监测',
@@ -1303,7 +1302,7 @@ function exportMoistureHistory() {
   const e = $('hist-end').value || '';
   MonitorExport.open({
     title: `${name} · 导出历史数据`,
-    tip: '勾选需要的字段（含水量 / 电压等），导出表头只包含勾选字段',
+    tip: '勾选需要的字段（含水量 / 状态等），导出表头只包含勾选字段',
     fields: [
       { key: 'siteName', label: '站点名称', checked: false },
       { key: 'tm', label: '监测时间' },
@@ -1425,5 +1424,6 @@ async function init() {
 
 init();
 </script>
+<script src="./lib/date-placeholder.js"></script>
 </body>
 </html>

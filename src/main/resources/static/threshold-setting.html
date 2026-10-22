@@ -82,6 +82,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .btn-danger{background:var(--el-color-danger);border-color:var(--el-color-danger);color:#fff}
 .btn-danger:hover{background:var(--el-color-danger-hover);border-color:var(--el-color-danger-hover)}
 .btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn[hidden]{display:none}
 .btn.is-loading{color:transparent !important}
 .btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
 .btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
@@ -312,7 +313,7 @@ td.empty:hover{background:transparent}
       </div>
       <div class="f-item" id="fi-desc">
         <label class="f-label">描述</label>
-        <textarea class="field" id="in-desc" maxlength="500" placeholder="可选，最多 500 字"></textarea>
+        <textarea class="field" id="in-desc" maxlength="500" placeholder="请输入描述（选填）"></textarea>
         <div class="counter"><span id="desc-count">0</span>/500</div>
       </div>
     </div>
@@ -321,7 +322,6 @@ td.empty:hover{background:transparent}
   </div>
   <div class="drawer-ft">
     <button class="btn btn-default" id="btn-cancel">取消</button>
-    <button class="btn btn-primary" id="btn-toedit" hidden>编辑</button>
     <button class="btn btn-primary" id="btn-save">保存</button>
   </div>
 </aside>
@@ -738,7 +738,6 @@ function setDrawerMode(mode) {
   $('form-box').hidden = isView;
   $('view-box').hidden = !isView;
   $('btn-save').hidden = isView;
-  $('btn-toedit').hidden = !isView;
   $('btn-cancel').textContent = isView ? '关闭' : '取消';
   clearErrors();
 }
@@ -1146,7 +1145,6 @@ function bindEvents() {
   $('btn-cancel').addEventListener('click', closeDrawer);
   $('btn-save').addEventListener('click', save);
   $('btn-full').addEventListener('click', toggleFull);
-  $('btn-toedit').addEventListener('click', () => { if (S.row) openDrawer('edit', S.row); });
   $('drawer-mask').addEventListener('click', closeDrawer);
 
   const pgBar = $('pg-bar');

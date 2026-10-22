@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新增问题</title>
+<style>
+/* ===== 平台变量：与巡检计划页面同源 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height:40px;
+  --el-control-height-sm:36px;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+/* hidden 兜底：类选择器上的 display 会覆盖浏览器默认的 [hidden]{display:none} */
+[hidden]{display:none !important}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+
+/* ===== 页面骨架：单卡片 + 吸底操作栏 ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;width:100%;max-width:100%;overflow:hidden}
+.card{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.card-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.card-hd h2{font-size:16px;font-weight:500;color:var(--el-text-color-title)}
+.card-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
+.card-bd{flex:1;min-height:0;overflow:auto;padding:24px}
+.card-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
+.card-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
+
+/* 抽屉内嵌模式（?embed=1）：去掉页面留白与卡片外壳，由抽屉提供标题 */
+body.embed .page-wrap{padding:0}
+body.embed .card{border-radius:0;box-shadow:none}
+body.embed .card-hd{display:none}
+
+/* ===== 表单 ===== */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 24px;max-width:960px}
+.form-grid .span2{grid-column:span 2}
+@media (max-width:640px){.form-grid{grid-template-columns:1fr}.form-grid .span2{grid-column:span 1}}
+.f-label{display:block;font-size:14px;font-weight:400;color:var(--el-text-color-primary);margin-bottom:8px}
+.f-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
+.f-err{display:none;margin-top:4px;font-size:12px;color:var(--el-color-danger);align-items:center;gap:4px;line-height:16px}
+.f-err.show{display:flex}
+.counter{margin-top:4px;text-align:right;font-size:12px;color:var(--el-text-color-secondary)}
+
+.field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%;font-family:inherit}
+.field::placeholder{color:var(--el-text-color-placeholder)}
+.field:hover{border-color:var(--el-border-color-hover)}
+.field:focus{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+textarea.field{height:auto;min-height:96px;padding:8px 12px;line-height:22px;resize:vertical}
+
+/* 只读展示（发现时间 / 关联记录 / 处理方式 / 问题编号） */
+.readonly-box{min-height:var(--el-control-height);border:1px solid var(--el-border-color-light);border-radius:var(--el-radius-control);background:var(--el-fill-color-light);padding:8px 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-regular);line-height:22px}
+.readonly-box .tag{flex:none;height:22px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-bg-color);color:var(--el-text-color-regular);font-size:12px;display:inline-flex;align-items:center;border:1px solid var(--el-border-color-lighter)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height);padding:0 20px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative;font-family:inherit}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+.btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== 单选下拉 ===== */
+.sel{position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 16px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box:hover{border-color:var(--el-border-color-hover)}
+.sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sel.is-err .sel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.sel-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-text.placeholder{color:var(--el-text-color-placeholder)}
+.sel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.sel.open .sel-arrow{transform:rotate(180deg)}
+.sel.is-disabled .sel-box{background:var(--el-fill-color-light);border-color:var(--el-border-color-light);cursor:not-allowed}
+.sel.is-disabled .sel-text{color:var(--el-text-color-disabled)}
+.sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.sel.open .sel-panel{display:block}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 16px 8px 24px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search[hidden]{display:none}
+.sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.sel-list{max-height:240px;overflow-y:auto;padding:4px 0;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#d0d4dc transparent}
+.sel-list::-webkit-scrollbar{width:6px}
+.sel-list::-webkit-scrollbar-thumb{background:#d0d4dc;border-radius:3px}
+.sel-opt{height:36px;padding:0 16px 0 24px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt:hover{background:var(--el-fill-color-light)}
+.sel-opt.active{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+.sel-opt .opt-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{flex-shrink:0;margin-left:auto;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt .tick{flex-shrink:0;margin-left:auto;color:var(--el-color-primary)}
+.sel-opt .opt-sub+.tick{margin-left:8px}
+.sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+
+/* ===== 现场照片上传 ===== */
+.photo-zone{display:flex;flex-wrap:wrap;gap:12px}
+.photo-item{position:relative;width:88px;height:88px;border-radius:8px;overflow:hidden;border:1px solid var(--el-border-color-lighter);background:var(--el-fill-color-light)}
+.photo-item img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-item .del{position:absolute;right:4px;top:4px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:20px;text-align:center;cursor:pointer;padding:0}
+.photo-item .del:hover{background:rgba(245,108,108,.9)}
+.photo-item .state{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.72);font-size:12px;color:var(--el-text-color-regular)}
+.photo-item.is-uploading .state::before{content:'';width:16px;height:16px;margin-right:6px;border-radius:50%;border:2px solid rgba(22,119,255,.25);border-top-color:var(--el-color-primary);animation:spin .6s linear infinite}
+.photo-add{width:88px;height:88px;border:1px dashed var(--el-border-color);border-radius:8px;background:var(--el-bg-color);color:var(--el-text-color-secondary);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;font-size:12px;font-family:inherit;transition:border-color .2s,color .2s}
+.photo-add:hover:not(:disabled){border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.photo-add:disabled{opacity:.55;cursor:not-allowed}
+.photo-add .plus{font-size:22px;line-height:22px;font-weight:300}
+.upload-tip{margin-top:8px;font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
+
+/* 提示条 */
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
+.toast.show{opacity:1}
+.toast.err{color:var(--el-color-danger)}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="card">
+    <div class="card-hd">
+      <h2>新增问题</h2>
+      <button class="btn btn-default" id="btn-back">返回</button>
+    </div>
+    <div class="card-bd">
+      <div class="form-grid">
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>问题标题</label>
+          <input class="field" id="f-title" maxlength="200" placeholder="请输入问题标题（不超过 200 字）" autocomplete="off">
+          <div class="f-err" id="f-title-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">风险等级</label>
+          <div class="sel" id="f-risk"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>所属站点</label>
+          <div class="sel" id="f-site"></div>
+          <div class="readonly-box" id="f-site-ro" hidden></div>
+          <div class="f-err" id="f-site-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">设备</label>
+          <div class="sel" id="f-device"></div>
+          <div class="f-err" id="f-device-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>发现人</label>
+          <div class="sel" id="f-user"></div>
+          <div class="f-err" id="f-user-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">发现时间</label>
+          <div class="readonly-box" id="f-time">保存时按当前时间记录</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>问题描述</label>
+          <textarea class="field" id="f-content" maxlength="500" placeholder="请描述问题现象、位置、影响等（不超过 500 字）"></textarea>
+          <div class="counter"><span id="c-count">0</span>/500</div>
+          <div class="f-err" id="f-content-err"></div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">现场照片</label>
+          <div class="photo-zone">
+            <div class="photo-list" id="photo-list" style="display:contents"></div>
+            <button type="button" class="photo-add" id="photo-add">
+              <span class="plus">+</span><span>上传照片</span>
+            </button>
+          </div>
+          <input type="file" id="photo-input" accept="image/jpeg,image/png,image/gif,image/bmp,image/webp" multiple hidden>
+          <div class="upload-tip">支持 JPG / PNG / GIF / BMP / WEBP，单张不超过 10MB，最多 9 张</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">关联巡检记录</label>
+          <div class="readonly-box" id="f-record">未关联</div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">处理方式</label>
+          <div class="readonly-box"><span class="tag">待确认</span></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">问题编号</label>
+          <div class="readonly-box">保存后自动生成</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-ft">
+      <button class="btn btn-default" id="btn-cancel">取消</button>
+      <button class="btn btn-primary" id="btn-save">保存</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+/* ============================ 常量与工具 ============================ */
+const API = '/hltgq-site';
+/** 是否以抽屉内嵌方式打开（列表页巡检记录行「新增问题」） */
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+const PARAMS = new URLSearchParams(location.search);
+
+const ICON = {
+  search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  tick: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v === null || v === undefined ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+function showToast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+/** 统一请求：非 2xx 抛出后端 message（后端 IllegalArgumentException → 400 + message） */
+async function api(path, opts) {
+  const init = Object.assign({ credentials: 'include' }, opts || {});
+  if (init.body && typeof init.body !== 'string') {
+    init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
+    init.body = JSON.stringify(init.body);
+  }
+  const res = await fetch(API + path, init);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+    throw new Error((data && (data.message || data.error)) || fallback);
+  }
+  return data;
+}
+
+/** 表单行错误：on=true 显示；返回 on，便于串联校验 */
+function markErr(id, on, msg) {
+  const el = $(id);
+  if (!el) return false;
+  el.classList.toggle('show', !!on);
+  if (on && msg) el.textContent = msg;
+  return !!on;
+}
+
+/* ============================ 单选下拉 ============================ */
+function createSelect(el) {
+  const st = {
+    value: '', label: '', options: [], placeholder: '请选择', emptyText: '无匹配数据',
+    searchable: false, disabled: false, loading: false, onChange: null
+  };
+  el.innerHTML =
+    '<div class="sel-box" tabindex="0"><span class="sel-text placeholder"></span><span class="sel-arrow"></span></div>' +
+    '<div class="sel-panel"><div class="sel-search" hidden>' + ICON.search +
+    '<input type="text" placeholder="搜索" autocomplete="off"></div><div class="sel-list"></div></div>';
+
+  const box = el.querySelector('.sel-box');
+  const textEl = el.querySelector('.sel-text');
+  const searchWrap = el.querySelector('.sel-search');
+  const searchInput = searchWrap.querySelector('input');
+  const list = el.querySelector('.sel-list');
+
+  function sync() {
+    const hit = st.options.filter(o => o.value === st.value)[0];
+    const label = st.value ? (hit ? hit.label : (st.label || st.value)) : '';
+    textEl.textContent = label || st.placeholder;
+    textEl.classList.toggle('placeholder', !label);
+  }
+  function render() {
+    if (st.loading) { list.innerHTML = '<div class="sel-empty">加载中...</div>'; return; }
+    const kw = (st.searchable ? searchInput.value : '').trim().toLowerCase();
+    const opts = kw
+      ? st.options.filter(o => (o.label + ' ' + (o.sub || '')).toLowerCase().indexOf(kw) >= 0)
+      : st.options;
+    if (!opts.length) { list.innerHTML = '<div class="sel-empty">' + esc(st.emptyText) + '</div>'; return; }
+    list.innerHTML = opts.map(o =>
+      '<div class="sel-opt' + (o.value === st.value ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+      '<span class="opt-name">' + esc(o.label) + '</span>' +
+      (o.sub ? '<span class="opt-sub">' + esc(o.sub) + '</span>' : '') +
+      (o.value === st.value ? ICON.tick : '') + '</div>').join('');
+  }
+  function open() {
+    if (st.disabled) return;
+    closeAllSelects(el);
+    el.classList.add('open');
+    if (st.searchable) searchInput.value = '';
+    render();
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 忽略 */ }
+    if (st.searchable) setTimeout(() => { try { searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+  }
+  function close() { el.classList.remove('open'); }
+
+  box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    if (e.key === 'Escape') close();
+  });
+  searchInput.addEventListener('input', render);
+  list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.sel-opt');
+    if (!opt) return;
+    e.preventDefault();
+    st.value = opt.dataset.value;
+    st.label = '';
+    sync(); render(); close();
+    if (st.onChange) st.onChange(st.value);
+  });
+  el._close = close;
+
+  return {
+    getValue: () => st.value,
+    getLabel() {
+      const hit = st.options.filter(o => o.value === st.value)[0];
+      return hit ? hit.label : '';
+    },
+    setOptions(options) { st.options = options || []; sync(); render(); return this; },
+    setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
+    setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+    setSearchable(on) { st.searchable = !!on; searchWrap.hidden = !on; return this; },
+    setDisabled(on) { st.disabled = !!on; el.classList.toggle('is-disabled', !!on); return this; },
+    setLoading(on) { st.loading = !!on; if (!on) render(); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+function closeAllSelects(except) {
+  document.querySelectorAll('.sel.open').forEach(s => {
+    if (s !== except && typeof s._close === 'function') s._close();
+  });
+}
+
+/* ============================ 页面状态 ============================ */
+const S = {
+  photos: [],        // 已上传/上传中的照片：{id,name,url,uploading}
+  siteSeq: 0,
+  deviceSeq: 0,
+  currentUser: null,
+  record: null,      // 巡检记录上下文（?recordId= 时由后端回填，站点/设备以记录为准）
+  siteLockedId: ''   // 站点锁定值（= 巡检记录站点；站点必填且以记录为准）
+};
+const UI = {};
+const MAX_PHOTOS = 9;
+
+/** 取消 / 返回：内嵌时通知父页面关闭抽屉，否则回列表页 */
+function leave() {
+  if (EMBED) { window.parent.postMessage({ type: 'patrol-issue:close' }, '*'); return; }
+  location.href = './patrol-plan-list.html';
+}
+
+/* ============================ 候选加载 ============================ */
+/**
+ * 站点：站点必填且以巡检记录为准。
+ * - 记录已有站点：只读展示；
+ * - 记录缺站点：数据异常，只读提示并禁止上报（先补录巡检记录）；
+ * - 无 recordId（独立打开）：全量站点下拉。
+ */
+async function loadSites(ctx) {
+  const sel = $('f-site');
+  const ro = $('f-site-ro');
+  if (ctx && ctx.siteId) {
+    S.siteLockedId = ctx.siteId;
+    sel.hidden = true;
+    ro.hidden = false;
+    ro.innerHTML = '<span>' + esc(ctx.siteName || ctx.siteId) + '</span><span class="tag">记录站点</span>';
+    return;
+  }
+  S.siteLockedId = '';
+  if (ctx) {
+    // 记录存在但无站点：不代选、不允许上报，避免产生新的脏数据
+    sel.hidden = true;
+    ro.hidden = false;
+    ro.innerHTML = '<span>巡检记录缺少站点</span><span class="tag">数据异常</span>';
+    return;
+  }
+  sel.hidden = false;
+  ro.hidden = true;
+  const seq = ++S.siteSeq;
+  UI.site.setPlaceholder('加载中...').setLoading(true);
+  try {
+    const list = await api('/patrol-schedule/sites');
+    if (seq !== S.siteSeq) return;
+    UI.site.setOptions((Array.isArray(list) ? list : []).map(s => ({
+      value: s.value, label: s.label || s.value, sub: s.sub || ''
+    })));
+    UI.site.setPlaceholder('请选择站点');
+  } catch (e) {
+    if (seq !== S.siteSeq) return;
+    UI.site.setOptions([]).setPlaceholder('站点加载失败');
+    showToast(e.message || '站点加载失败', true);
+  } finally {
+    if (seq === S.siteSeq) UI.site.setLoading(false);
+  }
+}
+
+/**
+ * 设备候选（按站点，范围限制在记录站点内）：非必填；
+ * preset 为记录设备（记录有设备时默认选中，允许改为同站点其他设备）。
+ */
+async function loadDevices(siteId, preset) {
+  const seq = ++S.deviceSeq;
+  UI.device.setValue('').setError(false);
+  markErr('f-device-err', false);
+  if (!siteId) {
+    UI.device.setOptions([]).setDisabled(true).setPlaceholder('请先选择站点');
+    return;
+  }
+  UI.device.setDisabled(false).setPlaceholder('加载中...').setLoading(true);
+  try {
+    const list = await api('/patrol-schedule/devices?siteId=' + encodeURIComponent(siteId));
+    if (seq !== S.deviceSeq) return;
+    UI.device.setOptions((Array.isArray(list) ? list : []).map(d => ({
+      value: d.value, label: d.label || d.value, sub: d.sub || ''
+    })));
+    UI.device.setPlaceholder('不选择（可选）');
+    if (preset && preset.id) UI.device.setValue(preset.id, preset.name || '');
+  } catch (e) {
+    if (seq !== S.deviceSeq) return;
+    UI.device.setOptions([]).setPlaceholder('设备加载失败');
+    showToast(e.message || '设备加载失败', true);
+  } finally {
+    if (seq === S.deviceSeq) UI.device.setLoading(false);
+  }
+}
+
+/** 发现人候选 + 默认当前登录人 */
+async function loadUsers() {
+  try {
+    const list = await api('/patrol-schedule/users');
+    UI.user.setOptions((Array.isArray(list) ? list : []).map(u => ({
+      value: u.value, label: u.label || u.value, sub: u.sub || ''
+    })));
+  } catch (e) {
+    showToast(e.message || '人员加载失败', true);
+  }
+}
+
+async function loadCurrentUser() {
+  try {
+    const u = await api('/user/profile');
+    if (u && u.userId) {
+      S.currentUser = { userId: u.userId, name: u.name || u.loginName || '' };
+      if (!UI.user.getValue()) UI.user.setValue(u.userId, S.currentUser.name);
+    }
+  } catch (e) { /* 未登录 / 无权限时留空，提交由后端取当前操作人 */ }
+}
+
+/* ============================ 现场照片 ============================ */
+function renderPhotos() {
+  const keep = $('photo-add');
+  const html = S.photos.map((p, i) =>
+    '<div class="photo-item' + (p.uploading ? ' is-uploading' : '') + '">' +
+      (p.url ? '<img src="' + esc(API + p.url) + '" alt="' + esc(p.name) + '">' : '') +
+      (p.uploading ? '<span class="state">上传中</span>'
+        : '<button type="button" class="del" data-del="' + i + '" title="移除">✕</button>') +
+    '</div>').join('');
+  $('photo-list').innerHTML = html;
+  keep.disabled = S.photos.length >= MAX_PHOTOS;
+}
+
+/** 上传单张照片（multipart；不能走 api()，否则 FormData 会被当作 JSON 序列化） */
+async function uploadOne(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(API + '/patrol-issue/photo', {
+    method: 'POST', body: fd, credentials: 'include'
+  });
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    throw new Error((data && (data.message || data.error)) || '照片上传失败（HTTP ' + res.status + '）');
+  }
+  return data;
+}
+
+async function onPickFiles(files) {
+  const list = Array.prototype.slice.call(files || []);
+  if (!list.length) return;
+  if (S.photos.length >= MAX_PHOTOS) { showToast('最多上传 ' + MAX_PHOTOS + ' 张照片', true); return; }
+  const room = MAX_PHOTOS - S.photos.filter(p => !p.uploading).length;
+  const picked = list.slice(0, room);
+  if (list.length > room) showToast('最多上传 ' + MAX_PHOTOS + ' 张，已忽略多余文件', true);
+  for (let i = 0; i < picked.length; i++) {
+    const file = picked[i];
+    if (!/^image\//.test(file.type || '')) { showToast('仅支持图片文件：' + file.name, true); continue; }
+    if (file.size > 10 * 1024 * 1024) { showToast('单张照片不能超过 10MB：' + file.name, true); continue; }
+    const item = { id: '', name: file.name, url: '', uploading: true };
+    S.photos.push(item);
+    renderPhotos();
+    try {
+      const data = await uploadOne(file);
+      item.id = data && data.id;
+      item.url = (data && data.url) || '';
+      item.uploading = false;
+    } catch (e) {
+      item.uploading = false;
+      item.failed = true;
+      S.photos = S.photos.filter(p => p !== item);
+      showToast(e.message || '照片上传失败', true);
+    }
+    renderPhotos();
+  }
+  $('photo-input').value = '';
+}
+
+async function removePhoto(index) {
+  const item = S.photos[index];
+  if (!item || !item.id) return;
+  try {
+    await api('/patrol-issue/photo/remove', { method: 'POST', body: { id: item.id } });
+    S.photos.splice(index, 1);
+    renderPhotos();
+  } catch (e) {
+    showToast(e.message || '照片移除失败', true);
+  }
+}
+
+/* ============================ 关联巡检记录 ============================ */
+/** 关联记录展示：站点/设备/时间均为后端记录的权威值（不再依赖 URL 拼接参数） */
+function renderRecord() {
+  const box = $('f-record');
+  const ctx = S.record;
+  if (!ctx) {
+    box.textContent = PARAMS.get('recordId') ? '记录加载中...' : '未关联';
+    return;
+  }
+  const parts = [];
+  if (ctx.recordTime) parts.push(ctx.recordTime);
+  const siteDevice = [ctx.siteName, ctx.deviceName].filter(Boolean).join(' / ');
+  if (siteDevice) parts.push(siteDevice);
+  // 记录未带站点：数据异常（站点必填），禁止上报，先补录记录
+  if (!ctx.siteId) {
+    parts.push('记录缺少站点');
+  }
+  box.innerHTML = '<span class="tag">巡检记录</span>' +
+    '<span>' + esc(parts.length ? parts.join(' · ') : '已关联') + '</span>';
+}
+
+/* ============================ 保存 ============================ */
+async function save() {
+  const title = $('f-title').value.trim();
+  // 站点：记录站点或计划唯一站点时以锁定值为准，否则取下拉选择
+  const siteId = S.siteLockedId || UI.site.getValue();
+  const deviceId = UI.device.getValue();
+  const userId = UI.user.getValue();
+  const content = $('f-content').value.trim();
+  const riskLevel = UI.risk.getValue();
+
+  let bad = false;
+  bad = markErr('f-title-err', !title, '请输入问题标题') || bad;
+  bad = markErr('f-site-err', !siteId, '请选择所属站点') || bad;
+  bad = markErr('f-user-err', !userId, '请选择发现人') || bad;
+  bad = markErr('f-content-err', !content, '请输入问题描述') || bad;
+  UI.site.setError(!siteId);
+  UI.user.setError(!userId);
+  if (bad) return;
+  if (S.photos.some(p => p.uploading)) { showToast('照片正在上传，请稍候', true); return; }
+
+  const btn = $('btn-save');
+  btn.classList.add('is-loading');
+  btn.disabled = true;
+  try {
+    const data = await api('/patrol-issue/create', {
+      method: 'POST',
+      body: {
+        title: title,
+        siteId: siteId,
+        deviceId: deviceId || null,
+        content: content,
+        riskLevel: riskLevel || null,
+        userId: userId,
+        recordId: S.record ? S.record.recordId : (PARAMS.get('recordId') || null),
+        photoIds: S.photos.filter(p => p.id && !p.uploading).map(p => p.id)
+      }
+    });
+    if (EMBED) {
+      window.parent.postMessage({
+        type: 'patrol-issue:saved',
+        id: data && data.id,
+        code: data && data.code
+      }, '*');
+      return;
+    }
+    showToast('问题已保存' + (data && data.code ? '：' + data.code : ''));
+    setTimeout(() => { location.href = './patrol-plan-list.html'; }, 800);
+  } catch (e) {
+    showToast(e.message || '保存失败', true);
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+  }
+}
+
+/* ============================ 初始化 ============================ */
+async function boot() {
+  if (EMBED) document.body.classList.add('embed');
+
+  UI.risk = createSelect($('f-risk')).setPlaceholder('未设置（可选）');
+  UI.site = createSelect($('f-site')).setPlaceholder('请选择站点').setSearchable(true);
+  UI.device = createSelect($('f-device')).setPlaceholder('请先选择站点').setSearchable(true).setDisabled(true);
+  UI.user = createSelect($('f-user')).setPlaceholder('默认当前登录人').setSearchable(true);
+
+  UI.risk.setOptions([
+    { value: '', label: '未设置（可选）' },
+    { value: '#1#', label: '低风险' },
+    { value: '#2#', label: '中风险' },
+    { value: '#3#', label: '高风险' }
+  ]);
+
+  // 记录上下文：页面以 ?recordId= 打开时，站点/设备/时间以记录为准
+  const recordId = PARAMS.get('recordId') || '';
+  if (recordId) {
+    try {
+      S.record = await api('/patrol-issue/record-context?recordId=' + encodeURIComponent(recordId));
+    } catch (e) {
+      showToast(e.message || '巡检记录加载失败', true);
+      $('btn-save').disabled = true;
+    }
+    // 记录缺站点：数据异常（站点必填），先补录巡检记录再上报
+    if (S.record && !S.record.siteId) {
+      showToast('巡检记录缺少站点，请先补录巡检记录后再上报', true);
+      $('btn-save').disabled = true;
+    }
+  }
+
+  renderRecord();
+  renderPhotos();
+
+  UI.site.onChange(v => loadDevices(v));
+  UI.device.onChange(() => { markErr('f-device-err', false); UI.device.setError(false); });
+  UI.user.onChange(() => { markErr('f-user-err', false); UI.user.setError(false); });
+  $('f-title').addEventListener('input', () => markErr('f-title-err', false));
+  $('f-content').addEventListener('input', () => {
+    $('c-count').textContent = $('f-content').value.length;
+    markErr('f-content-err', false);
+  });
+
+  $('photo-add').addEventListener('click', () => $('photo-input').click());
+  $('photo-input').addEventListener('change', e => onPickFiles(e.target.files));
+  $('photo-list').addEventListener('click', e => {
+    const del = e.target.closest('[data-del]');
+    if (del) removePhoto(Number(del.dataset.del));
+  });
+
+  $('btn-save').addEventListener('click', save);
+  $('btn-cancel').addEventListener('click', leave);
+  $('btn-back').addEventListener('click', leave);
+
+  // 点击空白收起下拉
+  document.addEventListener('mousedown', e => {
+    if (!e.target.closest('.sel')) closeAllSelects();
+  });
+  // Esc：先收下拉，再关闭
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.querySelector('.sel.open')) { closeAllSelects(); return; }
+    leave();
+  });
+
+  // 候选：站点（以记录为准）→ 设备（限记录站点，回填记录设备）；发现人默认当前登录人
+  loadSites(S.record);
+  if (S.siteLockedId) {
+    const preset = S.record && S.record.deviceId
+      ? { id: S.record.deviceId, name: S.record.deviceName } : null;
+    loadDevices(S.siteLockedId, preset);
+  }
+  loadUsers();
+  loadCurrentUser();
+}
+
+boot();
+</script>
+</body>
+</html>

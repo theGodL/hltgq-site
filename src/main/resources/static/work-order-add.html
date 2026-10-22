@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新增工单</title>
+<style>
+/* ===== 平台变量：与巡检计划页面同源 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-color-warning:#fa8c16;
+  --el-color-warning-light:rgba(250,140,22,.1);
+  --el-color-success:#52c41a;
+  --el-color-success-light:rgba(82,196,26,.1);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height:40px;
+  --el-control-height-sm:36px;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+/* hidden 兜底：类选择器上的 display 会覆盖浏览器默认的 [hidden]{display:none} */
+[hidden]{display:none !important}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+
+/* ===== 页面骨架：单卡片 + 吸底操作栏 ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;width:100%;max-width:100%;overflow:hidden}
+.card{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.card-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.card-hd h2{font-size:16px;font-weight:500;color:var(--el-text-color-title)}
+.card-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
+.card-bd{flex:1;min-height:0;overflow:auto;padding:24px}
+.card-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
+.card-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
+
+/* 抽屉内嵌模式（?embed=1）：去掉页面留白与卡片外壳，由抽屉提供标题 */
+body.embed .page-wrap{padding:0}
+body.embed .card{border-radius:0;box-shadow:none}
+body.embed .card-hd{display:none}
+
+/* ===== 表单 ===== */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 24px;max-width:960px}
+.form-grid .span2{grid-column:span 2}
+@media (max-width:640px){.form-grid{grid-template-columns:1fr}.form-grid .span2{grid-column:span 1}}
+.f-label{display:block;font-size:14px;font-weight:400;color:var(--el-text-color-primary);margin-bottom:8px}
+.f-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
+.f-err{display:none;margin-top:4px;font-size:12px;color:var(--el-color-danger);align-items:center;gap:4px;line-height:16px}
+.f-err.show{display:flex}
+.counter{margin-top:4px;text-align:right;font-size:12px;color:var(--el-text-color-secondary)}
+
+.field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%;font-family:inherit}
+.field::placeholder{color:var(--el-text-color-placeholder)}
+.field:hover{border-color:var(--el-border-color-hover)}
+.field:focus{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+textarea.field{height:auto;min-height:96px;padding:8px 12px;line-height:22px;resize:vertical}
+
+/* 只读展示（工单编号 / 状态 / 所属问题） */
+.readonly-box{min-height:var(--el-control-height);border:1px solid var(--el-border-color-light);border-radius:var(--el-radius-control);background:var(--el-fill-color-light);padding:8px 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-regular);line-height:22px}
+.readonly-box .tag{flex:none;height:22px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-bg-color);color:var(--el-text-color-regular);font-size:12px;display:inline-flex;align-items:center;border:1px solid var(--el-border-color-lighter)}
+
+/* 状态标签（与列表页同口径） */
+.tag{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:var(--el-radius);background:#f0f0f0;color:#666;font-size:12px;line-height:1;border:none;vertical-align:middle}
+.tag::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.tag.blue{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+.tag.green{color:var(--el-color-success);background:var(--el-color-success-light)}
+.tag.orange{color:var(--el-color-warning);background:var(--el-color-warning-light)}
+.tag.red{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height);padding:0 20px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative;font-family:inherit}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+.btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== 单选下拉 ===== */
+.sel{position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 16px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box:hover{border-color:var(--el-border-color-hover)}
+.sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sel.is-err .sel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.sel-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-text.placeholder{color:var(--el-text-color-placeholder)}
+.sel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.sel.open .sel-arrow{transform:rotate(180deg)}
+.sel.is-disabled .sel-box{background:var(--el-fill-color-light);border-color:var(--el-border-color-light);cursor:not-allowed}
+.sel.is-disabled .sel-text{color:var(--el-text-color-disabled)}
+.sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.sel.open .sel-panel{display:block}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 16px 8px 24px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search[hidden]{display:none}
+.sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.sel-list{max-height:240px;overflow-y:auto;padding:4px 0;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#d0d4dc transparent}
+.sel-list::-webkit-scrollbar{width:6px}
+.sel-list::-webkit-scrollbar-thumb{background:#d0d4dc;border-radius:3px}
+.sel-opt{height:36px;padding:0 16px 0 24px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt:hover{background:var(--el-fill-color-light)}
+.sel-opt.active{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+.sel-opt .opt-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{flex-shrink:0;margin-left:auto;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt .tick{flex-shrink:0;margin-left:auto;color:var(--el-color-primary)}
+.sel-opt .opt-sub+.tick{margin-left:8px}
+.sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+
+/* 提示条 */
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
+.toast.show{opacity:1}
+.toast.err{color:var(--el-color-danger)}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="card">
+    <div class="card-hd">
+      <h2 id="page-title">新增工单</h2>
+      <button class="btn btn-default" id="btn-back">返回</button>
+    </div>
+    <div class="card-bd">
+      <div class="form-grid">
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>工单标题</label>
+          <input class="field" id="f-title" maxlength="200" placeholder="请输入工单标题（不超过 200 字）" autocomplete="off">
+          <div class="f-err" id="f-title-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>工单类型</label>
+          <div class="sel" id="f-type"></div>
+          <div class="f-err" id="f-type-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>所属站点</label>
+          <div class="sel" id="f-site"></div>
+          <div class="f-err" id="f-site-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">关联设备</label>
+          <div class="sel" id="f-device"></div>
+          <div class="f-err" id="f-device-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">负责部门</label>
+          <div class="sel" id="f-org"></div>
+          <div class="f-err" id="f-org-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">处理人员</label>
+          <div class="sel" id="f-user"></div>
+          <div class="f-err" id="f-user-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">要求完成时间</label>
+          <input class="field" type="datetime-local" id="f-time" step="60">
+          <div class="f-err" id="f-time-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">状态</label>
+          <div class="readonly-box" id="f-status"><span class="tag orange">待指派</span><span>保存后生效</span></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">工单编号</label>
+          <div class="readonly-box" id="f-code">保存后自动生成</div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">关联问题记录</label>
+          <div class="readonly-box" id="f-issue">未关联（问题记录「转工单」时自动带入）</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">内容描述</label>
+          <textarea class="field" id="f-content" maxlength="500" placeholder="请描述工单内容、现场情况、处理要求等（不超过 500 字）"></textarea>
+          <div class="counter"><span id="c-count">0</span>/500</div>
+          <div class="f-err" id="f-content-err"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-ft">
+      <button class="btn btn-default" id="btn-cancel">取消</button>
+      <button class="btn btn-primary" id="btn-save">保存</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+/* ============================ 常量与工具 ============================ */
+const API = '/hltgq-site';
+const PARAMS = new URLSearchParams(location.search);
+/** 是否以抽屉内嵌方式打开（列表页「新增/编辑」） */
+const EMBED = PARAMS.get('embed') === '1';
+/** 编辑的工单 id（空串 = 新增） */
+const EDIT_ID = PARAMS.get('id') || '';
+
+const ICON = {
+  search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  tick: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+/** 工单类型（qjulvf，9 档，与后端 WorkOrderService.TYPE_LABELS 同口径） */
+const WO_TYPES = [
+  { value: '#1#', label: '日常巡检工单' },
+  { value: '#yjje#', label: '设备维护工单' },
+  { value: '#hxqm#', label: '设备故障抢修工单' },
+  { value: '#zopb#', label: '水工建筑物维护工单' },
+  { value: '#kjua#', label: '渠道及附属设施养护工单' },
+  { value: '#enak#', label: '计量与监测维护工单' },
+  { value: '#bgtg#', label: '信息化与通信维护工单' },
+  { value: '#pfqj#', label: '安全隐患整改工单' },
+  { value: '#uvxb#', label: '应急处置工单' }
+];
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v === null || v === undefined ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+function showToast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+/** 统一请求：非 2xx 抛出后端 message（后端 IllegalArgumentException → 400 + message） */
+async function api(path, opts) {
+  const init = Object.assign({ credentials: 'include' }, opts || {});
+  if (init.body && typeof init.body !== 'string') {
+    init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
+    init.body = JSON.stringify(init.body);
+  }
+  const res = await fetch(API + path, init);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+    throw new Error((data && (data.message || data.error)) || fallback);
+  }
+  return data;
+}
+
+/** 表单行错误：on=true 显示；返回 on，便于串联校验 */
+function markErr(id, on, msg) {
+  const el = $(id);
+  if (!el) return false;
+  el.classList.toggle('show', !!on);
+  if (on && msg) el.textContent = msg;
+  return !!on;
+}
+
+/** 后端 "yyyy-MM-dd HH:mm:ss" → datetime-local "yyyy-MM-ddTHH:mm" */
+function toLocalInput(v) {
+  if (!v) return '';
+  return String(v).replace(' ', 'T').slice(0, 16);
+}
+
+/** datetime-local "yyyy-MM-ddTHH:mm" → 后端 "yyyy-MM-dd HH:mm" */
+function fromLocalInput(v) {
+  if (!v) return null;
+  return String(v).replace('T', ' ').slice(0, 16);
+}
+
+/* ============================ 单选下拉 ============================ */
+function createSelect(el) {
+  const st = {
+    value: '', label: '', options: [], placeholder: '请选择', emptyText: '无匹配数据',
+    searchable: false, disabled: false, loading: false, onChange: null
+  };
+  el.innerHTML =
+    '<div class="sel-box" tabindex="0"><span class="sel-text placeholder"></span><span class="sel-arrow"></span></div>' +
+    '<div class="sel-panel"><div class="sel-search" hidden>' + ICON.search +
+    '<input type="text" placeholder="搜索" autocomplete="off"></div><div class="sel-list"></div></div>';
+
+  const box = el.querySelector('.sel-box');
+  const textEl = el.querySelector('.sel-text');
+  const searchWrap = el.querySelector('.sel-search');
+  const searchInput = searchWrap.querySelector('input');
+  const list = el.querySelector('.sel-list');
+
+  function sync() {
+    const hit = st.options.filter(o => o.value === st.value)[0];
+    const label = st.value ? (hit ? hit.label : (st.label || st.value)) : '';
+    textEl.textContent = label || st.placeholder;
+    textEl.classList.toggle('placeholder', !label);
+  }
+  function render() {
+    if (st.loading) { list.innerHTML = '<div class="sel-empty">加载中...</div>'; return; }
+    const kw = (st.searchable ? searchInput.value : '').trim().toLowerCase();
+    const opts = kw
+      ? st.options.filter(o => (o.label + ' ' + (o.sub || '')).toLowerCase().indexOf(kw) >= 0)
+      : st.options;
+    if (!opts.length) { list.innerHTML = '<div class="sel-empty">' + esc(st.emptyText) + '</div>'; return; }
+    list.innerHTML = opts.map(o =>
+      '<div class="sel-opt' + (o.value === st.value ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+      '<span class="opt-name">' + esc(o.label) + '</span>' +
+      (o.sub ? '<span class="opt-sub">' + esc(o.sub) + '</span>' : '') +
+      (o.value === st.value ? ICON.tick : '') + '</div>').join('');
+  }
+  function open() {
+    if (st.disabled) return;
+    closeAllSelects(el);
+    el.classList.add('open');
+    if (st.searchable) searchInput.value = '';
+    render();
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 忽略 */ }
+    if (st.searchable) setTimeout(() => { try { searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+  }
+  function close() { el.classList.remove('open'); }
+
+  box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    if (e.key === 'Escape') close();
+  });
+  searchInput.addEventListener('input', render);
+  list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.sel-opt');
+    if (!opt) return;
+    e.preventDefault();
+    st.value = opt.dataset.value;
+    st.label = '';
+    sync(); render(); close();
+    if (st.onChange) st.onChange(st.value);
+  });
+  el._close = close;
+
+  return {
+    getValue: () => st.value,
+    getLabel() {
+      const hit = st.options.filter(o => o.value === st.value)[0];
+      return hit ? hit.label : '';
+    },
+    setOptions(options) { st.options = options || []; sync(); render(); return this; },
+    setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
+    setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+    setSearchable(on) { st.searchable = !!on; searchWrap.hidden = !on; return this; },
+    setDisabled(on) { st.disabled = !!on; el.classList.toggle('is-disabled', !!on); return this; },
+    setLoading(on) { st.loading = !!on; if (!on) render(); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+function closeAllSelects(except) {
+  document.querySelectorAll('.sel.open').forEach(s => {
+    if (s !== except && typeof s._close === 'function') s._close();
+  });
+}
+
+/* ============================ 页面状态 ============================ */
+const S = {
+  siteSeq: 0,
+  deviceSeq: 0,
+  detail: null,   // 编辑时回填的工单详情
+  orgs: []        // 部门候选原文（含 code，兼容存量短码）
+};
+const UI = {};
+
+/** 取消 / 返回：内嵌时通知父页面关闭抽屉，否则回列表页 */
+function leave() {
+  if (EMBED) { window.parent.postMessage({ type: 'work-order:close' }, '*'); return; }
+  location.href = './work-order-list.html';
+}
+
+/* ============================ 候选加载 ============================ */
+async function loadSites() {
+  const seq = ++S.siteSeq;
+  UI.site.setPlaceholder('加载中...').setLoading(true);
+  try {
+    const list = await api('/patrol-schedule/sites');
+    if (seq !== S.siteSeq) return;
+    UI.site.setOptions((Array.isArray(list) ? list : []).map(s => ({
+      value: s.value, label: s.label || s.value, sub: s.sub || ''
+    })));
+    UI.site.setPlaceholder('请选择站点');
+  } catch (e) {
+    if (seq !== S.siteSeq) return;
+    UI.site.setOptions([]).setPlaceholder('站点加载失败');
+    showToast(e.message || '站点加载失败', true);
+  } finally {
+    if (seq === S.siteSeq) UI.site.setLoading(false);
+  }
+}
+
+/** 设备候选（按站点，非必填）；preset 为编辑回填的设备 */
+async function loadDevices(siteId, preset) {
+  const seq = ++S.deviceSeq;
+  UI.device.setError(false);
+  markErr('f-device-err', false);
+  if (!siteId) {
+    UI.device.setValue('').setOptions([]).setDisabled(true).setPlaceholder('请先选择站点');
+    return;
+  }
+  UI.device.setDisabled(false).setPlaceholder('加载中...').setLoading(true);
+  try {
+    const list = await api('/patrol-schedule/devices?siteId=' + encodeURIComponent(siteId));
+    if (seq !== S.deviceSeq) return;
+    UI.device.setOptions((Array.isArray(list) ? list : []).map(d => ({
+      value: d.value, label: d.label || d.value, sub: d.sub || ''
+    })));
+    UI.device.setPlaceholder('不选择（可选）');
+    if (preset && preset.id) UI.device.setValue(preset.id, preset.name || '');
+  } catch (e) {
+    if (seq !== S.deviceSeq) return;
+    UI.device.setOptions([]).setPlaceholder('设备加载失败');
+    showToast(e.message || '设备加载失败', true);
+  } finally {
+    if (seq === S.deviceSeq) UI.device.setLoading(false);
+  }
+}
+
+/** 负责部门候选（/work-order/orgs，value=部门 id，sub=短码） */
+async function loadOrgs() {
+  try {
+    const list = await api('/work-order/orgs');
+    S.orgs = Array.isArray(list) ? list : [];
+    UI.org.setOptions(S.orgs.map(o => ({
+      value: o.id, label: o.name || o.code || o.id, sub: o.code || ''
+    })));
+  } catch (e) {
+    showToast(e.message || '部门加载失败', true);
+  }
+}
+
+/** 处理人员候选 */
+async function loadUsers() {
+  try {
+    const list = await api('/patrol-schedule/users');
+    UI.user.setOptions((Array.isArray(list) ? list : []).map(u => ({
+      value: u.value, label: u.label || u.value, sub: u.sub || ''
+    })));
+  } catch (e) {
+    showToast(e.message || '人员加载失败', true);
+  }
+}
+
+/* ============================ 编辑回填 ============================ */
+async function loadDetail() {
+  const d = await api('/work-order/detail?id=' + encodeURIComponent(EDIT_ID));
+  S.detail = d;
+  $('page-title').textContent = '编辑工单';
+  document.title = '编辑工单';
+  $('f-code').textContent = d.code || '--';
+  $('f-status').innerHTML = '<span class="tag ' + statusClass(d.statusCode) + '">' +
+    esc(d.status || '--') + '</span>';
+  $('f-title').value = d.title || '';
+  $('f-content').value = d.content || '';
+  $('c-count').textContent = String($('f-content').value.length);
+  $('f-time').value = toLocalInput(d.time);
+  UI.type.setValue(d.typeCode, d.type);
+  $('f-issue').innerHTML = d.issueId
+    ? '<span class="tag blue">问题记录</span><span>' + esc(d.issueTitle || d.issueId) + '</span>'
+    : '未关联';
+  // 站点：站点候选加载完成后回填，再按站点加载设备（默认选中原设备）
+  UI.site.setValue(d.siteId, d.siteName || d.siteId);
+  await loadDevices(d.siteId, d.deviceId ? { id: d.deviceId, name: d.deviceName } : null);
+  // 部门：存量工单可能落部门短码，按 id 或 code 归一到候选 id
+  if (d.orgId) {
+    const hit = S.orgs.filter(o => o.id === d.orgId || o.code === d.orgId)[0];
+    UI.org.setValue(hit ? hit.id : d.orgId, d.orgName || d.orgId);
+  }
+  if (d.userId) UI.user.setValue(d.userId, d.userName || d.userId);
+  // 非待指派：列表页不会给出编辑入口，直接打开时明确提示并禁止保存
+  if (d.statusCode !== '#1#') {
+    showToast('仅待指派的工单可编辑，当前状态：' + (d.status || '--'), true);
+    $('btn-save').disabled = true;
+  }
+}
+
+/** 状态标签配色（与列表页同口径） */
+function statusClass(code) {
+  return ({ '#1#': 'orange', '#2#': 'blue', '#3#': 'green', '#4#': 'red', '#iizl#': 'red' })[code] || '';
+}
+
+/* ============================ 保存 ============================ */
+async function save() {
+  const title = $('f-title').value.trim();
+  const type = UI.type.getValue();
+  const siteId = UI.site.getValue();
+  const deviceId = UI.device.getValue();
+  const orgId = UI.org.getValue();
+  const userId = UI.user.getValue();
+  const content = $('f-content').value.trim();
+  const time = fromLocalInput($('f-time').value);
+
+  let bad = false;
+  bad = markErr('f-title-err', !title, '请输入工单标题') || bad;
+  bad = markErr('f-type-err', !type, '请选择工单类型') || bad;
+  bad = markErr('f-site-err', !siteId, '请选择所属站点') || bad;
+  UI.type.setError(!type);
+  UI.site.setError(!siteId);
+  if (bad) return;
+
+  const body = {
+    title: title,
+    type: type,
+    content: content || null,
+    siteId: siteId,
+    deviceId: deviceId || null,
+    orgId: orgId || null,
+    userId: userId || null,
+    time: time
+  };
+
+  const btn = $('btn-save');
+  btn.classList.add('is-loading');
+  btn.disabled = true;
+  try {
+    let data;
+    if (EDIT_ID) {
+      body.id = EDIT_ID;
+      data = await api('/work-order/update', { method: 'POST', body: body });
+    } else {
+      data = await api('/work-order/create', { method: 'POST', body: body });
+    }
+    if (EMBED) {
+      window.parent.postMessage({
+        type: 'work-order:saved',
+        id: (data && data.id) || EDIT_ID,
+        code: (data && data.code) || (S.detail && S.detail.code) || '',
+        isNew: !EDIT_ID
+      }, '*');
+      return;
+    }
+    showToast(EDIT_ID ? '工单已保存' : '工单已创建' + (data && data.code ? '：' + data.code : ''));
+    setTimeout(() => { location.href = './work-order-list.html'; }, 800);
+  } catch (e) {
+    showToast(e.message || '保存失败', true);
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+  }
+}
+
+/* ============================ 初始化 ============================ */
+async function boot() {
+  if (EMBED) document.body.classList.add('embed');
+
+  UI.type = createSelect($('f-type')).setPlaceholder('请选择工单类型');
+  UI.site = createSelect($('f-site')).setPlaceholder('请选择站点').setSearchable(true);
+  UI.device = createSelect($('f-device')).setPlaceholder('请先选择站点').setSearchable(true).setDisabled(true);
+  UI.org = createSelect($('f-org')).setPlaceholder('不指定（可选）').setSearchable(true);
+  UI.user = createSelect($('f-user')).setPlaceholder('不指定（可选）').setSearchable(true);
+  UI.type.setOptions(WO_TYPES.map(t => ({ value: t.value, label: t.label })));
+
+  UI.site.onChange(v => loadDevices(v));
+  UI.device.onChange(() => { markErr('f-device-err', false); UI.device.setError(false); });
+  UI.org.onChange(() => { markErr('f-org-err', false); UI.org.setError(false); });
+  UI.user.onChange(() => { markErr('f-user-err', false); UI.user.setError(false); });
+  UI.type.onChange(() => { markErr('f-type-err', false); UI.type.setError(false); });
+  $('f-title').addEventListener('input', () => markErr('f-title-err', false));
+  $('f-content').addEventListener('input', () => {
+    $('c-count').textContent = $('f-content').value.length;
+    markErr('f-content-err', false);
+  });
+
+  $('btn-save').addEventListener('click', save);
+  $('btn-cancel').addEventListener('click', leave);
+  $('btn-back').addEventListener('click', leave);
+
+  // 点击空白收起下拉
+  document.addEventListener('mousedown', e => {
+    if (!e.target.closest('.sel')) closeAllSelects();
+  });
+  // Esc：先收下拉，再关闭
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.querySelector('.sel.open')) { closeAllSelects(); return; }
+    leave();
+  });
+
+  // 候选并行加载：站点 / 部门 / 人员
+  await Promise.all([loadSites(), loadOrgs(), loadUsers()]);
+  if (!EDIT_ID) return;
+
+  try {
+    await loadDetail();
+  } catch (e) {
+    showToast(e.message || '工单加载失败', true);
+    $('btn-save').disabled = true;
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

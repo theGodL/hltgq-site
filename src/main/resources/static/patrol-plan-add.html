@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新增巡检计划</title>
+<style>
+/* ===== 平台变量：与巡检计划列表页同源 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-hover:#f78989;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-text-color-icon:#606266;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height:40px;
+  --el-control-height-sm:36px;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+
+/* ===== 页面骨架：单卡片 + 吸底操作栏 ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;width:100%;max-width:100%;overflow:hidden}
+.card{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.card-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.card-hd h2{font-size:16px;font-weight:500;color:var(--el-text-color-title)}
+.card-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
+.card-bd{flex:1;min-height:0;overflow:auto;padding:24px}
+.card-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
+.card-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
+
+/* 抽屉内嵌模式（?embed=1）：去掉页面留白与卡片外壳，由抽屉提供标题 */
+body.embed .page-wrap{padding:0}
+body.embed .card{border-radius:0;box-shadow:none}
+body.embed .card-hd{display:none}
+
+/* ===== 表单 ===== */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 24px;max-width:960px}
+.form-grid .span2{grid-column:span 2}
+@media (max-width:640px){.form-grid{grid-template-columns:1fr}.form-grid .span2{grid-column:span 1}}
+.f-label{display:block;font-size:14px;font-weight:400;color:var(--el-text-color-primary);margin-bottom:8px}
+.f-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
+.f-err{display:none;margin-top:4px;font-size:12px;color:var(--el-color-danger);align-items:center;gap:4px;line-height:16px}
+.f-err.show{display:flex}
+.counter{margin-top:4px;text-align:right;font-size:12px;color:var(--el-text-color-secondary)}
+/* 保存后状态提示：新建固定落草稿，发布后才按计划时间自动流转 */
+.status-hint{min-height:var(--el-control-height);display:flex;align-items:center;gap:8px;font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
+.status-hint .tag{flex:none;height:22px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-bg-page);color:var(--el-text-color-regular);font-size:12px;display:inline-flex;align-items:center}
+
+.field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%;font-family:inherit}
+.field::placeholder{color:var(--el-text-color-placeholder)}
+.field:hover{border-color:var(--el-border-color-hover)}
+.field:focus{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+textarea.field{height:auto;min-height:96px;padding:8px 12px;line-height:22px;resize:vertical}
+input[type="date"].field{font-family:inherit}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height);padding:0 20px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative;font-family:inherit}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+.btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== 单选下拉 ===== */
+.sel{position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 16px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box:hover{border-color:var(--el-border-color-hover)}
+.sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sel.is-err .sel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.sel-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-text.placeholder{color:var(--el-text-color-placeholder)}
+.sel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.sel.open .sel-arrow{transform:rotate(180deg)}
+.sel.is-disabled .sel-box{background:var(--el-fill-color-disabled,#f5f5f5);border-color:var(--el-border-color-light);cursor:not-allowed}
+.sel.is-disabled .sel-text{color:var(--el-text-color-disabled)}
+.sel.is-disabled .sel-arrow{border-top-color:var(--el-text-color-disabled)}
+.sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.sel.open .sel-panel{display:block}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 16px 8px 24px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search[hidden]{display:none}
+.sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.sel-search input::placeholder{color:var(--el-text-color-placeholder)}
+.sel-list{max-height:240px;overflow-y:auto;padding:4px 0;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#d0d4dc transparent}
+.sel-list::-webkit-scrollbar{width:6px}
+.sel-list::-webkit-scrollbar-track{background:transparent}
+.sel-list::-webkit-scrollbar-thumb{background:#d0d4dc;border-radius:3px}
+.sel-opt{height:36px;padding:0 16px 0 24px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt:hover{background:var(--el-fill-color-light)}
+.sel-opt.active{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+.sel-opt .opt-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{flex-shrink:0;margin-left:auto;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt .tick{flex-shrink:0;margin-left:auto;color:var(--el-color-primary)}
+.sel-opt .opt-sub+.tick{margin-left:8px}
+.sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+
+/* ===== 多选下拉（巡查范围站点） ===== */
+.msel{position:relative}
+.msel-box{min-height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:6px 32px 6px 8px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+.msel-box:hover{border-color:var(--el-border-color-hover)}
+.msel.open .msel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.msel.is-err .msel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.msel-ph{font-size:14px;color:var(--el-text-color-placeholder);padding-left:8px}
+.msel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.msel.open .msel-arrow{transform:rotate(180deg)}
+.msel-tag{display:inline-flex;align-items:center;gap:2px;height:26px;padding:0 4px 0 8px;background:var(--el-fill-color-light);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);font-size:13px;color:var(--el-text-color-primary);max-width:100%}
+.msel-tag span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msel-tag .x{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border:none;background:none;border-radius:2px;color:var(--el-text-color-secondary);cursor:pointer;font-size:12px;line-height:1;flex-shrink:0}
+.msel-tag .x:hover{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+.msel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.msel.open .msel-panel{display:block}
+.msel-search{display:flex;align-items:center;gap:6px;padding:8px 16px 8px 24px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.msel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.msel-search input::placeholder{color:var(--el-text-color-placeholder)}
+.msel-list{max-height:240px;overflow-y:auto;padding:4px 0;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#d0d4dc transparent}
+.msel-list::-webkit-scrollbar{width:6px}
+.msel-list::-webkit-scrollbar-track{background:transparent}
+.msel-list::-webkit-scrollbar-thumb{background:#d0d4dc;border-radius:3px}
+.msel-opt{height:36px;padding:0 16px 0 24px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.msel-opt:hover{background:var(--el-fill-color-light)}
+.msel-opt.active{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+.msel-opt .box{width:16px;height:16px;border:1px solid var(--el-border-color);border-radius:2px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--el-bg-color);color:#fff}
+.msel-opt.active .box{background:var(--el-color-primary);border-color:var(--el-color-primary)}
+.msel-opt .box svg{display:none}
+.msel-opt.active .box svg{display:block}
+.msel-opt .opt-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msel-opt .opt-sub{margin-left:auto;flex-shrink:0;font-size:12px;color:var(--el-text-color-secondary)}
+.msel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+
+/* ===== 日期选择（日历面板） ===== */
+.dp{position:relative}
+.dp-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 12px;display:flex;align-items:center;gap:8px;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+.dp-box:hover{border-color:var(--el-border-color-hover)}
+.dp.open .dp-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.dp.is-err .dp-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.dp-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp-text.placeholder{color:var(--el-text-color-placeholder)}
+.dp-cal{display:flex;flex-shrink:0;color:var(--el-text-color-secondary)}
+.dp-panel{display:none;position:absolute;left:0;top:calc(100% + 4px);width:308px;background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:8px;box-shadow:var(--el-shadow-popper);z-index:30;overflow:hidden;user-select:none}
+.dp.open .dp-panel{display:block}
+.dp.up .dp-panel{top:auto;bottom:calc(100% + 4px)}
+.dp-hd{height:52px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--el-border-color-lighter)}
+.dp-title{font-size:15px;font-weight:600;color:var(--el-text-color-primary)}
+.dp-nav{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:none;background:none;border-radius:4px;color:#a8abb2;cursor:pointer;padding:0;transition:color .2s,background .2s}
+.dp-nav:hover{color:var(--el-color-primary);background:var(--el-fill-color-light)}
+.dp-week{display:grid;grid-template-columns:repeat(7,1fr);padding:10px 10px 0}
+.dp-week span{height:30px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--el-text-color-primary)}
+.dp-grid{display:grid;grid-template-columns:repeat(7,1fr);padding:2px 10px 10px;row-gap:2px}
+.dp-day{height:34px;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--el-text-color-primary);border:1px solid transparent;border-radius:4px;cursor:pointer;transition:background .15s,color .15s}
+.dp-day:hover{background:var(--el-fill-color-light);color:var(--el-color-primary)}
+.dp-day.other{color:#c0c4cc}
+.dp-day.other:hover{color:#c0c4cc}
+.dp-day.today{border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.dp-day.sel,.dp-day.sel:hover{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.dp-ft{height:44px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:center}
+.dp-today{height:28px;padding:0 10px;border:none;background:none;border-radius:4px;color:var(--el-color-primary);font-size:14px;font-family:inherit;cursor:pointer}
+.dp-today:hover{background:var(--el-fill-color-light)}
+
+/* 提示条 */
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
+.toast.show{opacity:1}
+.toast.err{color:var(--el-color-danger)}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="card">
+    <div class="card-hd">
+      <h2 id="page-title">新增巡检计划</h2>
+      <button class="btn btn-default" id="btn-back">返回列表</button>
+    </div>
+    <div class="card-bd">
+      <div class="form-grid">
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>计划名称</label>
+          <input class="field" id="f-title" maxlength="200" placeholder="请输入计划名称（不超过 200 字）" autocomplete="off">
+          <div class="f-err" id="f-title-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>计划类型</label>
+          <div class="sel" id="f-type"></div>
+          <div class="f-err" id="f-type-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>计划开始时间</label>
+          <div class="dp" id="f-start"></div>
+          <div class="f-err" id="f-start-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>计划结束时间</label>
+          <div class="dp" id="f-end"></div>
+          <div class="f-err" id="f-end-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>巡检人员</label>
+          <div class="sel" id="f-user"></div>
+          <div class="f-err" id="f-user-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">保存后状态</label>
+          <div class="status-hint"><span class="tag">草稿</span>发布后按巡检进度自动流转（未开始 / 进行中 / 已完成）</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>巡查范围</label>
+          <div class="msel" id="f-sites"></div>
+          <div class="f-err" id="f-sites-err"></div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>巡查内容</label>
+          <textarea class="field" id="f-content" maxlength="1000" placeholder="请输入巡查内容（不超过 1000 字）"></textarea>
+          <div class="counter"><span id="c-count">0</span>/1000</div>
+          <div class="f-err" id="f-content-err"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-ft">
+      <button class="btn btn-default" id="btn-cancel">取消</button>
+      <button class="btn btn-primary" id="btn-save">保存</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+/* ============================ 基础工具 ============================ */
+const API = '/hltgq-site';
+const TYPE_ANNUAL = '#1#';
+const TYPE_MONTHLY = '#zjgg#';
+/** 是否以抽屉内嵌方式打开（列表页新增/编辑按钮） */
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+/** 编辑模式：草稿行的「编辑」传入计划 id；为空即新增 */
+const EDIT_ID = new URLSearchParams(location.search).get('id') || '';
+
+const ICON = {
+  search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  tick: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  cal: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2.2" y="3.2" width="11.6" height="10.6" rx="1.6" stroke="currentColor" stroke-width="1.2"/><path d="M2.2 6.6h11.6M5.4 1.9v2.5M10.6 1.9v2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  chevL: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 4L6 8l4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  chevR: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  chevLL: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M7.6 4L3.6 8l4 4M12.4 4l-4 4 4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  chevRR: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8.4 4l4 4-4 4M3.6 4l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v === null || v === undefined ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+function showToast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+/** 统一请求：非 2xx 抛出后端 message（后端 IllegalArgumentException → 400 + message） */
+async function api(path, opts) {
+  const init = Object.assign({ credentials: 'include' }, opts || {});
+  if (init.body && typeof init.body !== 'string') {
+    init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
+    init.body = JSON.stringify(init.body);
+  }
+  const res = await fetch(API + path, init);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+    throw new Error((data && (data.message || data.error)) || fallback);
+  }
+  return data;
+}
+
+/** 表单行错误：on=true 显示；返回 on，便于串联校验 */
+function markErr(id, on, msg) {
+  const el = $(id);
+  if (!el) return false;
+  el.classList.toggle('show', !!on);
+  if (on && msg) el.textContent = msg;
+  return !!on;
+}
+
+/* ============================ 单选下拉 ============================ */
+function createSelect(el) {
+  const st = {
+    value: '', label: '', options: [], placeholder: '请选择', emptyText: '无匹配数据',
+    searchable: false, disabled: false, loading: false, onChange: null
+  };
+  el.innerHTML =
+    '<div class="sel-box" tabindex="0"><span class="sel-text placeholder"></span><span class="sel-arrow"></span></div>' +
+    '<div class="sel-panel"><div class="sel-search" hidden>' + ICON.search +
+    '<input type="text" placeholder="搜索" autocomplete="off"></div><div class="sel-list"></div></div>';
+
+  const box = el.querySelector('.sel-box');
+  const textEl = el.querySelector('.sel-text');
+  const searchWrap = el.querySelector('.sel-search');
+  const searchInput = searchWrap.querySelector('input');
+  const list = el.querySelector('.sel-list');
+
+  function sync() {
+    const hit = st.options.filter(o => o.value === st.value)[0];
+    const label = st.value ? (hit ? hit.label : (st.label || st.value)) : '';
+    textEl.textContent = label || st.placeholder;
+    textEl.classList.toggle('placeholder', !label);
+  }
+  function render() {
+    if (st.loading) { list.innerHTML = '<div class="sel-empty">加载中...</div>'; return; }
+    const kw = (st.searchable ? searchInput.value : '').trim().toLowerCase();
+    const opts = kw
+      ? st.options.filter(o => (o.label + ' ' + (o.sub || '')).toLowerCase().indexOf(kw) >= 0)
+      : st.options;
+    if (!opts.length) { list.innerHTML = '<div class="sel-empty">' + esc(st.emptyText) + '</div>'; return; }
+    list.innerHTML = opts.map(o =>
+      '<div class="sel-opt' + (o.value === st.value ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+      '<span class="opt-name">' + esc(o.label) + '</span>' +
+      (o.sub ? '<span class="opt-sub">' + esc(o.sub) + '</span>' : '') +
+      (o.value === st.value ? ICON.tick : '') + '</div>').join('');
+  }
+  function open() {
+    if (st.disabled) return;
+    closeAllPickers(el);
+    el.classList.add('open');
+    if (st.searchable) searchInput.value = '';
+    render();
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 忽略 */ }
+    if (st.searchable) setTimeout(() => { try { searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+  }
+  function close() { el.classList.remove('open'); }
+
+  box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    if (e.key === 'Escape') close();
+  });
+  searchInput.addEventListener('input', render);
+  list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.sel-opt');
+    if (!opt) return;
+    e.preventDefault();
+    st.value = opt.dataset.value;
+    st.label = '';
+    sync(); render(); close();
+    if (st.onChange) st.onChange(st.value);
+  });
+  el._close = close;
+
+  return {
+    getValue: () => st.value,
+    getLabel() {
+      const hit = st.options.filter(o => o.value === st.value)[0];
+      return hit ? hit.label : '';
+    },
+    setOptions(options) { st.options = options || []; sync(); render(); return this; },
+    setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
+    setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+    setSearchable(on) { st.searchable = !!on; searchWrap.hidden = !on; return this; },
+    setDisabled(on) { st.disabled = !!on; el.classList.toggle('is-disabled', !!on); return this; },
+    setLoading(on) { st.loading = !!on; if (!on) render(); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+/* ============================ 多选下拉（站点） ============================ */
+function createMultiSelect(el) {
+  const st = { values: [], options: [], placeholder: '请选择' };
+  el.innerHTML =
+    '<div class="msel-box"><span class="msel-ph"></span></div><span class="msel-arrow"></span>' +
+    '<div class="msel-panel"><div class="msel-search">' + ICON.search +
+    '<input type="text" placeholder="搜索站点名称/编号" autocomplete="off"></div><div class="msel-list"></div></div>';
+
+  const box = el.querySelector('.msel-box');
+  const searchInput = el.querySelector('.msel-search input');
+  const list = el.querySelector('.msel-list');
+
+  function labelOf(v) {
+    const hit = st.options.filter(o => o.value === v)[0];
+    return hit ? hit.label : v;
+  }
+  function renderBox() {
+    const chips = st.values.map(v =>
+      '<span class="msel-tag"><span>' + esc(labelOf(v)) + '</span>' +
+      '<button type="button" class="x" data-remove="' + esc(v) + '" title="移除">✕</button></span>').join('');
+    const ph = st.values.length ? '' : '<span class="msel-ph">' + esc(st.placeholder) + '</span>';
+    box.innerHTML = chips + ph;
+  }
+  function renderList() {
+    const kw = searchInput.value.trim().toLowerCase();
+    const opts = kw
+      ? st.options.filter(o => (o.label + ' ' + (o.sub || '')).toLowerCase().indexOf(kw) >= 0)
+      : st.options;
+    if (!opts.length) { list.innerHTML = '<div class="msel-empty">无匹配数据</div>'; return; }
+    list.innerHTML = opts.map(o =>
+      '<div class="msel-opt' + (st.values.indexOf(o.value) >= 0 ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+      '<span class="box">' + ICON.tick + '</span>' +
+      '<span class="opt-name">' + esc(o.label) + '</span>' +
+      (o.sub ? '<span class="opt-sub">' + esc(o.sub) + '</span>' : '') + '</div>').join('');
+  }
+  function open() {
+    closeAllPickers(el);
+    el.classList.add('open');
+    searchInput.value = '';
+    renderList();
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 忽略 */ }
+    setTimeout(() => { try { searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+  }
+  function close() { el.classList.remove('open'); }
+
+  box.addEventListener('click', e => {
+    const x = e.target.closest('[data-remove]');
+    if (x) {
+      e.stopPropagation();
+      st.values = st.values.filter(v => v !== x.dataset.remove);
+      renderBox();
+      renderList();
+      return;
+    }
+    el.classList.contains('open') ? close() : open();
+  });
+  searchInput.addEventListener('input', renderList);
+  list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.msel-opt');
+    if (!opt) return;
+    e.preventDefault();
+    // 阻止冒泡：下面 renderList 会重建选项节点，事件到 document 时 e.target 已脱离文档，
+    // 全局“点击空白收起”监听会因 closest('.msel') 失配而误收起面板
+    e.stopPropagation();
+    const v = opt.dataset.value;
+    const i = st.values.indexOf(v);
+    if (i >= 0) st.values.splice(i, 1); else st.values.push(v);
+    renderBox();
+    renderList();
+  });
+  el._close = close;
+
+  renderBox();
+  return {
+    getValue: () => st.values.slice(),
+    setOptions(options) { st.options = options || []; renderBox(); renderList(); return this; },
+    setValue(vals) { st.values = Array.isArray(vals) ? vals.slice() : []; renderBox(); renderList(); return this; },
+    setPlaceholder(t) { st.placeholder = t; renderBox(); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; }
+  };
+}
+
+/** 收起所有展开的下拉（单选 + 多选 + 日期） */
+function closeAllPickers(except) {
+  document.querySelectorAll('.sel.open,.msel.open,.dp.open').forEach(s => {
+    if (s !== except && typeof s._close === 'function') s._close();
+  });
+}
+
+/* ============================ 日期选择（日历面板） ============================ */
+const WEEK_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
+
+function createDatePicker(el) {
+  const st = { value: '', placeholder: '请选择日期', viewY: 0, viewM: 0, onChange: null };
+  el.innerHTML =
+    '<div class="dp-box"><span class="dp-text"></span><span class="dp-cal">' + ICON.cal + '</span></div>' +
+    '<div class="dp-panel">' +
+      '<div class="dp-hd">' +
+        '<button type="button" class="dp-nav" data-nav="py" title="上一年">' + ICON.chevLL + '</button>' +
+        '<button type="button" class="dp-nav" data-nav="pm" title="上个月">' + ICON.chevL + '</button>' +
+        '<span class="dp-title"></span>' +
+        '<button type="button" class="dp-nav" data-nav="nm" title="下个月">' + ICON.chevR + '</button>' +
+        '<button type="button" class="dp-nav" data-nav="ny" title="下一年">' + ICON.chevRR + '</button>' +
+      '</div>' +
+      '<div class="dp-week">' + WEEK_LABELS.map(w => '<span>' + w + '</span>').join('') + '</div>' +
+      '<div class="dp-grid"></div>' +
+      '<div class="dp-ft"><button type="button" class="dp-today">今天</button></div>' +
+    '</div>';
+
+  const box = el.querySelector('.dp-box');
+  const textEl = el.querySelector('.dp-text');
+  const titleEl = el.querySelector('.dp-title');
+  const grid = el.querySelector('.dp-grid');
+  const panel = el.querySelector('.dp-panel');
+
+  function renderText() {
+    textEl.textContent = st.value || st.placeholder;
+    textEl.classList.toggle('placeholder', !st.value);
+  }
+  function renderGrid() {
+    titleEl.textContent = st.viewY + '年 ' + (st.viewM + 1) + '月';
+    const today = fmtInputDate(new Date());
+    const offset = (new Date(st.viewY, st.viewM, 1).getDay() + 6) % 7; // 周一为一周第一天
+    let html = '';
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(st.viewY, st.viewM, 1 - offset + i);
+      const s = fmtInputDate(d);
+      const cls = ['dp-day'];
+      if (d.getMonth() !== st.viewM) cls.push('other');
+      if (s === today) cls.push('today');
+      if (s === st.value) cls.push('sel');
+      html += '<div class="' + cls.join(' ') + '" data-date="' + s + '">' + d.getDate() + '</div>';
+    }
+    grid.innerHTML = html;
+  }
+  function open() {
+    closeAllPickers(el);
+    const base = st.value ? new Date(st.value + 'T00:00:00') : new Date();
+    st.viewY = base.getFullYear();
+    st.viewM = base.getMonth();
+    renderGrid();
+    el.classList.add('open');
+    // 下方空间不足时向上展开
+    const r = box.getBoundingClientRect();
+    const wrap = el.closest('.card-bd');
+    const wr = wrap ? wrap.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+    el.classList.toggle('up', wr.bottom - r.bottom < 370 && r.top - wr.top > 370);
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 忽略 */ }
+  }
+  function close() { el.classList.remove('open'); }
+  function pick(v) {
+    st.value = v;
+    renderText();
+    close();
+    if (st.onChange) st.onChange(st.value);
+  }
+
+  box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  // 面板内 mousedown 不冒泡：网格/标题重建后 e.target 会脱离文档，避免被“点击空白收起”误判
+  panel.addEventListener('mousedown', e => e.stopPropagation());
+  panel.addEventListener('click', e => {
+    const nav = e.target.closest('[data-nav]');
+    if (nav) {
+      const k = nav.dataset.nav;
+      if (k === 'py') st.viewY--;
+      else if (k === 'ny') st.viewY++;
+      else if (k === 'pm') { st.viewM--; if (st.viewM < 0) { st.viewM = 11; st.viewY--; } }
+      else { st.viewM++; if (st.viewM > 11) { st.viewM = 0; st.viewY++; } }
+      renderGrid();
+      return;
+    }
+    const day = e.target.closest('.dp-day');
+    if (day) { pick(day.dataset.date); return; }
+    if (e.target.closest('.dp-today')) pick(fmtInputDate(new Date()));
+  });
+  el._close = close;
+
+  renderText();
+  return {
+    getValue: () => st.value,
+    setValue(v) { st.value = v || ''; renderText(); return this; },
+    setPlaceholder(t) { st.placeholder = t; renderText(); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+/* ============================ 日期工具 ============================ */
+const pad = n => String(n).padStart(2, '0');
+function fmtInputDate(d) {
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+/** 后端日期串（ISO 串或 Jackson 数组）→ yyyy-MM-dd */
+function dateText(v) {
+  if (!v) return '';
+  if (Array.isArray(v)) return v[0] + '-' + pad(v[1]) + '-' + pad(v[2]);
+  return String(v).replace('T', ' ').slice(0, 10);
+}
+
+/** 默认结束时间：年度 → 开始 + 1 年 - 1 天；月度 → 开始所在月最后一天 */
+function defaultEnd(startStr, type) {
+  const base = startStr ? new Date(startStr + 'T00:00:00') : new Date();
+  if (isNaN(base.getTime())) return '';
+  if (type === TYPE_MONTHLY) return fmtInputDate(new Date(base.getFullYear(), base.getMonth() + 1, 0));
+  return fmtInputDate(new Date(base.getFullYear() + 1, base.getMonth(), base.getDate() - 1));
+}
+
+/* ============================ 页面初始化 ============================ */
+const UI = {};
+
+function listUrl() {
+  return './patrol-plan-list.html?type=' + (UI.type.getValue() === TYPE_MONTHLY ? 'monthly' : 'annual');
+}
+
+/** 取消 / 返回：内嵌时通知父页面关闭抽屉，否则回列表页 */
+function leave() {
+  if (EMBED) { window.parent.postMessage({ type: 'patrol-plan:close' }, '*'); return; }
+  location.href = listUrl();
+}
+
+async function loadUsers() {
+  try {
+    const list = await api('/patrol-schedule/users');
+    UI.user.setOptions((Array.isArray(list) ? list : []).map(u => ({
+      value: u.value, label: u.label || u.value, sub: u.sub || ''
+    })));
+  } catch (e) {
+    showToast(e.message || '人员加载失败', true);
+  }
+}
+
+async function loadSites() {
+  try {
+    const list = await api('/patrol-schedule/sites');
+    UI.sites.setOptions((Array.isArray(list) ? list : []).map(s => ({
+      value: s.value, label: s.label || s.value, sub: s.sub || ''
+    })));
+  } catch (e) {
+    showToast(e.message || '站点加载失败', true);
+  }
+}
+
+/** 默认巡检人员 = 当前登录人（候选列表未包含时按姓名显示，提交值不变） */
+async function loadCurrentUser() {
+  try {
+    const u = await api('/user/profile');
+    if (u && u.userId && !UI.user.getValue()) {
+      UI.user.setValue(u.userId, u.name || u.loginName || '');
+    }
+  } catch (e) { /* 未登录 / 无权限时留空 */ }
+}
+
+/** 编辑模式：按 id 回填计划详情（仅草稿行会打开编辑） */
+async function loadPlan(id) {
+  const d = await api('/patrol-schedule/detail?id=' + encodeURIComponent(id));
+  // 仅草稿可编辑：直接带非草稿 id 打开时立即回绝（后端保存时还会再校验一次）
+  if (d.statusCode !== '#1#') {
+    showToast('仅草稿状态的计划可以编辑', true);
+    setTimeout(leave, 800);
+    return;
+  }
+  UI.type.setValue(d.planType === TYPE_MONTHLY ? TYPE_MONTHLY : TYPE_ANNUAL);
+  $('f-title').value = d.title || '';
+  $('f-content').value = d.content || '';
+  $('c-count').textContent = $('f-content').value.length;
+  UI.start.setValue(dateText(d.startTime));
+  UI.end.setValue(dateText(d.endTime));
+  UI.user.setValue(d.inspectorId || '', d.inspectorName || '');
+  UI.sites.setValue((Array.isArray(d.sites) ? d.sites : []).map(s => s.id));
+}
+
+function syncEndDate() {
+  UI.end.setValue(defaultEnd(UI.start.getValue(), UI.type.getValue()));
+  markErr('f-end-err', false);
+}
+
+async function save() {
+  const title = $('f-title').value.trim();
+  const planType = UI.type.getValue();
+  const start = UI.start.getValue();
+  const end = UI.end.getValue();
+  const inspectorId = UI.user.getValue();
+  const siteIds = UI.sites.getValue();
+  const content = $('f-content').value.trim();
+
+  let bad = false;
+  bad = markErr('f-title-err', !title, '请输入计划名称') || bad;
+  bad = markErr('f-start-err', !start, '请选择计划开始时间') || bad;
+  bad = markErr('f-end-err', !end, '请选择计划结束时间') || bad;
+  if (start && end && end < start) {
+    markErr('f-end-err', true, '结束时间不得早于开始时间');
+    bad = true;
+  }
+  bad = markErr('f-user-err', !inspectorId, '请选择巡检人员') || bad;
+  bad = markErr('f-sites-err', !siteIds.length, '请至少选择一个巡查站点') || bad;
+  bad = markErr('f-content-err', !content, '请输入巡查内容') || bad;
+  UI.user.setError(!inspectorId);
+  UI.sites.setError(!siteIds.length);
+  if (bad) return;
+
+  const btn = $('btn-save');
+  btn.classList.add('is-loading');
+  btn.disabled = true;
+  try {
+    const body = {
+      title: title,
+      planType: planType,
+      siteIds: siteIds,
+      content: content,
+      startTime: start,
+      endTime: end,
+      inspectorId: inspectorId
+    };
+    if (EDIT_ID) body.id = EDIT_ID;
+    await api(EDIT_ID ? '/patrol-schedule/update' : '/patrol-schedule/create', {
+      method: 'POST',
+      body: body
+    });
+    if (EMBED) {
+      btn.classList.remove('is-loading');
+      btn.disabled = false;
+      window.parent.postMessage({ type: 'patrol-plan:saved', planType: planType, edit: !!EDIT_ID }, '*');
+      return;
+    }
+    location.href = listUrl() + '&saved=1';
+  } catch (e) {
+    showToast(e.message || '保存失败', true);
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+  }
+}
+
+function init() {
+  if (EMBED) document.body.classList.add('embed');
+  if (EDIT_ID) {
+    document.title = '编辑巡检计划';
+    $('page-title').textContent = '编辑巡检计划';
+    $('btn-save').textContent = '保存修改';
+  }
+
+  UI.type = createSelect($('f-type')).setPlaceholder('请选择计划类型');
+  UI.user = createSelect($('f-user')).setPlaceholder('请选择巡检人员').setSearchable(true);
+  UI.sites = createMultiSelect($('f-sites')).setPlaceholder('请选择站点（可多选）');
+  UI.start = createDatePicker($('f-start')).setPlaceholder('请选择开始日期');
+  UI.end = createDatePicker($('f-end')).setPlaceholder('请选择结束日期');
+
+  UI.type.setOptions([
+    { value: TYPE_ANNUAL, label: '年度计划' },
+    { value: TYPE_MONTHLY, label: '月度计划' }
+  ]);
+
+  // 列表页 Tab 带入的计划类型
+  const preset = new URLSearchParams(location.search).get('type');
+  UI.type.setValue(preset === 'monthly' ? TYPE_MONTHLY : TYPE_ANNUAL);
+
+  UI.start.setValue(fmtInputDate(new Date()));
+  syncEndDate();
+
+  // 联动与提示
+  UI.type.onChange(() => syncEndDate());
+  UI.user.onChange(() => { markErr('f-user-err', false); UI.user.setError(false); });
+  UI.start.onChange(() => { syncEndDate(); markErr('f-start-err', false); });
+  UI.end.onChange(() => markErr('f-end-err', false));
+  $('f-title').addEventListener('input', () => markErr('f-title-err', false));
+  $('f-content').addEventListener('input', () => {
+    $('c-count').textContent = $('f-content').value.length;
+    markErr('f-content-err', false);
+  });
+  $('f-sites').addEventListener('mousedown', e => {
+    if (e.target.closest('.msel-opt')) { markErr('f-sites-err', false); UI.sites.setError(false); }
+  }, true);
+
+  $('btn-save').addEventListener('click', save);
+  $('btn-cancel').addEventListener('click', leave);
+  $('btn-back').addEventListener('click', leave);
+
+  // 点击空白 / Esc 收起下拉
+  document.addEventListener('mousedown', e => {
+    if (!e.target.closest('.sel') && !e.target.closest('.msel') && !e.target.closest('.dp')) closeAllPickers();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.querySelector('.sel.open,.msel.open,.dp.open')) { closeAllPickers(); return; }
+    if (EMBED) window.parent.postMessage({ type: 'patrol-plan:close' }, '*');
+  });
+
+  if (EDIT_ID) {
+    // 候选加载完成后回填，保证人员/站点显示名称而不是 id
+    Promise.all([loadUsers(), loadSites()])
+      .then(() => loadPlan(EDIT_ID))
+      .catch(e => {
+        showToast(e.message || '计划加载失败', true);
+        // 回填失败时禁止保存，避免把默认值写到错误计划上
+        $('btn-save').disabled = true;
+      });
+  } else {
+    loadUsers();
+    loadSites();
+    loadCurrentUser();
+  }
+}
+
+init();
+</script>
+</body>
+</html>

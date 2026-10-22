@@ -1138,7 +1138,6 @@ const FLOW_EXPORT_FIELDS = [
   { key: 'q', label: '瞬时流量 (m³/s)' },
   { key: 'tf', label: '累计水量 (万m³)' },
   { key: 'tm', label: '采集时间' },
-  { key: 'vol', label: '电压 (V)' },
 ];
 
 /** 列表导出：导出当前筛选条件下的全部站点（非当前页） */
@@ -1148,7 +1147,7 @@ function exportFlowList() {
     fields: FLOW_EXPORT_FIELDS,
     rows: list.map(r => ({
       stnm: r.stnm, stcd: r.stcd, q: fmtN3(r.q), tf: fmtN3(r.cumulativeFlow),
-      tm: fmtTm(r.tm), vol: fmtN2(r.vol),
+      tm: fmtTm(r.tm),
     })),
     filename: () => `流量监测_${fmtDate(new Date())}`,
     sheetName: '流量监测',
@@ -1585,5 +1584,6 @@ function init() {
 
 init();
 </script>
+<script src="./lib/date-placeholder.js"></script>
 </body>
 </html>

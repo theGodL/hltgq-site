@@ -46,7 +46,8 @@ public class PatrolScheduleController {
     /**
      * POI 动态生成模板：表头（与 {@link PatrolScheduleImportService#TEMPLATE_HEADERS} 同源）
      * + 枚举下拉（计划类型/状态单选严格校验）+ 匹配规则输入提示 + 列宽。
-     * <p>巡查范围提示按站点名称（兼容编号）匹配；创建人/巡检人员提示按人员登录名匹配。
+     * <p>巡查范围提示按站点名称（兼容编号）匹配；创建人/巡检人员提示按人员登录名匹配，
+     * 巡检人员为单选（多个用顿号分隔时取第一个匹配项）。
      */
     private byte[] buildTemplate() {
         try (XSSFWorkbook workbook = new XSSFWorkbook();
@@ -71,9 +72,9 @@ public class PatrolScheduleController {
             ExcelTemplateUtils.addPrompt(sheet, 7, "创建人",
                     "填人员登录名；留空则默认当前操作人", first, last);
             ExcelTemplateUtils.addPrompt(sheet, 8, "巡检人员",
-                    "填人员登录名；多个用顿号分隔（如：zhangsan、lisi）", first, last);
+                    "填人员登录名（单选）；多个用顿号分隔时取第一个", first, last);
             ExcelTemplateUtils.addDropdown(sheet, 9, PatrolScheduleImportService.STATUS_OPTIONS, true,
-                    "状态", "可留空，默认草稿；下拉选择：草稿 / 进行中 / 已完成 / 已取消", first, last);
+                    "状态", "可留空，默认草稿；下拉选择：草稿 / 已发布 / 已完成 / 已取消（已发布后展示态按是否开始巡检推导）", first, last);
             ExcelTemplateUtils.fitColumnWidths(sheet, headers);
             workbook.write(out);
             return out.toByteArray();

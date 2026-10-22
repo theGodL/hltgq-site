@@ -32,22 +32,23 @@ import java.util.Set;
  * 巡查计划 Excel 导入服务（POST /patrol-schedule/import，模板见 GET /patrol-schedule/import-template）。
  *
  * <p>处理流程：文件校验（非空/.xlsx/≤300 行）→ 表头校验（缺必需列直接 400）→ 逐行解析入库。
- * 逐行独立：单行失败不影响其他行；校验通过的行在**单行事务**内写主表 + 巡查范围/巡检人员关系中间表。
+ * 逐行独立：单行失败不影响其他行；校验通过的行在**单行事务**内写主表（含巡检人员 "user" 单选列）
+ * + 巡查范围关系中间表。
  *
  * <p>逐行规则（契约定稿见 src/main/resources/导入-导出对接接口.md）：
  * <ul>
  *   <li>计划编号：留空自动生成 XCJH + 13 位毫秒时间戳（批内与库中防重）；填写须唯一</li>
  *   <li>计划类型：年度计划/#1#、月度计划/#zjgg#（模板下拉单选）</li>
- *   <li>状态：留空默认草稿 #1#；可填 草稿/进行中/已完成/已取消（模板下拉单选，或编码 #1#~#4#）</li>
+ *   <li>状态：留空默认草稿 #1#；可填 草稿/已发布/已完成/已取消（模板下拉单选，或编码 #1#~#4#）；
+ *       「进行中」为旧模板兼容别名，等同「已发布」；未开始/进行中为展示态，不可填写</li>
  *   <li>起止时间：兼容 yyyy-M-d、yyyy/M/d、带时间串取日期段；按当日零点落库；结束不得早于开始</li>
  *   <li>创建人：留空 = 当前登录人；填写按登录名精确匹配（未匹配/重复判行失败）</li>
- *   <li>巡查范围/巡检人员：逐项按站点名称或编号 / 用户登录名精确匹配；
- *       未匹配、重名的项忽略并在行结果提示；全部项均未匹配判行失败</li>
+ *   <li>巡查范围：逐项按站点名称或编号精确匹配；未匹配、重名的项忽略并在行结果提示；全部未匹配判行失败</li>
+ *   <li>巡检人员：<b>单选</b>（2026-10 主表 "user" 列改造后）；填写多个时取第一个匹配项并在行结果提示</li>
  * </ul>
  *
- * <p>关系中间表（巡查范围/巡检人员）为直写平台关系表：表名已按平台元数据实证（t_lcode_model 关系模型
- * fun_code → 物理表，见 PatrolScheduleMapper 注释），列结构取同型专表实测形态；
- * 服务日志 [巡查导入] 关系表写入 打印实际写入条数。
+ * <p>关系中间表：巡查范围仍直写平台关系表 t_auto_hltgq_knc3g_nlbdju_tkwovk_rel；
+ * 巡检人员<b>不再写旧多选关系表</b> t_auto_hltgq_knc3g_nlbdju_user_rel（仅保留改造前存量数据）。
  */
 @Service
 public class PatrolScheduleImportService {
@@ -73,8 +74,8 @@ public class PatrolScheduleImportService {
     /** 计划类型下拉选项（模板单选列） */
     public static final String[] PLAN_TYPE_OPTIONS = {"年度计划", "月度计划"};
 
-    /** 状态下拉选项（模板单选列，留空默认草稿） */
-    public static final String[] STATUS_OPTIONS = {"草稿", "进行中", "已完成", "已取消"};
+    /** 状态下拉选项（模板单选列，留空默认草稿；发布态填「已发布」，展示态按是否开始巡检推导） */
+    public static final String[] STATUS_OPTIONS = {"草稿", "已发布", "已完成", "已取消"};
 
     /** 必需表头列（缺失直接 400，按模板列序输出提示） */
     private static final String[] REQUIRED_COLUMNS = {
@@ -95,7 +96,7 @@ public class PatrolScheduleImportService {
     /** 计划类型：填写值（中文或编码）→ 落库编码 */
     private static final Map<String, String> PLAN_TYPE_CODES = new LinkedHashMap<>();
 
-    /** 状态：填写值（中文或编码）→ 落库编码（#1# 草稿、#2# 进行中、#3# 已完成、#4# 已取消） */
+    /** 状态：填写值（中文或编码）→ 落库编码（#1# 草稿、#2# 已发布、#3# 已完成、#4# 已取消；「进行中」兼容等同 #2#） */
     private static final Map<String, String> STATUS_CODES = new LinkedHashMap<>();
 
     static {
@@ -105,6 +106,7 @@ public class PatrolScheduleImportService {
         PLAN_TYPE_CODES.put("#zjgg#", "#zjgg#");
 
         STATUS_CODES.put("草稿", "#1#");
+        STATUS_CODES.put("已发布", "#2#");
         STATUS_CODES.put("进行中", "#2#");
         STATUS_CODES.put("已完成", "#3#");
         STATUS_CODES.put("已取消", "#4#");
@@ -191,7 +193,7 @@ public class PatrolScheduleImportService {
 
     // ==================== 逐行处理 ====================
 
-    /** 单行解析校验并入库（主表 + 关系中间表，单行事务）；返回记录 id，失败抛异常 */
+    /** 单行解析校验并入库（主表 + 巡查范围关系表，单行事务）；返回记录 id，失败抛异常 */
     private String processRow(Map<String, String> data, Set<String> usedCodes, String operatorId,
                               List<String> notes, PatrolImportRowResult rowResult) {
         // 1. 计划编号：留空自动生成，填写查重（批内 + 库中）
@@ -277,35 +279,44 @@ public class PatrolScheduleImportService {
             throw new IllegalArgumentException("巡查范围未匹配到任何站点");
         }
 
-        // 8. 巡检人员：逐项按登录名匹配，部分未匹配忽略并提示，全未匹配判行失败
+        // 8. 巡检人员：单选（2026-10 主表 "user" 列改造）；按登录名精确匹配，
+        //    填写多个时取第一个匹配项并在行结果提示（兼容旧多选填写习惯）
         String usersRaw = value(data, COL_USERS);
         if (usersRaw.isEmpty()) {
             throw new IllegalArgumentException("巡检人员为空");
         }
-        Set<String> inspectorIds = new LinkedHashSet<>();
-        for (String item : splitMulti(usersRaw)) {
+        List<String> userTokens = splitMulti(usersRaw);
+        String inspectorId = null;
+        String inspectorToken = null;
+        for (String item : userTokens) {
             List<Map<String, Object>> matches = mapper.selectUserMatches(item);
             if (matches.size() == 1) {
-                inspectorIds.add((String) matches.get(0).get("id"));
+                inspectorId = (String) matches.get(0).get("id");
+                inspectorToken = item;
+                break;
             } else if (matches.isEmpty()) {
                 notes.add("巡检人员「" + item + "」未匹配到用户（按登录名匹配），已忽略");
             } else {
                 notes.add("巡检人员「" + item + "」存在多个匹配，已忽略");
             }
         }
-        if (inspectorIds.isEmpty()) {
+        if (inspectorId == null) {
             throw new IllegalArgumentException("巡检人员未匹配到任何用户");
+        }
+        if (userTokens.size() > 1) {
+            notes.add("巡检人员为单选，已取「" + inspectorToken + "」");
         }
 
         // 9. 状态：留空默认草稿；填写须为 草稿/进行中/已完成/已取消（或编码 #1#~#4#）
         String statusRaw = value(data, COL_STATUS);
         String status = statusRaw.isEmpty() ? DRAFT_STATUS : STATUS_CODES.get(statusRaw);
         if (status == null) {
-            throw new IllegalArgumentException("状态无效（应为 草稿/进行中/已完成/已取消）：" + statusRaw);
+            throw new IllegalArgumentException("状态无效（应为 草稿/已发布/已完成/已取消，「进行中」等同已发布）：" + statusRaw);
         }
 
-        // 10. 入库：主表 + 关系中间表（单行事务，关系写入失败整行回滚并给出原因）
+        // 10. 入库：主表（含巡检人员 "user" 单选列）+ 巡查范围关系表（单行事务）
         LocalDateTime now = LocalDateTime.now();
+        final String inspectorUserId = inspectorId;
         PatrolSchedule entity = new PatrolSchedule();
         entity.setCode(code);
         entity.setTitle(title);
@@ -314,6 +325,7 @@ public class PatrolScheduleImportService {
         entity.setEndTime(endDate.atStartOfDay());
         entity.setPlanType(planType);
         entity.setStatus(status);
+        entity.setUser(inspectorUserId);
         entity.setCorpCode(corpCode);
         entity.setCreatedAt(now);
         entity.setCreatedBy(creatorId);
@@ -329,13 +341,8 @@ public class PatrolScheduleImportService {
                         mapper.insertSiteRelation(shortIdGenerator.nextUUID(null), siteId,
                                 entity.getId(), String.valueOf(siteOrder++), corpCode, now, creatorId);
                     }
-                    int userOrder = 1;
-                    for (String userId : inspectorIds) {
-                        mapper.insertUserRelation(shortIdGenerator.nextUUID(null), userId,
-                                entity.getId(), String.valueOf(userOrder++), corpCode, now, creatorId);
-                    }
-                    log.info("[巡查导入] 关系表写入：计划id={}, 编号={}, 巡查范围={}条, 巡检人员={}条",
-                            entity.getId(), entity.getCode(), scopeSiteIds.size(), inspectorIds.size());
+                    log.info("[巡查导入] 入库完成：计划id={}, 编号={}, 巡查范围={}条, 巡检人员={}",
+                            entity.getId(), entity.getCode(), scopeSiteIds.size(), inspectorUserId);
                 }
             });
         } catch (Exception e) {

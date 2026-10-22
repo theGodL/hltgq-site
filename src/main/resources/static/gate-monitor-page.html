@@ -129,11 +129,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid #e8e8e8}
 thead tr{background:#fafafa}
 th{padding:12px 16px;text-align:left;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
-td{padding:12px 16px;border:1px solid #e8e8e8;color:#000000d9}
+/* 数据行不换行：100% 缩放下列宽不足时改为表格横向滚动，避免按钮文字/名称/采集时间被挤成多行 */
+td{padding:12px 16px;border:1px solid #e8e8e8;color:#000000d9;white-space:nowrap}
 tbody tr:hover td{background:#fafafa}
 .empty{text-align:center;color:#bbb;padding:48px;font-size:14px}
-.act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s}
+/* 名称列给足最小宽度，避免被其它列挤压 */
+th.col-name,td.col-name{min-width:160px}
+.act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s;white-space:nowrap}
 .act-btn:hover{opacity:.7}
+/* 操作列：按钮横排不换行，间距统一 16px */
+th.col-act,td.col-act{white-space:nowrap}
+.act-group{display:inline-flex;align-items:center;gap:16px}
 .modal.modal-sm{width:420px}
 .status-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;line-height:1.6}
 .status-open{background:#e6f4ff;color:#1677ff}
@@ -306,7 +312,7 @@ tbody tr:hover td{background:#fafafa}
         <table>
           <thead>
             <tr>
-              <th>名称</th>
+              <th class="col-name">名称</th>
               <th>闸门开度 (m)</th>
               <th>闸前水位 (m)</th>
               <th>闸后水位 (m)</th>
@@ -314,7 +320,7 @@ tbody tr:hover td{background:#fafafa}
               <th>累计水量 (万m³)</th>
               <th>采集时间</th>
               <th class="col-vol">电压 (V)</th>
-              <th>操作</th>
+              <th class="col-act">操作</th>
             </tr>
           </thead>
           <tbody id="tbl-body"></tbody>
@@ -350,13 +356,13 @@ tbody tr:hover td{background:#fafafa}
         <table>
           <thead>
             <tr>
-              <th>名称</th>
+              <th class="col-name">名称</th>
               <th>闸门开度 (m)</th>
               <th>闸前水位 (m)</th>
               <th>闸后水位 (m)</th>
               <th>采集时间</th>
               <th class="col-vol">电压 (V)</th>
-              <th>操作</th>
+              <th class="col-act">操作</th>
             </tr>
           </thead>
           <tbody id="mth-tbl-body"></tbody>
@@ -1099,7 +1105,7 @@ function renderTable() {
   }
   tbody.innerHTML = S.rows.map((r, i) => `
     <tr>
-      <td>${esc(fmtN(r.siteName))}</td>
+      <td class="col-name">${esc(fmtN(r.siteName))}</td>
       <td>${esc(fmtHolesOpen(r.holes))}</td>
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
@@ -1107,9 +1113,11 @@ function renderTable() {
       <td>${fmtN3(r.cumulativeFlow)}</td>
       <td>${fmtTm(r.tm)}</td>
       <td class="col-vol">${fmtN2(r.vol)}</td>
-      <td>
-        <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>
-        ${isDischargeSite(r.siteName) ? `<button class="act-btn" data-action="discharge" data-idx="${i}" style="margin-left:10px">流量计算</button>` : ''}
+      <td class="col-act">
+        <span class="act-group">
+          <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>
+          ${isDischargeSite(r.siteName) ? `<button class="act-btn" data-action="discharge" data-idx="${i}">流量计算</button>` : ''}
+        </span>
       </td>
     </tr>`).join('');
 }
@@ -1796,7 +1804,6 @@ const GATE_EXPORT_FIELDS = [
   { key: 'q', label: '瞬时流量 (m³/s)' },
   { key: 'tf', label: '累计水量 (万m³)' },
   { key: 'tm', label: '采集时间' },
-  { key: 'vol', label: '电压 (V)' },
 ];
 
 /** 列表导出：导出当前筛选条件下的全部闸站（非当前页） */
@@ -1807,7 +1814,7 @@ function exportGateList() {
     rows: list.map(r => ({
       siteName: r.siteName, opening: fmtHolesOpen(r.holes),
       upZ: fmtN2(r.upZ), downZ: fmtN2(r.downZ), q: fmtN3(r.q), tf: fmtN3(r.cumulativeFlow),
-      tm: fmtTm(r.tm), vol: fmtN2(r.vol),
+      tm: fmtTm(r.tm),
     })),
     filename: () => `闸门监测_${fmtDate(new Date())}`,
     sheetName: '闸门监测',
@@ -2683,5 +2690,6 @@ async function init() {
 init();
 </script>
 <div class="toast" id="toast"></div>
+<script src="./lib/date-placeholder.js"></script>
 </body>
 </html>

@@ -1615,7 +1615,6 @@ const IRR_EXPORT_FIELDS = [
   { key: 'rain1h', label: '1h降雨量 (mm)' },
   { key: 'rain3h', label: '3h降雨量 (mm)' },
   { key: 'rain6h', label: '6h降雨量 (mm)' },
-  { key: 'vol', label: '电压 (V)' },
 ];
 
 /** 导出取值：正常值保留数值（便于 Excel 计算），-9991/-999 交给 MonitorExport 统一转换 */
@@ -1629,7 +1628,6 @@ function irrExportRow(r) {
   return {
     stnm: r.stnm, stcd: r.stcd, tm: fmtTm(r.tm),
     drp: exportNum(r.drp), rain1h: exportNum(r.rain1h), rain3h: exportNum(r.rain3h), rain6h: exportNum(r.rain6h),
-    vol: exportNum(r.vol),
   };
 }
 
@@ -2038,5 +2036,6 @@ async function init() {
 
 init();
 </script>
+<script src="./lib/date-placeholder.js"></script>
 </body>
 </html>

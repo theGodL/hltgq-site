@@ -85,6 +85,13 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
 .pg-btn.active{background:#1677ff;border-color:#1677ff;color:#fff}
 .pg-btn[disabled]{color:#d9d9d9;cursor:not-allowed}
 .pg-ellipsis{padding:0 4px;color:#999;font-size:13px}
+.pg-jump{display:inline-flex;align-items:center;gap:6px;color:#666;font-size:13px;white-space:nowrap;margin-left:6px}
+.pg-input{width:52px;height:28px;border:1px solid #d9d9d9;border-radius:4px;padding:0 4px;font-size:13px;text-align:center;color:#333;outline:none;background:#fff}
+.pg-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.pg-input:disabled{background:#f5f5f5;color:#bfbfbf;cursor:not-allowed}
+.pg-input::-webkit-outer-spin-button,.pg-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.pg-size{height:28px;border:1px solid #d9d9d9;border-radius:4px;padding:0 4px;font-size:13px;color:#333;outline:none;background:#fff;cursor:pointer}
+.pg-size:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 
 .bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .bottom-row .section-card{min-width:0}
@@ -266,15 +273,16 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
 <script>
 (function () {
   var API = '/hltgq-site';
-  var PAGE_SIZE = 10;
+  var DEFAULT_PAGE_SIZE = 10;
+  var PAGE_SIZES = [10, 20, 50, 100];
 
   var MAX_RANGE_DAYS = 730;
   var MAX_MISS_DAYS = 31;
 
   var state = {
     kpi: null,
-    arrival: { page: 1, list: [] },
-    missing: { page: 1, list: [] },
+    arrival: { page: 1, size: DEFAULT_PAGE_SIZE, list: [] },
+    missing: { page: 1, size: DEFAULT_PAGE_SIZE, list: [], loaded: false },
     services: [],
     process: null,
     collect: [],
@@ -605,14 +613,22 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
       red: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>'
     };
     var noReport = Array.isArray(k.noReportSites) ? k.noReportSites.length : 0;
-    var missed = Array.isArray(k.missedSites) ? k.missedSites.length : 0;
+    // 缺测数口径统一：arrival-stats 的 missedSites 是「站点数」，缺测明细是「连续缺测段数」
+    // （同一站点多次缺测会拆成多条），两者天然不等。这里优先取明细条数，保证卡片与下方表格一致；
+    // 明细未返回/失败时回退站点数，避免卡片显示 0。
+    var missed = state.missing.loaded
+      ? state.missing.list.length
+      : (Array.isArray(k.missedSites) ? k.missedSites.length : 0);
     var isRange = state.range && state.range.mode === 'range';
+    var missLabel = (state.range && state.range.missClamped)
+      ? '近 ' + MAX_MISS_DAYS + ' 天缺测数据'
+      : (isRange ? '区间缺测数据' : '今日缺测数据');
     var items = [
       { icon: 'blue', value: k.stationTotal != null ? k.stationTotal : '-', label: '监测站点总数' },
       { icon: 'green', value: k.todayArrivalRate != null ? fmtNum(k.todayArrivalRate) + '%' : '-', label: isRange ? '区间到报率' : '今日数据到报率' },
       { icon: 'cyan', value: k.monthAvgArrivalRate != null ? fmtNum(k.monthAvgArrivalRate) + '%' : '-', label: isRange ? '区间平均到报率' : '本月平均到报率' },
       { icon: 'orange', value: noReport, label: '未到报站点' },
-      { icon: 'red', value: missed, label: isRange ? '区间缺测数据' : '今日缺测数据' }
+      { icon: 'red', value: missed, label: missLabel }
     ];
     document.getElementById('kpi-row').innerHTML = items.map(function (it) {
       return '<div class="card kpi-card"><div class="kpi-icon ' + it.icon + '">' + icons[it.icon] +
@@ -637,36 +653,79 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     hint.textContent = parts.join('；');
   }
 
-  function pageSlice(list, page) {
-    var start = (page - 1) * PAGE_SIZE;
-    return list.slice(start, start + PAGE_SIZE);
+  function pageSlice(list, page, size) {
+    var start = (page - 1) * size;
+    return list.slice(start, start + size);
   }
-  function totalPages(list) {
-    return Math.max(1, Math.ceil((list.length || 0) / PAGE_SIZE));
+  function totalPages(list, size) {
+    var total = (list && list.length) || 0;
+    return total ? Math.ceil(total / size) : 1;
   }
 
-  function renderPager(infoId, btnsId, list, page, onChange) {
-    var total = list.length;
-    var pages = totalPages(list);
-    document.getElementById(infoId).textContent =
-      '共 ' + total + ' 条记录，每页 ' + PAGE_SIZE + ' 条，当前第 ' + page + '/' + pages + ' 页';
-
-    var windowPages = [];
-    if (pages <= 5) {
-      for (var i = 1; i <= pages; i++) windowPages.push(i);
-    } else {
-      windowPages = [1, 2, 3, '…', pages];
+  /** 页码窗口：首末页常显，当前页左右各留 2 页，跨度大时用省略号收拢 */
+  function pageWindow(page, pages) {
+    if (pages <= 0) return [];
+    if (pages <= 7) {
+      var all = [];
+      for (var i = 1; i <= pages; i++) all.push(i);
+      return all;
     }
+    var left = Math.max(2, page - 2);
+    var right = Math.min(pages - 1, page + 2);
+    if (page - 2 < 2) right = Math.min(pages - 1, 5);
+    if (page + 2 > pages - 1) left = Math.max(2, pages - 4);
+    var out = [1];
+    if (left > 2) out.push('…');
+    for (var p = left; p <= right; p++) out.push(p);
+    if (right < pages - 1) out.push('…');
+    out.push(pages);
+    return out;
+  }
 
-    var html = '<button type="button" class="pg-btn" data-page="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + '>‹</button>';
-    windowPages.forEach(function (p) {
+  /** 翻页/改每页条数后把表格区域滚回视口顶部，避免视口停在分页器处看不到新数据 */
+  function scrollSectionTop(tbodyId) {
+    var tbody = document.getElementById(tbodyId);
+    var card = tbody && tbody.closest ? tbody.closest('.section-card') : null;
+    if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /**
+   * 分页器：共 N 条 + 每页条数 + 首页/上一页/页码窗口/下一页/末页 + 跳页输入。
+   * 数据已全量在前端内存，翻页只重渲染当前表，不重新请求接口。
+   */
+  function renderPager(infoId, btnsId, list, page, size, handlers) {
+    var total = list.length;
+    var pages = total ? Math.ceil(total / size) : 0;
+    page = Math.max(1, Math.min(page || 1, pages || 1));
+
+    document.getElementById(infoId).textContent = total
+      ? '共 ' + total + ' 条记录，每页 ' + size + ' 条，当前第 ' + page + '/' + pages + ' 页'
+      : '共 0 条记录';
+
+    var onPage = (handlers && handlers.onPage) || function () {};
+    var onSize = (handlers && handlers.onSize) || null;
+
+    var html = '';
+    html += '<button type="button" class="pg-btn" data-page="1" title="首页"' + (page <= 1 ? ' disabled' : '') + '>«</button>';
+    html += '<button type="button" class="pg-btn" data-page="' + (page - 1) + '" title="上一页"' + (page <= 1 ? ' disabled' : '') + '>‹</button>';
+    pageWindow(page, pages).forEach(function (p) {
       if (p === '…') html += '<span class="pg-ellipsis">…</span>';
       else {
         html += '<button type="button" class="pg-btn' + (p === page ? ' active' : '') +
           '" data-page="' + p + '">' + p + '</button>';
       }
     });
-    html += '<button type="button" class="pg-btn" data-page="' + (page + 1) + '"' + (page >= pages ? ' disabled' : '') + '>›</button>';
+    html += '<button type="button" class="pg-btn" data-page="' + (page + 1) + '" title="下一页"' + (page >= pages ? ' disabled' : '') + '>›</button>';
+    html += '<button type="button" class="pg-btn" data-page="' + pages + '" title="末页"' + (page >= pages ? ' disabled' : '') + '>»</button>';
+    html += '<span class="pg-jump">跳至<input type="number" class="pg-input" min="1" max="' + (pages || 1) +
+      '" value="' + page + '"' + (total ? '' : ' disabled') + '>页</span>';
+    if (onSize) {
+      html += '<select class="pg-size" title="每页条数">';
+      PAGE_SIZES.forEach(function (s) {
+        html += '<option value="' + s + '"' + (s === size ? ' selected' : '') + '>' + s + ' 条/页</option>';
+      });
+      html += '</select>';
+    }
 
     var box = document.getElementById(btnsId);
     box.innerHTML = html;
@@ -674,9 +733,33 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
       btn.addEventListener('click', function () {
         var p = Number(btn.getAttribute('data-page'));
         if (!p || p < 1 || p > pages || p === page) return;
-        onChange(p);
+        onPage(p);
       });
     });
+
+    var input = box.querySelector('.pg-input');
+    if (input) {
+      var jump = function () {
+        var p = parseInt(input.value, 10);
+        if (!Number.isFinite(p) || p < 1) p = 1;
+        if (pages && p > pages) p = pages;
+        input.value = p;
+        if (p !== page) onPage(p);
+      };
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); jump(); }
+      });
+      // 值改变后失焦即跳转；跳同页由 p === page 拦掉
+      input.addEventListener('change', jump);
+    }
+
+    var sizeSel = box.querySelector('.pg-size');
+    if (sizeSel && onSize) {
+      sizeSel.addEventListener('change', function () {
+        var s = parseInt(sizeSel.value, 10);
+        if (s > 0 && s !== size) onSize(s);
+      });
+    }
   }
 
   function emptyRow(colspan, text) {
@@ -685,60 +768,81 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
 
   function renderArrival() {
     var list = state.arrival.list;
-    var page = state.arrival.page;
+    var size = state.arrival.size;
+    var page = Math.max(1, Math.min(state.arrival.page, totalPages(list, size)));
+    state.arrival.page = page;
     var tbody = document.getElementById('arrival-tbody');
     if (!list.length) {
       tbody.innerHTML = emptyRow(8, '暂无数据');
-      renderPager('arrival-pg-info', 'arrival-pg-btns', list, 1, function () {});
-      return;
+    } else {
+      var rows = pageSlice(list, page, size);
+      var start = (page - 1) * size;
+      tbody.innerHTML = rows.map(function (r, idx) {
+        var cls = rateClass(r.rate);
+        var w = Math.max(0, Math.min(100, Number(r.rate) || 0));
+        return '<tr>' +
+          '<td>' + (start + idx + 1) + '</td>' +
+          '<td class="left">' + esc(r.name) + '</td>' +
+          '<td>' + esc(r.code) + '</td>' +
+          '<td>' + esc(r.type) + '</td>' +
+          '<td>' + esc(r.expected) + '</td>' +
+          '<td>' + esc(r.actual) + '</td>' +
+          '<td>' + esc(r.missing) + '</td>' +
+          '<td><div class="rate-cell"><span class="rate-bar ' + cls + '"><i style="width:' + w + '%"></i></span>' +
+          '<span class="rate-txt">' + fmtRate(r.rate) + '</span></div></td>' +
+          '</tr>';
+      }).join('');
     }
-    var rows = pageSlice(list, page);
-    var start = (page - 1) * PAGE_SIZE;
-    tbody.innerHTML = rows.map(function (r, idx) {
-      var cls = rateClass(r.rate);
-      var w = Math.max(0, Math.min(100, Number(r.rate) || 0));
-      return '<tr>' +
-        '<td>' + (start + idx + 1) + '</td>' +
-        '<td class="left">' + esc(r.name) + '</td>' +
-        '<td>' + esc(r.code) + '</td>' +
-        '<td>' + esc(r.type) + '</td>' +
-        '<td>' + esc(r.expected) + '</td>' +
-        '<td>' + esc(r.actual) + '</td>' +
-        '<td>' + esc(r.missing) + '</td>' +
-        '<td><div class="rate-cell"><span class="rate-bar ' + cls + '"><i style="width:' + w + '%"></i></span>' +
-        '<span class="rate-txt">' + fmtRate(r.rate) + '</span></div></td>' +
-        '</tr>';
-    }).join('');
-    renderPager('arrival-pg-info', 'arrival-pg-btns', list, page, function (p) {
-      state.arrival.page = p;
-      renderArrival();
+    renderPager('arrival-pg-info', 'arrival-pg-btns', list, page, size, {
+      onPage: function (p) {
+        state.arrival.page = p;
+        renderArrival();
+        scrollSectionTop('arrival-tbody');
+      },
+      onSize: function (s) {
+        // 保持当前页第一条记录不丢：按已看到的行数折算新页码，越界由 renderArrival clamp
+        state.arrival.page = Math.floor((page - 1) * size / s) + 1;
+        state.arrival.size = s;
+        renderArrival();
+        scrollSectionTop('arrival-tbody');
+      }
     });
   }
 
   function renderMissing() {
     var list = state.missing.list;
-    var page = state.missing.page;
+    var size = state.missing.size;
+    var page = Math.max(1, Math.min(state.missing.page, totalPages(list, size)));
+    state.missing.page = page;
     var tbody = document.getElementById('missing-tbody');
     if (!list.length) {
       tbody.innerHTML = emptyRow(6, '暂无数据');
-      renderPager('missing-pg-info', 'missing-pg-btns', list, 1, function () {});
-      return;
+    } else {
+      var rows = pageSlice(list, page, size);
+      var start = (page - 1) * size;
+      tbody.innerHTML = rows.map(function (r, idx) {
+        return '<tr>' +
+          '<td>' + (start + idx + 1) + '</td>' +
+          '<td class="left">' + esc(r.name) + '</td>' +
+          '<td>' + esc(r.code) + '</td>' +
+          '<td>' + esc(r.period) + '</td>' +
+          '<td>' + esc(r.duration) + '</td>' +
+          '<td>' + esc(r.dataType) + '</td>' +
+          '</tr>';
+      }).join('');
     }
-    var rows = pageSlice(list, page);
-    var start = (page - 1) * PAGE_SIZE;
-    tbody.innerHTML = rows.map(function (r, idx) {
-      return '<tr>' +
-        '<td>' + (start + idx + 1) + '</td>' +
-        '<td class="left">' + esc(r.name) + '</td>' +
-        '<td>' + esc(r.code) + '</td>' +
-        '<td>' + esc(r.period) + '</td>' +
-        '<td>' + esc(r.duration) + '</td>' +
-        '<td>' + esc(r.dataType) + '</td>' +
-        '</tr>';
-    }).join('');
-    renderPager('missing-pg-info', 'missing-pg-btns', list, page, function (p) {
-      state.missing.page = p;
-      renderMissing();
+    renderPager('missing-pg-info', 'missing-pg-btns', list, page, size, {
+      onPage: function (p) {
+        state.missing.page = p;
+        renderMissing();
+        scrollSectionTop('missing-tbody');
+      },
+      onSize: function (s) {
+        state.missing.page = Math.floor((page - 1) * size / s) + 1;
+        state.missing.size = s;
+        renderMissing();
+        scrollSectionTop('missing-tbody');
+      }
     });
   }
 
@@ -847,6 +951,7 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
 
     var btn = document.getElementById('query-btn');
     btn.disabled = true;
+    state.missing.loaded = false;   // 新一次查询，等明细返回后再按明细口径计数
     setLoadingKpi();
     setLoadingTables('加载中...');
 
@@ -892,8 +997,14 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
         fetchApi('/data-statistics/miss-detail' + mq).then(function (d) {
           state.missing.list = mapMissing(d);
           state.missing.page = 1;
+          state.missing.loaded = true;
           renderMissing();
-        }).catch(failBlock('missing-tbody', 6, 'missing-pg-info', 'missing-pg-btns')),
+          renderKpi();   // 卡片缺测数依赖明细条数，明细到达后需重渲染
+        }).catch(function (e) {
+          state.missing.loaded = false;
+          failBlock('missing-tbody', 6, 'missing-pg-info', 'missing-pg-btns')(e);
+          renderKpi();
+        }),
         fetchApi('/data-statistics/service-status' + q).then(function (d) {
           var svc = mapServices(d);
           state.process = svc.process;
@@ -985,5 +1096,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
   loadAll(false);
 })();
 </script>
+<script src="./lib/date-placeholder.js"></script>
 </body>
 </html>

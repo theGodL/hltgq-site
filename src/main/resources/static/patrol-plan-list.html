@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>巡检计划</title>
+<style>
+/* ===== 平台变量：与出入库单据页同源 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-hover:#f78989;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-color-warning:#fa8c16;
+  --el-color-warning-light:rgba(250,140,22,.1);
+  --el-color-success:#52c41a;
+  --el-color-success-light:rgba(82,196,26,.1);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-tertiary:#8c8c8c;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-text-color-icon:#606266;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-fill-color-disabled:#f5f5f5;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height:40px;
+  --el-control-height-sm:36px;
+  --el-table-header-bg:#f5f7fa;
+  --el-table-stripe-bg:#fafafa;
+  --el-table-row-height:52px;
+  --el-table-border:#f0f0f0;
+  --el-tag-bg:#f0f0f0;
+  --el-tag-color:#666;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+
+/* ===== 页面骨架：筛选白卡 + 表格卡 ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%;overflow:hidden}
+.filter-card{flex-shrink:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 24px;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
+.filter-item{display:flex;align-items:center;gap:8px}
+.flt-label{font-size:14px;color:var(--el-text-color-title);text-align:right;white-space:nowrap}
+.filter-item .field{width:220px}
+.filter-item .sel{width:200px}
+.filter-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+.panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.panel-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 24px 0;flex-shrink:0}
+.panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
+.panel-hd .hd-acts{display:flex;align-items:center;gap:8px}
+.panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
+
+/* Tab（年度计划 / 月度计划） */
+.tabs{display:flex;align-items:center;gap:4px}
+.tab{position:relative;height:var(--el-control-height-sm);padding:0 12px;background:none;border:none;border-radius:var(--el-radius);font-size:14px;color:var(--el-text-color-regular);cursor:pointer;transition:all .2s;font-family:inherit;font-weight:400}
+.tab:hover{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+.tab.active{color:var(--el-color-primary);font-weight:500}
+.tab.active::after{content:'';position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:1px;background:var(--el-color-primary)}
+
+/* ===== 控件 ===== */
+.field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%;font-family:inherit}
+.field::placeholder{color:var(--el-text-color-placeholder)}
+.field:hover{border-color:var(--el-border-color-hover)}
+.field:focus{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.field.is-err{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+textarea.field{height:auto;min-height:88px;padding:8px 12px;line-height:22px;resize:vertical}
+input[type="datetime-local"].field{font-family:inherit}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height);padding:0 20px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative;font-family:inherit}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn-danger{background:var(--el-color-danger);border-color:var(--el-color-danger);color:#fff}
+.btn-danger:hover{background:var(--el-color-danger-hover);border-color:var(--el-color-danger-hover)}
+.btn-danger-ghost{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-color-danger)}
+.btn-danger-ghost:hover{border-color:var(--el-color-danger);color:var(--el-color-danger)}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+.btn-default.is-loading::after,.btn-danger-ghost.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== 表格 ===== */
+.tbl-wrap{flex:1;min-height:0;overflow:auto;max-width:100%}
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
+thead tr{background:var(--el-table-header-bg)}
+th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
+td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(--el-table-border);font-size:14px;color:var(--el-text-color-primary);text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th:first-child,td:first-child{padding-left:16px}
+tbody tr:nth-child(even) td{background:var(--el-table-stripe-bg)}
+tbody tr:hover td{background:var(--el-fill-color-light)}
+td.col-act{white-space:nowrap;overflow:visible}
+.cb{width:16px;height:16px;accent-color:var(--el-color-primary);vertical-align:middle;cursor:pointer}
+/* 状态标签：彩色圆点 + 文字（表格与详情弹窗共用） */
+.tag{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-tag-bg);color:var(--el-tag-color);font-size:12px;line-height:1;border:none;vertical-align:middle;margin-left:6px}
+.tag::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.tag.blue{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+.tag.green{color:var(--el-color-success);background:var(--el-color-success-light)}
+.tag.orange{color:var(--el-color-warning);background:var(--el-color-warning-light)}
+.tag.red{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+.view-row .tag,.rec-wrap .tag{margin-left:0}
+/* 计划名称单元格：名称省略 + 状态标签不压缩 */
+.name-cell{display:flex;align-items:center;gap:6px;min-width:0}
+.name-cell .lnk{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.name-cell .tag{flex-shrink:0;margin-left:0}
+/* 计划名称：蓝色可点击 */
+.lnk{color:var(--el-color-primary);cursor:pointer}
+.lnk:hover{text-decoration:underline}
+/* 操作列：文字按钮（替代图标，一眼能看懂） */
+.acts{display:flex;align-items:center;gap:2px;white-space:nowrap}
+.act-txt{height:28px;padding:0 4px;border:none;background:none;border-radius:var(--el-radius);color:var(--el-color-primary);font-size:13px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:background .2s,color .2s}
+.act-txt:hover:not(:disabled){background:var(--el-color-primary-light)}
+.act-txt.ok{color:var(--el-color-success)}
+.act-txt.ok:hover:not(:disabled){background:var(--el-color-success-light)}
+.act-txt.danger{color:var(--el-color-danger)}
+.act-txt.danger:hover:not(:disabled){background:var(--el-color-danger-light)}
+.act-txt:disabled{color:var(--el-text-color-disabled);cursor:not-allowed;background:none}
+/* 空态 */
+td.empty{padding:0;color:var(--el-text-color-secondary)}
+td.empty:hover{background:transparent}
+.empty-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:64px 0;font-size:14px;line-height:22px;color:var(--el-text-color-secondary)}
+
+/* ===== 分页 ===== */
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:16px 0 0;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.pg-info{color:var(--el-text-color-primary);font-size:13px;margin-right:4px}
+.pg-size{height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);padding:0 8px;outline:none}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-btn{min-width:32px;height:32px;padding:0 6px;border:1px solid var(--el-border-color);background:var(--el-bg-color);border-radius:var(--el-radius);cursor:pointer;font-size:13px;color:var(--el-text-color-primary);transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-ellipsis{min-width:20px;height:32px;display:inline-flex;align-items:center;justify-content:center;color:var(--el-text-color-secondary);font-size:13px;user-select:none;letter-spacing:1px}
+.pg-btn:hover:not([disabled]):not(.active){border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn.active{background:var(--el-bg-color);border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn[disabled]{color:var(--el-text-color-disabled);cursor:not-allowed}
+.pg-btn[data-pg="prev"],.pg-btn[data-pg="next"]{border-color:transparent;background:transparent;font-size:16px;color:var(--el-text-color-tertiary)}
+.pg-btn[data-pg="prev"]:hover:not([disabled]),.pg-btn[data-pg="next"]:hover:not([disabled]){border-color:transparent;background:transparent;color:var(--el-color-primary)}
+.pg-jump{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--el-text-color-primary)}
+.pg-jump input{width:52px;height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);text-align:center;font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);outline:none;padding:0 8px}
+.pg-jump input:focus{border-color:var(--el-color-primary)}
+
+/* ===== 抽屉（导入：右侧滑出，内嵌导入页 iframe） ===== */
+.drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s}
+.drawer-mask.show{opacity:1;visibility:visible}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:760px;max-width:100%;background:var(--el-bg-color);z-index:2001;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s ease;border-radius:8px 0 0 8px;overflow:hidden}
+.drawer.show{transform:translateX(0)}
+.drawer-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.drawer-hd h3{font-size:16px;font-weight:500;color:var(--el-text-color-primary)}
+.drawer-bd{flex:1;min-height:0;overflow:hidden}
+.drawer-bd iframe{display:block;width:100%;height:100%;border:none;background:var(--el-bg-page)}
+.icon-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-text-color-icon);cursor:pointer;transition:all .2s}
+.icon-btn:hover{color:var(--el-text-color-primary);background:var(--el-fill-color-light)}
+@media (max-width:768px){.drawer{width:100%;border-radius:0}}
+/* 问题抽屉：层级高于记录弹窗（.mask 2100），可在记录列表上连续上报问题 */
+.drawer-mask.drawer-top{z-index:2200}
+.drawer.drawer-top{z-index:2201}
+
+/* ===== 弹窗 ===== */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2100;display:none;align-items:center;justify-content:center;padding:20px}
+.mask.show{display:flex}
+.dlg{width:min(880px,94vw);max-height:min(640px,88vh);background:var(--el-bg-color);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,.12)}
+.dlg-sm{width:min(440px,94vw)}
+.dlg-md{width:min(720px,94vw)}
+.dlg-lg{width:min(1080px,94vw);max-height:min(720px,90vh)}
+.dlg-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.dlg-hd h3{font-size:16px;font-weight:500;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg-bd{flex:1;min-height:0;overflow:auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+.dlg-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
+.dlg-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
+.dlg-bd .field,.dlg-bd .sel-box{height:var(--el-control-height-sm);border-radius:var(--el-radius)}
+
+/* 详情：两列键值 */
+.view-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 24px}
+.view-grid .span2{grid-column:span 2}
+.view-row{display:flex;flex-direction:column;gap:2px}
+.view-row .k{font-size:14px;color:var(--el-text-color-secondary);line-height:22px}
+.view-row .v{font-size:14px;color:var(--el-text-color-primary);line-height:22px;word-break:break-word;white-space:pre-wrap}
+.site-tags{display:flex;flex-wrap:wrap;gap:8px}
+.site-tag{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:var(--el-radius);background:var(--el-fill-color-light);border:1px solid var(--el-border-color-lighter);font-size:13px;color:var(--el-text-color-primary)}
+
+/* 表单：两列网格（标签上置、必填红星） */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-grid .span2{grid-column:span 2}
+.form-grid .span4{grid-column:span 2}
+.f-label{display:block;font-size:14px;font-weight:400;color:var(--el-text-color-primary);margin-bottom:8px}
+.f-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
+.f-err{display:none;margin-top:4px;font-size:12px;color:var(--el-color-danger);align-items:center;gap:4px;line-height:16px}
+.f-err.show{display:flex}
+.counter{margin-top:4px;text-align:right;font-size:12px;color:var(--el-text-color-secondary)}
+/* 现场照片上传（添加巡检记录弹窗） */
+.photo-zone{display:flex;flex-wrap:wrap;gap:12px}
+.photo-item{position:relative;width:88px;height:88px;border-radius:8px;overflow:hidden;border:1px solid var(--el-border-color-lighter);background:var(--el-fill-color-light)}
+.photo-item img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-item .del{position:absolute;right:4px;top:4px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:20px;text-align:center;cursor:pointer;padding:0}
+.photo-item .del:hover{background:rgba(245,108,108,.9)}
+.photo-item .state{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.72);font-size:12px;color:var(--el-text-color-regular)}
+.photo-item.is-uploading .state::before{content:'';width:16px;height:16px;margin-right:6px;border-radius:50%;border:2px solid rgba(22,119,255,.25);border-top-color:var(--el-color-primary);animation:spin .6s linear infinite}
+.photo-add{width:88px;height:88px;border:1px dashed var(--el-border-color);border-radius:8px;background:var(--el-bg-color);color:var(--el-text-color-secondary);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;font-size:12px;font-family:inherit;transition:border-color .2s,color .2s}
+.photo-add:hover:not(:disabled){border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.photo-add:disabled{opacity:.55;cursor:not-allowed}
+.photo-add .plus{font-size:22px;line-height:22px;font-weight:300}
+.f-hint{margin-top:4px;font-size:12px;color:var(--el-text-color-secondary)}
+.confirm-text{font-size:14px;line-height:22px;color:var(--el-text-color-primary);white-space:pre-wrap}
+/* 巡检记录弹窗内表格 */
+.rec-wrap{border:1px solid var(--el-table-border);border-radius:var(--el-radius)}
+.rec-wrap table{border:none}
+.rec-wrap th{height:42px;font-size:13px}
+.rec-wrap td{height:46px;font-size:13px}
+.rec-wrap .empty-box{padding:40px 0}
+.rec-sub{font-size:13px;font-weight:400;color:var(--el-text-color-secondary);margin-left:8px}
+
+/* ===== 下拉组件 ===== */
+.sel{position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 16px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box:hover{border-color:var(--el-border-color-hover)}
+.sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sel.is-err .sel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.sel-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-text.placeholder{color:var(--el-text-color-placeholder)}
+.sel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.sel.open .sel-arrow{transform:rotate(180deg)}
+.sel.is-disabled .sel-box{background:var(--el-fill-color-disabled);border-color:var(--el-border-color-light);cursor:not-allowed}
+.sel.is-disabled .sel-text{color:var(--el-text-color-disabled)}
+.sel.is-disabled .sel-arrow{border-top-color:var(--el-text-color-disabled)}
+.sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.sel.open .sel-panel{display:block}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 16px 8px 24px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search[hidden]{display:none}
+.sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.sel-search input::placeholder{color:var(--el-text-color-placeholder)}
+.sel-list{max-height:240px;overflow-y:auto;padding:4px 0;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#d0d4dc transparent}
+.sel-list::-webkit-scrollbar{width:6px}
+.sel-list::-webkit-scrollbar-track{background:transparent}
+.sel-list::-webkit-scrollbar-thumb{background:#d0d4dc;border-radius:3px}
+.sel-opt{height:36px;padding:0 16px 0 24px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt:hover{background:var(--el-fill-color-light)}
+.sel-opt.active{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+.sel-opt .opt-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{flex-shrink:0;margin-left:auto;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt .tick{flex-shrink:0;margin-left:auto;color:var(--el-color-primary)}
+.sel-opt .opt-sub+.tick{margin-left:8px}
+.sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+
+/* 提示条 */
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
+.toast.show{opacity:1}
+.toast.err{color:var(--el-color-danger)}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <!-- 筛选白卡：计划名称 / 创建人 -->
+  <div class="filter-card">
+    <div class="filter-item">
+      <span class="flt-label">计划名称</span>
+      <input class="field" id="f-name" placeholder="请输入计划名称" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">创建人</span>
+      <div class="sel" id="f-creator"></div>
+    </div>
+    <div class="filter-acts">
+      <button class="btn btn-primary" id="flt-search">查询</button>
+      <button class="btn btn-default" id="flt-reset">重置</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd">
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-type="annual">年度计划</button>
+        <button class="tab" data-type="monthly">月度计划</button>
+      </div>
+      <div class="hd-acts">
+        <button class="btn btn-primary" id="btn-add">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>新增
+        </button>
+        <button class="btn btn-default" id="btn-import">导入</button>
+        <button class="btn btn-danger-ghost" id="btn-del">删除</button>
+      </div>
+    </div>
+    <div class="panel-bd">
+      <div class="tbl-wrap">
+        <table>
+          <colgroup>
+            <col style="width:48px"><col style="width:10%"><col style="width:14%"><col style="width:8%">
+            <col style="width:14%"><col style="width:12%"><col style="width:9%"><col style="width:9%"><col style="width:260px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th><input type="checkbox" class="cb" id="cb-all" aria-label="全选"></th>
+              <th>计划编号</th><th>计划名称</th><th>计划类型</th><th>巡查范围</th><th>巡查内容</th>
+              <th>计划开始时间</th><th>计划结束时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="pg-bar"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 导入抽屉：内嵌巡检计划导入页 -->
+<div class="drawer-mask" id="imp-mask"></div>
+<aside class="drawer" id="imp-drawer" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3>导入计划</h3>
+    <button class="icon-btn" id="imp-close" title="关闭">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="drawer-bd"><iframe id="imp-frame" src="about:blank" title="巡检计划导入"></iframe></div>
+</aside>
+
+<!-- 新增抽屉：内嵌新增计划页 -->
+<div class="drawer-mask" id="ap-mask"></div>
+<aside class="drawer" id="ap-drawer" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3 id="ap-title">新增巡检计划</h3>
+    <button class="icon-btn" id="ap-close" title="关闭">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="drawer-bd"><iframe id="ap-frame" src="about:blank" title="新增巡检计划"></iframe></div>
+</aside>
+
+<!-- 新增问题抽屉：内嵌新增问题页（巡检记录行入口，可叠在记录弹窗之上） -->
+<div class="drawer-mask drawer-top" id="is-mask"></div>
+<aside class="drawer drawer-top" id="is-drawer" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3 id="is-title">新增问题</h3>
+    <button class="icon-btn" id="is-close" title="关闭">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="drawer-bd"><iframe id="is-frame" src="about:blank" title="新增问题"></iframe></div>
+</aside>
+
+<!-- 查看详情 -->
+<div class="mask" id="view-mask">
+  <div class="dlg dlg-md">
+    <div class="dlg-hd">
+      <h3>巡检计划详情</h3>
+      <button class="icon-btn" data-close="view" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="dlg-bd" id="view-body"></div>
+    <div class="dlg-ft"><button class="btn btn-default" data-close="view">关闭</button></div>
+  </div>
+</div>
+
+<!-- 查看巡检记录 -->
+<div class="mask" id="rec-mask">
+  <div class="dlg dlg-lg">
+    <div class="dlg-hd">
+      <h3>巡检记录<span class="rec-sub" id="rec-sub"></span></h3>
+      <button class="icon-btn" data-close="rec" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="dlg-bd">
+      <div class="rec-wrap">
+        <table>
+          <colgroup>
+            <col style="width:13%"><col style="width:13%"><col style="width:13%"><col style="width:8%">
+            <col style="width:8%"><col style="width:25%"><col style="width:8%"><col style="width:12%">
+          </colgroup>
+          <thead>
+            <tr><th>巡检时间</th><th>巡检站点</th><th>巡检设备</th><th>巡检人员</th><th>巡检结果</th><th>巡检内容</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody id="rec-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="rec-pg"></div>
+    </div>
+    <div class="dlg-ft"><button class="btn btn-default" data-close="rec">关闭</button></div>
+  </div>
+</div>
+
+<!-- 添加巡检记录 -->
+<div class="mask" id="add-mask">
+  <div class="dlg dlg-md">
+    <div class="dlg-hd">
+      <h3 id="add-title">添加巡检记录</h3>
+      <button class="icon-btn" data-close="add" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="dlg-bd">
+      <div class="form-grid">
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>巡检时间</label>
+          <input type="datetime-local" class="field" id="r-time">
+          <div class="f-err" id="r-time-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>巡检站点</label>
+          <div class="sel" id="r-site"></div>
+          <div class="f-err" id="r-site-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>巡检设备</label>
+          <div class="sel" id="r-device"></div>
+          <div class="f-err" id="r-device-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>巡检结果</label>
+          <div class="sel" id="r-result"></div>
+          <div class="f-err" id="r-result-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">巡检人员</label>
+          <div class="sel" id="r-user"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">状态</label>
+          <div class="sel" id="r-status"></div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>巡检内容</label>
+          <textarea class="field" id="r-content" maxlength="1000" placeholder="请输入巡检内容（不超过 1000 字）"></textarea>
+          <div class="counter"><span id="r-count">0</span>/1000</div>
+          <div class="f-err" id="r-content-err"></div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">现场照片</label>
+          <div class="photo-zone">
+            <div class="photo-list" id="r-photo-list" style="display:contents"></div>
+            <button type="button" class="photo-add" id="r-photo-add">
+              <span class="plus">+</span><span>上传照片</span>
+            </button>
+          </div>
+          <input type="file" id="r-photo-input" accept="image/jpeg,image/png,image/gif,image/bmp,image/webp" multiple hidden>
+          <div class="f-hint">选「已提交」时至少上传 1 张；最多 3 张，单张 ≤5MB（草稿可不传，后续在巡检记录页补传）</div>
+          <div class="f-err" id="r-photo-err"></div>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-ft">
+      <button class="btn btn-default" data-close="add">取消</button>
+      <button class="btn btn-primary" id="r-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用确认（删除 / 完成 / 取消） -->
+<div class="mask" id="cfm-mask">
+  <div class="dlg dlg-sm">
+    <div class="dlg-hd">
+      <h3 id="cfm-title">删除确认</h3>
+      <button class="icon-btn" data-close="cfm" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="dlg-bd"><div class="confirm-text" id="cfm-text"></div></div>
+    <div class="dlg-ft">
+      <button class="btn btn-default" data-close="cfm">取消</button>
+      <button class="btn btn-danger" id="cfm-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+/* ============================ 常量与状态 ============================ */
+const API = '/hltgq-site';
+/* 现场照片（与巡检记录页一致）：最多 3 张，单张 ≤5MB */
+const MAX_PHOTOS = 3;
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
+const ICON = {
+  search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  tick: '<svg class="tick" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+/** 状态标签样式（已完成=绿 / 进行中=蓝 / 未开始=橙 / 草稿·已取消=灰） */
+const STATUS_TAG_CLASS = { '#1#': '', '#5#': 'orange', '#2#': 'blue', '#3#': 'green', '#4#': '' };
+
+const S = {
+  users: [],            // 用户候选（创建人筛选 / 巡检人员 / 巡检人员单选）
+  planType: 'annual',   // 当前 Tab：annual 年度 / monthly 月度
+  page: 1, size: 10, total: 0, records: [],
+  filter: { name: '', creatorId: '' },
+  listSeq: 0,
+  detailSeq: 0,
+  checked: {},          // 勾选行：id → true
+  importLoaded: false,  // 导入抽屉是否已加载
+  rec: { planId: '', title: '', page: 1, size: 10, total: 0, seq: 0, rows: [] },
+  add: { planId: '', title: '', sites: [], devices: [], siteSeq: 0, deviceSeq: 0, photos: [] },
+  currentUser: null,
+  confirmFn: null
+};
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v === null || v === undefined ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+function showToast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+/** 统一请求：非 2xx 抛出后端 message（后端 IllegalArgumentException → 400 + message） */
+async function api(path, opts) {
+  const init = Object.assign({ credentials: 'include' }, opts || {});
+  if (init.body && typeof init.body !== 'string') {
+    init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
+    init.body = JSON.stringify(init.body);
+  }
+  const res = await fetch(API + path, init);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+    throw new Error((data && (data.message || data.error)) || fallback);
+  }
+  return data;
+}
+
+function qs(obj) {
+  const p = new URLSearchParams();
+  Object.keys(obj).forEach(k => {
+    const v = obj[k];
+    if (v !== null && v !== undefined && String(v).trim() !== '') p.set(k, String(v).trim());
+  });
+  return p.toString();
+}
+
+/** 日期文本：2026-10-21 */
+function fmtDate(v) {
+  if (!v) return '--';
+  return String(v).replace('T', ' ').slice(0, 10);
+}
+
+/** 日期时间文本：2026-10-21 15:54 */
+function fmtDateTime(v) {
+  if (!v) return '--';
+  return String(v).replace('T', ' ').slice(0, 16);
+}
+
+/** 当前时间 → datetime-local 值（yyyy-MM-ddTHH:mm） */
+function nowInputValue() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+/* ============================ 下拉组件 ============================ */
+function createSelect(el) {
+  const st = {
+    value: '', label: '', options: [], placeholder: '请选择', emptyText: '无匹配数据',
+    searchable: false, disabled: false, loading: false, onChange: null
+  };
+  el.innerHTML =
+    '<div class="sel-box" tabindex="0"><span class="sel-text placeholder"></span><span class="sel-arrow"></span></div>' +
+    '<div class="sel-panel"><div class="sel-search" hidden>' + ICON.search +
+    '<input type="text" placeholder="搜索" autocomplete="off"></div><div class="sel-list"></div></div>';
+
+  const box = el.querySelector('.sel-box');
+  const textEl = el.querySelector('.sel-text');
+  const searchWrap = el.querySelector('.sel-search');
+  const searchInput = searchWrap.querySelector('input');
+  const list = el.querySelector('.sel-list');
+
+  function sync() {
+    const hit = st.options.filter(o => o.value === st.value)[0];
+    const label = st.value ? (hit ? hit.label : (st.label || st.value)) : '';
+    textEl.textContent = label || st.placeholder;
+    textEl.classList.toggle('placeholder', !label);
+  }
+  function render() {
+    if (st.loading) { list.innerHTML = '<div class="sel-empty">加载中...</div>'; return; }
+    const kw = (st.searchable ? searchInput.value : '').trim().toLowerCase();
+    const opts = kw
+      ? st.options.filter(o => (o.label + ' ' + (o.sub || '')).toLowerCase().indexOf(kw) >= 0)
+      : st.options;
+    if (!opts.length) { list.innerHTML = '<div class="sel-empty">' + esc(st.emptyText) + '</div>'; return; }
+    list.innerHTML = opts.map(o =>
+      '<div class="sel-opt' + (o.value === st.value ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+      '<span class="opt-name">' + esc(o.label) + '</span>' +
+      (o.sub ? '<span class="opt-sub">' + esc(o.sub) + '</span>' : '') +
+      (o.value === st.value ? ICON.tick : '') + '</div>').join('');
+  }
+  function open() {
+    if (st.disabled) return;
+    closeAllSelects(el);
+    el.classList.add('open');
+    if (st.searchable) searchInput.value = '';
+    render();
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 忽略 */ }
+    if (st.searchable) setTimeout(() => { try { searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+  }
+  function close() { el.classList.remove('open'); }
+
+  box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    if (e.key === 'Escape') close();
+  });
+  searchInput.addEventListener('input', render);
+  list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.sel-opt');
+    if (!opt) return;
+    e.preventDefault();
+    st.value = opt.dataset.value;
+    st.label = '';
+    sync(); render(); close();
+    if (st.onChange) st.onChange(st.value);
+  });
+  el._close = close;
+
+  return {
+    getValue: () => st.value,
+    getLabel() {
+      const hit = st.options.filter(o => o.value === st.value)[0];
+      return hit ? hit.label : '';
+    },
+    setOptions(options) { st.options = options || []; sync(); render(); return this; },
+    setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
+    setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+    setSearchable(on) { st.searchable = !!on; searchWrap.hidden = !on; return this; },
+    setDisabled(on) { st.disabled = !!on; el.classList.toggle('is-disabled', !!on); return this; },
+    setLoading(on) { st.loading = !!on; if (!on) render(); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+function closeAllSelects(except) {
+  document.querySelectorAll('.sel.open').forEach(s => {
+    if (s !== except && typeof s._close === 'function') s._close();
+  });
+}
+
+/* ============================ 列表 ============================ */
+const UI = {};
+
+function emptyRow(text, plain, colspan) {
+  return '<tr><td colspan="' + (colspan || 9) + '" class="empty"><div class="empty-box">' +
+    (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
+}
+
+/**
+ * 计划行操作（文字按钮）：
+ * 草稿可查看/巡检记录/编辑/发布；已完成/已取消禁用完成/取消/添加记录。
+ */
+function rowActs(r) {
+  const id = esc(r.id);
+  const title = esc(r.title || '');
+  if (r.statusCode === '#1#') {
+    return '<div class="acts">' +
+      '<button class="act-txt" data-act="view" data-id="' + id + '">查看</button>' +
+      '<button class="act-txt" data-act="records" data-id="' + id + '">巡检记录</button>' +
+      '<button class="act-txt" data-act="edit" data-id="' + id + '">编辑</button>' +
+      '<button class="act-txt ok" data-act="publish" data-id="' + id + '">发布</button>' +
+      '</div>';
+  }
+  const done = r.statusCode === '#3#' || r.statusCode === '#4#';
+  const dis = done ? ' disabled' : '';
+  return '<div class="acts">' +
+    '<button class="act-txt" data-act="view" data-id="' + id + '">查看</button>' +
+    '<button class="act-txt" data-act="records" data-id="' + id + '">巡检记录</button>' +
+    '<button class="act-txt ok" data-act="complete" data-id="' + id + '"' + dis + '>完成</button>' +
+    '<button class="act-txt danger" data-act="cancel" data-id="' + id + '"' + dis + '>取消</button>' +
+    '<button class="act-txt" data-act="addrec" data-id="' + id + '" data-title="' + title + '"' + dis + '>添加记录</button>' +
+    '</div>';
+}
+
+function renderTable() {
+  const tb = $('tbl-body');
+  if (!S.records.length) {
+    tb.innerHTML = emptyRow('暂无数据');
+    syncCbAll();
+    return;
+  }
+  tb.innerHTML = S.records.map(r => {
+    const statusCls = STATUS_TAG_CLASS[r.statusCode] || '';
+    const id = esc(r.id);
+    return '<tr data-id="' + id + '">' +
+      '<td><input type="checkbox" class="cb js-cb" data-id="' + id + '"' + (S.checked[r.id] ? ' checked' : '') + '></td>' +
+      '<td title="' + esc(r.code || '') + '">' + esc(r.code || '--') + '</td>' +
+      '<td title="' + esc(r.title || '') + '"><span class="name-cell">' +
+        '<span class="lnk" data-act="view" data-id="' + id + '" title="' + esc(r.title || '') + '">' + esc(r.title || '--') + '</span>' +
+        (r.statusLabel ? '<span class="tag ' + statusCls + '">' + esc(r.statusLabel) + '</span>' : '') + '</span></td>' +
+      '<td>' + esc(r.planTypeLabel || '--') + '</td>' +
+      '<td title="' + esc(r.siteNames || '') + '">' + esc(r.siteNames || '--') + '</td>' +
+      '<td title="' + esc(r.content || '') + '">' + esc(r.content || '--') + '</td>' +
+      '<td>' + esc(fmtDate(r.startTime)) + '</td>' +
+      '<td>' + esc(fmtDate(r.endTime)) + '</td>' +
+      '<td class="col-act">' + rowActs(r) + '</td></tr>';
+  }).join('');
+  syncCbAll();
+}
+
+async function loadList() {
+  const seq = ++S.listSeq;
+  const params = new URLSearchParams(qs({ name: S.filter.name, creatorId: S.filter.creatorId, planType: S.planType }));
+  params.set('page', String(S.page));
+  params.set('size', String(S.size));
+  $('tbl-body').innerHTML = emptyRow('加载中...', true);
+  try {
+    const data = await api('/patrol-schedule/page?' + params.toString());
+    if (seq !== S.listSeq) return;
+    S.total = Number(data && data.total) || 0;
+    S.records = (data && Array.isArray(data.records)) ? data.records : [];
+    if (!S.records.length && S.page > 1) { S.page -= 1; return loadList(); }
+    renderTable();
+    renderPager();
+  } catch (e) {
+    if (seq !== S.listSeq) return;
+    S.records = [];
+    S.total = 0;
+    $('tbl-body').innerHTML = emptyRow('数据加载失败');
+    renderPager();
+    showToast(e.message || '数据加载失败', true);
+  }
+}
+
+function findRow(id) {
+  return S.records.filter(r => String(r.id) === String(id))[0] || null;
+}
+
+function syncCbAll() {
+  const all = $('cb-all');
+  const pageIds = S.records.map(r => String(r.id));
+  const checkedOnPage = pageIds.filter(id => S.checked[id]).length;
+  all.checked = pageIds.length > 0 && checkedOnPage === pageIds.length;
+  all.indeterminate = checkedOnPage > 0 && checkedOnPage < pageIds.length;
+}
+
+/* ============================ 分页 ============================ */
+function pageNumbers(cur, total) {
+  if (total <= 7) {
+    const all = [];
+    for (let i = 1; i <= total; i++) all.push(i);
+    return all;
+  }
+  const out = [1];
+  const start = Math.max(2, cur - 1);
+  const end = Math.min(total - 1, cur + 1);
+  if (start > 2) out.push('...');
+  for (let p = start; p <= end; p++) out.push(p);
+  if (end < total - 1) out.push('...');
+  out.push(total);
+  return out;
+}
+
+function renderPager() {
+  const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+  const sizes = [10, 20, 50, 100];
+  let html = '<span class="pg-info">共 ' + S.total + ' 条</span><div class="pg-btns">' +
+    '<button class="pg-btn" data-pg="prev"' + (S.page <= 1 ? ' disabled' : '') + '>‹</button>';
+  pageNumbers(S.page, totalPages).forEach(p => {
+    html += p === '...'
+      ? '<span class="pg-ellipsis">···</span>'
+      : '<button class="pg-btn' + (p === S.page ? ' active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+  });
+  html += '<button class="pg-btn" data-pg="next"' + (S.page >= totalPages ? ' disabled' : '') + '>›</button></div>' +
+    '<select class="pg-size" id="pg-size">' +
+    sizes.map(n => '<option value="' + n + '"' + (n === S.size ? ' selected' : '') + '>' + n + ' 条/页</option>').join('') +
+    '</select>' +
+    '<span class="pg-jump">跳至<input type="text" id="pg-jump" inputmode="numeric" aria-label="跳至页码"' +
+    ' value="' + S.page + '" autocomplete="off">页</span>';
+  $('pg-bar').innerHTML = html;
+}
+
+/* ============================ 弹窗基础 ============================ */
+const MASKS = { view: 'view-mask', rec: 'rec-mask', add: 'add-mask', cfm: 'cfm-mask' };
+/* 巡检结果：正常=绿 / 异常·故障=红 / 隐患·缺陷=橙 */
+const RESULT_TAG_CLASS = { '#2#': 'green', '#3#': 'red', '#4#': 'orange', '#5#': 'orange', '#6#': 'red' };
+const REC_STATUS_TAG_CLASS = { '#1#': '', '#2#': 'blue' };
+
+function openMask(key) {
+  closeAllSelects();
+  const m = $(MASKS[key]);
+  if (m) m.classList.add('show');
+}
+
+function closeMask(key) {
+  const m = $(MASKS[key]);
+  if (m) m.classList.remove('show');
+  closeAllSelects();
+  if (key === 'cfm') S.confirmFn = null;
+  if (key === 'add') clearAddPhotos();
+  // 记录弹窗关闭时同步收起其上的问题抽屉，避免残留
+  if (key === 'rec') closeIssueDrawer();
+}
+
+/** 表单行错误：on=true 显示；返回 on，便于串联校验 */
+function markErr(id, on, msg) {
+  const el = $(id);
+  if (!el) return false;
+  el.classList.toggle('show', !!on);
+  if (on && msg) el.textContent = msg;
+  return !!on;
+}
+
+function clearErrs(ids) {
+  ids.forEach(id => markErr(id, false));
+}
+
+function tagHtml(cls, label) {
+  return label ? '<span class="tag ' + (cls || '') + '">' + esc(label) + '</span>' : '--';
+}
+
+/* ============================ 查看详情 ============================ */
+function viewRow(k, v, span2) {
+  return '<div class="view-row' + (span2 ? ' span2' : '') + '"><span class="k">' + esc(k) + '</span>' +
+    '<div class="v">' + (v || '--') + '</div></div>';
+}
+
+async function openDetail(id) {
+  const seq = ++S.detailSeq;
+  $('view-body').innerHTML = '<div class="empty-box">加载中...</div>';
+  openMask('view');
+  try {
+    const d = await api('/patrol-schedule/detail?id=' + encodeURIComponent(id));
+    if (seq !== S.detailSeq) return;
+    const sites = Array.isArray(d.sites) ? d.sites : [];
+    const siteHtml = sites.length
+      ? '<div class="site-tags">' + sites.map(s =>
+          '<span class="site-tag">' + esc(s.name || s.code || s.id) + '</span>').join('') + '</div>'
+      : '';
+    $('view-body').innerHTML = '<div class="view-grid">' +
+      viewRow('计划编号', esc(d.code || '')) +
+      viewRow('计划类型', esc(d.planTypeLabel || '')) +
+      viewRow('计划名称', esc(d.title || '')) +
+      viewRow('计划状态', tagHtml(STATUS_TAG_CLASS[d.statusCode] || '', d.statusLabel)) +
+      viewRow('计划开始时间', esc(fmtDate(d.startTime))) +
+      viewRow('计划结束时间', esc(fmtDate(d.endTime))) +
+      viewRow('创建人', esc(d.creatorName || '')) +
+      viewRow('创建时间', esc(fmtDateTime(d.createdAt))) +
+      viewRow('巡检人员', esc(d.inspectorName || '')) +
+      viewRow('站点数量', sites.length ? sites.length + ' 个' : '') +
+      viewRow('巡查范围', siteHtml, true) +
+      viewRow('巡查内容', esc(d.content || ''), true) +
+      '</div>';
+  } catch (e) {
+    if (seq !== S.detailSeq) return;
+    $('view-body').innerHTML = '<div class="empty-box">' + esc(e.message || '详情加载失败') + '</div>';
+    showToast(e.message || '详情加载失败', true);
+  }
+}
+
+/* ============================ 查看巡检记录 ============================ */
+async function openRecords(id, title) {
+  S.rec.planId = id;
+  S.rec.title = title || '';
+  S.rec.page = 1;
+  $('rec-sub').textContent = S.rec.title ? '· ' + S.rec.title : '';
+  openMask('rec');
+  loadRecords();
+}
+
+async function loadRecords() {
+  const seq = ++S.rec.seq;
+  $('rec-body').innerHTML = emptyRow('加载中...', true, 8);
+  try {
+    const data = await api('/patrol-schedule/records?scheduleId=' + encodeURIComponent(S.rec.planId) +
+      '&page=' + S.rec.page + '&size=' + S.rec.size);
+    if (seq !== S.rec.seq) return;
+    S.rec.total = Number(data && data.total) || 0;
+    const rows = (data && Array.isArray(data.records)) ? data.records : [];
+    S.rec.rows = rows;
+    if (!rows.length && S.rec.page > 1) { S.rec.page -= 1; return loadRecords(); }
+    $('rec-body').innerHTML = rows.length ? rows.map(r =>
+      '<tr>' +
+      '<td>' + esc(fmtDateTime(r.time)) + '</td>' +
+      '<td title="' + esc(r.siteName || '') + '">' + esc(r.siteName || '--') + '</td>' +
+      '<td title="' + esc(r.deviceName || '') + '">' + esc(r.deviceName || '--') + '</td>' +
+      '<td>' + esc(r.userName || '--') + '</td>' +
+      '<td>' + tagHtml(RESULT_TAG_CLASS[r.resultCode] || '', r.resultLabel) + '</td>' +
+      '<td title="' + esc(r.content || '') + '">' + esc(r.content || '--') + '</td>' +
+      '<td>' + tagHtml(REC_STATUS_TAG_CLASS[r.statusCode] || '', r.statusLabel) + '</td>' +
+      '<td class="col-act"><div class="acts">' +
+        '<button class="act-txt" data-issue="' + esc(r.id) + '">新增问题</button>' +
+      '</div></td>' +
+      '</tr>').join('') : emptyRow('暂无巡检记录', false, 8);
+    renderRecPager();
+  } catch (e) {
+    if (seq !== S.rec.seq) return;
+    S.rec.total = 0;
+    S.rec.rows = [];
+    $('rec-body').innerHTML = emptyRow('记录加载失败', true, 8);
+    renderRecPager();
+    showToast(e.message || '记录加载失败', true);
+  }
+}
+
+function renderRecPager() {
+  const totalPages = Math.max(1, Math.ceil(S.rec.total / S.rec.size));
+  let html = '<span class="pg-info">共 ' + S.rec.total + ' 条</span><div class="pg-btns">' +
+    '<button class="pg-btn" data-rpg="prev"' + (S.rec.page <= 1 ? ' disabled' : '') + '>‹</button>';
+  pageNumbers(S.rec.page, totalPages).forEach(p => {
+    html += p === '...'
+      ? '<span class="pg-ellipsis">···</span>'
+      : '<button class="pg-btn' + (p === S.rec.page ? ' active' : '') + '" data-rpg="' + p + '">' + p + '</button>';
+  });
+  html += '<button class="pg-btn" data-rpg="next"' + (S.rec.page >= totalPages ? ' disabled' : '') + '>›</button></div>';
+  $('rec-pg').innerHTML = html;
+}
+
+/* ============================ 添加巡检记录 ============================ */
+/* ---------- 现场照片（上传 / 预览 / 移除） ---------- */
+function renderAddPhotos() {
+  const keep = $('r-photo-add');
+  if (!keep) return;
+  $('r-photo-list').innerHTML = S.add.photos.map((p, i) =>
+    '<div class="photo-item' + (p.uploading ? ' is-uploading' : '') + '">' +
+      (p.url ? '<img src="' + esc(API + p.url) + '" alt="' + esc(p.name) + '">' : '') +
+      (p.uploading ? '<span class="state">上传中</span>'
+        : '<button type="button" class="del" data-del-photo="' + i + '" title="移除">✕</button>') +
+    '</div>').join('');
+  keep.disabled = S.add.photos.length >= MAX_PHOTOS;
+}
+
+/** 上传单张照片（multipart；不能走 api()，否则 FormData 会被当作 JSON 序列化） */
+async function uploadOnePhoto(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(API + '/patrol-record/photo', {
+    method: 'POST', body: fd, credentials: 'include'
+  });
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    throw new Error((data && (data.message || data.error)) || '照片上传失败（HTTP ' + res.status + '）');
+  }
+  return data;
+}
+
+async function onPickPhotos(files) {
+  const list = Array.prototype.slice.call(files || []);
+  if (!list.length) return;
+  const room = MAX_PHOTOS - S.add.photos.filter(p => !p.uploading).length;
+  if (room <= 0) { showToast('最多上传 ' + MAX_PHOTOS + ' 张照片', true); return; }
+  const picked = list.slice(0, room);
+  if (list.length > room) showToast('最多上传 ' + MAX_PHOTOS + ' 张，已忽略多余文件', true);
+  for (let i = 0; i < picked.length; i++) {
+    const file = picked[i];
+    if (!/^image\//.test(file.type || '')) { showToast('仅支持图片文件：' + file.name, true); continue; }
+    if (file.size > MAX_PHOTO_SIZE) { showToast('单张照片不能超过 5MB：' + file.name, true); continue; }
+    const item = { id: '', name: file.name, url: '', uploading: true };
+    S.add.photos.push(item);
+    renderAddPhotos();
+    try {
+      const data = await uploadOnePhoto(file);
+      item.id = data && data.id;
+      item.url = (data && data.url) || '';
+      item.uploading = false;
+    } catch (e) {
+      S.add.photos = S.add.photos.filter(p => p !== item);
+      showToast(e.message || '照片上传失败', true);
+    }
+    renderAddPhotos();
+  }
+  $('r-photo-input').value = '';
+  markErr('r-photo-err', false);
+}
+
+/** 移除未保存照片：后端删行 + 删文件；上传中的忽略 */
+async function removeAddPhoto(index) {
+  const item = S.add.photos[index];
+  if (!item || !item.id || item.uploading) return;
+  try {
+    await api('/patrol-record/photo/remove', { method: 'POST', body: { id: item.id } });
+    S.add.photos.splice(index, 1);
+    renderAddPhotos();
+  } catch (e) {
+    showToast(e.message || '照片移除失败', true);
+  }
+}
+
+/** 关闭弹窗时清理未保存照片（已绑定记录的会被后端拒绝，静默忽略） */
+function clearAddPhotos() {
+  const pending = S.add.photos.filter(p => p.id && !p.uploading);
+  S.add.photos = [];
+  renderAddPhotos();
+  pending.forEach(p => {
+    api('/patrol-record/photo/remove', { method: 'POST', body: { id: p.id } }).catch(() => {});
+  });
+}
+
+async function openAddRecord(id, title) {
+  const seq = ++S.add.siteSeq;
+  S.add.planId = id;
+  S.add.title = title || '';
+  S.add.sites = [];
+  S.add.devices = [];
+  S.add.photos = [];
+  renderAddPhotos();
+  $('add-title').textContent = '添加巡检记录' + (S.add.title ? ' · ' + S.add.title : '');
+  $('r-time').value = nowInputValue();
+  $('r-content').value = '';
+  $('r-count').textContent = '0';
+  clearErrs(['r-time-err', 'r-site-err', 'r-device-err', 'r-result-err', 'r-content-err', 'r-photo-err']);
+  UI.siteSel.setOptions([]).setValue('').setPlaceholder('加载中...').setLoading(true).setError(false);
+  UI.deviceSel.setOptions([]).setValue('').setPlaceholder('请先选择站点').setDisabled(true).setError(false);
+  UI.resultSel.setValue('#2#').setError(false);
+  UI.userSel.setValue(S.currentUser ? S.currentUser.userId : '', S.currentUser ? S.currentUser.name : '');
+  UI.statusSel.setValue('#2#');
+  openMask('add');
+  try {
+    const list = await api('/patrol-schedule/plan-sites?scheduleId=' + encodeURIComponent(id));
+    if (seq !== S.add.siteSeq) return;
+    S.add.sites = Array.isArray(list) ? list : [];
+    UI.siteSel.setOptions(S.add.sites.map(s => ({ value: s.id, label: s.name || s.code || s.id, sub: s.code || '' })));
+    UI.siteSel.setPlaceholder(S.add.sites.length ? '请选择站点' : '该计划未配置巡查范围');
+  } catch (e) {
+    if (seq !== S.add.siteSeq) return;
+    S.add.sites = [];
+    UI.siteSel.setOptions([]).setPlaceholder('站点加载失败');
+    showToast(e.message || '站点加载失败', true);
+  } finally {
+    if (seq === S.add.siteSeq) UI.siteSel.setLoading(false);
+  }
+}
+
+async function loadDevices(siteId) {
+  const seq = ++S.add.deviceSeq;
+  S.add.devices = [];
+  UI.deviceSel.setValue('').setError(false);
+  markErr('r-device-err', false);
+  if (!siteId) {
+    UI.deviceSel.setOptions([]).setDisabled(true).setPlaceholder('请先选择站点');
+    return;
+  }
+  UI.deviceSel.setDisabled(false).setPlaceholder('加载中...').setLoading(true);
+  try {
+    const list = await api('/patrol-schedule/devices?siteId=' + encodeURIComponent(siteId));
+    if (seq !== S.add.deviceSeq) return;
+    S.add.devices = Array.isArray(list) ? list : [];
+    UI.deviceSel.setOptions(S.add.devices.map(d => ({ value: d.value, label: d.label || d.value, sub: d.sub || '' })));
+    UI.deviceSel.setPlaceholder(S.add.devices.length ? '请选择设备' : '该站点暂无设备');
+  } catch (e) {
+    if (seq !== S.add.deviceSeq) return;
+    S.add.devices = [];
+    UI.deviceSel.setOptions([]).setPlaceholder('设备加载失败');
+    showToast(e.message || '设备加载失败', true);
+  } finally {
+    if (seq === S.add.deviceSeq) UI.deviceSel.setLoading(false);
+  }
+}
+
+async function saveRecord() {
+  const timeVal = $('r-time').value;
+  const siteId = UI.siteSel.getValue();
+  const deviceId = UI.deviceSel.getValue();
+  const result = UI.resultSel.getValue();
+  const content = $('r-content').value.trim();
+  let bad = false;
+  bad = markErr('r-time-err', !timeVal, '请选择巡检时间') || bad;
+  bad = markErr('r-site-err', !siteId, '请选择巡检站点') || bad;
+  bad = markErr('r-device-err', !deviceId, '请选择巡检设备') || bad;
+  bad = markErr('r-result-err', !result, '请选择巡检结果') || bad;
+  bad = markErr('r-content-err', !content, '请输入巡检内容') || bad;
+  const readyPhotos = S.add.photos.filter(p => p.id && !p.uploading);
+  if (UI.statusSel.getValue() === '#2#' && !readyPhotos.length) {
+    bad = markErr('r-photo-err', true, '选「已提交」请至少上传 1 张现场照片') || bad;
+  } else {
+    markErr('r-photo-err', false);
+  }
+  UI.siteSel.setError(!siteId);
+  UI.deviceSel.setError(!deviceId);
+  UI.resultSel.setError(!result);
+  if (bad) return;
+  if (S.add.photos.some(p => p.uploading)) { showToast('照片正在上传，请稍候', true); return; }
+
+  const btn = $('r-save');
+  btn.classList.add('is-loading');
+  btn.disabled = true;
+  try {
+    await api('/patrol-schedule/record', {
+      method: 'POST',
+      body: {
+        scheduleId: S.add.planId,
+        siteId: siteId,
+        deviceId: deviceId,
+        inspTime: timeVal.replace('T', ' '),
+        result: result,
+        content: content,
+        userId: UI.userSel.getValue(),
+        status: UI.statusSel.getValue(),
+        photoIds: readyPhotos.map(p => p.id)
+      }
+    });
+    S.add.photos = [];
+    closeMask('add');
+    showToast('巡检记录已添加');
+    if ($('rec-mask').classList.contains('show') && S.rec.planId === S.add.planId) loadRecords();
+    loadList();
+  } catch (e) {
+    showToast(e.message || '保存失败', true);
+  } finally {
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+  }
+}
+
+/* ============================ 通用确认弹窗 ============================ */
+function openConfirm(opt) {
+  $('cfm-title').textContent = opt.title || '提示';
+  $('cfm-text').textContent = opt.text || '';
+  const ok = $('cfm-ok');
+  ok.textContent = opt.okText || '确定';
+  ok.className = 'btn ' + (opt.okClass || 'btn-danger');
+  S.confirmFn = opt.onOk || null;
+  openMask('cfm');
+}
+
+async function onConfirmOk() {
+  const fn = S.confirmFn;
+  if (typeof fn !== 'function') { closeMask('cfm'); return; }
+  const btn = $('cfm-ok');
+  if (btn.classList.contains('is-loading')) return;
+  btn.classList.add('is-loading');
+  btn.disabled = true;
+  try {
+    await fn();
+    closeMask('cfm');
+  } catch (e) {
+    showToast(e.message || '操作失败', true);
+  } finally {
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+  }
+}
+
+/* ============================ 发布 / 完成 / 取消 / 删除 ============================ */
+/** 发布草稿计划：发布后展示态按巡检进度流转（未开始/进行中）且不可再编辑；过期计划禁止发布 */
+function askPublish(id) {
+  const row = findRow(id);
+  if (!row) return;
+  const name = row.title || row.code || '';
+  const endDay = String(row.endTime || '').replace('T', ' ').slice(0, 10);
+  const expired = !!endDay && endDay < nowInputValue().slice(0, 10);
+  if (expired) {
+    openConfirm({
+      title: '无法发布',
+      text: '该计划已过结束日期（' + endDay + '）。\n请先点「编辑」修改计划时间，再发布。',
+      okText: '知道了',
+      okClass: 'btn-primary'
+    });
+    return;
+  }
+  openConfirm({
+    title: '发布计划',
+    text: '发布后展示状态将按巡检进度自动流转（未开始 / 进行中），且不可再编辑。\n确定发布计划「' + name + '」吗？',
+    okText: '确定发布',
+    okClass: 'btn-primary',
+    onOk: async () => {
+      const data = await api('/patrol-schedule/publish', { method: 'POST', body: { ids: [row.id] } });
+      if (data && Number(data.count) > 0) showToast('计划已发布');
+      else showToast('计划不存在或不是草稿状态', true);
+      await loadList();
+    }
+  });
+}
+
+function askStatus(id, kind) {
+  const row = findRow(id);
+  if (!row) return;
+  const isDone = kind === 'complete';
+  const name = row.title || row.code || '';
+  openConfirm({
+    title: isDone ? '完成计划' : '取消计划',
+    text: '确定将计划「' + name + '」标记为' + (isDone ? '已完成' : '已取消') + '吗？',
+    okText: isDone ? '确定完成' : '确定取消',
+    okClass: isDone ? 'btn-primary' : 'btn-danger',
+    onOk: async () => {
+      const data = await api('/patrol-schedule/' + (isDone ? 'complete' : 'cancel'), {
+        method: 'POST',
+        body: { ids: [row.id] }
+      });
+      if (data && Number(data.count) > 0) showToast(isDone ? '计划已完成' : '计划已取消');
+      else showToast('计划不存在、仍是草稿或状态未变更', true);
+      await loadList();
+    }
+  });
+}
+
+/** 已勾选计划 id（跨页保留） */
+function checkedIds() {
+  return Object.keys(S.checked).filter(k => S.checked[k]);
+}
+
+function askDelete() {
+  const ids = checkedIds();
+  if (!ids.length) { showToast('请先勾选要删除的计划', true); return; }
+  openConfirm({
+    title: '删除确认',
+    text: '确定删除选中的 ' + ids.length + ' 条巡检计划吗？\n删除后不可恢复；计划下存在巡检记录时不允许删除。',
+    okText: '确定删除',
+    okClass: 'btn-danger',
+    onOk: async () => {
+      const data = await api('/patrol-schedule/delete', { method: 'POST', body: { ids: ids } });
+      S.checked = {};
+      showToast('已删除 ' + ((data && Number(data.count)) || ids.length) + ' 条计划');
+      await loadList();
+    }
+  });
+}
+
+/* ============================ 导入抽屉 ============================ */
+function openImport() {
+  if (!S.importLoaded) {
+    $('imp-frame').src = API + '/patrol-plan-import.html';
+    S.importLoaded = true;
+  }
+  $('imp-mask').classList.add('show');
+  $('imp-drawer').classList.add('show');
+  $('imp-drawer').setAttribute('aria-hidden', 'false');
+}
+
+function closeImport() {
+  $('imp-mask').classList.remove('show');
+  $('imp-drawer').classList.remove('show');
+  $('imp-drawer').setAttribute('aria-hidden', 'true');
+  loadList();
+}
+
+/* ============================ 新增/编辑抽屉（内嵌计划页） ============================ */
+/** 打开计划抽屉：id 为空 = 新增，传 id = 编辑草稿 */
+function openPlanDrawer(id) {
+  const edit = !!id;
+  // 与导入抽屉互斥
+  $('imp-mask').classList.remove('show');
+  $('imp-drawer').classList.remove('show');
+  $('imp-drawer').setAttribute('aria-hidden', 'true');
+  // 每次打开重新加载：新增为空表单，编辑按 id 回填最新数据
+  $('ap-title').textContent = edit ? '编辑巡检计划' : '新增巡检计划';
+  $('ap-frame').title = edit ? '编辑巡检计划' : '新增巡检计划';
+  $('ap-frame').src = API + '/patrol-plan-add.html?embed=1&type=' + S.planType +
+    (edit ? '&id=' + encodeURIComponent(id) : '') + '&_t=' + Date.now();
+  $('ap-mask').classList.add('show');
+  $('ap-drawer').classList.add('show');
+  $('ap-drawer').setAttribute('aria-hidden', 'false');
+}
+
+function openAddPlan() { openPlanDrawer(''); }
+
+function openEditPlan(id) { openPlanDrawer(id); }
+
+function closeAddPlan() {
+  $('ap-mask').classList.remove('show');
+  $('ap-drawer').classList.remove('show');
+  $('ap-drawer').setAttribute('aria-hidden', 'true');
+  $('ap-frame').src = 'about:blank';
+}
+
+/* ============================ 新增问题抽屉（内嵌问题页） ============================ */
+/** 巡检记录行「新增问题」：只传记录 id，站点/设备/时间由问题页调后端上下文接口回填（以记录为准） */
+function openIssueDrawer(recordId) {
+  const row = (S.rec.rows || []).filter(r => String(r.id) === String(recordId))[0];
+  if (!row) { showToast('巡检记录已失效，请刷新后重试', true); return; }
+  const params = new URLSearchParams({ embed: '1', recordId: row.id });
+  $('is-title').textContent = '新增问题' + (row.siteName ? ' · ' + row.siteName : '');
+  $('is-frame').title = '新增问题';
+  $('is-frame').src = API + '/patrol-issue-add.html?' + params.toString() + '&_t=' + Date.now();
+  $('is-mask').classList.add('show');
+  $('is-drawer').classList.add('show');
+  $('is-drawer').setAttribute('aria-hidden', 'false');
+}
+
+function closeIssueDrawer() {
+  $('is-mask').classList.remove('show');
+  $('is-drawer').classList.remove('show');
+  $('is-drawer').setAttribute('aria-hidden', 'true');
+  $('is-frame').src = 'about:blank';
+  $('is-title').textContent = '新增问题';
+}
+
+/** 新增页（iframe）保存成功 / 主动关闭的通知 */
+window.addEventListener('message', e => {
+  const d = e.data;
+  if (!d || typeof d !== 'object') return;
+  if (d.type === 'patrol-plan:close') { closeAddPlan(); return; }
+  if (d.type === 'patrol-issue:close') { closeIssueDrawer(); return; }
+  if (d.type === 'patrol-issue:saved') {
+    closeIssueDrawer();
+    showToast(d.code ? '问题已上报：' + d.code : '问题已上报');
+    return;
+  }
+  if (d.type === 'patrol-plan:saved') {
+    closeAddPlan();
+    const target = d.planType === '#zjgg#' ? 'monthly' : 'annual';
+    if (target !== S.planType) {
+      S.planType = target;
+      document.querySelectorAll('#tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.type === target));
+    }
+    S.page = 1;
+    S.checked = {};
+    loadList();
+    showToast(d.edit ? '计划已保存' : '计划已保存为草稿，发布后生效');
+  }
+});
+
+/* ============================ 下拉数据 ============================ */
+async function loadUsers() {
+  try {
+    const list = await api('/patrol-schedule/users');
+    S.users = (Array.isArray(list) ? list : []).map(u => ({
+      value: u.value, label: u.label || u.value, sub: u.sub || ''
+    }));
+    UI.creatorSel.setOptions([{ value: '', label: '全部' }].concat(S.users));
+    UI.userSel.setOptions(S.users);
+  } catch (e) {
+    showToast(e.message || '人员加载失败', true);
+  }
+}
+
+async function loadCurrentUser() {
+  try {
+    const u = await api('/user/profile');
+    if (u && u.userId) S.currentUser = { userId: u.userId, name: u.name || u.loginName || '' };
+  } catch (e) { /* 未登录 / 无权限时保持空，保存时由后端取当前操作人 */ }
+}
+
+/* ============================ 事件绑定 ============================ */
+function readFilter() {
+  S.filter.name = $('f-name').value.trim();
+  S.filter.creatorId = UI.creatorSel.getValue();
+}
+
+function bindEvents() {
+  // 筛选（条件变化后清空勾选，避免误删不在当前结果中的计划）
+  $('flt-search').addEventListener('click', () => { readFilter(); S.page = 1; S.checked = {}; loadList(); });
+  $('f-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { readFilter(); S.page = 1; S.checked = {}; loadList(); }
+  });
+  $('flt-reset').addEventListener('click', () => {
+    $('f-name').value = '';
+    UI.creatorSel.setValue('');
+    S.filter = { name: '', creatorId: '' };
+    S.page = 1;
+    S.checked = {};
+    loadList();
+  });
+
+  // Tab：年度 / 月度（切换后清空勾选）
+  $('tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab || tab.classList.contains('active')) return;
+    document.querySelectorAll('#tabs .tab').forEach(t => t.classList.toggle('active', t === tab));
+    S.planType = tab.dataset.type || 'annual';
+    S.page = 1;
+    S.checked = {};
+    loadList();
+  });
+
+  // 顶部按钮
+  $('btn-add').addEventListener('click', openAddPlan);
+  $('btn-import').addEventListener('click', openImport);
+  $('btn-del').addEventListener('click', askDelete);
+  $('imp-close').addEventListener('click', closeImport);
+  $('imp-mask').addEventListener('click', closeImport);
+  $('ap-close').addEventListener('click', closeAddPlan);
+  $('ap-mask').addEventListener('click', closeAddPlan);
+  $('is-close').addEventListener('click', closeIssueDrawer);
+  $('is-mask').addEventListener('click', closeIssueDrawer);
+
+  // 全选（仅当前页）
+  $('cb-all').addEventListener('change', e => {
+    S.records.forEach(r => {
+      if (e.target.checked) S.checked[r.id] = true; else delete S.checked[r.id];
+    });
+    renderTable();
+  });
+
+  // 行勾选
+  $('tbl-body').addEventListener('change', e => {
+    const cb = e.target.closest('.js-cb');
+    if (!cb) return;
+    if (cb.checked) S.checked[cb.dataset.id] = true; else delete S.checked[cb.dataset.id];
+    syncCbAll();
+  });
+
+  // 行操作：查看 / 查看巡检记录 / 编辑 / 发布 / 完成 / 取消 / 添加巡检记录
+  $('tbl-body').addEventListener('click', e => {
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    const id = el.dataset.id;
+    const row = findRow(id);
+    if (!row) return;
+    const act = el.dataset.act;
+    if (act === 'view') openDetail(id);
+    else if (act === 'records') openRecords(id, row.title);
+    else if (act === 'edit') openEditPlan(id);
+    else if (act === 'publish') askPublish(id);
+    else if (act === 'complete') askStatus(id, 'complete');
+    else if (act === 'cancel') askStatus(id, 'cancel');
+    else if (act === 'addrec') openAddRecord(id, el.dataset.title || row.title);
+  });
+
+  // 巡检记录行：新增问题（右侧问题抽屉）
+  $('rec-body').addEventListener('click', e => {
+    const btn = e.target.closest('[data-issue]');
+    if (!btn) return;
+    openIssueDrawer(btn.dataset.issue);
+  });
+
+  // 主分页
+  $('pg-bar').addEventListener('click', e => {
+    const btn = e.target.closest('.pg-btn');
+    if (!btn || btn.disabled) return;
+    const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+    const v = btn.dataset.pg;
+    if (v === 'prev') S.page = Math.max(1, S.page - 1);
+    else if (v === 'next') S.page = Math.min(totalPages, S.page + 1);
+    else S.page = Number(v) || 1;
+    loadList();
+  });
+  $('pg-bar').addEventListener('change', e => {
+    if (e.target.id !== 'pg-size') return;
+    S.size = Number(e.target.value) || 10;
+    S.page = 1;
+    loadList();
+  });
+  $('pg-bar').addEventListener('keydown', e => {
+    if (e.target.id !== 'pg-jump' || e.key !== 'Enter') return;
+    const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+    let p = parseInt(e.target.value, 10);
+    if (isNaN(p)) p = 1;
+    S.page = Math.min(totalPages, Math.max(1, p));
+    loadList();
+  });
+
+  // 巡检记录弹窗分页
+  $('rec-pg').addEventListener('click', e => {
+    const btn = e.target.closest('[data-rpg]');
+    if (!btn || btn.disabled) return;
+    const totalPages = Math.max(1, Math.ceil(S.rec.total / S.rec.size));
+    const v = btn.dataset.rpg;
+    if (v === 'prev') S.rec.page = Math.max(1, S.rec.page - 1);
+    else if (v === 'next') S.rec.page = Math.min(totalPages, S.rec.page + 1);
+    else S.rec.page = Number(v) || 1;
+    loadRecords();
+  });
+
+  // 添加记录：站点联动设备、字数统计、错误清除
+  UI.siteSel.onChange(v => loadDevices(v));
+  UI.deviceSel.onChange(() => { markErr('r-device-err', false); UI.deviceSel.setError(false); });
+  UI.resultSel.onChange(() => { markErr('r-result-err', false); UI.resultSel.setError(false); });
+  $('r-time').addEventListener('input', () => markErr('r-time-err', false));
+  $('r-content').addEventListener('input', () => {
+    $('r-count').textContent = $('r-content').value.length;
+    markErr('r-content-err', false);
+  });
+  // 添加记录：现场照片上传/移除（状态改草稿时清除照片必传提示）
+  $('r-photo-add').addEventListener('click', () => $('r-photo-input').click());
+  $('r-photo-input').addEventListener('change', e => onPickPhotos(e.target.files));
+  $('r-photo-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-del-photo]');
+    if (btn) removeAddPhoto(Number(btn.dataset.delPhoto));
+  });
+  UI.statusSel.onChange(() => markErr('r-photo-err', false));
+  $('r-save').addEventListener('click', saveRecord);
+
+  // 确认弹窗
+  $('cfm-ok').addEventListener('click', onConfirmOk);
+
+  // 弹窗关闭
+  document.querySelectorAll('[data-close]').forEach(btn => {
+    btn.addEventListener('click', () => closeMask(btn.dataset.close));
+  });
+  Object.keys(MASKS).forEach(k => {
+    const m = $(MASKS[k]);
+    m.addEventListener('mousedown', e => { if (e.target === m) closeMask(k); });
+  });
+
+  // 点击空白收起下拉
+  document.addEventListener('mousedown', e => {
+    if (!e.target.closest('.sel')) closeAllSelects();
+  });
+
+  // Esc：先收下拉，再关抽屉，再关弹窗
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.querySelector('.sel.open')) { closeAllSelects(); return; }
+    if ($('is-drawer').classList.contains('show')) { closeIssueDrawer(); return; }
+    if ($('ap-drawer').classList.contains('show')) { closeAddPlan(); return; }
+    if ($('imp-drawer').classList.contains('show')) { closeImport(); return; }
+    const order = ['cfm', 'add', 'rec', 'view'];
+    for (let i = 0; i < order.length; i++) {
+      if ($(MASKS[order[i]]).classList.contains('show')) { closeMask(order[i]); return; }
+    }
+  });
+}
+
+/* ============================ 初始化 ============================ */
+function init() {
+  UI.creatorSel = createSelect($('f-creator')).setPlaceholder('全部').setSearchable(true);
+  UI.siteSel = createSelect($('r-site')).setPlaceholder('请选择站点').setSearchable(true);
+  UI.deviceSel = createSelect($('r-device')).setPlaceholder('请先选择站点').setSearchable(true).setDisabled(true);
+  UI.resultSel = createSelect($('r-result')).setPlaceholder('请选择巡检结果');
+  UI.userSel = createSelect($('r-user')).setPlaceholder('默认当前登录人').setSearchable(true);
+  UI.statusSel = createSelect($('r-status')).setPlaceholder('已提交');
+
+  UI.creatorSel.setOptions([{ value: '', label: '全部' }]);
+  UI.resultSel.setOptions([
+    { value: '#2#', label: '正常' },
+    { value: '#3#', label: '异常' },
+    { value: '#4#', label: '隐患' },
+    { value: '#5#', label: '缺陷' },
+    { value: '#6#', label: '故障' }
+  ]).setValue('#2#');
+  UI.statusSel.setOptions([
+    { value: '#2#', label: '已提交' },
+    { value: '#1#', label: '草稿' }
+  ]).setValue('#2#');
+
+  // 从新增页返回时保持原 Tab
+  const presetType = new URLSearchParams(location.search).get('type');
+  if (presetType === 'annual' || presetType === 'monthly') {
+    S.planType = presetType;
+    document.querySelectorAll('#tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.type === presetType));
+  }
+
+  bindEvents();
+  loadUsers();
+  loadCurrentUser();
+  loadList();
+
+  // 新增页面保存成功返回
+  if (new URLSearchParams(location.search).get('saved') === '1') showToast('计划已保存为草稿，发布后生效');
+}
+
+init();
+</script>
+</body>
+</html>

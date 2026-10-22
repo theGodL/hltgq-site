@@ -8,6 +8,8 @@ import com.qgyun.hltgq.hltgqsite.h5.service.H5StatService;
 import com.qgyun.hltgq.hltgqsite.h5.service.H5WaterResourceService;
 import com.qgyun.hltgq.hltgqsite.h5.service.MessageService;
 import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolSchedulePageVO;
+import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolStartRequest;
+import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolStartVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolStationVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.InspectionResultStatsVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessagePageVO;
@@ -29,7 +31,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * H5 移动端接口：巡查及问题统计 / 维修养护统计 / 消息中心 / 巡检计划列表与关联点位 / 水资源概览。
+ * H5 移动端接口：巡查及问题统计 / 维修养护统计 / 消息中心 / 巡检计划列表、关联点位与开始巡检 / 水资源概览。
  * <p>全部接口需登录态（拦截器校验），当前登录人取自 {@link UserContextHolder}，
  * 消息中心未读与已读均为当前登录人视角。
  */
@@ -76,10 +78,11 @@ public class H5Controller {
     }
 
     /**
-     * 巡检计划分页列表：仅「进行中 #2# / 已完成 #3#」两类（草稿/已取消不入列）。
+     * 我的巡检计划分页列表：仅当前登录人被指派且「已发布 #2#（展示态细分 未开始/进行中）/ 已完成 #3#」
+     * 的计划（草稿/已取消、他人计划不入列）；未开始/进行中按该计划下是否存在巡检记录判定。
      *
      * @param name   任务名称模糊（title），可选
-     * @param status 状态：进行中/已完成 或编码 #2#/#3#，可选（不传返回两类全部）
+     * @param status 状态：未开始/进行中/已完成 或编码 #5#/#2#/#3#，可选（不传返回全部；URL 中 # 转义 %23）
      * @param page   页码，默认 1（越界返回空页）
      * @param size   每页条数，默认 10，上限 100
      */
@@ -89,20 +92,32 @@ public class H5Controller {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
-        return patrolScheduleService.list(name, status, page, size);
+        return patrolScheduleService.list(name, status, currentUserId(), page, size);
     }
 
     /**
      * 计划关联点位查询（添加巡检记录页点位选择）：入参巡检计划 id，返回该计划「巡查范围」内
      * 设置的站点（id/名称/经纬度，按设置顺序）。替代低代码关系查询接口
      * （{@code /ar/ZzrirqCf7oZ4cudrUOY/oiwlwRelQuery}，后者不按计划过滤、返回全部站点）。
+     * <p>归属校验：计划未指派给当前登录人返回 400（禁止越权取范围点位）。
      *
-     * @param scheduleId 巡检计划 id（必填；空 400，计划不存在或无范围关系返回空数组）
+     * @param scheduleId 巡检计划 id（必填；空 → 400，计划不存在/未指派给本人 → 400，无范围关系返回空数组）
      */
     @GetMapping("/patrol-schedule/stations")
     public List<H5PatrolStationVO> patrolScheduleStations(
             @RequestParam(required = false) String scheduleId) {
-        return patrolScheduleService.stations(scheduleId);
+        return patrolScheduleService.stations(scheduleId, currentUserId());
+    }
+
+    /**
+     * 开始巡检：校验计划归属（仅巡检人员本人）与状态（仅已发布）后落一条草稿占位记录，
+     * 计划随即在列表展示为「进行中」。重复调用幂等（已开始返回原记录 id，不重复写入）。
+     *
+     * @param request 请求体，scheduleId 必填；巡检人由服务端取当前登录人
+     */
+    @PostMapping("/patrol-schedule/start")
+    public H5PatrolStartVO patrolScheduleStart(@RequestBody H5PatrolStartRequest request) {
+        return patrolScheduleService.start(request == null ? null : request.getScheduleId(), currentUserId());
     }
 
     /**

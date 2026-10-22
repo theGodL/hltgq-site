@@ -120,13 +120,10 @@ td .tag.loss{color:var(--el-color-danger);background:var(--el-color-danger-light
 .lnk:hover{text-decoration:underline}
 tr.flash td{animation:flash 1s ease}
 @keyframes flash{0%{background:var(--el-color-primary-light)}100%{background:transparent}}
-/* 操作列图标按钮（仅图标，hover 浮层提示） */
-.lnk-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:var(--el-radius);background:transparent;color:var(--el-color-primary);cursor:pointer;transition:background .2s;font-family:inherit;vertical-align:middle}
-.lnk-btn:hover{background:var(--el-color-primary-light)}
-.lnk-btn+.lnk-btn{margin-left:4px}
-.lnk-btn::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;font-size:12px;line-height:18px;padding:5px 9px;border-radius:var(--el-radius);white-space:nowrap;opacity:0;visibility:hidden;transition:opacity .2s;pointer-events:none;z-index:6}
-.lnk-btn:last-child::after{left:auto;right:0;transform:none}
-.lnk-btn:hover::after{opacity:1;visibility:visible}
+/* 操作列文字按钮（蓝色文字，hover 浅底）；按钮间距 12px */
+.lnk-text{padding:0 4px;border:none;border-radius:var(--el-radius);background:transparent;color:var(--el-color-primary);font-size:14px;font-family:inherit;line-height:22px;cursor:pointer;transition:background .2s;vertical-align:middle}
+.lnk-text:hover{background:var(--el-color-primary-light)}
+.lnk-text+.lnk-text{margin-left:12px}
 /* 图标按钮（明细行删除）：18px 图标、热区 32×32、hover 底色 + tooltip */
 .act-btn{position:relative;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-color-primary);cursor:pointer;transition:background .2s,color .2s;vertical-align:middle}
 .act-btn.danger{color:var(--el-text-color-secondary)}
@@ -264,7 +261,7 @@ td.empty:hover{background:transparent}
 .sel-search[hidden]{display:none}
 .sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
 .sel-search input::placeholder{color:var(--el-text-color-placeholder)}
-.sel-list{max-height:274px;overflow-y:auto;padding:4px 0}
+.sel-list{max-height:274px;overflow-y:auto;padding:4px 0 0 15px !important}
 .sel-opt{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
 .sel-opt:hover{background:var(--el-fill-color-light)}
 .sel-opt.active{color:var(--el-color-primary)}
@@ -334,8 +331,8 @@ td.empty:hover{background:transparent}
       <div class="tbl-wrap">
         <table>
           <colgroup>
-            <col style="width:15%"><col style="width:10%"><col style="width:12%"><col style="width:9%">
-            <col style="width:15%"><col style="width:17%"><col style="width:12%"><col style="width:10%">
+            <col style="width:14%"><col style="width:9%"><col style="width:11%"><col style="width:8%">
+            <col style="width:14%"><col style="width:16%"><col style="width:12%"><col style="width:16%">
           </colgroup>
           <thead>
             <tr>
@@ -392,7 +389,7 @@ td.empty:hover{background:transparent}
         </div>
         <div class="f-item span4">
           <label class="f-label">备注</label>
-          <textarea class="field" id="in-remark" maxlength="50" placeholder="可选，最多 50 字"></textarea>
+          <textarea class="field" id="in-remark" maxlength="50" placeholder="最多 50 字"></textarea>
           <div class="counter"><span id="remark-count">0</span>/50</div>
         </div>
       </div>
@@ -493,7 +490,8 @@ const S = {
   attachments: [],               // 当前抽屉附件（含新上传）
   pendingNew: [],                // 本次会话新上传、尚未提交的附件 id（取消时清理）
   pickRows: [], pickChecked: null,
-  saving: false, seq: 0, listSeq: 0, flashKey: null
+  saving: false, seq: 0, listSeq: 0, flashKey: null,
+  bringSeq: 0                   // 带出台账请求序号（切仓库时作废旧请求）
 };
 
 const $ = id => document.getElementById(id);
@@ -736,8 +734,8 @@ function renderTable() {
     return;
   }
   tb.innerHTML = S.records.map(r => {
-    const acts = '<button class="lnk-btn" data-act="view" data-id="' + esc(r.id) + '" data-tip="查看" aria-label="查看">' + ICON.eye + '</button>' +
-      '<button class="lnk-btn" data-act="edit" data-id="' + esc(r.id) + '" data-tip="编辑" aria-label="编辑">' + ICON.edit + '</button>';
+    const acts = '<button class="lnk-text" data-act="view" data-id="' + esc(r.id) + '">查看</button>' +
+      '<button class="lnk-text" data-act="edit" data-id="' + esc(r.id) + '">编辑</button>';
     return '<tr data-key="' + esc(String(r.id)) + '">' +
       '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.orderNo || '--') + '</span></td>' +
       '<td>' + esc(r.checkDate || '--') + '</td>' +
@@ -871,8 +869,26 @@ function toggleMore() {
 }
 
 /* ============================ P7 抽屉（新增 / 查看 / 编辑） ============================ */
-const selWh = createSelect($('sel-wh'));
+const selWh = createSelect($('sel-wh')).onChange(onWarehouseChange);
 const selOp = createSelect($('sel-op')).setSearchable(true);
+
+/**
+ * 新增态切换盘点仓库：旧明细的账面库存属于原仓库，保留会带错数据（保存时报错），
+ * 因此切换后直接清空明细，并自动按新仓库重新带出台账
+ */
+function onWarehouseChange() {
+  if (S.mode !== 'create') return;
+  S.bringSeq++;               // 作废切换前尚未返回的带出请求
+  const had = S.items.length > 0;
+  S.items = [];
+  renderItems();
+  setFormError('wh', '');
+  clearItemsError();
+  if (had) {
+    showToast('已切换盘点仓库，原明细已清空，正在重新带出');
+    onBringOut();
+  }
+}
 
 function showDrawer() {
   $('drawer-mask').classList.add('show');
@@ -947,7 +963,7 @@ function resetForm() {
   $('in-date').classList.remove('is-disabled');
   $('in-remark').value = '';
   updateRemarkCount();
-  selWh.setOptions(((S.meta && S.meta.warehouses) || []).map(w => ({ value: w.id, label: w.name, sub: w.code || '' })));
+  selWh.setOptions(((S.meta && S.meta.warehouses) || []).map(w => ({ value: w.id, label: w.name })));
   selWh.setPlaceholder('请选择盘点仓库').setEmptyText('暂无启用仓库').setValue('').setDisabled(false);
   selOp.setOptions(S.users.map(u => ({ value: u.value, label: u.label, sub: u.sub || '' })));
   selOp.setPlaceholder('请选择盘点人员').setEmptyText('暂无用户数据');
@@ -1127,11 +1143,15 @@ async function onBringOut() {
     showToast('请先选择盘点仓库，再带出台账', true);
     return;
   }
+  const whId = selWh.getValue();
+  const seq = ++S.bringSeq;
   const btn = $('btn-out');
   btn.disabled = true;
   btn.classList.add('is-loading');
   try {
-    const rows = await api('/inventory-stocktake/stock-ledgers?' + qs({ warehouseId: selWh.getValue() }));
+    const rows = await api('/inventory-stocktake/stock-ledgers?' + qs({ warehouseId: whId }));
+    // 期间又切了仓库：丢弃旧仓库的响应，避免把上一仓库台账合入新仓库明细
+    if (seq !== S.bringSeq || whId !== selWh.getValue()) return;
     const list = Array.isArray(rows) ? rows : [];
     if (!list.length) { showToast('当前仓库暂无台账数据', true); return; }
     const exists = new Set(S.items.map(it => it.materialId));
@@ -1566,7 +1586,7 @@ function bindEvents() {
   $('btn-out').addEventListener('click', onBringOut);
   $('btn-clear').addEventListener('click', onClear);
   $('btn-pick').addEventListener('click', openPick);
-  selWh.onChange(() => clearFormError('wh'));
+  // selWh 的 onChange 已在组件创建时绑定 onWarehouseChange（其中已清除 wh 错误）
   selOp.onChange(() => clearFormError('op'));
   $('in-date').addEventListener('change', () => clearFormError('date'));
 
@@ -1621,14 +1641,15 @@ async function loadUsers() {
   }
   fltWh = createSelect($('f-warehouse'));
   fltWh.setOptions([{ value: '', label: '全部仓库' }].concat(
-    ((S.meta && S.meta.warehouses) || []).map(w => ({ value: w.id, label: w.name, sub: w.code || '' }))));
+    ((S.meta && S.meta.warehouses) || []).map(w => ({ value: w.id, label: w.name }))));
   fltWh.setPlaceholder('全部仓库');
   await loadUsers();
   fltOp = createSelect($('f-operator')).setSearchable(true);
-  fltOp.setOptions([{ value: '', label: '全部人员' }].concat(S.users));
+  fltOp.setOptions([{ value: '', label: '全部人员' }].concat(S.users.map(u => ({ value: u.value, label: u.label }))));
   fltOp.setPlaceholder('全部人员');
   await loadList();
 })();
 </script>
+<script src="./lib/date-placeholder.js"></script>
 </body>
 </html>

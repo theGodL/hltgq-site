@@ -7,8 +7,8 @@ import java.util.List;
 
 /**
  * H5 巡检计划列表行（/h5/patrol-schedule/list）。
- * <p>仅返回「进行中 #2# / 已完成 #3#」两类计划（草稿/已取消不入列）；
- * 计划类型与状态均为编码 + 后端权威中文映射双字段。
+ * <p>仅返回当前登录人被指派且「已发布 #2#（展示态细分 未开始/进行中）/ 已完成 #3#」的计划
+ * （草稿/已取消、他人计划不入列）；计划类型与状态均为编码 + 后端权威中文映射双字段。
  */
 @Data
 public class H5PatrolScheduleVO {
@@ -37,11 +37,14 @@ public class H5PatrolScheduleVO {
     /** 计划类型名称（权威映射） */
     private String planTypeLabel;
 
-    /** 状态编码（#2# 进行中 / #3# 已完成） */
+    /** 状态编码（展示态：#5# 未开始 / #2# 进行中 / #3# 已完成） */
     private String statusCode;
 
     /** 状态名称（权威映射） */
     private String statusLabel;
+
+    /** 该计划是否已开始巡检（存在巡检记录）；未开始为 false */
+    private Boolean started;
 
     /** 创建人名称（关联用户表 t_apaas_uc_user；无创建人时为 null） */
     private String creatorName;

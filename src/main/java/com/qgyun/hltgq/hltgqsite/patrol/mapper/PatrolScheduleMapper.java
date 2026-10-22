@@ -12,23 +12,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 巡查计划导入 Mapper（t_auto_hltgq_water_patrol_schedule + 多选关系中间表）。
+ * 巡查计划导入 Mapper（t_auto_hltgq_water_patrol_schedule + 巡查范围关系中间表）。
  * <p>主表新增走 MyBatis-Plus 内建（insert，主键 ASSIGN_UUID 短ID）；
- * 其余为手写 SQL：编号查重、站点按名称/编号精确匹配、用户按登录名精确匹配、关系中间表插入。
+ * 其余为手写 SQL：编号查重、站点按名称/编号精确匹配、用户按登录名精确匹配、巡查范围关系插入。
  *
- * <p><b>关系中间表（表名已实证）</b>：巡查范围 / 巡检人员为多选多对多，主表无列（也无 _d_ 动态列，
+ * <p><b>关系中间表（表名已实证）</b>：巡查范围为多选多对多，主表无列（也无 _d_ 动态列，
  * 已由 INSERT 样例确认）。表名取平台元数据实证：t_lcode_model 中巡检计划模型 fun_code=nlbdju
- * （应用 ZzrirqCf7oZ4cudrUOY = 表前缀 knc3g），两个关系模型 fun_code=nlbdjuTkwovkRel / nlbdjuUserRel，
- * 与库中 _rel 表清单逐一对应：
- * <ul>
- *   <li>巡查范围 → {@code t_auto_hltgq_knc3g_nlbdju_tkwovk_rel}</li>
- *   <li>巡检人员 → {@code t_auto_hltgq_knc3g_nlbdju_user_rel}</li>
- * </ul>
+ * （应用 ZzrirqCf7oZ4cudrUOY = 表前缀 knc3g），关系模型 fun_code=nlbdjuTkwovkRel，
+ * 与库中 _rel 表清单逐一对应 {@code t_auto_hltgq_knc3g_nlbdju_tkwovk_rel}。
  * 命名规律：t_auto_&lt;corp&gt;_&lt;appCode&gt;_&lt;主表code&gt;_&lt;关系模型fun_code去主表前缀与Rel后缀，驼峰转下划线小写&gt;_rel
  * （同型对照：巡检照片 t_auto_hltgq_knc3g_ychwbx_site_image_rel、值班人员 t_auto_hltgq_yn8cm_igahxz_ahygpx_rel）。
- * 列结构已按库中实际核对（2026-09-13 实测两表均为 9 列，与同型专表一致）：id / corp_code / 审计四列 /
+ * 列结构已按库中实际核对（2026-09-13 实测 9 列，与同型专表一致）：id / corp_code / 审计四列 /
  * biz_id（本表记录id）/ rel_id（关联记录id）/ nature_order（顺序号）；无 field_id 列。
- * 平台自建数据经表单写入，本模块为直写。
+ * <p><b>巡检人员</b>：2026-10 由多选关系改造为主表 "user" 单选列（MANY_TO_ONE），
+ * 旧的 {@code t_auto_hltgq_knc3g_nlbdju_user_rel} 仅保留改造前存量数据，本模块不再写入。
  */
 @Mapper
 public interface PatrolScheduleMapper extends BaseMapper<PatrolSchedule> {
@@ -51,8 +48,8 @@ public interface PatrolScheduleMapper extends BaseMapper<PatrolSchedule> {
     List<Map<String, Object>> selectSiteMatches(@Param("key") String key);
 
     /**
-     * 用户匹配（巡检人员 / 创建人）：按登录名精确匹配，返回全部命中行。
-     * <p>0 行 = 未匹配；1 行 = 命中；多行 = 登录名重复（异常数据），调用方忽略（多选项）或判行失败（创建人）。
+     * 用户匹配（创建人 / 巡检人员）：按登录名精确匹配，返回全部命中行。
+     * <p>0 行 = 未匹配；1 行 = 命中；多行 = 登录名重复（异常数据），调用方判定失败或取第一个并提示。
      */
     @Select("SELECT id, name, login_name FROM \"qixiao-apaas\".\"t_apaas_uc_user\" " +
             "WHERE corp_code = 'hltgq' AND login_name = #{loginName}")
@@ -67,21 +64,6 @@ public interface PatrolScheduleMapper extends BaseMapper<PatrolSchedule> {
             "(\"id\", \"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\", \"biz_id\", \"rel_id\", \"nature_order\") " +
             "VALUES (#{id}, #{corpCode}, #{now}, #{userId}, #{now}, #{userId}, #{bizId}, #{relId}, #{natureOrder})")
     int insertSiteRelation(@Param("id") String id,
-                           @Param("relId") String relId,
-                           @Param("bizId") String bizId,
-                           @Param("natureOrder") String natureOrder,
-                           @Param("corpCode") String corpCode,
-                           @Param("now") LocalDateTime now,
-                           @Param("userId") String userId);
-
-    /**
-     * 巡检人员关系写入（多选多对多）：biz_id = 计划 id，rel_id = 用户 id，nature_order = 顺序号（1 起）。
-     * <p>列结构同巡查范围关系表（同型专表实测 9 列）。
-     */
-    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_knc3g_nlbdju_user_rel\" " +
-            "(\"id\", \"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\", \"biz_id\", \"rel_id\", \"nature_order\") " +
-            "VALUES (#{id}, #{corpCode}, #{now}, #{userId}, #{now}, #{userId}, #{bizId}, #{relId}, #{natureOrder})")
-    int insertUserRelation(@Param("id") String id,
                            @Param("relId") String relId,
                            @Param("bizId") String bizId,
                            @Param("natureOrder") String natureOrder,

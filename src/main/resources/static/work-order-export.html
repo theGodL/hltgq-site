@@ -107,7 +107,7 @@ body{
         <label>状态</label>
         <select id="f-status">
           <option value="">全部（不按状态筛选）</option>
-          <option value="待处理">待处理</option>
+          <option value="#1#">待指派</option>
           <option value="处理中">处理中</option>
           <option value="已关闭">已关闭</option>
           <option value="已取消">已取消</option>
@@ -439,5 +439,6 @@ body{
   bindSiteSelect();
 })();
 </script>
+<script src="./lib/date-placeholder.js"></script>
 </body>
 </html>
