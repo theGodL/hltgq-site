@@ -203,6 +203,9 @@ public class PatrolRecordService {
 
     /**
      * 新增记录（草稿）：校验计划/站点/设备/结果/照片后写主表并按顺序绑定照片，整单事务。
+     * <p>幂等：优先“认领”该计划下的空白占位草稿（H5 开始巡检写入、四项全空）并填充，
+     * 仅在无空白草稿或并发被认领时新增；保存后清理同计划其余空白草稿，
+     * 保证任何客户端都不会出现「草稿 + 正式」两条。
      * <p>站点须在计划巡查范围内（计划未配范围时不限）；设备须属于该站点。
      */
     @Transactional(rollbackFor = Exception.class)
@@ -225,17 +228,31 @@ public class PatrolRecordService {
         }
         precheckNewPhotos(photoIds, operatorId);
 
-        String id = shortIdGenerator.nextUUID(null);
         LocalDateTime now = LocalDateTime.now();
-        mapper.insertRecord(id, corpCode, operatorId, now, time, scheduleId, siteId, deviceId,
-                userId, result, content, STATUS_DRAFT, cost);
+        String id = mapper.selectBlankDraftId(scheduleId);
+        boolean reused = false;
+        if (id != null) {
+            // 认领式填充：仅当该行仍是空白占位草稿时更新成功；被并发认领则退回新增
+            if (mapper.claimBlankDraft(id, operatorId, now, time, scheduleId, siteId,
+                    deviceId, userId, result, content, STATUS_DRAFT, cost) > 0) {
+                reused = true;
+            } else {
+                id = null;
+            }
+        }
+        if (id == null) {
+            id = shortIdGenerator.nextUUID(null);
+            mapper.insertRecord(id, corpCode, operatorId, now, time, scheduleId, siteId, deviceId,
+                    userId, result, content, STATUS_DRAFT, cost);
+        }
         for (int i = 0; i < photoIds.size(); i++) {
             if (mapper.bindPhoto(photoIds.get(i), id, i + 1, operatorId, now) == 0) {
                 throw new IllegalArgumentException("现场照片状态已变化，请重新上传后保存");
             }
         }
-        log.info("[巡检记录] 新增记录：id={}, 计划={}, 站点={}, 设备={}, 结果={}, 照片={} 张, 操作人={}",
-                id, scheduleId, siteId, deviceId, result, photoIds.size(), operatorId);
+        int cleaned = mapper.deleteBlankDrafts(scheduleId, id);
+        log.info("[巡检记录] {}记录：id={}, 计划={}, 站点={}, 设备={}, 结果={}, 照片={} 张, 清理空草稿={} 条, 操作人={}",
+                reused ? "填充草稿" : "新增", id, scheduleId, siteId, deviceId, result, photoIds.size(), cleaned, operatorId);
         return id;
     }
 
@@ -349,7 +366,8 @@ public class PatrolRecordService {
         log.info("[巡检记录] 删除记录：id={}, 计划={}, 照片={} 张", key, record.getScheduleId(), photos.size());
     }
 
-    /** 提交记录（草稿 → 已提交）：脏草稿（缺站点/设备/结果/照片）拒绝提交，先编辑补全。 */
+    /** 提交记录（草稿 → 已提交）：脏草稿（缺站点/设备/结果/照片）拒绝提交，先编辑补全；
+     *  提交成功后兜底清理同计划其余空白占位草稿，避免残留「正式 + 空草稿」。 */
     @Transactional(rollbackFor = Exception.class)
     public void submit(String id) {
         String key = CheckUtils.trim(id);
@@ -379,7 +397,8 @@ public class PatrolRecordService {
         if (mapper.submit(key, operatorId, LocalDateTime.now()) == 0) {
             throw new IllegalArgumentException("巡检记录不存在或已提交");
         }
-        log.info("[巡检记录] 提交记录：id={}, 操作人={}", key, operatorId);
+        int cleaned = record.getScheduleId() == null ? 0 : mapper.deleteBlankDrafts(record.getScheduleId(), key);
+        log.info("[巡检记录] 提交记录：id={}, 操作人={}, 清理同计划空草稿={} 条", key, operatorId, cleaned);
     }
 
     // ==================== 现场照片 ====================

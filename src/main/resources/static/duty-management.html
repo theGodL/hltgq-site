@@ -520,6 +520,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   bindSearchSelect('f-leader', 'leader-dd', function () {
     return OPTIONS.users.map(function (u) { return { value: u.id, label: u.name }; });
   });
+  // 班次默认时段兜底:接口字典未返回 defaultStart/defaultEnd 时按班次名匹配
+  var SHIFT_TIME_FALLBACK = {
+    '白班': ['08:00', '16:00'],
+    '中班': ['16:00', '24:00'],
+    '夜班': ['00:00', '08:00']
+  };
+
   // 班次:选项来自接口字典(白班/中班/夜班);历史班次名不在字典时并入显示
   bindSingleSelect('f-shift', 'shift-dd', function () {
     var opts = OPTIONS.shifts.map(function (s) { return { value: s.code, label: s.label }; });
@@ -527,18 +534,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     if (cur && !opts.some(function (o) { return o.label === cur; })) opts.unshift({ value: '', label: cur });
     return opts;
   }, function (code) {
-    // 选中班次:时间为空时按字典默认时段预填(日期今天;24:00 折算次日 00:00);已有值不覆盖,不自动调整用户已填时间
-    if ($('f-time-start').value || $('f-time-end').value) return;
+    // 切换班次:按该班次默认时段重算开始/结束时间(字典优先,缺失时用内置兜底)
     var s = null;
     for (var i = 0; i < OPTIONS.shifts.length; i++) {
       if (OPTIONS.shifts[i].code === code) { s = OPTIONS.shifts[i]; break; }
     }
-    if (!s || !s.defaultStart || !s.defaultEnd) return;
-    var d = todayStr();
-    var hm = String(s.defaultEnd).slice(0, 5);
+    var fb = SHIFT_TIME_FALLBACK[$('f-shift').value.trim()] || [];
+    var st = (s && s.defaultStart) || fb[0];
+    var en = (s && s.defaultEnd) || fb[1];
+    if (!st || !en) return;
+    // 开始日期沿用已填开始时间的日期,未填用今天;24:00 结束折算次日 00:00
+    var curStart = $('f-time-start').value;
+    var d = curStart ? curStart.slice(0, 10) : todayStr();
+    var hm = String(en).slice(0, 5);
     var endDate = hm === '24:00' ? addDays(d, 1) : d;
     if (hm === '24:00') hm = '00:00';
-    setField('f-time-start', d + ' ' + String(s.defaultStart).slice(0, 5));
+    setField('f-time-start', d + ' ' + String(st).slice(0, 5));
     setField('f-time-end', endDate + ' ' + hm);
     checkTimeOrder();
   });
@@ -587,6 +598,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   function toggleMember(m) {
     var i = memberSel.indexOf(m);
     if (i >= 0) memberSel.splice(i, 1); else memberSel.push(m);
+    memberKw = ''; // 选中/取消后清空搜索词,输入框重建为空
     renderMemberBox();
     if (openDd === memberDd) renderMemberList();
   }

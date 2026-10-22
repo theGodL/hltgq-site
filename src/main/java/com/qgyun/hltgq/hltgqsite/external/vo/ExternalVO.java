@@ -162,4 +162,69 @@ public final class ExternalVO {
         private String errorCode;
         private String errorMsg;
     }
+
+    /**
+     * 站点数量统计（大屏「站点数」卡片）：纯统计、不返回明细，信封与 /external/* 其它接口一致。
+     * <p>total = 档案全量；typedTotal = 可进入 station-monitor 列表的站点并集（7 类按站去重）；
+     * byType 固定 8 项，多类型站各类型重复计。
+     */
+    @Data
+    public static class StationCount {
+        /** 固定 true */
+        private boolean success = true;
+        /** 固定 SUCCESS（与 station-monitor 等 /external 接口一致，非 HTTP 数字 200） */
+        private String status = "SUCCESS";
+        /** 统计结果 */
+        private StationCountData data;
+        private String msg;
+        private String errCode;
+        private String time;
+        private String errorCode;
+        private String errorMsg;
+    }
+
+    /** 站点数量统计结果 */
+    @Data
+    public static class StationCountData {
+        /** 档案全量站点数（不传 type 时）；传 type 时为该类型站点数 */
+        private long total;
+        /**
+         * 监测站点并集数：epjutj 含 #1#/#2#/#3#/#4#/#5#/#7#/#8# 任一（7 类，按站去重，
+         * 与「7 个类型分别调 station-monitor 后按 id 去重」完全一致）；
+         * 传 type 时为该类型站点数。
+         */
+        private long typedTotal;
+        /** 按监测类型计数，键 1..8，多类型站各键重复计（各项之和大于 typedTotal 属预期） */
+        private Map<String, Long> byType;
+    }
+
+    /**
+     * 站点下拉选项（轻量：仅 id/名称/编号，供告警筛选等下拉框一次拉取；
+     * 站点集合与 station-count 的 typedTotal 同口径，不返回档案全量字段）。
+     */
+    @Data
+    public static class StationOptions {
+        /** 固定 true */
+        private boolean success = true;
+        /** 固定 SUCCESS（与 /external/* 其它接口一致） */
+        private String status = "SUCCESS";
+        /** 站点选项列表 */
+        private List<StationOption> data;
+        private String msg;
+        private String errCode;
+        private String time;
+        private String errorCode;
+        private String errorMsg;
+    }
+
+    /** 站点下拉项 */
+    @Data
+    public static class StationOption {
+        /** 站点档案主键 id（告警查询 siteId 参数可直接使用） */
+        private String id;
+        /** 站点名称（档案 zzkaec） */
+        private String name;
+        /** 站点编号（档案 iofhpi，可能为 null；告警查询 siteId 也兼容此值） */
+        private String stcd;
+    }
 }

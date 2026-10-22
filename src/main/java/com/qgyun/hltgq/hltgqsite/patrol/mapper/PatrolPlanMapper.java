@@ -249,13 +249,15 @@ public interface PatrolPlanMapper {
             "</script>")
     List<String> selectStartedScheduleIds(@Param("ids") List<String> ids);
 
-    /** 计划下的巡检记录总数。 */
-    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" " +
-            "WHERE corp_code = 'hltgq' AND patrol_schedule = #{scheduleId}")
+    /** 计划下的巡检记录总数（不含空白占位草稿，与 selectRecordPage 同条件）。 */
+    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" r " +
+            "WHERE r.corp_code = 'hltgq' AND r.patrol_schedule = #{scheduleId} " +
+            "AND NOT (r.status = '#1#' AND r.site IS NULL AND r.\"_d_10497_device\" IS NULL " +
+            "AND r.result IS NULL AND r.content IS NULL)")
     long countRecords(@Param("scheduleId") String scheduleId);
 
     /**
-     * 计划下的巡检记录分页：按巡检时间倒序、id 降序兜底。
+     * 计划下的巡检记录分页：按巡检时间倒序、id 降序兜底；空白占位草稿（H5 开始巡检写入、四项全空）不计入。
      * <p>站点/设备/人员均 LEFT JOIN（关联行被删时本行不丢，名称列为 null）。
      */
     @Select("SELECT r.id AS id, r.\"time\" AS \"time\", r.site AS siteId, s.zzkaec AS siteName, " +
@@ -267,6 +269,8 @@ public interface PatrolPlanMapper {
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d ON d.id = r.\"_d_10497_device\" " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" u ON u.id = r.\"user\" " +
             "WHERE r.corp_code = 'hltgq' AND r.patrol_schedule = #{scheduleId} " +
+            "AND NOT (r.status = '#1#' AND r.site IS NULL AND r.\"_d_10497_device\" IS NULL " +
+            "AND r.result IS NULL AND r.content IS NULL) " +
             "ORDER BY r.\"time\" DESC, r.id DESC " +
             "LIMIT #{limit} OFFSET #{offset}")
     List<PatrolRecordVO> selectRecordPage(@Param("scheduleId") String scheduleId,

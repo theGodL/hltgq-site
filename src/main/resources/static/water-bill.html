@@ -75,7 +75,7 @@ input[type="checkbox"]{width:15px;height:15px;accent-color:#1677ff;cursor:pointe
 
 /* 表格(与项目其他页面保持一致) */
 .tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px;margin-top:12px}
-.tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:12px 16px;border:1px solid #f0f0f0;white-space:nowrap}
+.tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:12px 16px;border:1px solid #f0f0f0;white-space:normal;line-height:20px}
 .tbl td{padding:12px 16px;border:1px solid #f0f0f0;color:#333;line-height:22px;vertical-align:middle;overflow-wrap:break-word}
 .cell-main{font-weight:600;color:#1f1f1f;line-height:21px}
 .tbl td.ellip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -251,13 +251,13 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       <div class="tbl-wrap">
         <table class="tbl">
           <colgroup>
-            <col style="width:8%"><col style="width:13%"><col style="width:7%"><col style="width:7%"><col style="width:9%">
-            <col style="width:10%"><col style="width:9%"><col style="width:10%"><col style="width:8%"><col style="width:6%"><col style="width:13%">
+            <col style="width:7%"><col style="width:10%"><col style="width:8%"><col style="width:6%"><col style="width:8%">
+            <col style="width:11%"><col style="width:10%"><col style="width:11%"><col style="width:10%"><col style="width:8%"><col style="width:11%">
           </colgroup>
           <thead>
             <tr>
-              <th>用水户</th><th>用水计算策略 / 闸口</th><th>统计周期</th><th>水价</th><th>本期水量（万m³）</th>
-              <th>待出账水量（万m³）</th><th>待出账金额</th><th>已出账水量（万m³）</th><th>已出账金额</th><th>数据校验</th><th>操作</th>
+              <th>用水户</th><th>用水计算策略 / 闸口</th><th>统计周期</th><th>水价</th><th>本期水量<br>（万m³）</th>
+              <th>待出账水量<br>（万m³）</th><th>待出账金额</th><th>已出账水量<br>（万m³）</th><th>已出账金额</th><th>数据校验</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="ledger-body"></tbody>
@@ -312,13 +312,13 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       <div class="tbl-wrap">
         <table class="tbl">
           <colgroup>
-            <col style="width:3%"><col style="width:19%"><col style="width:10%"><col style="width:12%"><col style="width:8%">
+            <col style="width:3%"><col style="width:17%"><col style="width:10%"><col style="width:12%"><col style="width:10%">
             <col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:15%">
           </colgroup>
           <thead>
             <tr>
-              <th></th><th>方案编号 / 关联计划</th><th>调度闸口</th><th>执行时段</th><th>计划放水量（万m³）</th>
-              <th>计入水量（万m³）</th><th>测算金额</th><th>执行状态</th><th>计费状态</th><th>操作</th>
+              <th></th><th>方案编号 / 关联计划</th><th>调度闸口</th><th>执行时段</th><th>计划放水量<br>（万m³）</th>
+              <th>计入水量<br>（万m³）</th><th>测算金额</th><th>执行状态</th><th>计费状态</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="detail-body"></tbody>
@@ -362,7 +362,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           </colgroup>
           <thead>
             <tr>
-              <th>账单编号</th><th>用水户</th><th>统计周期</th><th>账期区间</th><th>计费水量（万m³）</th>
+              <th>账单编号</th><th>用水户</th><th>统计周期</th><th>账期区间</th><th>计费水量<br>（万m³）</th>
               <th>水价</th><th>应收金额</th><th>已收金额</th><th>状态</th><th>操作</th>
             </tr>
           </thead>
@@ -391,8 +391,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           </colgroup>
           <thead>
             <tr>
-              <th>用水户</th><th>策略 / 周期</th><th>年度计划（万m³）</th><th>水价</th><th>账单数</th>
-              <th>应收金额</th><th>已收金额</th><th>欠缴金额</th><th>收缴率</th><th>待出账水量（万m³）</th><th>操作</th>
+              <th>用水户</th><th>策略 / 周期</th><th>年度计划<br>（万m³）</th><th>水价</th><th>账单数</th>
+              <th>应收金额</th><th>已收金额</th><th>欠缴金额</th><th>收缴率</th><th>待出账水量<br>（万m³）</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="sum-body"></tbody>

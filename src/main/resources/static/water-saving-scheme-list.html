@@ -238,6 +238,8 @@ td .ind-line .pend{color:var(--el-text-color-secondary)}
       <div class="chk-wrap" id="chk-indicators"></div>
       <div class="sec-title">具体措施</div>
       <textarea class="field" id="in-measure" maxlength="2000" placeholder="填写具体节水措施（如渠道衬砌、计量设施改造、轮灌制度等）"></textarea>
+      <div class="sec-title">附件</div>
+      <div class="att-box" id="form-att-box"></div>
     </div>
 
     <div id="verify-box" hidden>
@@ -312,11 +314,15 @@ td .ind-line .pend{color:var(--el-text-color-secondary)}
         <div class="f-item span2">
           <label class="f-label"><i class="req">*</i>潜力年度</label>
           <div class="sel" id="sel-a-year"></div>
-          <div class="f-hint">实施年度；依据年度 = 潜力年度 − 1（自动）</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">依据年度（上一年）</label>
+          <div class="ro-val" id="a-basis-year">--</div>
         </div>
         <div class="f-item span2">
           <label class="f-label">数据标记</label>
           <div class="sel" id="sel-a-demo"></div>
+          <div class="f-hint">正式数据计入统计；虚拟演示为演示/培训用示例数据</div>
         </div>
         <div class="f-item span2">
           <label class="f-label"><i class="req">*</i>上一年实际放水量（万m³）</label>
@@ -393,6 +399,13 @@ const { $, esc, showToast, api, fmtNum, createSelect, closeAllSelects, renderPag
 const refreshPage = () => loadList();
 const emptyRow = (text, plain) => WSC.emptyRow(text, plain, 9);
 const jumpToPage = val => WSC.jumpToPage(val, refreshPage);
+
+/** 万m³ 水量显示统一 2 位小数（与用水计划/水费台账口径一致；空返回 null） */
+const fmtWan2 = v => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return isNaN(n) ? String(v) : n.toFixed(2);
+};
 const onPagerClick = e => WSC.onPagerClick(e, refreshPage);
 
 function qs(obj) {
@@ -519,7 +532,7 @@ function renderTable() {
     return;
   }
   tb.innerHTML = S.records.map(r => {
-    const target = fmtNum(r.targetVolume);
+    const target = fmtWan2(r.targetVolume);
     return '<tr data-key="' + esc(r.id) + '">' +
       '<td>' + (r.year === null || r.year === undefined ? '--' : esc(String(r.year))) + '</td>' +
       '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.name || '--') + '</span>' +
@@ -559,6 +572,7 @@ const EV_HINT_DEFAULT = '实施年度取记录的潜力年度；建方案时固�
 let selFYear, selFStatus, selEvidence, selOwner, selStatus, selDemo, selComparable, selAYear, selADemo;
 let annualPlanId = null;      // 年度表单：auto_plan 带出的计划 id（手工录入时清空）
 let annualPlanSource = null;  // 年度表单：auto_plan / manual
+let prevPlanSeq = 0;          // 年度表单：prev-plan 查询序号（防快速切年度时旧响应覆盖）
 
 /* openDrawer / closeDrawer 见 lib/water-saving-common.js（顶部已解构别名） */
 
@@ -640,7 +654,7 @@ function fillFormStatusOptions() {
 }
 
 function fillDemoOptions() {
-  const opts = [{ value: '#2#', label: '正式' }, { value: '#1#', label: '虚拟演示' }];
+  const opts = [{ value: '#2#', label: '正式数据' }, { value: '#1#', label: '虚拟演示数据' }];
   selDemo.setOptions(opts).setValue('#2#');
   selADemo.setOptions(opts.slice()).setValue('#2#');
 }
@@ -706,8 +720,8 @@ function updatePotentialHint() {
     return;
   }
   const potential = Number(ev.potential);
-  const text = '节水潜力 = 上一年实际 ' + fmtNum(ev.prevActualVolume) + ' − 上一年计划 ' +
-    fmtNum(ev.prevPlanVolume) + ' = ' + fmtNum(potential) + ' 万m³';
+  const text = '节水潜力 = 上一年实际 ' + fmtWan2(ev.prevActualVolume) + ' − 上一年计划 ' +
+    fmtWan2(ev.prevPlanVolume) + ' = ' + fmtWan2(potential) + ' 万m³';
   if (potential <= 0) {
     box.classList.add('warn');
     box.textContent = text + '（≤0，无法建立方案）';
@@ -721,7 +735,7 @@ function refreshEvidenceOptions(selectedId) {
   const opts = S.annuals.map(a => ({
     value: a.id,
     label: a.potentialYear + ' 年度（依据 ' + (a.basisYear === null || a.basisYear === undefined ? '--' : a.basisYear) + '）',
-    sub: (a.potential === null || a.potential === undefined) ? '潜力不可计算' : '潜力 ' + fmtNum(a.potential) + ' 万m³'
+    sub: (a.potential === null || a.potential === undefined) ? '潜力不可计算' : '潜力 ' + fmtWan2(a.potential) + ' 万m³'
   }));
   selEvidence.setOptions(opts).setValue(selectedId || '');
   selEvidence.setError(false);
@@ -758,13 +772,13 @@ function collectSchemeForm() {
   }
   const potential = Number(ev.potential);
   if (potential <= 0) {
-    throw new Error('所选依据潜力为 ' + fmtNum(potential) + ' 万m³（≤0），无法建立方案');
+    throw new Error('所选依据潜力为 ' + fmtWan2(potential) + ' 万m³（≤0），无法建立方案');
   }
   const target = requireNum($('in-target'), '节水目标');
   if (target <= 0) { $('in-target').classList.add('is-err'); throw new Error('节水目标必须大于 0'); }
   if (target - potential > 1e-9) {
     $('in-target').classList.add('is-err');
-    throw new Error('节水目标不能超过潜力（' + fmtNum(potential) + ' 万m³）');
+    throw new Error('节水目标不能超过潜力（' + fmtWan2(potential) + ' 万m³）');
   }
   const owner = String(selOwner.getValue() || '').trim();
   if (!owner) { selOwner.setError(true); throw new Error('请选择负责人'); }
@@ -820,10 +834,12 @@ async function openCreate() {
     showToast('基础数据加载失败：' + e.message, true);
   }
   S.row = null;
+  S.pendingAttFile = null;
   setDrawerMode('create');
   resetSchemeForm();
   refreshEvidenceOptions('');
   renderChkIndicators([]);
+  renderFormAttBox();
   openDrawer();
 }
 
@@ -852,6 +868,7 @@ async function openEdit(id) {
   }
   selDemo.setValue(vo.isDemo || '#2#');
   renderChkIndicators(vo.indicatorIds || []);
+  renderFormAttBox();
   openDrawer();
 }
 
@@ -888,11 +905,11 @@ async function openVerify(id) {
 
 function renderVerifyTip(vo) {
   const box = $('verify-tip');
-  const base = fmtNum(vo.baselineVolume);
-  const now = fmtNum(vo.evidenceActualVolume);
+  const base = fmtWan2(vo.baselineVolume);
+  const now = fmtWan2(vo.evidenceActualVolume);
   let text = '对比基准（实施前实际）：' + (base === null ? '--' : base + ' 万m³') +
     '；依据记录现值：' + (now === null ? '--' : now + ' 万m³') +
-    '；节水目标：' + (fmtNum(vo.targetVolume) === null ? '--' : fmtNum(vo.targetVolume) + ' 万m³');
+    '；节水目标：' + (fmtWan2(vo.targetVolume) === null ? '--' : fmtWan2(vo.targetVolume) + ' 万m³');
   const stale = base !== null && now !== null && Number(base) !== Number(now);
   if (stale) {
     text += '。依据记录现值与快照不一致：建议先点「刷新对比依据」使其一致，再提交核验。';
@@ -915,14 +932,32 @@ async function saveScheme() {
   S.saving = true;
   const btn = $('btn-save');
   btn.classList.add('is-loading');
+  let attachWarn = '';
   try {
     if (isEdit) {
       await api('/water-saving/schemes/update?id=' + encodeURIComponent(S.row.id), { method: 'PUT', body: body });
     } else {
-      await api('/water-saving/schemes/create', { method: 'POST', body: body });
+      const created = await api('/water-saving/schemes/create', { method: 'POST', body: body });
+      // 新增时选择的附件在方案创建成功后自动上传(上传接口依赖方案 id)
+      if (S.pendingAttFile) {
+        const newId = created && created.id;
+        if (newId) {
+          try {
+            const addFd = new FormData();
+            addFd.append('file', S.pendingAttFile);
+            await api('/water-saving/schemes/attachment/upload?id=' + encodeURIComponent(newId),
+              { method: 'POST', body: addFd });
+          } catch (e) {
+            attachWarn = '附件上传失败：' + (e.message || '未知错误');
+          }
+        } else {
+          attachWarn = '附件未上传，请在编辑方案中补充';
+        }
+        S.pendingAttFile = null;
+      }
     }
     closeDrawer();
-    showToast(isEdit ? '方案已更新' : '方案已创建');
+    showToast(isEdit ? '方案已更新' : (attachWarn ? '方案已创建，' + attachWarn : '方案已创建'), !!attachWarn);
     await loadList();
   } catch (e) {
     showToast(e.message || '保存失败', true);
@@ -971,7 +1006,7 @@ function renderSchemeView() {
   g.push(kv('实施年度', vo.year === null || vo.year === undefined ? dash : esc(String(vo.year)) + ' 年度'));
   g.push(kv('负责人', esc(vo.owner || dash)));
   g.push(kv('方案状态', statusTag(vo) + (vo.statusReason ? '<span class="sub">' + esc(vo.statusReason) + '</span>' : '')));
-  g.push(kv('节水目标', vo.targetVolume === null || vo.targetVolume === undefined ? dash : esc(fmtNum(vo.targetVolume)) + ' 万m³'));
+  g.push(kv('节水目标', vo.targetVolume === null || vo.targetVolume === undefined ? dash : esc(fmtWan2(vo.targetVolume)) + ' 万m³'));
   g.push(kv('达标状态', attainTag(vo)));
   g.push(kv('数据标记', vo.isDemo === '#1#' ? '虚拟演示' : '正式'));
   g.push(kv('更新时间', esc(vo.updatedText || dash)));
@@ -979,10 +1014,10 @@ function renderSchemeView() {
 
   g.push('<div class="sec-title">对比依据</div><div class="view-grid">');
   g.push(kv('依据年度', vo.evidenceBasisYear === null || vo.evidenceBasisYear === undefined ? dash : esc(String(vo.evidenceBasisYear)) + ' 年度'));
-  g.push(kv('上一年计划放水量', vo.evidencePlanVolume === null || vo.evidencePlanVolume === undefined ? dash : esc(fmtNum(vo.evidencePlanVolume)) + ' 万m³'));
-  g.push(kv('上一年实际放水量', vo.evidenceActualVolume === null || vo.evidenceActualVolume === undefined ? dash : esc(fmtNum(vo.evidenceActualVolume)) + ' 万m³'));
-  g.push(kv('节水潜力', vo.evidencePotential === null || vo.evidencePotential === undefined ? dash : esc(fmtNum(vo.evidencePotential)) + ' 万m³'));
-  g.push(kv('实施前实际（快照）', vo.baselineVolume === null || vo.baselineVolume === undefined ? dash : esc(fmtNum(vo.baselineVolume)) + ' 万m³'));
+  g.push(kv('上一年计划放水量', vo.evidencePlanVolume === null || vo.evidencePlanVolume === undefined ? dash : esc(fmtWan2(vo.evidencePlanVolume)) + ' 万m³'));
+  g.push(kv('上一年实际放水量', vo.evidenceActualVolume === null || vo.evidenceActualVolume === undefined ? dash : esc(fmtWan2(vo.evidenceActualVolume)) + ' 万m³'));
+  g.push(kv('节水潜力', vo.evidencePotential === null || vo.evidencePotential === undefined ? dash : esc(fmtWan2(vo.evidencePotential)) + ' 万m³'));
+  g.push(kv('实施前实际（快照）', vo.baselineVolume === null || vo.baselineVolume === undefined ? dash : esc(fmtWan2(vo.baselineVolume)) + ' 万m³'));
   g.push('</div>');
 
   const inds = Array.isArray(vo.indicators) ? vo.indicators : [];
@@ -1015,7 +1050,7 @@ function renderSchemeView() {
   } else {
     g.push('<div class="view-grid">');
     g.push(kv('核验日期', esc(vo.verifyDate || dash)));
-    g.push(kv('实施后实际用水量', esc(fmtNum(vo.verifyAfterVolume)) + ' 万m³'));
+    g.push(kv('实施后实际用水量', esc(fmtWan2(vo.verifyAfterVolume)) + ' 万m³'));
     g.push(kv('对比条件确认', vo.verifyComparable === '#1#' ? '已确认' : '未确认'));
     g.push(kv('核验有效性', vo.verifyInvalid === '#1#'
       ? '<span class="tag red">已作废（数据保留）</span>' : '<span class="tag green">有效</span>'));
@@ -1036,19 +1071,12 @@ function renderSchemeView() {
 }
 
 function viewAttBoxHtml(vo) {
-  let html = '';
+  // 查看态只读:仅展示附件名与下载入口,不提供上传/替换/移除
   if (vo.attachmentName) {
-    html += '<span class="att-name">' + esc(vo.attachmentName) + '</span>' +
-      '<button class="btn btn-default btn-sm" type="button" data-vact="att-download">下载</button>' +
-      '<button class="btn btn-danger btn-sm" type="button" data-vact="att-remove">移除</button>';
-  } else {
-    html += '<span class="att-none">暂无附件</span>';
+    return '<span class="att-name">' + esc(vo.attachmentName) + '</span>' +
+      '<button class="btn btn-default btn-sm" type="button" data-vact="att-download">下载</button>';
   }
-  html += '<span style="flex:1"></span>' +
-    '<button class="btn btn-default btn-sm" type="button" data-vact="att-upload">' +
-    (vo.attachmentName ? '替换附件' : '上传附件') + '</button>' +
-    '<input type="file" id="att-file" hidden accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.pdf,.doc,.docx,.xls,.xlsx">';
-  return html;
+  return '<span class="att-none">暂无附件</span>';
 }
 
 function onViewBoxClick(e) {
@@ -1063,28 +1091,45 @@ function onViewBoxClick(e) {
   }
 }
 
-async function uploadSchemeAtt(input) {
-  if (!S.row || !input.files || !input.files[0]) return;
-  const file = input.files[0];
-  if (file.size > 2 * 1024 * 1024) {
-    showToast('附件不能超过 2MB', true);
-    input.value = '';
-    return;
+/* ===== 表单(新增/编辑)附件区:编辑即时上传;新增先暂存,保存成功后上传 ===== */
+function renderFormAttBox() {
+  const box = $('form-att-box');
+  if (!box) return;
+  const editing = S.mode === 'edit' && S.row && S.row.id;
+  let html = '';
+  if (editing) {
+    if (S.row.attachmentName) {
+      html += '<span class="att-name">' + esc(S.row.attachmentName) + '</span>' +
+        '<button class="btn btn-default btn-sm" type="button" data-fact="att-download">下载</button>' +
+        '<button class="btn btn-danger btn-sm" type="button" data-fact="att-remove">移除</button>' +
+        '<span style="flex:1"></span>' +
+        '<button class="btn btn-default btn-sm" type="button" data-fact="att-upload">替换附件</button>';
+    } else {
+      html += '<span class="att-none">暂无附件</span><span style="flex:1"></span>' +
+        '<button class="btn btn-default btn-sm" type="button" data-fact="att-upload">上传附件</button>';
+    }
+  } else {
+    html += S.pendingAttFile
+      ? '<span class="att-name">' + esc(S.pendingAttFile.name) + '</span>' +
+        '<button class="btn btn-danger btn-sm" type="button" data-fact="att-clear">移除</button>'
+      : '<span class="att-none">暂未选择文件（保存方案后自动上传）</span>';
+    html += '<span style="flex:1"></span>' +
+      '<button class="btn btn-default btn-sm" type="button" data-fact="att-upload">' +
+      (S.pendingAttFile ? '重新选择' : '选择文件') + '</button>';
   }
+  box.innerHTML = html +
+    '<input type="file" id="form-att-file" hidden accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.pdf,.doc,.docx,.xls,.xlsx">';
+}
+
+async function uploadAttFile(id, file) {
   const fd = new FormData();
   fd.append('file', file);
-  try {
-    const vo = await api('/water-saving/schemes/attachment/upload?id=' + encodeURIComponent(S.row.id),
-      { method: 'POST', body: fd });
-    if (vo && vo.id) S.row = vo;
-    renderSchemeView();
-    showToast('附件已上传');
-    loadList();
-  } catch (e) {
-    showToast(e.message || '附件上传失败', true);
-  } finally {
-    input.value = '';
-  }
+  const vo = await api('/water-saving/schemes/attachment/upload?id=' + encodeURIComponent(id),
+    { method: 'POST', body: fd });
+  if (vo && vo.id) S.row = vo;
+  renderFormAttBox();
+  showToast('附件已上传');
+  loadList();
 }
 
 function askRemoveAtt() {
@@ -1096,7 +1141,7 @@ function askRemoveAtt() {
     onOk: async () => {
       const vo = await api('/water-saving/schemes/attachment/remove?id=' + encodeURIComponent(S.row.id), { method: 'POST' });
       if (vo && vo.id) S.row = vo;
-      renderSchemeView();
+      if (S.mode === 'view') renderSchemeView(); else renderFormAttBox();
       showToast('附件已移除');
       loadList();
     }
@@ -1112,8 +1157,8 @@ function askRefresh(id) {
   const r = rowById(id);
   if (!r) return;
   const ev = S.annualMap[r.evidenceId];
-  const base = fmtNum(r.baselineVolume);
-  const now = ev ? fmtNum(ev.prevActualVolume) : null;
+  const base = fmtWan2(r.baselineVolume);
+  const now = ev ? fmtWan2(ev.prevActualVolume) : null;
   let text = '将「' + (r.name || '') + '」的实施前实际用水量快照拉齐为当前依据记录的实际值';
   if (base !== null && now !== null) {
     text += '（' + base + ' → ' + now + ' 万m³）';
@@ -1223,7 +1268,7 @@ function renderKpiCards() {
   const box = $('kpi-row');
   const y = Number(selFYear.getValue() || S.baseYear);
   const rec = S.annuals.find(a => Number(a.potentialYear) === y) || null;
-  const val = v => (v === null || v === undefined) ? '—' : esc(fmtNum(v)) + '<span class="u">万m³</span>';
+  const val = v => (v === null || v === undefined) ? '—' : esc(fmtWan2(v)) + '<span class="u">万m³</span>';
   const neg = rec && rec.potential !== null && rec.potential !== undefined && Number(rec.potential) < 0;
   box.innerHTML =
     '<div class="kpi-card"><div class="kt">上一年计划放水量</div><div class="kv">' +
@@ -1270,12 +1315,12 @@ function renderAnnuals() {
     tb.innerHTML = '<tr><td colspan="8" class="m-empty">暂无年度水量记录，点击「新增记录」开始维护</td></tr>';
     return;
   }
-  const num = v => (v === null || v === undefined) ? '<span class="m-sub">--</span>' : esc(fmtNum(v));
+  const num = v => (v === null || v === undefined) ? '<span class="m-sub">--</span>' : esc(fmtWan2(v));
   tb.innerHTML = S.annuals.map(a => {
     let pot = '<span class="m-sub">不可计算</span>';
     if (a.potential !== null && a.potential !== undefined) {
       const neg = Number(a.potential) < 0;
-      pot = '<span' + (neg ? ' style="color:var(--el-color-danger)"' : '') + '>' + esc(fmtNum(a.potential)) + '</span>';
+      pot = '<span' + (neg ? ' style="color:var(--el-color-danger)"' : '') + '>' + esc(fmtWan2(a.potential)) + '</span>';
     }
     return '<tr>' +
       '<td>' + esc(String(a.potentialYear)) + ' 年度</td>' +
@@ -1328,6 +1373,7 @@ function openAnnualEdit(id) {
   fillAnnualYearOptions(a.potentialYear);
   selAYear.setValue(String(a.potentialYear)).setDisabled(true);
   selAYear.setError(false);
+  syncBasisYear();
   selADemo.setValue(a.isDemo || '#2#');
   $('in-a-actual').value = (a.prevActualVolume === null || a.prevActualVolume === undefined) ? '' : fmtNum(a.prevActualVolume);
   $('in-a-plan').value = (a.prevPlanVolume === null || a.prevPlanVolume === undefined) ? '' : fmtNum(a.prevPlanVolume);
@@ -1337,9 +1383,16 @@ function openAnnualEdit(id) {
 }
 
 async function onAnnualYearChange() {
+  syncBasisYear();
   if (S.annualMode !== 'create') return;
   if (!selAYear.getValue()) return;
   await fetchPrevPlan(false);
+}
+
+/** 依据年度（只读展示）= 潜力年度 − 1；未选年度显示 -- */
+function syncBasisYear() {
+  const y = Number(selAYear.getValue());
+  $('a-basis-year').textContent = y ? (y - 1) + ' 年度' : '--';
 }
 
 async function fetchPrevPlan(force) {
@@ -1348,21 +1401,23 @@ async function fetchPrevPlan(force) {
     if (force) showToast('请先选择潜力年度', true);
     return;
   }
+  const seq = ++prevPlanSeq;
+  // 年度已切换：旧计划值属于上一年度，先清空再等查询结果（查不到则保持为空，可手工录入）
+  $('in-a-plan').value = '';
+  annualPlanId = null;
+  annualPlanSource = null;
+  updateAnnualPotential();
   let data;
   try {
     data = await api('/water-saving/annual-water/prev-plan?year=' + encodeURIComponent(year));
   } catch (e) {
+    if (seq !== prevPlanSeq) return;
     if (force) showToast(e.message || '查询用水计划失败', true);
     return;
   }
+  if (seq !== prevPlanSeq) return;
   if (!data || !data.found) {
-    if (force) {
-      $('in-a-plan').value = '';
-      annualPlanId = null;
-      annualPlanSource = null;
-      updateAnnualPotential();
-      showToast('未找到 ' + ((data && data.basisYear) || (Number(year) - 1)) + ' 年度的用水计划，请手工录入', true);
-    }
+    if (force) showToast('未找到 ' + ((data && data.basisYear) || (Number(year) - 1)) + ' 年度的用水计划，请手工录入', true);
     return;
   }
   $('in-a-plan').value = fmtNum(data.planVolume);
@@ -1371,7 +1426,7 @@ async function fetchPrevPlan(force) {
   updateAnnualPotential();
   const tag = data.planNo || data.planName || '';
   showToast((force ? '已从用水计划带出：' : '已自动带出 ' + data.basisYear + ' 年度计划：') +
-    (tag ? tag + ' ' : '') + fmtNum(data.planVolume) + ' 万m³（可手工修改）');
+    (tag ? tag + ' ' : '') + fmtWan2(data.planVolume) + ' 万m³（可手工修改）');
 }
 
 function optionalNumQuiet(el) {
@@ -1392,8 +1447,8 @@ function updateAnnualPotential() {
   const p = actual - plan;
   box.hidden = false;
   box.classList.toggle('warn', p < 0);
-  box.textContent = '节水潜力 = 上一年实际 ' + fmtNum(actual) + ' − 上一年计划 ' + fmtNum(plan) +
-    ' = ' + fmtNum(p) + ' 万m³' + (p < 0 ? '（为负：上一年实际低于计划）' : '');
+  box.textContent = '节水潜力 = 上一年实际 ' + fmtWan2(actual) + ' − 上一年计划 ' + fmtWan2(plan) +
+    ' = ' + fmtWan2(p) + ' 万m³' + (p < 0 ? '（为负：上一年实际低于计划）' : '');
 }
 
 function collectAnnualForm() {
@@ -1513,8 +1568,29 @@ function bindEvents() {
   $('btn-save').addEventListener('click', saveScheme);
   $('btn-verify').addEventListener('click', submitVerify);
   $('view-box').addEventListener('click', onViewBoxClick);
-  $('view-box').addEventListener('change', e => {
-    if (e.target.id === 'att-file') uploadSchemeAtt(e.target);
+
+  // 表单附件区:选择/下载/移除/替换(编辑即时上传;新增暂存至保存后上传)
+  $('form-att-box').addEventListener('click', e => {
+    const el = e.target.closest('[data-fact]');
+    if (!el) return;
+    const act = el.dataset.fact;
+    if (act === 'att-upload') $('form-att-file').click();
+    else if (act === 'att-download') { if (S.row && S.row.id) downloadAttachment(S.row.id); }
+    else if (act === 'att-remove') askRemoveAtt();
+    else if (act === 'att-clear') { S.pendingAttFile = null; renderFormAttBox(); }
+  });
+  $('form-att-box').addEventListener('change', e => {
+    if (e.target.id !== 'form-att-file') return;
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { showToast('附件不能超过 2MB', true); return; }
+    if (S.mode === 'edit' && S.row && S.row.id) {
+      uploadAttFile(S.row.id, file).catch(err => showToast(err.message || '附件上传失败', true));
+    } else {
+      S.pendingAttFile = file;
+      renderFormAttBox();
+    }
   });
 
   $('btn-close2').addEventListener('click', closeAnnuals);

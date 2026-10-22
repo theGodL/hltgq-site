@@ -91,7 +91,9 @@ public class ExternalController {
     /**
      * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
      * 每行 = 档案字段（原字段名）+ 该站实时监测值（平铺 + data 子对象）；站点顺序按「站点排序」配置输出。
-     * <p>type：1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 7 墒情 / 8 水质（兼容 #N# 编码与语义串）；非法值返回 400。
+     * <p>type：1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 5 视频 / 7 墒情 / 8 水质（兼容 #N# 编码与语义串）；非法值返回 400。
+     * 视频类型（5）为站点档案清单、无实时值，用于替代原 qx-api 视频站点列表
+     * （/qx-api/qx-apaas-run/ar/4idWo4GcvCd8fWPQSif/kjximffu?type=5）。
      * name：可选，按站点名称模糊匹配（如「渠首」命中「渠首管理所」）；不传或空白表示不筛选。
      * 响应信封与原 qx-api 一致（success/status/data/msg/...）。
      */
@@ -99,5 +101,30 @@ public class ExternalController {
     public ExternalVO.StationMonitor stationMonitor(@RequestParam String type,
                                                     @RequestParam(required = false) String name) {
         return externalService.stationMonitor(type, name);
+    }
+
+    /**
+     * 站点数量统计（大屏「站点数」卡片，纯统计不返回明细，避免为取一个数字拉全量列表）。
+     * <p>type：可选（与 station-monitor 的必填约束无关）。不传/空白 = 全量统计；
+     * 传则只统计该类型（1..8 / #N# / 语义串），非法值返回 400。
+     * <p>data.total = 档案全量；data.typedTotal = 可进入 station-monitor 列表的站点并集
+     * （#1#/#2#/#3#/#4#/#5#/#7#/#8# 七类按站去重，与各类型列表按 id 去重结果一致；#6# 模型类型不计入）；
+     * data.byType = 按类型计数（键 1..8，含 #6#，多类型站重复计）。
+     * <p>响应信封与 /external/* 其它接口一致（success/status/data/...）。
+     */
+    @GetMapping("/station-count")
+    public ExternalVO.StationCount stationCount(@RequestParam(required = false) String type) {
+        return externalService.stationCount(type);
+    }
+
+    /**
+     * 站点下拉选项（轻量：仅 id/名称/编号，供告警筛选等下拉框一次拉取）。
+     * <p>type：可选。不传 = 全类型并集（与 station-count 的 typedTotal 同口径，按站去重）；
+     * 传则只返回该类型站点（1..8 / #N# / 语义串），非法值 400。
+     * <p>响应信封与 /external/* 其它接口一致，data 为站点数组：[{id, name, stcd}]。
+     */
+    @GetMapping("/station-options")
+    public ExternalVO.StationOptions stationOptions(@RequestParam(required = false) String type) {
+        return externalService.stationOptions(type);
     }
 }

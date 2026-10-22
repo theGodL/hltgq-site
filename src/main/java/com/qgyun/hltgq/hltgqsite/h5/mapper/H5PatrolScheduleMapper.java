@@ -20,6 +20,7 @@ import java.util.List;
  * <p>列表分页 LIMIT/OFFSET（总数与列表同条件，Service 统一裁剪页码与条数）。
  * <p>开始巡检：校验计划状态归属（主表 "user"）后写入一条草稿 #1# 占位记录（仅标记已开始，
  * 站点/设备/结果/内容留空），巡检人强制为当前登录人；同一计划已有记录时不写入（WHERE NOT EXISTS）。
+ * 该占位记录即「空白草稿」，后续提交优先填充它（见 PatrolRecordMapper.selectBlankDraftId）。
  * <p>列别名与 VO 属性同名（map-underscore-to-camel-case=false 下依赖同名自动映射）。
  */
 public interface H5PatrolScheduleMapper {
@@ -53,7 +54,9 @@ public interface H5PatrolScheduleMapper {
      * <p>扩展字段：creatorName 关联用户表 t_apaas_uc_user（p.created_by = u.id，无创建人为 null）；
      * rangeStationIds 取巡查范围关系表 t_auto_hltgq_knc3g_nlbdju_tkwovk_rel 按 biz_id 聚合
      * （string_agg 逗号分隔，按 nature_order 顺序），无范围关系为 null；
-     * started 为该计划是否已开始巡检（存在巡检记录）。
+     * started 为该计划是否已开始巡检（存在巡检记录）；
+     * draftRecordId 为该计划当前空白占位草稿 id（草稿 #1# 且站点/设备/结果/内容全空，取最早一条），
+     * 前端提交巡检记录时优先用它更新+提交（幂等），无则 null。
      */
     @Select("<script>" +
             "SELECT p.id AS id, p.code AS code, p.title AS title, p.content AS content, " +
@@ -62,6 +65,11 @@ public interface H5PatrolScheduleMapper {
             "CASE WHEN EXISTS (SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" r " +
             "WHERE r.corp_code = 'hltgq' AND r.patrol_schedule = p.id) " +
             "THEN true ELSE false END AS started, " +
+            "(SELECT dr.id FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" dr " +
+            "WHERE dr.corp_code = 'hltgq' AND dr.patrol_schedule = p.id AND dr.status = '#1#' " +
+            "AND dr.site IS NULL AND dr.\"_d_10497_device\" IS NULL " +
+            "AND dr.result IS NULL AND dr.content IS NULL " +
+            "ORDER BY dr.created_at ASC NULLS LAST, dr.id ASC LIMIT 1) AS draftRecordId, " +
             "u.name AS creatorName, r.station_ids AS rangeStationIds " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_schedule\" p " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" u " +

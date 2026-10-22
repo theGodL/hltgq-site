@@ -9,6 +9,7 @@ import java.util.List;
  * H5 巡检计划列表行（/h5/patrol-schedule/list）。
  * <p>仅返回当前登录人被指派且「已发布 #2#（展示态细分 未开始/进行中）/ 已完成 #3#」的计划
  * （草稿/已取消、他人计划不入列）；计划类型与状态均为编码 + 后端权威中文映射双字段。
+ * <p>draftRecordId 返回当前空白占位草稿 id（未填充的草稿），前端提交时优先填充它。
  */
 @Data
 public class H5PatrolScheduleVO {
@@ -45,6 +46,12 @@ public class H5PatrolScheduleVO {
 
     /** 该计划是否已开始巡检（存在巡检记录）；未开始为 false */
     private Boolean started;
+
+    /**
+     * 当前空白占位草稿 id：该计划下最早一条草稿 #1# 且站点/设备/结果/内容全空的记录；无草稿为 null。
+     * <p>H5 提交巡检记录时优先用该 id 更新 + 提交（幂等），不再另建记录，避免「草稿 + 正式」两条。
+     */
+    private String draftRecordId;
 
     /** 创建人名称（关联用户表 t_apaas_uc_user；无创建人时为 null） */
     private String creatorName;

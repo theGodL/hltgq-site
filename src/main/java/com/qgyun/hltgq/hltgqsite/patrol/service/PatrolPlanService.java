@@ -235,6 +235,8 @@ public class PatrolPlanService {
      * <p>状态留空默认「已提交 #2#」；巡检人员留空取当前登录人。
      * <p>现场照片可选传（最多 3 张）；状态为已提交时至少 1 张（与巡检记录页提交口径一致），
      * 草稿可后续到巡检记录页补照片再提交。
+     * <p>幂等：优先填充该计划下的空白占位草稿（H5 开始巡检写入、四项全空），
+     * 仅无可用草稿时新增；保存后清理同计划其余空白草稿，避免「草稿 + 正式」两条。
      */
     @Transactional(rollbackFor = Exception.class)
     public void addRecord(PatrolRecordSaveVO req) {
@@ -288,17 +290,31 @@ public class PatrolPlanService {
             throw new IllegalArgumentException("已提交的巡检记录需上传现场照片（至少 1 张）");
         }
         precheckNewPhotos(photoIds, operatorId);
-        String id = shortIdGenerator.nextUUID(null);
         LocalDateTime now = LocalDateTime.now();
-        mapper.insertRecord(id, corpCode, operatorId, now, time, scheduleId, siteId, deviceId,
-                userId, result, content, statusCode);
+        String id = recordMapper.selectBlankDraftId(scheduleId);
+        boolean reused = false;
+        if (id != null) {
+            // 认领式填充：仅当该行仍是空白占位草稿时更新成功；被并发认领则退回新增
+            if (recordMapper.claimBlankDraft(id, operatorId, now, time, scheduleId, siteId,
+                    deviceId, userId, result, content, statusCode, null) > 0) {
+                reused = true;
+            } else {
+                id = null;
+            }
+        }
+        if (id == null) {
+            id = shortIdGenerator.nextUUID(null);
+            mapper.insertRecord(id, corpCode, operatorId, now, time, scheduleId, siteId, deviceId,
+                    userId, result, content, statusCode);
+        }
         for (int i = 0; i < photoIds.size(); i++) {
             if (recordMapper.bindPhoto(photoIds.get(i), id, i + 1, operatorId, now) == 0) {
                 throw new IllegalArgumentException("现场照片状态已变化，请重新上传后保存");
             }
         }
-        log.info("[巡检计划] 添加巡检记录：计划id={}, 记录id={}, 站点={}, 设备={}, 结果={}, 照片={} 张, 操作人={}",
-                scheduleId, id, siteId, deviceId, result, photoIds.size(), operatorId);
+        int cleaned = recordMapper.deleteBlankDrafts(scheduleId, id);
+        log.info("[巡检计划] {}巡检记录：计划id={}, 记录id={}, 站点={}, 设备={}, 结果={}, 照片={} 张, 清理空草稿={} 条, 操作人={}",
+                reused ? "填充草稿生成" : "添加", scheduleId, id, siteId, deviceId, result, photoIds.size(), cleaned, operatorId);
     }
 
     /** 照片 id 归一：去空、去重（保持顺序），并校验数量上限。 */

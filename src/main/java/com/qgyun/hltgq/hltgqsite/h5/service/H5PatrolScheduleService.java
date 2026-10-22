@@ -129,7 +129,8 @@ public class H5PatrolScheduleService {
      * <p>幂等：计划下已有巡检记录时直接返回最早一条记录 id，不重复写入；
      * 重复调用由写 SQL 的 NOT EXISTS 兜底，不会重复落开始记录。
      * <p>记录字段：巡检人强制为当前登录人（前端不可指定），状态草稿 #1#（不进入已提交统计），
-     * 站点/设备/结果/内容留空，由后续巡检明细补齐或另建记录。
+     * 站点/设备/结果/内容留空；返回的 recordId 即当前空白占位草稿 id，
+     * 后续提交（/patrol-record/update + /submit）优先用它填充+提交，不再另建记录，避免「草稿 + 正式」两条。
      *
      * @param scheduleId 巡检计划 id（必填）
      * @param userId     当前登录人 id（同时作为记录巡检人与审计列）

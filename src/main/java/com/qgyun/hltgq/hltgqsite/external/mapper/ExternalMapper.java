@@ -78,6 +78,43 @@ public interface ExternalMapper {
                                                   @Param("name") String name);
 
     /**
+     * 站点数量统计（大屏「站点数」卡片）：一次聚合，无逐类型多次查询。
+     * <p>total = 档案全量行数；typed_total = epjutj 含 #1#/#2#/#3#/#4#/#5#/#7#/#8# 任一（7 类
+     * 监测类型，按站去重；与 selectArchiveByType 的 LIKE 口径完全同源，#6# 模型类型不计入）；
+     * type_1..type_8 = 各类型单计，多类型站重复计。
+     */
+    @Select("SELECT COUNT(*) AS total, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#1#%' OR epjutj LIKE '%#2#%' OR epjutj LIKE '%#3#%' " +
+            "OR epjutj LIKE '%#4#%' OR epjutj LIKE '%#5#%' OR epjutj LIKE '%#7#%' OR epjutj LIKE '%#8#%') " +
+            "AS typed_total, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#1#%') AS type_1, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#2#%') AS type_2, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#3#%') AS type_3, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#4#%') AS type_4, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#5#%') AS type_5, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#6#%') AS type_6, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#7#%') AS type_7, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#8#%') AS type_8 " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\"")
+    Map<String, Object> selectStationCount();
+
+    /**
+     * 站点下拉选项（轻量：仅 id/站名/编号）：站点集合与 selectStationCount 的 typed_total 同口径
+     * （7 类监测类型任一，按站去重）；typeCode 非空时再限定该类型（如 '#4#' 仅闸门站）。
+     * <p>供告警筛选等下拉框一次拉取，不返回档案全量字段；按站点编号 iofhpi 升序（无编号排在最后）。
+     */
+    @Select("<script>" +
+            "SELECT s.id AS id, s.zzkaec AS name, s.iofhpi AS stcd " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s " +
+            "WHERE (s.epjutj LIKE '%#1#%' OR s.epjutj LIKE '%#2#%' OR s.epjutj LIKE '%#3#%' " +
+            "OR s.epjutj LIKE '%#4#%' OR s.epjutj LIKE '%#5#%' OR s.epjutj LIKE '%#7#%' " +
+            "OR s.epjutj LIKE '%#8#%') " +
+            "<if test='typeCode != null'>AND s.epjutj LIKE CONCAT('%', #{typeCode}, '%') </if>" +
+            "ORDER BY s.iofhpi NULLS LAST" +
+            "</script>")
+    List<Map<String, Object>> selectStationOptions(@Param("typeCode") String typeCode);
+
+    /**
      * 巡检汇总：累计巡检次数（已提交）/ 巡检计划总数 / 完成巡检数（计划已完成）。
      * 三条计数合并为一条 SQL（三张表同 schema，逐条 COUNT 子查询）。
      */

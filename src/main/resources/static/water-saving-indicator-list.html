@@ -57,6 +57,8 @@
 .act:hover{color:var(--el-color-primary-hover)}
 .act.del{color:var(--el-color-danger)}
 .act.del:hover{color:var(--el-color-danger-hover)}
+/* 启用状态仅可停用：编辑/删除置灰不可点 */
+.act.is-disabled,.act.is-disabled:hover,.act.del.is-disabled,.act.del.is-disabled:hover{color:var(--el-text-color-disabled);cursor:not-allowed}
 .col-act .act-box{display:flex;flex-wrap:nowrap;align-items:center;gap:8px 14px}
 
 /* 骨架 / 面板 / 控件 / 表格基础 / 标签链接 / 空态：见 lib/water-saving-common.css */
@@ -72,6 +74,11 @@
 /* 确认弹窗（.mbox）：见 lib/water-saving-common.css */
 
 /* 提示条：见 lib/water-saving-common.css */
+/* 查看态：两列键值只读（与节水方案/用水计划详情一致） */
+.view-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 24px}
+.view-row{display:flex;flex-direction:column;gap:2px}
+.view-row .k{font-size:14px;color:var(--el-text-color-secondary);line-height:22px}
+.view-row .v{font-size:14px;color:var(--el-text-color-primary);line-height:22px;word-break:break-word;white-space:pre-wrap}
 </style>
 </head>
 <body>
@@ -104,13 +111,13 @@
       <div class="tbl-wrap">
         <table>
           <colgroup>
-            <col style="width:12%"><col style="width:11%"><col style="width:18%"><col style="width:9%">
-            <col style="width:11%"><col style="width:8%"><col style="width:8%"><col style="width:10%"><col style="width:13%">
+            <col style="width:12%"><col style="width:18%"><col style="width:9%"><col style="width:11%">
+            <col style="width:8%"><col style="width:8%"><col style="width:10%"><col style="width:10%"><col style="width:14%">
           </colgroup>
           <thead>
             <tr>
-              <th>指标名称</th><th>创建时间</th><th>计算方式</th><th>目标值</th><th>指标用途</th>
-              <th>关联方案</th><th>状态</th><th>更新时间</th><th>操作</th>
+              <th>指标名称</th><th>计算方式</th><th>目标值</th><th>指标用途</th>
+              <th>关联方案</th><th>状态</th><th>创建时间</th><th>更新时间</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="tbl-body"></tbody>
@@ -133,31 +140,34 @@
     </div>
   </div>
   <div class="drawer-bd">
-    <div class="sec-title">指标信息</div>
-    <div class="form-grid">
-      <div class="f-item span2">
-        <label class="f-label"><i class="req">*</i>指标名称</label>
-        <input class="field" id="in-name" maxlength="200" placeholder="如「渠系水利用系数」「年度节水量」" autocomplete="off">
-      </div>
-      <div class="f-item span2">
-        <label class="f-label"><i class="req">*</i>计算方式</label>
-        <div class="sel" id="sel-method"></div>
-        <div class="f-hint" id="method-hint">选定后由服务端按公式计算，不支持自由编辑</div>
-      </div>
-      <div class="f-item span2">
-        <label class="f-label">目标值</label>
-        <input class="field" id="in-target" inputmode="decimal" placeholder="选填，如 12.5" autocomplete="off">
-        <div class="f-hint">未设置目标的指标：关联方案展示「待设置目标」、不产生达标结论</div>
-      </div>
-      <div class="f-item span2">
-        <label class="f-label">指标用途</label>
-        <input class="field" id="in-purpose" maxlength="200" placeholder="选填，如「年度考核」" autocomplete="off">
-        <div class="f-hint">仅作说明展示</div>
-      </div>
-      <div class="f-item span4">
-        <div class="val-box" id="form-tip" hidden></div>
+    <div id="form-box">
+      <div class="sec-title">指标信息</div>
+      <div class="form-grid">
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>指标名称</label>
+          <input class="field" id="in-name" maxlength="200" placeholder="如「渠系水利用系数」「年度节水量」" autocomplete="off">
+        </div>
+        <div class="f-item span2">
+          <label class="f-label"><i class="req">*</i>计算方式</label>
+          <div class="sel" id="sel-method"></div>
+          <div class="f-hint" id="method-hint">选定后由服务端按公式计算，不支持自由编辑</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">目标值</label>
+          <input class="field" id="in-target" inputmode="decimal" placeholder="选填，如 12.5" autocomplete="off">
+          <div class="f-hint">未设置目标的指标：关联方案展示「待设置目标」、不产生达标结论</div>
+        </div>
+        <div class="f-item span2">
+          <label class="f-label">指标用途</label>
+          <input class="field" id="in-purpose" maxlength="200" placeholder="选填，如「年度考核」" autocomplete="off">
+          <div class="f-hint">仅作说明展示</div>
+        </div>
+        <div class="f-item span4">
+          <div class="val-box" id="form-tip" hidden></div>
+        </div>
       </div>
     </div>
+    <div id="view-box" hidden></div>
   </div>
   <div class="drawer-ft">
     <button class="btn btn-default" id="btn-cancel">取消</button>
@@ -250,9 +260,12 @@ function currentPageRecords() {
 function actsCell(r) {
   const id = esc(r.id);
   const enabled = r.enabled === '#1#';
-  return '<span class="act" data-act="edit" data-id="' + id + '">编辑</span>' +
+  // 启用状态仅可停用：编辑/删除置灰并提示先停用
+  const lockCls = enabled ? ' is-disabled' : '';
+  const lockAttr = enabled ? ' data-lock="1" title="启用状态的指标不可编辑/删除，请先停用"' : '';
+  return '<span class="act' + lockCls + '" data-act="edit" data-id="' + id + '"' + lockAttr + '>编辑</span>' +
     '<span class="act" data-act="toggle" data-id="' + id + '">' + (enabled ? '停用' : '启用') + '</span>' +
-    '<span class="act del" data-act="del" data-id="' + id + '">删除</span>';
+    '<span class="act del' + lockCls + '" data-act="del" data-id="' + id + '"' + lockAttr + '>删除</span>';
 }
 
 function renderTable() {
@@ -271,13 +284,13 @@ function renderTable() {
     const method = esc(r.methodName || '--') +
       '<span class="sub-line">' + esc((r.formula || '') + (r.unit ? ' · ' + r.unit : '')) + '</span>';
     return '<tr data-key="' + esc(r.id) + '">' +
-      '<td><span class="lnk" data-act="edit" data-id="' + esc(r.id) + '">' + esc(r.name || '--') + '</span></td>' +
-      '<td>' + esc(r.createdText || '--') + '</td>' +
+      '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.name || '--') + '</span></td>' +
       '<td>' + method + '</td>' +
       '<td>' + target + '</td>' +
       '<td>' + esc(r.purpose || '--') + '</td>' +
       '<td>' + (refs ? refs + ' 个' : '<span class="sub">—</span>') + '</td>' +
       '<td>' + (enabled ? '<span class="tag green">启用</span>' : '<span class="tag gray">停用</span>') + '</td>' +
+      '<td>' + esc(r.createdText || '--') + '</td>' +
       '<td>' + esc(r.updatedText || '--') + '</td>' +
       '<td class="col-act"><div class="act-box">' + actsCell(r) + '</div></td></tr>';
   }).join('');
@@ -288,9 +301,26 @@ function onTableClick(e) {
   if (!el) return;
   const id = el.dataset.id;
   const act = el.dataset.act;
-  if (act === 'edit') openEdit(id);
-  else if (act === 'toggle') askToggle(id);
-  else if (act === 'del') askDel(id);
+  if (act === 'view') {
+    openView(id);
+  } else if (act === 'edit') {
+    if (!guardEnabledOnly(id, '编辑')) return;
+    openEdit(id);
+  } else if (act === 'toggle') askToggle(id);
+  else if (act === 'del') {
+    if (!guardEnabledOnly(id, '删除')) return;
+    askDel(id);
+  }
+}
+
+/** 启用状态仅允许停用：编辑/删除统一拦截（按钮置灰后仍可点，给出原因） */
+function guardEnabledOnly(id, action) {
+  const r = S.all.filter(x => x.id === id)[0];
+  if (r && r.enabled === '#1#') {
+    showToast('启用状态的指标不可' + action + '，请先停用', true);
+    return false;
+  }
+  return true;
 }
 
 /* ============================ 分页 ============================ */
@@ -327,8 +357,49 @@ function fillMethodOptions() {
 
 function setMode(mode) {
   S.mode = mode;
-  $('drawer-title').textContent = mode === 'edit' ? '编辑指标' : '新增指标';
+  const isView = mode === 'view';
+  $('drawer-title').textContent = isView ? '指标详情' : (mode === 'edit' ? '编辑指标' : '新增指标');
+  $('form-box').hidden = isView;
+  $('view-box').hidden = !isView;
+  $('btn-save').hidden = isView;
+  $('btn-cancel').textContent = isView ? '关闭' : '取消';
   $('btn-save').textContent = mode === 'edit' ? '保存修改' : '保存';
+}
+
+/** 查看详情（只读：名称点击进入，与新增/编辑共用抽屉但隐藏保存） */
+function openView(id) {
+  const r = S.all.filter(x => x.id === id)[0];
+  if (!r) {
+    showToast('指标不存在，请刷新后重试', true);
+    return;
+  }
+  setMode('view');
+  renderView(r);
+  openDrawer();
+}
+
+function renderView(r) {
+  const enabled = r.enabled === '#1#';
+  const refs = Number(r.schemeCount) || 0;
+  const target = (r.targetValue === null || r.targetValue === undefined)
+    ? '未设置'
+    : fmtNum(r.targetValue) + (r.unit ? ' ' + r.unit : '');
+  const pairs = [
+    ['指标名称', r.name],
+    ['计算方式', r.methodName],
+    ['计算公式', r.formula],
+    ['单位', r.unit],
+    ['目标值', target],
+    ['指标用途', r.purpose],
+    ['关联方案', refs ? refs + ' 个' : '—'],
+    ['状态', enabled ? '启用' : '停用'],
+    ['创建时间', r.createdText],
+    ['更新时间', r.updatedText]
+  ];
+  $('view-box').innerHTML = '<div class="sec-title">指标信息</div><div class="view-grid">' +
+    pairs.map(p => '<div class="view-row"><div class="k">' + esc(p[0]) + '</div><div class="v">' +
+      (p[1] === null || p[1] === undefined || p[1] === '' ? '--' : esc(p[1])) + '</div></div>').join('') +
+    '</div>';
 }
 
 function clearErrors() {
@@ -357,6 +428,10 @@ function openEdit(id) {
   const r = S.all.filter(x => x.id === id)[0];
   if (!r) {
     showToast('指标不存在，请刷新后重试', true);
+    return;
+  }
+  if (r.enabled === '#1#') {
+    showToast('启用状态的指标不可编辑，请先停用', true);
     return;
   }
   S.row = r;
@@ -452,6 +527,10 @@ function askToggle(id) {
 function askDel(id) {
   const r = S.all.filter(x => x.id === id)[0];
   if (!r) return;
+  if (r.enabled === '#1#') {
+    showToast('启用状态的指标不可删除，请先停用', true);
+    return;
+  }
   showDlg({
     title: '删除指标',
     text: '确定删除指标「' + (r.name || '') + '」？删除后不可恢复。已关联方案的指标不可删除（可改为停用）。',

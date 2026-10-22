@@ -217,7 +217,7 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
 .sel.is-disabled .sel-arrow{border-top-color:var(--el-text-color-disabled)}
 .sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
 .sel.open .sel-panel{display:block}
-.sel-search{display:flex;align-items:center;gap:6px;padding:8px 0 0 32px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 0 0 0px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
 .sel-search[hidden]{display:none}
 .sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;padding-left: 20px; color:var(--el-text-color-primary);background:transparent}
 .sel-search input::placeholder{color:var(--el-text-color-placeholder)}
@@ -323,12 +323,12 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
         </div>
         <div class="f-item">
           <label class="f-label"><i class="req">*</i>联系人</label>
-          <div class="sel" id="sel-contact"></div>
+          <input class="field" id="in-contact" maxlength="50" placeholder="请输入联系人姓名" autocomplete="off">
           <div class="f-err" id="err-contact"></div>
         </div>
         <div class="f-item">
           <label class="f-label">联系电话</label>
-          <input class="field" id="in-phone" placeholder="选择联系人后自动带出" readonly tabindex="-1">
+          <input class="field" id="in-phone" maxlength="30" placeholder="请输入联系电话" autocomplete="off">
         </div>
         <div class="f-item">
           <label class="f-label" id="lbl-area">灌溉面积（亩）</label>
@@ -434,12 +434,8 @@ const S = {
   filter: { keyword: '', calcMode: '', settleCycle: '', status: '' },
   mode: '',                      // 抽屉：create / edit / view
   row: null,                     // 当前编辑/查看行
-  contactDirty: false,           // 编辑时是否主动换过联系人（false = 保存保持库内快照，不随平台刷新）
   saving: false, seq: 0, listSeq: 0, flashKey: null
 };
-
-/** 联系人下拉"当前快照"临时项哨兵值（编辑回显用：平台侧改名/离职后原姓名不在候选里；提交时不作为 userId 传递） */
-const CONTACT_SNAPSHOT = '__snapshot__';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v === null || v === undefined ? '' : v)
@@ -799,48 +795,10 @@ function onPagerClick(e) {
 /* ============================ 表单（抽屉） ============================ */
 let fltCalc = null; let fltCycle = null; let fltStatus = null;
 let selUserType = null; let selSettle = null; let selMode = null; let selStatus = null;
-let selGates = null; let selMain = null; let selDeduct = null; let selContact = null;
+let selGates = null; let selMain = null; let selDeduct = null;
 
 function gateOptions() {
   return ((S.meta && S.meta.gates) || []).map(g => ({ value: g.id, label: g.name || g.id, sub: g.code || '' }));
-}
-
-/** 联系人下拉选项（平台用户；仅展示姓名） */
-function contactOptions() {
-  return ((S.meta && S.meta.contacts) || []).map(c => ({ value: c.id, label: c.name || c.id }));
-}
-
-/** 选中联系人 → 带出电话（快照项恢复编辑前原电话）；编辑回显与用户选择共用 */
-function applyContactPhone(contactId) {
-  if (contactId === CONTACT_SNAPSHOT) {
-    $('in-phone').value = (S.row && S.row.contactPhone) || '';
-    return;
-  }
-  const hit = ((S.meta && S.meta.contacts) || []).filter(c => c.id === contactId)[0];
-  $('in-phone').value = hit && hit.mobile ? hit.mobile : '';
-}
-
-/**
- * 编辑回显联系人：按「姓名 + 手机号」精确匹配平台用户选中（同名不误配）；精确失败退姓名匹配，
- * 再失败（改名/离职/手机号变更）以快照值做临时选项回显。电话框恒显示库内快照值——
- * 未主动换人（contactDirty=false）时保存不回传 contactUserId，后端保持快照，不随平台数据刷新。
- */
-function applyContactValue(name, phone) {
-  if (!name) {
-    selContact.setOptions(contactOptions()).setValue('');
-    $('in-phone').value = '';
-    return;
-  }
-  const pool = (S.meta && S.meta.contacts) || [];
-  const hit = pool.filter(c => c.name === name && (!phone || c.mobile === phone))[0]
-    || pool.filter(c => c.name === name)[0];
-  if (hit) {
-    selContact.setOptions(contactOptions()).setValue(hit.id);
-  } else {
-    selContact.setOptions([{ value: CONTACT_SNAPSHOT, label: name }].concat(contactOptions()))
-      .setValue(CONTACT_SNAPSHOT);
-  }
-  $('in-phone').value = phone || '';
 }
 
 function showDrawer() {
@@ -920,12 +878,10 @@ async function openView(id) {
 
 function resetForm() {
   S.row = null;
-  S.contactDirty = false;
-  ['in-no', 'in-name', 'in-phone', 'in-area', 'in-price',
+  ['in-no', 'in-name', 'in-contact', 'in-phone', 'in-area', 'in-price',
     'in-remark'].forEach(id => { $(id).value = ''; });
   selUserType.setOptions((S.meta.userTypes || []).map(o => ({ value: o.value, label: o.label })));
   selUserType.setPlaceholder('请选择用水类型').setValue('');
-  selContact.setOptions(contactOptions()).setPlaceholder('请选择联系人').setValue('');
   selSettle.setOptions((S.meta.settleCycles || []).map(o => ({ value: o.value, label: o.label })));
   selSettle.setPlaceholder('请选择统计周期').setValue('');
   selStatus.setOptions((S.meta.userStatuses || []).map(o => ({ value: o.value, label: o.label })));
@@ -943,7 +899,8 @@ function fillForm(d) {
   S.row = d;
   $('in-no').value = d.userNo || '';
   $('in-name').value = d.name || '';
-  applyContactValue(d.contactName || '', d.contactPhone || '');
+  $('in-contact').value = d.contactName || '';
+  $('in-phone').value = d.contactPhone || '';
   $('in-area').value = d.irrigationArea === null || d.irrigationArea === undefined ? '' : String(d.irrigationArea);
   $('in-price').value = d.waterPrice === null || d.waterPrice === undefined ? '' : String(d.waterPrice);
   $('in-remark').value = d.remark || '';
@@ -965,7 +922,7 @@ function fillForm(d) {
 const FORM_ERR = {
   name: { box: 'err-name', field: () => $('in-name') },
   userType: { box: 'err-user-type', sel: () => selUserType },
-  contact: { box: 'err-contact', sel: () => selContact },
+  contact: { box: 'err-contact', field: () => $('in-contact') },
   area: { box: 'err-area', field: () => $('in-area') },
   price: { box: 'err-price', field: () => $('in-price') },
   settle: { box: 'err-settle-cycle', sel: () => selSettle },
@@ -997,9 +954,8 @@ function validateForm() {
   const name = $('in-name').value.trim();
   if (!name) { setFormError('name', '请输入用水户名称'); bad = true; }
   if (!selUserType.getValue()) { setFormError('userType', '请选择用水类型'); bad = true; }
-  const contactId = selContact.getValue();
-  const contactLabel = selContact.getLabel();
-  if (!contactLabel) { setFormError('contact', '请选择联系人'); bad = true; }
+  const contactName = $('in-contact').value.trim();
+  if (!contactName) { setFormError('contact', '请输入联系人'); bad = true; }
   const phone = $('in-phone').value.trim();
   const areaRaw = $('in-area').value.trim();
   const needArea = selUserType.getValue() === '#1#' || selUserType.getValue() === '#4#';
@@ -1030,16 +986,14 @@ function validateForm() {
     gateConfig = { mode: 'DIFF', main: { id: main }, deduct: deducts.map(id => ({ id })) };
   }
   if (bad) return null;
-  // 编辑且未主动换人：不回传 contactUserId，后端保持库内快照（不随平台改名/换机刷新）
-  const keepContactSnapshot = S.mode === 'edit' && !!S.row && !S.contactDirty;
   // 年度计划水量 / 经纬度已不在表单录入：编辑时回传原值防止后端清空（新增时为 null）
   const keepMeta = S.mode === 'edit' && S.row ? S.row : {};
   return {
     name,
     userType: selUserType.getValue(),
     status: selStatus.getValue() || '#1#',
-    contactUserId: (!keepContactSnapshot && contactId && contactId !== CONTACT_SNAPSHOT) ? contactId : null,
-    contactName: contactLabel || null,
+    contactUserId: null,
+    contactName: contactName || null,
     contactPhone: phone || null,
     irrigationArea: areaRaw ? Number(areaRaw) : null,
     lng: keepMeta.lng === undefined ? null : keepMeta.lng,
@@ -1351,7 +1305,7 @@ function bindEvents() {
   $('in-price').addEventListener('input', () => clearFormError('price'));
   $('in-remark').addEventListener('input', () => clearFormError('remark'));
   selUserType.onChange(() => clearFormError('userType'));
-  selContact.onChange(v => { S.contactDirty = true; clearFormError('contact'); applyContactPhone(v); });
+  $('in-contact').addEventListener('input', () => clearFormError('contact'));
   selSettle.onChange(() => clearFormError('settle'));
   selStatus.onChange(() => clearFormError('status'));
   selMode.onChange(v => { clearFormError('mode'); applyGateRows(v); });
@@ -1396,7 +1350,6 @@ function bindEvents() {
   fltStatus.setPlaceholder('全部状态');
 
   selUserType = createSelect($('sel-user-type'));
-  selContact = createSelect($('sel-contact')).setSearchable(true);
   selSettle = createSelect($('sel-settle-cycle'));
   selStatus = createSelect($('sel-status'));
   selMode = createSelect($('sel-calc-mode'));

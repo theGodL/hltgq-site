@@ -74,7 +74,8 @@ public class PatrolRecordController {
         return recordService.planOptions(includeId);
     }
 
-    /** 新增记录（草稿）：站点须在计划巡查范围、对象须属于站点、照片 1~3 张；返回记录 id。 */
+    /** 新增记录（草稿）：站点须在计划巡查范围、对象须属于站点、照片 1~3 张；返回记录 id。
+     *  幂等：该计划下有空白占位草稿时优先填充它（返回其 id），不会产生「草稿 + 正式」两条。 */
     @PostMapping("/create")
     public Map<String, Object> create(@RequestBody PatrolRecordSaveRequest request) {
         Map<String, Object> out = new LinkedHashMap<>();

@@ -713,11 +713,12 @@ function renderTable() {
   tb.innerHTML = S.records.map(r => {
     const wan = (r.totalWater === null || r.totalWater === undefined) ? null : fmtNum(Number(r.totalWater) / 10000, 2);
     const doneWan = (r.doneQty === null || r.doneQty === undefined) ? null : fmtNum(Number(r.doneQty) / 10000, 2);
+    const periodText = (r.periodStart || '') + ' ~ ' + (r.periodEnd || '');
     return '<tr data-key="' + esc(r.id) + '">' +
       '<td><span class="lnk" data-act="view" data-id="' + esc(r.id) + '">' + esc(r.planName || '--') + '</span>' +
       '<span class="sub-line">' + esc((r.planNo || '') + (r.createdAtText ? ' · ' + r.createdAtText : '')) + '</span></td>' +
       '<td>' + typeTag(r) + '</td>' +
-      '<td>' + esc((r.periodStart || '') + ' ~ ' + (r.periodEnd || '')) + '</td>' +
+      '<td title="' + esc(periodText) + '">' + esc(periodText) + '</td>' +
       '<td>' + esc(String(r.userCount === null || r.userCount === undefined ? 0 : r.userCount)) + ' <span class="sub">户</span></td>' +
       '<td>' + (wan === null ? '--' : esc(wan) + ' <span class="sub">万m³</span>') + '</td>' +
       '<td>' + (doneWan === null ? '--' : esc(doneWan) + ' <span class="sub">万m³</span>') + '</td>' +

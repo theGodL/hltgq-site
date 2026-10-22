@@ -41,7 +41,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 /* 表格(与值班管理页保持一致) */
 .tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px}
-.tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:12px 16px;border:1px solid #f0f0f0;white-space:nowrap}
+.tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:12px 16px;border:1px solid #f0f0f0;white-space:normal;line-height:20px}
 .tbl td{padding:12px 16px;border:1px solid #f0f0f0;color:#333;line-height:22px;vertical-align:middle;overflow-wrap:break-word}
 .cell-main{font-weight:600;color:#1f1f1f;line-height:22px}
 .cell-range{display:block;color:#333;line-height:22px}
@@ -178,7 +178,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     </colgroup>
     <thead>
       <tr>
-        <th>上报单号</th><th>上报时间</th><th>用水户</th><th>计划水量（万m³）</th>
+        <th>上报单号</th><th>上报时间</th><th>用水户</th><th>计划水量<br>（万m³）</th>
         <th>用水时段</th><th>用途</th><th>审核状态</th><th>审核意见</th><th>操作</th>
       </tr>
     </thead>
@@ -706,8 +706,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     }
     input.addEventListener('click', function () {
       if (openDd === dd) { closeDd(); return; }
-      // 已选中值时点击展开全量(当前项高亮);手输未选择时按输入内容过滤
-      renderDd(input.dataset.value ? '' : input.value.trim());
+      // 已选中值,或输入文本正好命中某选项文案(如回填/选中「不关联」类空值选项)时展开全量;手输关键字才过滤
+      var kw = input.value.trim();
+      var hitLabel = optionsFn().some(function (o) { return String(o.label) === kw; });
+      renderDd((input.dataset.value || hitLabel) ? '' : kw);
       openDdPanel(dd);
     });
     input.addEventListener('input', function () {
@@ -740,7 +742,13 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     for (var i = 0; i < OWNERS.length; i++) { if (OWNERS[i].id === id) return OWNERS[i].name; }
     return '';
   }
-  function planOptions() { return PLANS.map(function (p) { return { value: p.id, label: p.planNo + ' · ' + p.planName }; }); }
+  /** 关联用水计划下拉:首项「不关联」(与调度方案页同口径;选中后提交不传 planId) */
+  var NO_PLAN_LABEL = '— 不关联用水计划 —';
+  function planOptions() {
+    return [{ value: '', label: NO_PLAN_LABEL }].concat(PLANS.map(function (p) {
+      return { value: p.id, label: p.planNo + ' · ' + p.planName };
+    }));
+  }
   /** 关联需水申请:仅已通过的上报单可选(4.6,选中用水户后按户过滤) */
   function applyOptions() {
     return APPLIES.map(function (r) {

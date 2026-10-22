@@ -34,10 +34,12 @@ public interface PatrolRecordMapper {
 
     // ==================== 列表 / 详情 ====================
 
-    /** 记录分页总数（与 selectPage 同条件；时间区间按自然日，endTime 含当天）。 */
+    /** 记录分页总数（与 selectPage 同条件；时间区间按自然日，endTime 含当天）；空白占位草稿不计入。 */
     @Select("<script>" +
             "SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" r " +
             "WHERE r.corp_code = 'hltgq' " +
+            "AND NOT (r.status = '#1#' AND r.site IS NULL AND r.\"_d_10497_device\" IS NULL " +
+            "AND r.result IS NULL AND r.content IS NULL) " +
             "<if test='startTime != null and startTime != \"\"'>" +
             "AND r.\"time\" &gt;= CAST(#{startTime} AS timestamp) </if>" +
             "<if test='endTime != null and endTime != \"\"'>" +
@@ -49,7 +51,7 @@ public interface PatrolRecordMapper {
                    @Param("siteId") String siteId);
 
     /**
-     * 记录分页：按巡检时间倒序、id 降序兜底。
+     * 记录分页：按巡检时间倒序、id 降序兜底；空白占位草稿（H5 开始巡检写入、站点/设备/结果/内容全空）不计入。
      * <p>计划/站点/设备/人员均 LEFT JOIN（关联行被删时本行不丢，名称列为 null）；
      * 照片数与问题数走聚合子查询，避免 JOIN 放大行数。
      */
@@ -73,6 +75,8 @@ public interface PatrolRecordMapper {
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" " +
             "WHERE corp_code = 'hltgq' AND abqezf IS NOT NULL GROUP BY abqezf) isu ON isu.abqezf = r.id " +
             "WHERE r.corp_code = 'hltgq' " +
+            "AND NOT (r.status = '#1#' AND r.site IS NULL AND r.\"_d_10497_device\" IS NULL " +
+            "AND r.result IS NULL AND r.content IS NULL) " +
             "<if test='startTime != null and startTime != \"\"'>" +
             "AND r.\"time\" &gt;= CAST(#{startTime} AS timestamp) </if>" +
             "<if test='endTime != null and endTime != \"\"'>" +
@@ -145,6 +149,56 @@ public interface PatrolRecordMapper {
     @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_record_photo\" " +
             "WHERE corp_code = 'hltgq' AND record_id = #{recordId}")
     long countPhotosByRecord(@Param("recordId") String recordId);
+
+    // ==================== 空白占位草稿（幂等提交） ====================
+
+    /**
+     * 计划下最早一条空白占位草稿 id：草稿 #1# 且站点/设备/结果/内容全空（H5 开始巡检写入的占位行）。
+     * <p>提交入口优先填充该行，避免「草稿 + 正式」两条；无空白草稿返回 null。
+     */
+    @Select("SELECT id FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" " +
+            "WHERE corp_code = 'hltgq' AND patrol_schedule = #{scheduleId} AND status = '#1#' " +
+            "AND site IS NULL AND \"_d_10497_device\" IS NULL AND result IS NULL AND content IS NULL " +
+            "ORDER BY created_at ASC NULLS LAST, id ASC LIMIT 1")
+    String selectBlankDraftId(@Param("scheduleId") String scheduleId);
+
+    /**
+     * 认领并填充空白占位草稿（幂等提交）：带 status = '#1#' + 四项全空条件，
+     * 仅当该行仍是未被填充的占位草稿时更新成功；返回 0 表示已被并发认领（调用方退回新增）。
+     */
+    @Update("UPDATE \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" " +
+            "SET \"time\" = #{time}, \"patrol_schedule\" = #{scheduleId}, \"site\" = #{siteId}, " +
+            "\"_d_10497_device\" = #{deviceId}, \"user\" = #{userId}, \"result\" = #{result}, " +
+            "\"content\" = #{content}, \"szeedc\" = #{cost}, \"status\" = #{statusCode}, " +
+            "\"updated_at\" = #{now}, \"updated_by\" = #{operatorId} " +
+            "WHERE id = #{id} AND corp_code = 'hltgq' AND status = '#1#' " +
+            "AND site IS NULL AND \"_d_10497_device\" IS NULL AND result IS NULL AND content IS NULL")
+    int claimBlankDraft(@Param("id") String id,
+                        @Param("operatorId") String operatorId,
+                        @Param("now") LocalDateTime now,
+                        @Param("time") LocalDateTime time,
+                        @Param("scheduleId") String scheduleId,
+                        @Param("siteId") String siteId,
+                        @Param("deviceId") String deviceId,
+                        @Param("userId") String userId,
+                        @Param("result") String result,
+                        @Param("content") String content,
+                        @Param("statusCode") String statusCode,
+                        @Param("cost") Double cost);
+
+    /**
+     * 清理计划下其余空白占位草稿（保留 keepId）：只删仍为 #1# 且四项全空的行，
+     * 已有照片/问题关联的不动（防误删异常数据）。
+     */
+    @Delete("DELETE FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" r " +
+            "WHERE r.corp_code = 'hltgq' AND r.patrol_schedule = #{scheduleId} AND r.status = '#1#' " +
+            "AND r.site IS NULL AND r.\"_d_10497_device\" IS NULL AND r.result IS NULL AND r.content IS NULL " +
+            "AND r.id <> #{keepId} " +
+            "AND NOT EXISTS (SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_record_photo\" ph " +
+            "WHERE ph.record_id = r.id) " +
+            "AND NOT EXISTS (SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" isu " +
+            "WHERE isu.abqezf = r.id)")
+    int deleteBlankDrafts(@Param("scheduleId") String scheduleId, @Param("keepId") String keepId);
 
     // ==================== 写入 ====================
 
