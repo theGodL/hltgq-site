@@ -43,10 +43,12 @@ import java.util.regex.Pattern;
  * <p>站点顺序：候选站点与监测页站点下拉同源，按站点排序配置（/station-sort）中该类型序列的顺序排列
  * （见 {@link #sortScope}），未配置过顺序时保持按站名；列表筛选下拉只列已配置阈值的站点。
  * <p>唯一性：表无数据库唯一约束，判重由本类按「站点 + 类型 + 指标」在应用层完成（多值行如 #1#|#3# 也算已配置），
- * 与全库监测类型 LIKE 子串匹配规范一致；单指标类型（水位/雨量/流量/开度）指标恒为空，即「站点 + 类型」唯一。
+ * 与全库监测类型 LIKE 子串匹配规范一致；雨量/流量/开度指标恒为空（「站点 + 类型」唯一），
+ * 水位普通站指标为空、闸站按 up_z/down_z 各存一行。
  * <p>监测指标（{@code zb}）：墒情 #7#、水质 #8# 一个类型下含多个指标，按「站点 + 类型 + 指标」各存一行；
  * 指标清单**按监测页实际展示口径开放**（墒情三层、水质七项，见 {@link #TYPES}），
- * 指标编码即监测数据表字段名，告警比对接该列到数据表取数。
+ * 指标编码即监测数据表字段名，告警比对接该列到数据表取数。水位类型的闸前/闸后指标
+ * 对应闸门表 {@code up_z}/{@code down_z}（闸门站档案多不含 #1#，候选站点按闸门表有效数据判定）。
  * <p>字段口径：类型写 {@code zvieyb}（历史列 {@code type} 仅读取兜底），指标写 {@code zb}，方向写 {@code alarmdir}，
  * 警戒值写 {@code threshold}，描述写 {@code remark}；{@code guarantee}/{@code num} 不写。
  * <p>告警方向：类型/指标级默认值只作新增时的初始选中与 {@code alarmdir} 空值兜底，**业主可自行切换**；
@@ -63,6 +65,18 @@ public class ThresholdServiceImpl implements ThresholdService {
     /** 告警方向编码：低于警戒值触发 */
     private static final String DIR_BELOW = "#2#";
 
+    /** 水位类型编码 */
+    private static final String TYPE_WATER_LEVEL = "#1#";
+
+    /** 水位指标：通用水位（普通水位站，zb 落空，与存量口径一致） */
+    private static final String IND_GENERAL = "general";
+
+    /** 水位指标：闸前水位（上游，闸门表 up_z） */
+    private static final String IND_UP_Z = "up_z";
+
+    /** 水位指标：闸后水位（下游，闸门表 down_z） */
+    private static final String IND_DOWN_Z = "down_z";
+
     /** 类型编码提取（多值形如 #1#|#3#） */
     private static final Pattern CODE_PATTERN = Pattern.compile("#\\d+#");
 
@@ -70,7 +84,12 @@ public class ThresholdServiceImpl implements ThresholdService {
     private static final Map<String, ThresholdMetaVO.TypeItem> TYPES = new LinkedHashMap<>();
 
     static {
-        put("#1#", "水位", "m", DIR_ABOVE, "泄洪闸、节制闸、进水闸、河道站");
+        // 水位：普通水位站用「通用水位」（zb 空，与存量「站点+类型」判重口径一致）；
+        // 闸门站按闸前/闸后分别配置，指标编码取闸门表列名 up_z/down_z 供告警比对直接取列
+        put(TYPE_WATER_LEVEL, "水位", "m", DIR_ABOVE, "河道站、水库站（通用水位）；闸站（闸前/闸后水位）",
+                indicator(IND_GENERAL, "通用水位", "m", DIR_ABOVE),
+                indicator(IND_UP_Z, "闸前水位（上游）", "m", DIR_ABOVE),
+                indicator(IND_DOWN_Z, "闸后水位（下游）", "m", DIR_ABOVE));
         put("#2#", "雨量", "mm", DIR_ABOVE, "雨量站");
         put("#3#", "流量", "m³/s", DIR_ABOVE, "测流闸、河道站");
         put("#4#", "开度", "m", DIR_ABOVE, "泄洪闸、节制闸、进水闸");
@@ -170,7 +189,7 @@ public class ThresholdServiceImpl implements ThresholdService {
         }
         String type = requireType(req.getType());
         String indicator = normalizeIndicator(type, req.getIndicator());
-        StStinfo site = requireSupportedSite(req.getSite(), type);
+        StStinfo site = requireSupportedSite(req.getSite(), type, indicator);
         BigDecimal value = requireThreshold(req.getThreshold());
         String alarmDir = requireAlarmDir(req.getAlarmDir(), type, indicator);
         String desc = normalizeDesc(req.getDescription());
@@ -257,7 +276,8 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     /**
      * 同站点同类型同指标是否已配置（多值行如 #1#|#3# 同样视为已配置）。
-     * <p>单指标类型指标恒为空，判重退化为「站点 + 类型」，与改造前口径一致。
+     * <p>雨量/流量/开度与水位通用水位指标为空，判重退化为「站点 + 类型」；
+     * 水位闸前/闸后按 zb 各存一行，可分别配置。
      */
     private long countBySiteAndType(String siteId, String type, String indicator) {
         QueryWrapper<WaterThreshold> wrapper = new QueryWrapper<>();
@@ -272,8 +292,13 @@ public class ThresholdServiceImpl implements ThresholdService {
         return count == null ? 0L : count;
     }
 
-    /** 站点校验：必须存在于站点档案且档案监测类型含该阈值类型 */
-    private StStinfo requireSupportedSite(String siteId, String type) {
+    /**
+     * 站点校验：必须存在于站点档案且档案监测类型含该阈值类型。
+     * <p>水位闸前/闸后指标例外：闸门站档案多不含 #1#（多为 #3#|#4#|#5#），
+     * 以闸门表是否存在该列有效数据为准；通用水位仍要求档案含 #1# 且闸门表无有效水位数据，
+     * 避免同一闸站出现「通用」与「闸前/闸后」两套取数口径（含 #5# 但无闸门水位的支渠不受影响）。
+     */
+    private StStinfo requireSupportedSite(String siteId, String type, String indicator) {
         String key = trim(siteId);
         if (key == null) {
             throw new IllegalArgumentException("请选择站点");
@@ -284,6 +309,26 @@ public class ThresholdServiceImpl implements ThresholdService {
         StStinfo site = stStinfoMapper.selectOne(wrapper);
         if (site == null) {
             throw new IllegalArgumentException("站点不存在或未在站点档案登记");
+        }
+        if (TYPE_WATER_LEVEL.equals(type)) {
+            if (IND_UP_Z.equals(indicator) || IND_DOWN_Z.equals(indicator)) {
+                int count = IND_UP_Z.equals(indicator)
+                        ? thresholdMapper.countEffectiveUpZ(key)
+                        : thresholdMapper.countEffectiveDownZ(key);
+                if (count <= 0) {
+                    throw new IllegalArgumentException("该站点无【"
+                            + (IND_UP_Z.equals(indicator) ? "闸前" : "闸后") + "水位】监测数据，不能配置该指标");
+                }
+                return site;
+            }
+            if (site.getEpjutj() == null || !site.getEpjutj().contains(TYPE_WATER_LEVEL)) {
+                throw new IllegalArgumentException("该站点不支持【水位】阈值");
+            }
+            // 以闸门表实际水位数据判定闸门站：含 #5# 但无闸门水位的支渠/渡槽仍可配通用水位
+            if (thresholdMapper.countEffectiveUpZ(key) > 0 || thresholdMapper.countEffectiveDownZ(key) > 0) {
+                throw new IllegalArgumentException("闸门站请选择【闸前水位】或【闸后水位】配置");
+            }
+            return site;
         }
         if (site.getEpjutj() == null || !site.getEpjutj().contains(type)) {
             throw new IllegalArgumentException("该站点不支持【" + TYPES.get(type).getName() + "】阈值");
@@ -311,12 +356,24 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     /**
      * 监测指标校验：多指标类型（墒情 #7#、水质 #8#）必填且必须在字典内；
-     * 单指标类型（水位/雨量/流量/开度）类型本身已唯一确定指标，请求带值也归一化为空。
+     * 水位 #1# 的「通用水位」（空/general）落空，闸前/闸后落到 zb（up_z/down_z）；
+     * 雨量/流量/开度类型本身已唯一确定指标，请求带值也归一化为空。
      *
-     * @return 落库的指标编码（单指标类型为 null）
+     * @return 落库的指标编码（通用水位与单指标类型为 null）
      */
     private static String normalizeIndicator(String typeCode, String indicator) {
         ThresholdMetaVO.TypeItem item = TYPES.get(typeCode);
+        if (TYPE_WATER_LEVEL.equals(typeCode)) {
+            String code = trim(indicator);
+            if (code == null || IND_GENERAL.equals(code)) {
+                return null;
+            }
+            if (IND_UP_Z.equals(code) || IND_DOWN_Z.equals(code)) {
+                return code;
+            }
+            throw new IllegalArgumentException("【" + (item == null ? "水位" : item.getName())
+                    + "】不支持监测指标：" + indicator);
+        }
         if (item == null || item.getIndicators() == null || item.getIndicators().isEmpty()) {
             return null;
         }
@@ -364,6 +421,10 @@ public class ThresholdServiceImpl implements ThresholdService {
         ThresholdMetaVO.TypeItem item = TYPES.get(typeCode);
         String typeName = item == null ? typeCode : item.getName();
         ThresholdMetaVO.IndicatorItem ind = findIndicator(typeCode, indicator);
+        // 水位未落指标即通用水位：冲突提示给出明确口径，避免与闸前/闸后混淆
+        if (ind == null && indicator == null && TYPE_WATER_LEVEL.equals(typeCode)) {
+            ind = findIndicator(typeCode, IND_GENERAL);
+        }
         return ind == null ? typeName : typeName + "·" + ind.getName();
     }
 
@@ -523,6 +584,11 @@ public class ThresholdServiceImpl implements ThresholdService {
         }
         // 多指标类型：指标名与单位/默认方向按指标取值（指标为空时保持类型级，兼容单指标存量行）
         ThresholdMetaVO.IndicatorItem ind = matchIndicator(vo.getThresholdType(), vo.getIndicator());
+        // 水位类型未落指标 = 通用水位（存量普通水位站口径），补中文名供列表/详情展示
+        if (ind == null && trim(vo.getIndicator()) == null
+                && parseCodes(vo.getThresholdType()).contains(TYPE_WATER_LEVEL)) {
+            ind = findIndicator(TYPE_WATER_LEVEL, IND_GENERAL);
+        }
         if (ind != null) {
             vo.setIndicatorName(ind.getName());
             if (trim(ind.getUnit()) != null) {

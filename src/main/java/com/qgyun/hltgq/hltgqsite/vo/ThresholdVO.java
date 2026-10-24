@@ -30,10 +30,10 @@ public class ThresholdVO {
     /** 阈值类型名称（水位 / 雨量 / ...） */
     private String typeName;
 
-    /** 监测指标编码（多指标类型才有值，如 nh3n / mten；单指标类型为空） */
+    /** 监测指标编码（水质/墒情如 nh3n / mten；水位闸站为 up_z/down_z；通用水位与单指标类型为空） */
     private String indicator;
 
-    /** 监测指标名称（氨氮 / 10cm含水量 …；单指标类型或字典外编码为空） */
+    /** 监测指标名称（氨氮 / 闸前水位（上游） …；通用水位补「通用水位」，字典外编码为空） */
     private String indicatorName;
 
     /** 警戒值单位（多指标类型按指标单位，其余按类型单位） */

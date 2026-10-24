@@ -62,8 +62,8 @@ public class NetworkDeviceService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    /** 区域名 */
-    @Value("${network-device.region-name:花凉亭灌区}")
+    /** 区域名（业主单位名称） */
+    @Value("${network-device.region-name:花凉亭水库灌区管理处}")
     private String regionName;
 
     /** 网络设备监控总览 */

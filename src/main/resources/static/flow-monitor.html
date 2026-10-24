@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>流量监测</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-common.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/station-sort.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
@@ -822,6 +823,14 @@ async function loadList() {
     const qs = buildListParams().toString();
     const data = await fetchJson(`${API}/flow-monitor/monitoring${qs ? `?${qs}` : ''}`);
     const list = Array.isArray(data) ? data : [];
+    // 最新流量已中断的站点（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新）：瞬时流量不再展示，
+    // 避免历史残留值被当成当前值（后端 monitoring 已按同一在线口径置空，此处按页面时间规则兜底）；
+    // 累计流量为最后一次成功计算的历史值，保留展示，同行采集时间即累计截止时间
+    list.forEach(r => {
+      if (r.isOnline === false || isStaleTm(r.tm, r.stnm)) {
+        r.q = null;
+      }
+    });
     S.allRows = applySiteFilter(list);
     S.total = S.allRows.length;
     const pages = Math.max(1, Math.ceil(S.total / S.size) || 1);

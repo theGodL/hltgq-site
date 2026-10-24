@@ -181,7 +181,14 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             }
             r.setCumulativeFlow(toWanFlow(cumulativeFlow));
             // 在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则按最新采集时间断联判定
-            r.setIsOnline(StationStatusUtils.isZebpsuOnline(r.getZebpsu()) && !StationStatusUtils.isStale(r.getTm(), r.getStnm()));
+            boolean online = StationStatusUtils.isZebpsuOnline(r.getZebpsu())
+                    && !StationStatusUtils.isStale(r.getTm(), r.getStnm());
+            r.setIsOnline(online);
+            // 断联站点瞬时流量不展示（历史值不能冒充当前值）；累计保留，tm 即截止时间。
+            // 三维等外部接口复用本方法，口径统一收在后端，避免各消费方自行判断
+            if (!online) {
+                r.setQ(null);
+            }
         });
         // 站点排序配置（流量监测类型）：已配置站点按配置顺序，未配置站点保持 SQL 默认顺序排在其后；
         // 站点标识 = 站点管理主键（档案缺失时为 null，该行保持默认位置）

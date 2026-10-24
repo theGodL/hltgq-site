@@ -6,6 +6,7 @@
 <title>雨量监测</title>
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
+<script src="./lib/chart-common.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
 <script src="./lib/monitor-export.js"></script>
 <script src="./lib/station-sort.js"></script>
@@ -134,6 +135,8 @@ table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid #e8e8e
 thead tr{background:#fafafa}
 th{padding:12px 16px;text-align:left;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
 .th-sub{font-size:11px;font-weight:400;color:#999;margin-top:2px;white-space:nowrap}
+/* 极值雨情：数值下方标注极值出现时段 */
+.td-tm{font-size:11px;font-weight:400;color:#999;margin-top:2px;white-space:nowrap}
 td{padding:12px 16px;border:1px solid #e8e8e8;color:#000000d9}
 tbody tr:hover td{background:#fafafa}
 tbody tr.total-row td{background:#e6f4ff;font-weight:600;color:#000000d9}
@@ -228,8 +231,8 @@ tbody tr.total-row:hover td{background:#e6f4ff}
   -->
 
   <div class="tab-bar">
-    <div class="tab-item active" data-tab="irrigation">花凉亭灌区</div>
-    <div class="tab-item" data-tab="reservoir">花凉亭水库</div>
+    <div class="tab-item active" data-tab="reservoir">花凉亭水库</div>
+    <div class="tab-item" data-tab="irrigation">花凉亭灌区</div>
     <div class="tab-item" data-tab="mth">麻塘湖灌区</div>
     <!-- 数据维护：直达雨量数据维护页（数据管理：删除/恢复＋设备补偿；补偿设置：补偿配置管理），同标签跳转；
          入口仅系统管理员可见（脚本判定后显示，与后端 @RequireAdmin 同口径）；
@@ -240,7 +243,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
   </div>
 
   <!-- 花凉亭灌区 -->
-  <div class="panel active" id="panel-irrigation">
+  <div class="panel" id="panel-irrigation">
     <div class="card filter-card">
       <div class="filter-bar">
         <div class="filter-item" id="irr-site-filter">
@@ -305,8 +308,8 @@ tbody tr.total-row:hover td{background:#e6f4ff}
     </div>
   </div>
 
-  <!-- 花凉亭水库 -->
-  <div class="panel" id="panel-reservoir">
+  <!-- 花凉亭水库（默认展示） -->
+  <div class="panel active" id="panel-reservoir">
     <div class="card filter-card" id="res-filter-card">
       <div class="filter-bar">
         <div class="filter-item" id="res-date-wrap">
@@ -534,6 +537,15 @@ const fmtAvg = v => {
   if (!Number.isFinite(n)) return '';
   return n.toFixed(2);
 };
+/** 极值出现时段短格式：小时窗口 yyyy-MM-dd HH:mm → MM-dd HH:mm；
+ *  日窗口 yyyy-MM-dd~yyyy-MM-dd → MM-dd~MM-dd，单日 yyyy-MM-dd → MM-dd */
+const fmtExtremeTm = v => {
+  if (v === null || v === undefined || v === '') return '';
+  const s = String(v);
+  if (s.indexOf('~') >= 0) return s.split('~').map(x => x.length >= 10 ? x.slice(5, 10) : x).join('~');
+  if (s.length >= 16) return s.slice(5, 16);
+  return s.length >= 10 ? s.slice(5, 10) : s;
+};
 /** 截断保留 2 位小数（不四舍五入；加极小量抵消浮点乘法尾差） */
 const trunc2 = v => Math.floor(v * 100 + 1e-9) / 100;
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -551,6 +563,8 @@ const RES = {
   headers: [],
   aoa: [],
   hasTotal: false,
+  // 极值雨情：每行 6 个极值出现时段（与 aoa 数据行一一对应，供表格小字与导出时间列）
+  extremeTimes: [],
 };
 const TAB_NAMES = {
   realtime: '实时雨情',
@@ -906,6 +920,8 @@ function bindTabs() {
       tab.classList.add('active');
       const panel = $('panel-' + tab.dataset.tab);
       if (panel) panel.classList.add('active');
+      // 默认 Tab 为花凉亭水库（进页即取数）；灌区实时雨情首次切入该 Tab 时再加载
+      if (tab.dataset.tab === 'irrigation') ensureIrrLoaded();
       if (tab.dataset.tab === 'reservoir') {
         updateResFilterUI();
         loadResData();
@@ -1109,6 +1125,15 @@ async function loadIrrSites() {
 }
 
 /* ===== 灌区列表 ===== */
+/** 灌区实时雨情首次进入时加载（默认 Tab 为花凉亭水库，避免进页多一次无用查询） */
+let irrLoaded = false;
+function ensureIrrLoaded() {
+  if (irrLoaded) return;
+  irrLoaded = true;
+  loadIrrSites();
+  loadIrrList();
+}
+
 function buildIrrParams() {
   const p = new URLSearchParams();
   p.set('page', IRR.page);
@@ -1480,19 +1505,29 @@ async function loadResData() {
       if (end) p.set('endDate', end);
       applyCanalParam(p);
       const rows = await fetchJson(`${API}/st-pptn-r/reservoir-extreme-rainfall?${p}`);
+      const list = rows || [];
+      const KEYS = ['max3h', 'max6h', 'max24h', 'max2d', 'max3d', 'max7d'];
+      const TM_KEYS = ['max3hTm', 'max6hTm', 'max24hTm', 'max2dTm', 'max3dTm', 'max7dTm'];
       headers = ['站点名称', '最大3时', '最大6时', '最大24时', '最大2天', '最大3天', '最大7天'];
       aoa = [headers];
-      (rows || []).forEach(r => {
-        aoa.push([
-          fmtN(r.stnm),
-          fmtN1(r.max3h),
-          fmtN1(r.max6h),
-          fmtN1(r.max24h),
-          fmtN1(r.max2d),
-          fmtN1(r.max3d),
-          fmtN1(r.max7d),
-        ]);
+      // 极值出现时段：小时窗口为结束时刻、日窗口为水文日区间（结束日命名，与日雨情 Tab 行标签一致）
+      RES.extremeTimes = [];
+      list.forEach(r => {
+        aoa.push([fmtN(r.stnm), ...KEYS.map(k => fmtN1(r[k]))]);
+        RES.extremeTimes.push(TM_KEYS.map(k => fmtExtremeTm(r[k])));
       });
+      // 底部平均值行：各列站点均值（排除设备异常/不存在值，保留 1 位与列口径一致）
+      if (list.length) {
+        const avgs = KEYS.map(k => {
+          const vals = list.map(r => r[k])
+            .filter(v => v !== null && v !== undefined && v !== '' && !isErr(v) && !isMissing(v))
+            .map(v => +v).filter(v => Number.isFinite(v));
+          return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+        });
+        aoa.push(['平均值', ...avgs.map(v => v === null ? '-' : v.toFixed(1))]);
+        RES.extremeTimes.push(KEYS.map(() => ''));
+        hasTotal = true;
+      }
     } else if (RES.tab === 'sameperiod') {
       // 多年同期雨情：列表表头参考旬月雨情；暂无接口，不请求、不造数据，仅底部合计占位
       headers = ['监测日期', '旬段', '平均值 (mm)'];
@@ -1529,23 +1564,30 @@ async function loadResData() {
   }
 }
 
+/** 表头：极值雨情在首个数值列表头补提示，说明数值下方为出现时段 */
+function resTheadHtml() {
+  const note = RES.tab === 'extreme' ? '<div class="th-sub">数值下方为出现时段</div>' : '';
+  return `<tr>${RES.headers.map((h, i) => `<th>${h}${i === 1 ? note : ''}</th>`).join('')}</tr>`;
+}
+
 function renderResTable() {
   const headers = RES.headers;
   const aoa = RES.aoa;
   if (!headers.length || aoa.length <= 1) {
-    $('res-thead').innerHTML = headers.length
-      ? `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`
-      : '';
+    $('res-thead').innerHTML = headers.length ? resTheadHtml() : '';
     $('res-tbody').innerHTML = `<tr><td colspan="${Math.max(headers.length, 1)}" class="empty">暂无数据</td></tr>`;
     return;
   }
-  $('res-thead').innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+  $('res-thead').innerHTML = resTheadHtml();
   const bodyRows = aoa.slice(1);
+  const times = RES.tab === 'extreme' ? RES.extremeTimes : null;
   $('res-tbody').innerHTML = bodyRows.map((row, idx) => {
-    const isTotal = RES.hasTotal && idx === bodyRows.length - 1 && (row[0] === '总计' || row[0] === '合计');
-    return `<tr class="${isTotal ? 'total-row' : ''}">${row.map(v => {
+    const isTotal = RES.hasTotal && idx === bodyRows.length - 1 && (row[0] === '总计' || row[0] === '合计' || row[0] === '平均值');
+    const rowTms = times ? (times[idx] || []) : null;
+    return `<tr class="${isTotal ? 'total-row' : ''}">${row.map((v, ci) => {
       const text = (v === null || v === undefined) ? '-' : (isErr(v) ? '--' : v);
-      return `<td>${text}</td>`;
+      const sub = rowTms && ci > 0 ? rowTms[ci - 1] : '';
+      return `<td>${text}${sub ? `<div class="td-tm">${sub}</div>` : ''}</td>`;
     }).join('')}</tr>`;
   }).join('');
 }
@@ -1573,8 +1615,25 @@ function cellForExcel(v, keepText) {
   return v;
 }
 
+/** 极值雨情导出：数值列后插入出现时段列，数值保持 number 便于 Excel 统计 */
+function extremeAoaForExcel() {
+  const times = RES.extremeTimes || [];
+  const head = ['站点名称'];
+  RES.headers.slice(1).forEach(h => head.push(`${h} (mm)`, `${h} 出现时段`));
+  return RES.aoa.map((row, ri) => {
+    if (ri === 0) return head;
+    const out = [row[0]];
+    for (let ci = 1; ci < row.length; ci++) {
+      out.push(cellForExcel(row[ci], false));
+      out.push((times[ri - 1] || [])[ci - 1] || '');
+    }
+    return out;
+  });
+}
+
 /** 表头与首列（日期/站名等）保持文本；旬月/同期雨情第 2 列旬段也保持文本 */
 function aoaForExcel(aoa) {
+  if (RES.tab === 'extreme') return extremeAoaForExcel();
   const textCols = new Set([0]);
   if (RES.tab === 'tenday' || RES.tab === 'sameperiod') textCols.add(1);
   return aoa.map((row, ri) => {
@@ -2011,8 +2070,8 @@ async function init() {
   // 渠系树侧边栏：与主数据并行加载，失败不阻塞正文（仅花凉亭灌区 Tab 展示）
   loadCanalTree();
   syncCanalSide();
-  await loadIrrSites();
-  loadIrrList();
+  // 默认 Tab = 花凉亭水库（实时雨情进页即取数）；灌区实时雨情首次切入该 Tab 时再加载
+  await loadResData();
   // 站点排序（Tab 栏右侧入口）：范围随主 Tab 切换 —— 花凉亭水库只排水库雨量站，花凉亭灌区只排灌区雨量站；
   // 雨量类型两范围共用一条序列，因水库位于上游，序列中水库块恒在灌区块之前（保存只重排本范围），保存后两处均重载；
   // 麻塘湖灌区数据未接入，该 Tab 下不显示排序入口
@@ -2026,9 +2085,13 @@ async function init() {
       : '按住站点行拖动，或直接修改序号：保存后灌区雨情各表与站点下拉同步生效'),
     api: API,
     onSaved: async () => {
-      await loadIrrSites();
-      if (IRR_RES.tab === 'realtime') await loadIrrList();
-      else await loadIrrDaily();
+      // 只重载当前范围：水库 Tab 不触发灌区取数，灌区数据等首次切入时再加载
+      if (activeMainTab() === 'irrigation') {
+        irrLoaded = true;
+        await loadIrrSites();
+        if (IRR_RES.tab === 'realtime') await loadIrrList();
+        else await loadIrrDaily();
+      }
       if (activeMainTab() === 'reservoir') await loadResData();
     },
   });

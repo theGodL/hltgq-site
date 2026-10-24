@@ -73,12 +73,16 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
     /**
      * 阈值类型下的站点候选：站点档案中监测类型（epjutj）含该编码的站点，
      * 并标记该站点在该类型下是否已配置阈值（界面提示"已配置，请直接编辑"）。
+     * <p>水位指标特判：general（通用水位）只列闸门表无有效上下游水位的水位站
+     * （渠道/河道/水库站，含 #5# 但无闸门水位的支渠、渡槽不误伤）；
+     * up_z/down_z（闸前/闸后水位）不要求档案含 #1#（闸门站多为 #3#|#4#|#5#），
+     * 按闸门表该列是否存在有效数据筛选。
      *
      * @param typeCode  阈值类型编码（必填，如 #1#）
      * @param keyword   站点名称/编号关键字过滤（可选）
      * @param indicator 监测指标编码（可选）：传值时「已配置」标记按「类型 + 指标」判定
-     *                  （多指标类型如水质/墒情必须传，否则一个类型下的多个指标会互相误标）；
-     *                  不传时按类型判定（单指标类型与改造前口径一致）
+     *                  （多指标类型如水质/墒情必须传，否则一个类型下的多个指标会互相误标；
+     *                  水位通用水位传 general，与 zb 为空等价）；不传时按类型判定
      */
     @Select("<script>" +
             "SELECT s.id AS site_id, s.zzkaec AS name, s.iofhpi AS site_code, " +
@@ -87,9 +91,31 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
             "LEFT JOIN ( " +
             "  SELECT DISTINCT \"site\" FROM \"qixiao-apaas\".t_auto_hltgq_water_threshold " +
             "  WHERE COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') LIKE CONCAT('%', #{typeCode}, '%') " +
-            "  <if test='indicator != null'>AND \"zb\" = #{indicator} </if>" +
+            "  <choose>" +
+            "    <when test='\"general\".equals(indicator)'>AND COALESCE(\"zb\", '') = '' </when>" +
+            "    <when test='indicator != null'>AND \"zb\" = #{indicator} </when>" +
+            "  </choose>" +
             ") x ON x.\"site\" = s.id " +
-            "WHERE s.epjutj LIKE CONCAT('%', #{typeCode}, '%') " +
+            "<choose>" +
+            "  <when test='\"up_z\".equals(indicator)'>" +
+            "  WHERE EXISTS (SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
+            "    WHERE g.\"site\" = s.id AND g.\"up_z\" IS NOT NULL AND g.\"up_z\" NOT IN (-999, -9991)) " +
+            "  </when>" +
+            "  <when test='\"down_z\".equals(indicator)'>" +
+            "  WHERE EXISTS (SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
+            "    WHERE g.\"site\" = s.id AND g.\"down_z\" IS NOT NULL AND g.\"down_z\" NOT IN (-999, -9991)) " +
+            "  </when>" +
+            "  <when test='\"general\".equals(indicator)'>" +
+            "  WHERE s.epjutj LIKE '%#1#%' " +
+            "  AND NOT EXISTS (SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
+            "    WHERE g.\"site\" = s.id " +
+            "    AND ((g.\"up_z\" IS NOT NULL AND g.\"up_z\" NOT IN (-999, -9991)) " +
+            "      OR (g.\"down_z\" IS NOT NULL AND g.\"down_z\" NOT IN (-999, -9991)))) " +
+            "  </when>" +
+            "  <otherwise>" +
+            "  WHERE s.epjutj LIKE CONCAT('%', #{typeCode}, '%') " +
+            "  </otherwise>" +
+            "</choose>" +
             "<if test='keyword != null'>" +
             "AND (s.zzkaec LIKE CONCAT('%', #{keyword}, '%') " +
             "OR COALESCE(s.iofhpi, '') LIKE CONCAT('%', #{keyword}, '%')) " +
@@ -105,6 +131,19 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
     List<ThresholdSiteVO> selectCandidateSites(@Param("typeCode") String typeCode,
                                               @Param("keyword") String keyword,
                                               @Param("indicator") String indicator);
+
+    /**
+     * 闸门表该站是否存在有效闸前水位（用于水位·闸前水位阈值的站点校验）。
+     * <p>有效值口径与闸门监测页一致：非空且非 -999（设备不存在）/ -9991（设备异常）。
+     */
+    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".t_auto_hltgq_water_gate " +
+            "WHERE \"site\" = #{siteId} AND \"up_z\" IS NOT NULL AND \"up_z\" NOT IN (-999, -9991)")
+    int countEffectiveUpZ(@Param("siteId") String siteId);
+
+    /** 闸门表该站是否存在有效闸后水位（口径同 {@link #countEffectiveUpZ}） */
+    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".t_auto_hltgq_water_gate " +
+            "WHERE \"site\" = #{siteId} AND \"down_z\" IS NOT NULL AND \"down_z\" NOT IN (-999, -9991)")
+    int countEffectiveDownZ(@Param("siteId") String siteId);
 
     /**
      * 已配置阈值的站点清单（列表筛选下拉用）：阈值表中出现过的站点去重，

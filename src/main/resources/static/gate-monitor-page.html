@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>闸门监测</title>
 <script src="./lib/echarts.min.js"></script>
+<script src="./lib/chart-common.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
 <script src="./lib/station-sort.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
@@ -131,6 +132,8 @@ thead tr{background:#fafafa}
 th{padding:12px 16px;text-align:left;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
 /* 数据行不换行：100% 缩放下列宽不足时改为表格横向滚动，避免按钮文字/名称/采集时间被挤成多行 */
 td{padding:12px 16px;border:1px solid #e8e8e8;color:#000000d9;white-space:nowrap}
+/* 流量值下方标注流量数据时间（取自该站最新一条历史流量时） */
+.td-tm{font-size:11px;color:#999;margin-top:2px;white-space:nowrap}
 tbody tr:hover td{background:#fafafa}
 .empty{text-align:center;color:#bbb;padding:48px;font-size:14px}
 /* 名称列给足最小宽度，避免被其它列挤压 */
@@ -1060,7 +1063,7 @@ async function loadList() {
     S.allRows = [];
     S.total = 0;
     S.rows = [];
-    $('tbl-body').innerHTML = '<tr><td colspan="8" class="empty">数据加载失败，请重试</td></tr>';
+    $('tbl-body').innerHTML = '<tr><td colspan="9" class="empty">数据加载失败，请重试</td></tr>';
     renderPager();
   } finally {
     setLoading(wrap, false);
@@ -1096,11 +1099,27 @@ function fmtHolesOpen(holes) {
   return shown.map(h => fmtOpen(h.openDegree)).join('+');
 }
 
+/** 需要标注的累计截止时间：仅当累计记录时间与闸门采集时间相差超过同批次窗口（20 分钟）时返回，
+ *  提示该累计为最后一次成功计算的历史值（流量计已断联或与闸门报文不同批次）；
+ *  与后端 FLOW_ALIGN_MINUTES=20 口径一致。无需要标注时返回 null */
+function cumulativeCutoffTm(r) {
+  if (!r.flowTm || !r.tm) return null;
+  const a = parseTm(r.flowTm), b = parseTm(r.tm);
+  if (!a || !b || Math.abs(a.getTime() - b.getTime()) <= 20 * 60 * 1000) return null;
+  return r.flowTm;
+}
+
+/** 累计值下方标注截止时间（列表展示） */
+function flowTmSub(r) {
+  const tm = cumulativeCutoffTm(r);
+  return tm ? `<div class="td-tm">截至 ${fmtAxisTm(tm)}</div>` : '';
+}
+
 /** 列表渲染：采集时间列标红已暂停（后续可能恢复），恢复时还原 isStaleTm(r.tm, r.siteName) → class="tm-stale" 判定 */
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>';
     return;
   }
   tbody.innerHTML = S.rows.map((r, i) => `
@@ -1110,7 +1129,7 @@ function renderTable() {
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
       <td>${fmtN3(r.q)}</td>
-      <td>${fmtN3(r.cumulativeFlow)}</td>
+      <td>${fmtN3(r.cumulativeFlow)}${r.cumulativeFlow != null ? flowTmSub(r) : ''}</td>
       <td>${fmtTm(r.tm)}</td>
       <td class="col-vol">${fmtN2(r.vol)}</td>
       <td class="col-act">
@@ -1803,6 +1822,7 @@ const GATE_EXPORT_FIELDS = [
   { key: 'downZ', label: '闸后水位 (m)' },
   { key: 'q', label: '瞬时流量 (m³/s)' },
   { key: 'tf', label: '累计水量 (万m³)' },
+  { key: 'tfTm', label: '累计截止时间' },
   { key: 'tm', label: '采集时间' },
 ];
 
@@ -1811,11 +1831,15 @@ function exportGateList() {
   const list = (S.allRows && S.allRows.length) ? S.allRows : S.rows;
   MonitorExport.download({
     fields: GATE_EXPORT_FIELDS,
-    rows: list.map(r => ({
-      siteName: r.siteName, opening: fmtHolesOpen(r.holes),
-      upZ: fmtN2(r.upZ), downZ: fmtN2(r.downZ), q: fmtN3(r.q), tf: fmtN3(r.cumulativeFlow),
-      tm: fmtTm(r.tm),
-    })),
+    rows: list.map(r => {
+      const cutoffTm = cumulativeCutoffTm(r);
+      return {
+        siteName: r.siteName, opening: fmtHolesOpen(r.holes),
+        upZ: fmtN2(r.upZ), downZ: fmtN2(r.downZ), q: fmtN3(r.q), tf: fmtN3(r.cumulativeFlow),
+        tfTm: cutoffTm ? fmtTm(cutoffTm) : '',
+        tm: fmtTm(r.tm),
+      };
+    }),
     filename: () => `闸门监测_${fmtDate(new Date())}`,
     sheetName: '闸门监测',
   });

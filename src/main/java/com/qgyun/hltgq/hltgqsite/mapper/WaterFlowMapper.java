@@ -257,16 +257,17 @@ public interface WaterFlowMapper {
      * @param entries   站点窗口列表，每项 Map 的 key：siteId（站点 UUID）、windowStart/windowEnd（窗口端点）
      * @param startTime 查询起始时间（可选，与闸门表范围过滤保持一致）
      * @param endTime   查询截止时间（可选）
+     * @return 每站一行，含 q/ytf/ttf 与流量记录时间 tm（窗口内无记录时三者与 tm 均为 null）
      */
     @Select("<script>" +
-            "SELECT x.site, TRUNC(fw.q, 3) AS q, fw.ytf, fw.ttf " +
+            "SELECT x.site, TRUNC(fw.q, 3) AS q, fw.ytf, fw.ttf, fw.tm AS tm " +
             "FROM (VALUES " +
             "<foreach collection='entries' item='e' separator=','>" +
             "(#{e.siteId}::text, #{e.windowStart}::timestamp, #{e.windowEnd}::timestamp)" +
             "</foreach>" +
             ") x(site, window_start, window_end) " +
             "LEFT JOIN LATERAL ( " +
-            "  SELECT f.q, f.ytf, f.ttf " +
+            "  SELECT f.q, f.ytf, f.ttf, f.tm " +
             "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
             "  WHERE f.site = x.site AND f.tm &gt;= x.window_start AND f.tm &lt;= x.window_end " +
             "<if test='startTime != null'>AND f.tm &gt;= #{startTime} </if>" +
@@ -277,6 +278,35 @@ public interface WaterFlowMapper {
     List<Map<String, Object>> selectLatestInWindowBatch(@Param("entries") List<Map<String, Object>> entries,
                                                         @Param("startTime") LocalDateTime startTime,
                                                         @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 闸站累计流量回退取数（批量）：默认（无时间筛选）口径下，窗口内无同批次流量时，
+     * 取各站当年最新一条 ytf 有效记录，用于展示「截至最后一次成功计算的累计值」。
+     * <p>与瞬时流量口径区分：瞬时流量不回退，避免历史值被误读为当前值；
+     * 累计流量是历史沉淀值，可回退，但必须同时返回记录时间 tm 作为累计截止时间。
+     * <p>仅取当年（tm ≥ yearStart）记录：ytf 为当年累计，跨年旧值不能当作今年累计。
+     * endTime 非空时作为上界（“截至某日”查询），避免回退值晚于调用方指定的截止时间。
+     * ytf 为空或 -999（设备不存在）/-9991（设备异常）的记录不参与。
+     * DISTINCT ON 走 (site, tm) 索引，按站点取最新一条，无 N+1。
+     *
+     * @param siteIds   站点 UUID 列表（必填，调用方保证非空）
+     * @param yearStart 当年 1月1日 0点
+     * @param endTime   查询截止时间（可选，非空时只取该时间之前的记录）
+     * @return 每站一行：site、ytf（m³ 原值）、tm（累计截止时间）；无有效记录的站点不返回行
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT ON (f.site) f.site AS site, f.ytf AS ytf, f.tm AS tm " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "WHERE f.site IN " +
+            "<foreach collection='siteIds' item='s' open='(' separator=',' close=')'>#{s}</foreach> " +
+            "AND f.ytf IS NOT NULL AND f.ytf NOT IN (-999, -9991) " +
+            "AND f.tm &gt;= #{yearStart} " +
+            "<if test='endTime != null'>AND f.tm &lt;= #{endTime} </if>" +
+            "ORDER BY f.site, f.tm DESC" +
+            "</script>")
+    List<Map<String, Object>> selectLatestCumulativeBySites(@Param("siteIds") List<String> siteIds,
+                                                            @Param("yearStart") LocalDateTime yearStart,
+                                                            @Param("endTime") LocalDateTime endTime);
 
     /**
      * 闸站累计流量取数（月累计 + 年累计，单站单行）

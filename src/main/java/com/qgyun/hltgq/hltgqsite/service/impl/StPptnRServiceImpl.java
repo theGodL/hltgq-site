@@ -1101,11 +1101,12 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
             // 滑动统计区间（小时桶为时段终点标注、左开右闭）：
             // 区间查询对齐老系统口径——区间内起算：首日 08:00 桶含前一水文日的尾巴，一并剔除
             // （区间首日 08:00 前的雨不计入，与老系统极值雨情一致），统计窗为 (startDate 08:00, endDate 08:00]；
-            // 单日查询保持“当日水文日”语义：统计窗为 [startDate 08:00, endDate 08:00]，保留当日 08:00 终点桶
+            // 单日查询统计窗为 (startDate-1 08:00, startDate 08:00]，与日网格单日标签 startDate 08:00 的水文日一致，
+            // 小时桶须从 startDate-1 09:00 起共 24 个（不能只保留 startDate 08:00 一个桶，否则三项小时极值退化为 1 小时雨量）
             DateTimeFormatter hourFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
             LocalDateTime hourGridStart = startDate.isBefore(endDate)
                     ? startDate.atTime(8, 0).plusHours(1)
-                    : startDate.atTime(8, 0);
+                    : startDate.minusDays(1).atTime(8, 0).plusHours(1);
             LocalDateTime hourGridEnd = endDate.atTime(8, 0);
 
             // 补全为**完整小时网格**（无记录的小时桶补 0）后再滑动取极值：
@@ -1118,10 +1119,10 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 hourList.add(new AbstractMap.SimpleImmutableEntry<>(key, hourlyInc.getOrDefault(key, BigDecimal.ZERO)));
             }
 
-            // 滑动窗口求极值（小时桶按终点标注水文日对齐）
-            BigDecimal max3h = slidingMax(hourList, 3);
-            BigDecimal max6h = slidingMax(hourList, 6);
-            BigDecimal max24h = slidingMax(hourList, 24);
+            // 滑动窗口求极值（小时桶按终点标注水文日对齐），同时记录极值窗口起止，供页面标注出现时段
+            SlidingMax sMax3h = slidingMax(hourList, 3);
+            SlidingMax sMax6h = slidingMax(hourList, 6);
+            SlidingMax sMax24h = slidingMax(hourList, 24);
 
             // 日雨量序列同样补全为完整水文日网格（断联缺日补 0，避免“N 天窗口”跨成多于 N 天）：
             // 区间查询对齐老系统口径——区间内起算，首日 08:00 标签含前一水文日全天，一并剔除，从首日次日标签起；
@@ -1133,36 +1134,70 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 dayList.add(new AbstractMap.SimpleImmutableEntry<>(key, dailyInc.getOrDefault(key, BigDecimal.ZERO)));
             }
 
-            BigDecimal max2d = slidingMax(dayList, 2);
-            BigDecimal max3d = slidingMax(dayList, 3);
-            BigDecimal max7d = slidingMax(dayList, 7);
+            SlidingMax sMax2d = slidingMax(dayList, 2);
+            SlidingMax sMax3d = slidingMax(dayList, 3);
+            SlidingMax sMax7d = slidingMax(dayList, 7);
 
             ReservoirExtremeRainfallVO vo = new ReservoirExtremeRainfallVO();
             vo.setStcd(stcd);
             vo.setStnm(info.getStnm());
-            vo.setMax3h(max3h);
-            vo.setMax6h(max6h);
-            vo.setMax24h(max24h);
-            vo.setMax2d(max2d);
-            vo.setMax3d(max3d);
-            vo.setMax7d(max7d);
+            vo.setMax3h(sMax3h.value);
+            vo.setMax6h(sMax6h.value);
+            vo.setMax24h(sMax24h.value);
+            vo.setMax2d(sMax2d.value);
+            vo.setMax3d(sMax3d.value);
+            vo.setMax7d(sMax7d.value);
+            // 极值出现时段：小时窗口取结束时刻（截至该时刻的 N 小时最大值）；日窗口取水文日起止（起止日期相同表示单日）
+            vo.setMax3hTm(sMax3h.endKey);
+            vo.setMax6hTm(sMax6h.endKey);
+            vo.setMax24hTm(sMax24h.endKey);
+            vo.setMax2dTm(dayRangeLabel(sMax2d));
+            vo.setMax3dTm(dayRangeLabel(sMax3d));
+            vo.setMax7dTm(dayRangeLabel(sMax7d));
             result.add(vo);
         }
         return result;
     }
 
-    /** 滑动窗口最大值 */
-    private BigDecimal slidingMax(List<Map.Entry<String, BigDecimal>> sortedList, int windowSize) {
-        if (sortedList.isEmpty()) return BigDecimal.ZERO;
-        BigDecimal max = BigDecimal.ZERO;
+    /** 滑动窗口极值结果：value=窗口内累计雨量，startKey/endKey=窗口首个/末个网格标签 */
+    private static class SlidingMax {
+        private BigDecimal value = BigDecimal.ZERO;
+        private String startKey;
+        private String endKey;
+    }
+
+    /**
+     * 滑动窗口最大值（含极值出现时段）
+     * <p>窗口长度不足时按实际网格数计算，startKey/endKey 记录实际窗口的首末标签；
+     * 全窗口雨量均为 0（无降雨）时 endKey 为 null，前端不标注时段。
+     */
+    private SlidingMax slidingMax(List<Map.Entry<String, BigDecimal>> sortedList, int windowSize) {
+        SlidingMax result = new SlidingMax();
+        if (sortedList.isEmpty()) return result;
         for (int i = 0; i < sortedList.size(); i++) {
             BigDecimal sum = BigDecimal.ZERO;
-            for (int j = i; j < Math.min(i + windowSize, sortedList.size()); j++) {
+            int end = Math.min(i + windowSize, sortedList.size());
+            for (int j = i; j < end; j++) {
                 sum = sum.add(sortedList.get(j).getValue());
             }
-            if (sum.compareTo(max) > 0) max = sum;
+            if (sum.compareTo(result.value) > 0) {
+                result.value = sum;
+                result.startKey = sortedList.get(i).getKey();
+                result.endKey = sortedList.get(end - 1).getKey();
+            }
         }
-        return max;
+        return result;
+    }
+
+    /**
+     * 日窗口区间标签：网格标签为水文日终点（d 08:00 表示 (d-1) 水文日，日雨情 Tab 也以该标签展示），
+     * 直接取标签日期作为水文日名称，保证与日雨情 Tab 可逐行对照；起止相同表示单日。
+     */
+    private static String dayRangeLabel(SlidingMax m) {
+        if (m.startKey == null || m.endKey == null) return null;
+        String startDay = m.startKey.substring(0, 10);
+        String endDay = m.endKey.substring(0, 10);
+        return startDay.equals(endDay) ? startDay : startDay + "~" + endDay;
     }
 
     // ======================== 雨情简报 ========================

@@ -17,8 +17,9 @@ public class ThresholdSaveVO {
     private String type;
 
     /**
-     * 监测指标编码（多指标类型如水质/墒情必填，单指标类型忽略）：
-     * 编码为监测数据表字段名（nh3n / mten …），取值域由 /threshold/meta 下发。
+     * 监测指标编码（编码为监测数据表字段名，取值域由 /threshold/meta 下发）：
+     * 水质/墒情必填；水位可选 general（通用水位，落库为空）/ up_z（闸前）/ down_z（闸后）；
+     * 雨量/流量/开度忽略。
      */
     private String indicator;
 

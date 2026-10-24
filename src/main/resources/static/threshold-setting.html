@@ -288,7 +288,7 @@ td.empty:hover{background:transparent}
         <div class="f-hint" id="type-hint" hidden></div>
         <div class="f-err" id="err-type"></div>
       </div>
-      <!-- 监测指标：仅多指标类型（水质、墒情）展示，其余类型该字段隐藏 -->
+      <!-- 监测指标：水位（通用水位/闸前/闸后）与多指标类型（水质、墒情）展示，其余类型隐藏 -->
       <div class="f-item" id="fi-indicator" hidden>
         <label class="f-label"><i class="req">*</i>监测指标</label>
         <div class="sel" id="sel-indicator"></div>
@@ -833,11 +833,13 @@ function fillForm(row) {
     hint.hidden = true;
   }
   // 指标：多指标类型展示并锁定（换指标 = 删除后重新新增，与站点/类型同口径）
+  // 水位存量行 indicator 为空 = 通用水位，回显 general（保存时后端归一回空）
   const inds = indicatorsOf(type);
+  const indCode = row.indicator || (type === '#1#' ? 'general' : '');
   $('fi-indicator').hidden = !inds.length;
   if (inds.length) {
     selIndicator.setOptions(inds.map(i => ({ value: i.code, label: i.name, sub: i.unit || '' })));
-    selIndicator.setValue(row.indicator || '', row.indicatorName || row.indicator || '');
+    selIndicator.setValue(indCode, row.indicatorName || (indCode === 'general' ? '通用水位' : '') || indCode);
     selIndicator.setDisabled(true);
   } else {
     selIndicator.setOptions([]).setValue('');
@@ -898,21 +900,24 @@ async function onTypePick(code) {
     hint.textContent = '';
     hint.hidden = true;
   }
-  // 多指标类型（水质/墒情）先选指标再选站点；单指标类型不展示指标字段
+  // 水位默认「通用水位」（普通水位站），闸门站可改选闸前/闸后；
+  // 水质/墒情等多指标类型仍先选指标再选站点；雨量/流量/开度不展示指标字段
+  const defaultIndicator = code === '#1#' ? 'general' : '';
   $('fi-indicator').hidden = !inds.length;
-  selIndicator.setValue('');
+  selIndicator.setValue(defaultIndicator);
   selIndicator.setError(false);
   if (inds.length) {
     selIndicator.setOptions(inds.map(i => ({ value: i.code, label: i.name, sub: i.unit || '' })));
+    selIndicator.setValue(defaultIndicator);
     selIndicator.setPlaceholder('请选择监测指标').setEmptyText('无匹配数据');
   } else {
     selIndicator.setOptions([]);
     selIndicator.setPlaceholder('请先选择阈值类型').setEmptyText('请先选择阈值类型');
   }
-  const needIndicator = inds.length > 0;
+  const needIndicator = inds.length > 0 && !defaultIndicator;
   $('fi-site').hidden = !code || needIndicator;
-  syncUnit(unitOf(code, ''));
-  selDir.setValue(defaultDirOf(code, ''));
+  syncUnit(unitOf(code, defaultIndicator));
+  selDir.setValue(defaultDirOf(code, defaultIndicator));
   updateValuePlaceholder();
 
   selSite.setValue('');
@@ -921,7 +926,7 @@ async function onTypePick(code) {
   if (needIndicator) { resetSiteSelect('请先选择监测指标'); return; }
   selSite.setLoading(true);
   try {
-    await loadSites(code, '');
+    await loadSites(code, defaultIndicator);
   } catch (e) {
     S.sites = [];
     selSite.setOptions([]);

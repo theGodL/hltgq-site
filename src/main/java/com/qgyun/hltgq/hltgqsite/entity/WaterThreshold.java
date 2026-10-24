@@ -16,7 +16,8 @@ import java.math.BigDecimal;
  * <p>指标口径（{@code zb}）：水质 #8# 与墒情 #7# 一个类型下含多个指标（水质七项、墒情三层，
  * 按监测页实际展示口径开放，见 {@code ThresholdServiceImpl#TYPES}），
  * 故按「站点 + 类型 + 指标」各存一行，{@code zb} 存指标编码（= 监测数据表字段名，如 nh3n / mten），
- * 告警比对接该列到数据表取数；单指标类型（水位/雨量/流量/开度）该列为空。
+ * 告警比对接该列到数据表取数；水位普通站该列为空（通用水位）、闸站为 up_z/down_z（闸前/闸后），
+ * 雨量/流量/开度为单指标类型，该列恒为空。
  * <p>{@code guarantee}（保证值）与 {@code num}（设计值）本期仅预留：阈值设置界面不渲染、
  * 保存时也不改写既有值；站点侧不读本列作展示（水质页仅透传，页面口径为 {@code threshold} 单一取值）。
  * <p>历史列 {@code type} 为旧类型列（存量数据全空），读取侧按
@@ -44,9 +45,9 @@ public class WaterThreshold extends BaseWaterEntity {
     private String zvieyb;
 
     /**
-     * 监测指标编码（多指标类型必填，单指标类型为空）：编码即监测数据表字段名——
-     * 水质 {@code nh3n/codmn/bod5/tp/tn/dox/wt}（页面展示七项）、墒情 {@code mten/mtwenty/mthirty}（页面展示三层）；
-     * 单指标类型（水位 z / 雨量 / 流量 / 开度）无需填写，类型本身已唯一确定指标。
+     * 监测指标编码（编码即监测数据表字段名）——水质 {@code nh3n/codmn/bod5/tp/tn/dox/wt}（页面展示七项）、
+     * 墒情 {@code mten/mtwenty/mthirty}（页面展示三层）；水位普通站为空（通用水位），
+     * 闸站为 {@code up_z}（闸前）/ {@code down_z}（闸后）；雨量/流量/开度为单指标类型，该列为空。
      */
     @TableField("\"zb\"")
     private String zb;

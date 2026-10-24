@@ -199,8 +199,33 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         Map<String, Map<String, Object>> flowBySite = new HashMap<>();
         if (!flowEntries.isEmpty()) {
             for (Map<String, Object> flowRow : waterFlowMapper.selectLatestInWindowBatch(flowEntries, startTime, endTime)) {
-                if (flowRow.get("site") != null) {
+                // 窗口内无流量的站点批量查询返回全 null 占位行（site 有值、tm 为空），
+                // 不放入 map：循环中按 flowRow == null 识别，供累计流量回退取数
+                if (flowRow.get("site") != null && flowRow.get("tm") != null) {
                     flowBySite.put(String.valueOf(flowRow.get("site")), flowRow);
+                }
+            }
+        }
+
+        // 累计流量回退（未指定起始时间时）：窗口内无同批次流量的站点，累计仍取该站当年最新有效 ytf，
+        // 并返回该记录时间作为累计截止时间；瞬时流量不回退，避免历史值被误读为当前值。
+        // 只传 endTime（“截至某日”）时同样回退，但 SQL 以 endTime 为上界，不会取到截止时间之后的值。
+        // 指定 startTime 时累计为「时间框范围累计」，窗口内无流量即无范围累计，不走回退。
+        Map<String, Map<String, Object>> cumulativeBySite = new HashMap<>();
+        if (startTime == null && !holesBySite.isEmpty()) {
+            List<String> fallbackSiteIds = holesBySite.keySet().stream()
+                    .filter(id -> !flowBySite.containsKey(id))
+                    .collect(Collectors.toList());
+            if (!fallbackSiteIds.isEmpty()) {
+                // 当年起点按截止时间所在年推导：只传 endTime（“截至某日”）且落在往年时，
+                // 用服务器当前年会导致 tm >= 今年1月1日 与 tm <= 往年 互斥、回退恒空
+                LocalDate baseDate = endTime != null ? endTime.toLocalDate() : LocalDate.now();
+                LocalDateTime yearStart = baseDate.withDayOfYear(1).atStartOfDay();
+                for (Map<String, Object> row : waterFlowMapper.selectLatestCumulativeBySites(
+                        fallbackSiteIds, yearStart, endTime)) {
+                    if (row.get("site") != null) {
+                        cumulativeBySite.put(String.valueOf(row.get("site")), row);
+                    }
                 }
             }
         }
@@ -221,20 +246,22 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             LocalDateTime latestTm = latestTmBySite.get(siteId);
 
             // 最新时刻开度/水位有效性：latestTm 时刻的开度、闸前/闸后水位全部无有效值时
-            // 视为该时刻设备监测数据不可用（null/-999/-9991/0），流量一并置空展示，
-            // 避免客户看到"最新时刻开度水位为 0 或 -- 而流量有值"误判设备数据采集不准
+            // 视为该时刻设备监测数据不可用（null/-999/-9991/0），瞬时流量一并置空展示；
+            // 累计为历史沉淀值，保留展示并标注截止时间，避免客户看到"开度水位无效而流量有值"误判
             boolean latestDataValid = holes.stream()
                     .filter(h -> h.getTm() != null && h.getTm().equals(latestTm))
                     .anyMatch(h -> isEffective(h.getOpenDegree())
                             || isEffective(h.getUpZ()) || isEffective(h.getDownZ()));
 
-            // 流量同批次取值：报文按批次入库，流量 tm 应在开度/水位最新时刻 ±20 分钟窗口内；
-            // 窗口内取最新一条（受 startTime/endTime 范围约束）；批量查询已在步骤 3 完成，
-            // 无窗口内记录的站点 q/ytf/ttf 均为 null（效果同无记录）
+            // 瞬时流量同批次取值：报文按批次入库，流量 tm 应在开度/水位最新时刻 ±20 分钟窗口内；
+            // 窗口内取最新一条（受 startTime/endTime 范围约束），批量查询已在步骤 3 完成；
+            // 窗口内无同批次流量时瞬时流量不展示，累计另行回退取当年最新有效值
             Map<String, Object> flowRow = latestTm == null ? null : flowBySite.get(siteId);
             BigDecimal flowQ = flowRow == null ? null : ValueConvertUtils.decimal(flowRow.get("q"));
             BigDecimal flowYtf = flowRow == null ? null : ValueConvertUtils.decimal(flowRow.get("ytf"));
             BigDecimal flowTtf = flowRow == null ? null : ValueConvertUtils.decimal(flowRow.get("ttf"));
+            // 流量记录时间：窗口内有流量时为同批次记录时间（与监测时间差异 ≤20 分钟）
+            LocalDateTime flowTm = flowRow == null ? null : ValueConvertUtils.dateTime(flowRow.get("tm"));
 
             // 闸前/闸后水位：分别取最新一条有效值（-999 设备不存在视为无值跳过；-9991 设备异常保留）
             Comparator<GateMonitor> byTmDesc = Comparator.comparing(GateMonitor::getTm,
@@ -270,12 +297,15 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             vo.setTm(latestTm);
             vo.setUpZ(latestUpZ != null ? latestUpZ.getUpZ().setScale(2, java.math.RoundingMode.DOWN) : null);
             vo.setDownZ(latestDownZ != null ? latestDownZ.getDownZ().setScale(2, java.math.RoundingMode.DOWN) : null);
-            // 流量（瞬时/累计）取同批次窗口内的流量表记录（-999 设备不存在视为无值跳过；-9991 设备异常保留）；
+            // 瞬时流量取同批次窗口内的流量表记录（-999 设备不存在视为无值跳过；-9991 设备异常保留）；
             // 电压与经纬度为站点级数据，各孔子查询结果相同，取第一条有效值
-            vo.setQ(flowQ == null || DeviceValueUtils.isMissing(flowQ) ? null : flowQ);
+            BigDecimal qForVo = flowQ == null || DeviceValueUtils.isMissing(flowQ) ? null : flowQ;
+            vo.setQ(qForVo);
             vo.setVol(holes.stream().map(GateMonitor::getVol)
                     .filter(v -> v != null && !DeviceValueUtils.isMissing(v)).findFirst().orElse(null));
-            // 累计流量（站点级）：默认（无起始时间）= 同批次 ytf（当年 1月1日 0点起至最新数据时间）；
+            // 累计流量（站点级）：默认（无起始时间）= 当年累计 ytf；
+            // 窗口内无同批次流量时回退取该站当年最新有效 ytf，并把该记录时间作为累计截止时间
+            // （累计是历史沉淀值，与瞬时流量口径不同，可回退展示，但必须标注截止时间）；
             // 指定起始时间 = 时间框范围累计 = ttf(范围内末行) − ttf(起点前最近一行)，起点前无积分行基准按 0；
             // 先按 m³ 原值相减，最后一步再换算为万m³（缩放后相减会放大误差）
             BigDecimal ytf = flowYtf == null || DeviceValueUtils.isMissing(flowYtf) ? null : flowYtf;
@@ -283,18 +313,30 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             BigDecimal prevTtf = holes.stream().map(GateMonitor::getPrevTtf)
                     .filter(v -> v != null && !DeviceValueUtils.isMissing(v)).findFirst().orElse(null);
             BigDecimal cumulativeFlow;
-            if (startTime == null) {
+            LocalDateTime cumulativeTm;
+            if (flowRow == null) {
+                // 窗口内无同批次流量：默认口径回退当年最新有效累计值；时间筛选时范围累计为空
+                Map<String, Object> cumulativeRow = cumulativeBySite.get(siteId);
+                BigDecimal fallbackYtf = cumulativeRow == null ? null : ValueConvertUtils.decimal(cumulativeRow.get("ytf"));
+                cumulativeFlow = fallbackYtf == null || DeviceValueUtils.isMissing(fallbackYtf) ? null : fallbackYtf;
+                cumulativeTm = cumulativeRow == null ? null : ValueConvertUtils.dateTime(cumulativeRow.get("tm"));
+            } else if (startTime == null) {
                 cumulativeFlow = ytf;
+                cumulativeTm = flowTm;
             } else if (ttf == null) {
                 cumulativeFlow = null;
+                cumulativeTm = null;
             } else {
                 cumulativeFlow = ttf.subtract(prevTtf != null ? prevTtf : BigDecimal.ZERO);
+                cumulativeTm = flowTm;
             }
             vo.setCumulativeFlow(toWanFlow(cumulativeFlow));
-            // 最新时刻开度/水位无有效值 → 瞬时/累计流量不展示，与开度/水位显示保持一致
+            // 流量记录时间：用于累计值下方标注截止时间（与监测时间相差 >20 分钟时前端展示小字）；
+            // 瞬时流量与监测时间同批次，不再单独标注
+            vo.setFlowTm(cumulativeFlow == null || DeviceValueUtils.isError(cumulativeFlow) ? null : cumulativeTm);
+            // 最新时刻开度/水位无有效值 → 瞬时流量不展示；累计为历史沉淀值，保留并标注截止时间
             if (!latestDataValid) {
                 vo.setQ(null);
-                vo.setCumulativeFlow(null);
             }
             vo.setLon(holes.stream().map(GateMonitor::getLon).filter(Objects::nonNull).findFirst().orElse(null));
             vo.setLat(holes.stream().map(GateMonitor::getLat).filter(Objects::nonNull).findFirst().orElse(null));
