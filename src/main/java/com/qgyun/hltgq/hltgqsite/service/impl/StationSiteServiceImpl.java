@@ -7,6 +7,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.SoilMoistureMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.service.StationSiteService;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
@@ -220,11 +221,9 @@ public class StationSiteServiceImpl implements StationSiteService {
         return index < 0 ? GATE_PRIORITY_STATIONS.size() : index;
     }
 
-    /** 站点标识归一：去首尾空白，空串按 null 处理 */
+    /** 站点标识归一：去首尾空白，空串按 null 处理（委托 CheckUtils） */
     private static String trim(String value) {
-        if (value == null) return null;
-        String s = value.trim();
-        return s.isEmpty() ? null : s;
+        return CheckUtils.trim(value);
     }
 
     @Override

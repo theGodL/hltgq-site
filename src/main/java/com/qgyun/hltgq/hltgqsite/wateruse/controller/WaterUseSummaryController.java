@@ -15,8 +15,8 @@ import java.util.List;
 
 /**
  * 用水总结接口（/water-use-summary）。
- * <p>页面：static/water-use-summary.html（月/灌季/年维度 → 用水量/灌溉水利用系数/应收水费）、
- * static/irrigation-water.html（灌区/县维度 → 需水量/实际供水量）。
+ * <p>原页面 static/water-use-summary.html（月/灌季/年维度 → 用水量/灌溉水利用系数/应收水费）与
+ * static/irrigation-water.html（灌区/县维度 → 需水量/实际供水量）均已下线，接口保留供大屏调用。
  * <p>页面「天」维度对应本接口 dimension=month：数据为业主按月手录，前端需将日期区间控件
  * 改为月份区间（详见《用水总结接口.md》）。
  * <p>页面双维度组 A/B 由前端两次调用本接口实现，口径完全一致。

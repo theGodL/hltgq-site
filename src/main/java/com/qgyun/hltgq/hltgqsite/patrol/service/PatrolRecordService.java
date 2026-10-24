@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.patrol.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.mapper.ArchiveLookupMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
@@ -8,6 +9,8 @@ import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolPlanMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolRecordMapper;
+import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolDicts;
+import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolPhotoSupport;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolOptionVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolRecordDetailVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolRecordIssueItemVO;
@@ -34,7 +37,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -82,44 +84,14 @@ public class PatrolRecordService {
     /** 记录状态：已提交 */
     private static final String STATUS_SUBMITTED = "#2#";
 
-    /** 巡检结果编码 → 名称（选项组 IYBBDt3IqXJL71kqrYE） */
-    private static final Map<String, String> RESULT_LABELS = new LinkedHashMap<>();
-
-    /** 记录状态编码 → 名称（选项组 mITE3MttOBlt5Hb83Yw） */
-    private static final Map<String, String> RECORD_STATUS_LABELS = new LinkedHashMap<>();
-
-    /** 问题状态编码 → 名称 */
-    private static final Map<String, String> ISSUE_STATUS_LABELS = new LinkedHashMap<>();
-
-    /** 问题处理方式编码 → 名称 */
-    private static final Map<String, String> HANDLE_STATUS_LABELS = new LinkedHashMap<>();
-
-    /** 风险等级编码 → 名称（选项组 Tzocc3TligWY99Y7QBo） */
-    private static final Map<String, String> RISK_LABELS = new LinkedHashMap<>();
-
     private static final DateTimeFormatter TIME_INPUT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-    static {
-        RESULT_LABELS.put("#2#", "正常");
-        RESULT_LABELS.put("#3#", "异常");
-        RESULT_LABELS.put("#4#", "隐患");
-        RESULT_LABELS.put("#5#", "缺陷");
-        RESULT_LABELS.put("#6#", "故障");
-
-        RECORD_STATUS_LABELS.put("#1#", "草稿");
-        RECORD_STATUS_LABELS.put("#2#", "已提交");
-
-        ISSUE_STATUS_LABELS.put("#1#", "待处理");
-
-        HANDLE_STATUS_LABELS.put("#1#", "待确认");
-
-        RISK_LABELS.put("#1#", "低风险");
-        RISK_LABELS.put("#2#", "中风险");
-        RISK_LABELS.put("#3#", "高风险");
-    }
 
     @Autowired
     private PatrolRecordMapper mapper;
+
+    /** 站点/设备/人员档案存在性校验（跨模块唯一实现） */
+    @Autowired
+    private ArchiveLookupMapper lookupMapper;
 
     /** 复用计划巡查范围查询（与添加巡检记录同一口径） */
     @Autowired
@@ -158,8 +130,8 @@ public class PatrolRecordService {
         }
         List<PatrolRecordRowVO> rows = mapper.selectPage(st, et, sid, s, (p - 1) * s);
         for (PatrolRecordRowVO row : rows) {
-            row.setResultLabel(DictUtils.label(RESULT_LABELS, row.getResultCode()));
-            row.setStatusLabel(DictUtils.label(RECORD_STATUS_LABELS, row.getStatusCode()));
+            row.setResultLabel(DictUtils.label(PatrolDicts.RESULT_LABELS, row.getResultCode()));
+            row.setStatusLabel(DictUtils.label(PatrolDicts.RECORD_STATUS_LABELS, row.getStatusCode()));
             row.setPhotoCount(row.getPhotoCount() == null ? 0 : row.getPhotoCount());
             row.setIssueCount(row.getIssueCount() == null ? 0 : row.getIssueCount());
         }
@@ -177,8 +149,8 @@ public class PatrolRecordService {
         if (vo == null) {
             throw new IllegalArgumentException("巡检记录不存在：" + key);
         }
-        vo.setResultLabel(DictUtils.label(RESULT_LABELS, vo.getResultCode()));
-        vo.setStatusLabel(DictUtils.label(RECORD_STATUS_LABELS, vo.getStatusCode()));
+        vo.setResultLabel(DictUtils.label(PatrolDicts.RESULT_LABELS, vo.getResultCode()));
+        vo.setStatusLabel(DictUtils.label(PatrolDicts.RECORD_STATUS_LABELS, vo.getStatusCode()));
         List<PatrolRecordPhotoItemVO> photos = mapper.selectPhotosByRecord(key);
         for (PatrolRecordPhotoItemVO photo : photos) {
             photo.setUrl("/patrol-record/photo/" + photo.getId());
@@ -186,9 +158,9 @@ public class PatrolRecordService {
         vo.setPhotos(photos);
         List<PatrolRecordIssueItemVO> issues = mapper.selectIssuesByRecord(key);
         for (PatrolRecordIssueItemVO issue : issues) {
-            issue.setStatusLabel(DictUtils.label(ISSUE_STATUS_LABELS, issue.getStatusCode()));
-            issue.setHandleStatusLabel(DictUtils.label(HANDLE_STATUS_LABELS, issue.getHandleStatusCode()));
-            issue.setRiskLabel(DictUtils.label(RISK_LABELS, issue.getRiskLevel()));
+            issue.setStatusLabel(DictUtils.label(PatrolDicts.ISSUE_STATUS_LABELS, issue.getStatusCode()));
+            issue.setHandleStatusLabel(DictUtils.label(PatrolDicts.HANDLE_STATUS_LABELS, issue.getHandleStatusCode()));
+            issue.setRiskLabel(DictUtils.label(PatrolDicts.RISK_LABELS, issue.getRiskLevel()));
         }
         vo.setIssues(issues);
         return vo;
@@ -222,11 +194,11 @@ public class PatrolRecordService {
         String content = normalizeContent(req.getContent());
         Double cost = normalizeCost(req.getCost());
         String userId = requireUser(req.getUserId(), operatorId);
-        List<String> photoIds = normalizePhotoIds(req.getPhotoIds());
+        List<String> photoIds = PatrolPhotoSupport.normalizePhotoIds(req.getPhotoIds(), PHOTO_MAX_COUNT);
         if (photoIds.isEmpty()) {
             throw new IllegalArgumentException("现场照片不能为空（至少上传 1 张）");
         }
-        precheckNewPhotos(photoIds, operatorId);
+        PatrolPhotoSupport.precheckNewPhotos(photoIds, operatorId, mapper::selectPhoto);
 
         LocalDateTime now = LocalDateTime.now();
         String id = mapper.selectBlankDraftId(scheduleId);
@@ -288,7 +260,7 @@ public class PatrolRecordService {
         String content = normalizeContent(req.getContent());
         Double cost = normalizeCost(req.getCost());
         String userId = requireUser(req.getUserId(), operatorId);
-        List<String> photoIds = normalizePhotoIds(req.getPhotoIds());
+        List<String> photoIds = PatrolPhotoSupport.normalizePhotoIds(req.getPhotoIds(), PHOTO_MAX_COUNT);
         if (photoIds.isEmpty()) {
             throw new IllegalArgumentException("现场照片不能为空（至少上传 1 张）");
         }
@@ -303,7 +275,7 @@ public class PatrolRecordService {
                 newPhotoIds.add(photoId);
             }
         }
-        precheckNewPhotos(newPhotoIds, operatorId);
+        PatrolPhotoSupport.precheckNewPhotos(newPhotoIds, operatorId, mapper::selectPhoto);
 
         LocalDateTime now = LocalDateTime.now();
         int updated = mapper.updateDraft(id, operatorId, now, time, scheduleId, siteId, deviceId,
@@ -452,7 +424,7 @@ public class PatrolRecordService {
     }
 
     /** 读取照片字节（预览；路径穿越校验由存储工具兜底）。 */
-    public PhotoContent readPhoto(String id) {
+    public PatrolPhotoSupport.PhotoContent readPhoto(String id) {
         String photoId = CheckUtils.trim(id);
         if (photoId == null) {
             throw new IllegalArgumentException("照片 id 不能为空");
@@ -467,7 +439,7 @@ public class PatrolRecordService {
         }
         byte[] bytes = LocalFileStorageUtils.readBytes(LocalFileStorageUtils.root(fileDir), relPath);
         String ext = photo.getFileExt() == null ? LocalFileStorageUtils.extOf(photo.getFileName()) : photo.getFileExt();
-        return new PhotoContent(bytes, ext == null ? "" : ext.toLowerCase(Locale.ROOT));
+        return new PatrolPhotoSupport.PhotoContent(bytes, ext == null ? "" : ext.toLowerCase(Locale.ROOT));
     }
 
     /** 移除未保存的照片（仅本人上传、尚未绑定记录），删行 + 物理删文件。 */
@@ -511,7 +483,7 @@ public class PatrolRecordService {
         if (siteId == null) {
             throw new IllegalArgumentException("巡检站点不能为空");
         }
-        if (mapper.countSite(siteId) == 0) {
+        if (lookupMapper.countSite(siteId) == 0) {
             throw new IllegalArgumentException("巡检站点不存在：" + siteId);
         }
         List<PatrolSiteVO> scope = planMapper.selectPlanSites(scheduleId);
@@ -528,7 +500,7 @@ public class PatrolRecordService {
         if (deviceId == null) {
             throw new IllegalArgumentException("巡检对象不能为空");
         }
-        if (mapper.countDeviceInSite(siteId, deviceId) == 0) {
+        if (lookupMapper.countDeviceInSite(siteId, deviceId) == 0) {
             throw new IllegalArgumentException("巡检对象不属于所选站点");
         }
         return deviceId;
@@ -540,8 +512,8 @@ public class PatrolRecordService {
         if (value == null) {
             throw new IllegalArgumentException("巡检结果不能为空");
         }
-        String code = DictUtils.resolveCode(RESULT_LABELS, value);
-        if (!RESULT_LABELS.containsKey(code)) {
+        String code = DictUtils.resolveCode(PatrolDicts.RESULT_LABELS, value);
+        if (!PatrolDicts.RESULT_LABELS.containsKey(code)) {
             throw new IllegalArgumentException("巡检结果无效（应为 正常/异常/隐患/缺陷/故障）");
         }
         return code;
@@ -553,7 +525,7 @@ public class PatrolRecordService {
         if (userId == null) {
             userId = operatorId;
         }
-        if (mapper.countUser(userId) == 0) {
+        if (lookupMapper.countUser(userId) == 0) {
             throw new IllegalArgumentException("巡检人员不存在：" + userId);
         }
         return userId;
@@ -608,54 +580,4 @@ public class PatrolRecordService {
         return value;
     }
 
-    /** 照片 id 归一：去空、去重（保持顺序），并校验数量上限。 */
-    private static List<String> normalizePhotoIds(List<String> raw) {
-        if (raw == null || raw.isEmpty()) {
-            return new ArrayList<>();
-        }
-        Set<String> unique = new LinkedHashSet<>();
-        for (String v : raw) {
-            String id = CheckUtils.trim(v);
-            if (id != null) {
-                unique.add(id);
-            }
-        }
-        if (unique.size() > PHOTO_MAX_COUNT) {
-            throw new IllegalArgumentException("现场照片最多上传 " + PHOTO_MAX_COUNT + " 张");
-        }
-        return new ArrayList<>(unique);
-    }
-
-    /** 新照片预校验：存在、属于当前上传人且未绑定过其他记录。 */
-    private void precheckNewPhotos(List<String> photoIds, String operatorId) {
-        for (String photoId : photoIds) {
-            PatrolRecordPhotoFileVO photo = mapper.selectPhoto(photoId);
-            if (photo == null) {
-                throw new IllegalArgumentException("现场照片不存在或已失效，请重新上传");
-            }
-            if (!operatorId.equals(photo.getCreatedBy()) || photo.getRecordId() != null) {
-                throw new IllegalArgumentException("现场照片不可用（非本人上传或已保存），请重新上传");
-            }
-        }
-    }
-
-    /** 照片字节与扩展名（Controller 组装 Content-Type）。 */
-    public static class PhotoContent {
-
-        private final byte[] content;
-        private final String ext;
-
-        public PhotoContent(byte[] content, String ext) {
-            this.content = content;
-            this.ext = ext;
-        }
-
-        public byte[] getContent() {
-            return content;
-        }
-
-        public String getExt() {
-            return ext;
-        }
-    }
 }

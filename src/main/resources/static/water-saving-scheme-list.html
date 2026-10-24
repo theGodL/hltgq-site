@@ -70,6 +70,8 @@ td .ind-line .pend{color:var(--el-text-color-secondary)}
 .form-grid .span3{grid-column:span 3}
 .f-item[hidden]{display:none}
 .ro-val{height:var(--el-control-height-sm);line-height:34px;padding:0 12px;border-radius:var(--el-radius);background:var(--el-fill-color-light);border:1px solid var(--el-border-color-lighter);color:var(--el-text-color-primary);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* sec-title 内的必填星号（.req 公共样式仅作用于 .f-label） */
+.sec-title .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
 .view-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 24px}
 .view-row{display:flex;flex-direction:column;gap:2px}
 .view-row .k{font-size:14px;color:var(--el-text-color-secondary);line-height:22px}
@@ -214,6 +216,11 @@ td .ind-line .pend{color:var(--el-text-color-secondary)}
           <div class="f-hint" id="ev-hint">实施年度取记录的潜力年度；建方案时固化实施前实际用水量快照</div>
         </div>
         <div class="f-item">
+          <label class="f-label">实施年度</label>
+          <div class="ro-val" id="ev-year">--</div>
+          <div class="f-hint">自动取所选依据记录的潜力年度</div>
+        </div>
+        <div class="f-item">
           <label class="f-label"><i class="req">*</i>节水目标（万m³）</label>
           <input class="field" id="in-target" inputmode="decimal" placeholder="0 &lt; 目标 ≤ 潜力" autocomplete="off">
         </div>
@@ -229,14 +236,14 @@ td .ind-line .pend{color:var(--el-text-color-secondary)}
           <label class="f-label">数据标记</label>
           <div class="sel" id="sel-demo"></div>
         </div>
-        <div class="f-item span4">
+        <div class="f-item span3">
           <label class="f-label">测算提示</label>
           <div id="potential-box" class="val-box" hidden></div>
         </div>
       </div>
-      <div class="sec-title">评估指标 <span class="f-hint" style="margin-top:0">核验后按各指标计算方式自动计算结果并判定达标</span></div>
+      <div class="sec-title"><span><i class="req">*</i>评估指标</span> <span class="f-hint" style="margin-top:0">核验后按各指标计算方式自动计算结果并判定达标</span></div>
       <div class="chk-wrap" id="chk-indicators"></div>
-      <div class="sec-title">具体措施</div>
+      <div class="sec-title"><span><i class="req">*</i>具体措施</span></div>
       <textarea class="field" id="in-measure" maxlength="2000" placeholder="填写具体节水措施（如渠道衬砌、计量设施改造、轮灌制度等）"></textarea>
       <div class="sec-title">附件</div>
       <div class="att-box" id="form-att-box"></div>
@@ -636,7 +643,7 @@ function initSelects() {
   selComparable = createSelect($('sel-comparable')).setPlaceholder('请选择是否确认');
   selAYear = createSelect($('sel-a-year')).setPlaceholder('请选择潜力年度');
   selADemo = createSelect($('sel-a-demo')).setPlaceholder('请选择');
-  selEvidence.onChange(() => updatePotentialHint());
+  selEvidence.onChange(() => { updatePotentialHint(); syncEvidenceYear(); });
   selAYear.onChange(() => onAnnualYearChange());
   selFYear.onChange(() => renderKpiCards());
 }
@@ -741,6 +748,14 @@ function refreshEvidenceOptions(selectedId) {
   selEvidence.setError(false);
   selEvidence.setDisabled(false);
   updatePotentialHint();
+  syncEvidenceYear();
+}
+
+/** 实施年度（只读展示）= 所选依据记录的潜力年度；未选或记录缺失显示 --（提交仍由后端按依据记录取年度） */
+function syncEvidenceYear() {
+  const id = selEvidence.getValue();
+  const ev = id ? S.annualMap[id] : null;
+  $('ev-year').textContent = (ev && ev.potentialYear) ? ev.potentialYear + ' 年度' : '--';
 }
 
 /* ============================ 表单重置 / 收集 ============================ */

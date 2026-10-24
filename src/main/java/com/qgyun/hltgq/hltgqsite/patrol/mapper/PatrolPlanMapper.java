@@ -6,7 +6,6 @@ import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolScheduleDetailVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolScheduleVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolSiteVO;
 import org.apache.ibatis.annotations.Delete;
-import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -120,20 +119,10 @@ public interface PatrolPlanMapper {
             "ORDER BY rx.nature_order NULLS LAST")
     List<PatrolSiteVO> selectPlanSites(@Param("scheduleId") String scheduleId);
 
-    /** 计划是否存在（新增记录前置校验）。 */
-    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_schedule\" " +
-            "WHERE id = #{id} AND corp_code = 'hltgq'")
-    long countSchedule(@Param("id") String id);
-
     /** 站点是否在该计划巡查范围内（添加记录校验）。 */
     @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_nlbdju_tkwovk_rel\" " +
             "WHERE corp_code = 'hltgq' AND biz_id = #{scheduleId} AND rel_id = #{siteId}")
     long countSiteInPlan(@Param("scheduleId") String scheduleId, @Param("siteId") String siteId);
-
-    /** 设备是否属于该站点（添加记录校验）。 */
-    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" " +
-            "WHERE id = #{deviceId} AND site = #{siteId}")
-    long countDeviceInSite(@Param("siteId") String siteId, @Param("deviceId") String deviceId);
 
     // ==================== 状态流转 / 删除 ====================
 
@@ -276,28 +265,6 @@ public interface PatrolPlanMapper {
     List<PatrolRecordVO> selectRecordPage(@Param("scheduleId") String scheduleId,
                                           @Param("limit") long limit,
                                           @Param("offset") long offset);
-
-    /**
-     * 新增巡检记录：巡检对象写平台动态列 "_d_10497_device"（设备 id 单值），
-     * 状态默认 #2# 已提交（由 Service 决定）；审计列取当前操作人。
-     */
-    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" " +
-            "(\"id\", \"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\", " +
-            "\"time\", \"patrol_schedule\", \"site\", \"_d_10497_device\", \"user\", \"result\", \"content\", \"status\") " +
-            "VALUES (#{id}, #{corpCode}, #{now}, #{operatorId}, #{now}, #{operatorId}, " +
-            "#{time}, #{scheduleId}, #{siteId}, #{deviceId}, #{userId}, #{result}, #{content}, #{statusCode})")
-    int insertRecord(@Param("id") String id,
-                     @Param("corpCode") String corpCode,
-                     @Param("operatorId") String operatorId,
-                     @Param("now") LocalDateTime now,
-                     @Param("time") LocalDateTime time,
-                     @Param("scheduleId") String scheduleId,
-                     @Param("siteId") String siteId,
-                     @Param("deviceId") String deviceId,
-                     @Param("userId") String userId,
-                     @Param("result") String result,
-                     @Param("content") String content,
-                     @Param("statusCode") String statusCode);
 
     // ==================== 下拉候选 ====================
 

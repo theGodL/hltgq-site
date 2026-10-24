@@ -10,6 +10,8 @@ import com.qgyun.hltgq.hltgqsite.entity.WaterThreshold;
 import com.qgyun.hltgq.hltgqsite.mapper.StRiverRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterThresholdMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRegimeVO;
@@ -253,11 +255,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
         return ordered;
     }
 
-    /** 站点标识归一：去首尾空白，空串按 null 处理 */
+    /** 站点标识归一：去首尾空白，空串按 null 处理（委托 CheckUtils） */
     private static String trim(String value) {
-        if (value == null) return null;
-        String s = value.trim();
-        return s.isEmpty() ? null : s;
+        return CheckUtils.trim(value);
     }
 
     /**
@@ -378,18 +378,9 @@ public class StRiverRServiceImpl extends ServiceImpl<StRiverRMapper, StRiverR> i
                 .collect(Collectors.toList());
     }
 
-    /** 水势代码 → 中文 */
+    /** 水势代码 → 中文（委托 DictUtils） */
     private String mapWptn(String wptn) {
-        if (wptn == null || wptn.isEmpty()) return "无涨落信息";
-        switch (wptn.trim()) {
-            case "4":
-            case "涨": return "涨";
-            case "5":
-            case "落": return "落";
-            case "6":
-            case "平": return "平";
-            default:  return "无涨落信息";
-        }
+        return DictUtils.mapWptn(wptn);
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.model.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.ExceptionUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -79,7 +80,7 @@ public class ModelClient {
         } catch (HttpClientErrorException | HttpServerErrorException e) {
             throw fromErrorBody(e.getResponseBodyAsString(), path);
         } catch (ResourceAccessException e) {
-            throw new ModelCallException(-1, "模型服务不可达或超时: " + rootMessage(e));
+            throw new ModelCallException(-1, "模型服务不可达或超时: " + ExceptionUtils.rootMessage(e));
         } catch (Exception e) {
             throw new ModelCallException(-1, "调用模型服务异常: " + e.getMessage());
         }
@@ -111,7 +112,7 @@ public class ModelClient {
         } catch (HttpClientErrorException | HttpServerErrorException e) {
             throw fromErrorBody(e.getResponseBodyAsString(), path);
         } catch (ResourceAccessException e) {
-            throw new ModelCallException(-1, "模型服务不可达或超时: " + rootMessage(e));
+            throw new ModelCallException(-1, "模型服务不可达或超时: " + ExceptionUtils.rootMessage(e));
         } catch (Exception e) {
             throw new ModelCallException(-1, "调用模型服务异常: " + e.getMessage());
         }
@@ -129,7 +130,7 @@ public class ModelClient {
         } catch (HttpClientErrorException | HttpServerErrorException e) {
             throw fromErrorBody(e.getResponseBodyAsString(), path);
         } catch (ResourceAccessException e) {
-            throw new ModelCallException(-1, "模型服务不可达或超时: " + rootMessage(e));
+            throw new ModelCallException(-1, "模型服务不可达或超时: " + ExceptionUtils.rootMessage(e));
         } catch (Exception e) {
             throw new ModelCallException(-1, "调用模型服务异常: " + e.getMessage());
         }
@@ -149,7 +150,7 @@ public class ModelClient {
         } catch (HttpClientErrorException | HttpServerErrorException e) {
             throw fromErrorBody(e.getResponseBodyAsString(), PATH_HEALTH);
         } catch (ResourceAccessException e) {
-            throw new ModelCallException(-1, "模型服务不可达或超时: " + rootMessage(e));
+            throw new ModelCallException(-1, "模型服务不可达或超时: " + ExceptionUtils.rootMessage(e));
         } catch (Exception e) {
             throw new ModelCallException(-1, "解析模型健康检查响应失败: " + e.getMessage());
         }
@@ -179,13 +180,5 @@ public class ModelClient {
         } catch (Exception e) {
             return new ModelCallException(-1, "HTTP 错误: " + path);
         }
-    }
-
-    private String rootMessage(Throwable e) {
-        Throwable root = e;
-        while (root.getCause() != null) {
-            root = root.getCause();
-        }
-        return root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
     }
 }

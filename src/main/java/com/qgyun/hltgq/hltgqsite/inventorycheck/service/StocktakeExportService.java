@@ -12,14 +12,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletRequest;
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
-import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 
 /**
  * 设备盘点导出服务：himanc 明细 JSON 防御解析 + 附件文件服务尽力解析。
@@ -89,10 +87,10 @@ public class StocktakeExportService {
                 InventoryCheckExportVO.Detail detail = new InventoryCheckExportVO.Detail();
                 detail.setItemCode(JsonFieldUtils.textOf(node, "iwckqw"));
                 detail.setItemName(JsonFieldUtils.textOf(node, "acsoil"));
-                detail.setBookQty(decimalOf(node, "ezzjcs"));
-                detail.setCheckQty(decimalOf(node, "ekfgwh"));
-                detail.setProfitQty(decimalOf(node, "eihdbh"));
-                detail.setLossQty(decimalOf(node, "yuwdms"));
+                detail.setBookQty(JsonFieldUtils.decimalOf(node, "ezzjcs"));
+                detail.setCheckQty(JsonFieldUtils.decimalOf(node, "ekfgwh"));
+                detail.setProfitQty(JsonFieldUtils.decimalOf(node, "eihdbh"));
+                detail.setLossQty(JsonFieldUtils.decimalOf(node, "yuwdms"));
                 String unit = JsonFieldUtils.textOf(node, "vbcddc");
                 detail.setUnit(unit == null || unit.isEmpty() ? DEFAULT_UNIT : unit);
                 details.add(detail);
@@ -129,11 +127,6 @@ public class StocktakeExportService {
         } catch (Exception e) {
             log.warn("[设备盘点] 附件解析失败 fileId={}: {}", ref, e.getMessage());
         }
-    }
-
-    /** JSON 节点数值（文本解析失败/空恒 null） */
-    private BigDecimal decimalOf(JsonNode node, String key) {
-        return ValueConvertUtils.decimalOf(JsonFieldUtils.textOf(node, key));
     }
 
     /** 盘点日期规范化：时间戳形态取前 10 位（如 2026-09-01 00:00:00 → 2026-09-01），其余原样 */

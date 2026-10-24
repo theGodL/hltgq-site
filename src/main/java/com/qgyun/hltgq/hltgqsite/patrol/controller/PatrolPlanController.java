@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.patrol.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
 import com.qgyun.hltgq.hltgqsite.patrol.service.PatrolPlanService;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolOptionVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolRecordSaveVO;
@@ -134,9 +135,7 @@ public class PatrolPlanController {
     @PostMapping("/record")
     public Map<String, Object> addRecord(@RequestBody PatrolRecordSaveVO request) {
         planService.addRecord(request);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 创建人 / 巡检人员候选（姓名或登录名模糊）。 */

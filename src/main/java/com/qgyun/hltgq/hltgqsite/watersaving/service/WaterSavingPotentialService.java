@@ -24,7 +24,7 @@ import java.util.Map;
 /**
  * 节水潜力测算服务（t_auto_hltgq_water_saving_potential）。
  *
- * <p>一行 = 一个「年度 + 分析范围」的测算（页面：static/water-saving-potential.html）。
+ * <p>一行 = 一个「年度 + 分析范围」的测算（原页面 static/water-saving-potential.html 已下线，接口保留）。
  * 结果指标（节水总量/率/供需缺口/占比）由前端按记录数值实时计算，不在本服务口径内。
  *
  * <p>关键口径：

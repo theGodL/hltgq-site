@@ -125,21 +125,6 @@ public interface PatrolRecordMapper {
             "WHERE id = #{id} AND corp_code = 'hltgq' AND status = '#2#'")
     long countPublishedSchedule(@Param("id") String id);
 
-    /** 站点是否存在。 */
-    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
-            "WHERE id = #{id} AND corp_code = 'hltgq'")
-    long countSite(@Param("id") String id);
-
-    /** 设备是否存在且属于该站点。 */
-    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" " +
-            "WHERE id = #{deviceId} AND site = #{siteId}")
-    long countDeviceInSite(@Param("siteId") String siteId, @Param("deviceId") String deviceId);
-
-    /** 人员是否存在。 */
-    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_apaas_uc_user\" " +
-            "WHERE id = #{id} AND corp_code = 'hltgq'")
-    long countUser(@Param("id") String id);
-
     /** 记录下的问题数（>0 时禁止删除记录，保护已上报问题）。 */
     @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" " +
             "WHERE corp_code = 'hltgq' AND abqezf = #{recordId}")

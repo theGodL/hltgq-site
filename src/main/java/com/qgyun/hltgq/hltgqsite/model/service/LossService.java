@@ -13,6 +13,7 @@ import com.qgyun.hltgq.hltgqsite.model.client.ModelClient;
 import com.qgyun.hltgq.hltgqsite.model.task.ModelTaskExecutor;
 import com.qgyun.hltgq.hltgqsite.model.util.BoolTextUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.TenDayDateUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.LossSubmitRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -265,8 +266,9 @@ public class LossService {
         log.error("水量损失预测失败：recordId={}, error={}", recordId, errorMsg);
     }
 
+    /** Map 取值：null 安全转 String（委托 ValueConvertUtils） */
     private static String asText(Object value) {
-        return value == null ? null : String.valueOf(value);
+        return ValueConvertUtils.str(value);
     }
 
     private static Double asDouble(Object value) {

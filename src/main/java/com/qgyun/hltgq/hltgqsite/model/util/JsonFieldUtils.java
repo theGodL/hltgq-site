@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.model.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -56,6 +57,11 @@ public final class JsonFieldUtils {
             }
         }
         return null;
+    }
+
+    /** 取数值字段 → BigDecimal（文本形态数字也接受；缺失/非法返回 null） */
+    public static BigDecimal decimalOf(JsonNode node, String field) {
+        return ValueConvertUtils.decimalOf(textOf(node, field));
     }
 
     /** 取严格文本字段：null 节点安全；JSON null/容器节点/空串返回 null（与 {@link #textOf} 的宽松口径有别） */

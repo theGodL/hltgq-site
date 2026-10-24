@@ -2,6 +2,8 @@ package com.qgyun.hltgq.hltgqsite.duty;
 
 import com.qgyun.hltgq.hltgqsite.auth.UserContext;
 import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
+import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -221,22 +223,14 @@ public final class DutySupport {
         return null;
     }
 
-    /** 去首尾空白，空串按 null 处理 */
+    /** 去首尾空白，空串按 null 处理（委托 CheckUtils） */
     public static String trim(String value) {
-        if (value == null) {
-            return null;
-        }
-        String s = value.trim();
-        return s.isEmpty() ? null : s;
+        return CheckUtils.trim(value);
     }
 
-    /** 必填文本（trim 后为空报 400） */
+    /** 必填文本（trim 后为空报 400；委托 CheckUtils） */
     public static String requireText(String value, String message) {
-        String s = trim(value);
-        if (s == null) {
-            throw new IllegalArgumentException(message);
-        }
-        return s;
+        return CheckUtils.requireText(value, message);
     }
 
     /** 人员 id 列表去重（保序；null/空元素剔除） */
@@ -291,18 +285,9 @@ public final class DutySupport {
         return out;
     }
 
-    /** 日期参数校验（可空；yyyy-MM-dd，非法值报 400） */
+    /** 日期参数校验（可空；yyyy-MM-dd，非法值报 400；委托 CheckUtils） */
     public static String normalizeDay(String value, String label) {
-        String s = trim(value);
-        if (s == null) {
-            return null;
-        }
-        try {
-            LocalDate.parse(s);
-        } catch (Exception e) {
-            throw new IllegalArgumentException(label + "格式应为 yyyy-MM-dd：" + s);
-        }
-        return s;
+        return CheckUtils.normalizeDay(value, label);
     }
 
     /** 时刻参数解析（yyyy-MM-dd HH:mm；非法值报 400） */
@@ -318,25 +303,19 @@ public final class DutySupport {
         }
     }
 
-    /** 页码收敛（1 ~ 100000） */
+    /** 页码收敛（1 ~ 100000；委托 ApiResultUtils） */
     public static int clampPage(int page) {
-        return Math.min(100_000, Math.max(1, page));
+        return ApiResultUtils.clampPage(page);
     }
 
-    /** 页大小收敛（1 ~ 100） */
+    /** 页大小收敛（1 ~ 100；委托 ApiResultUtils） */
     public static int clampSize(int size) {
-        return Math.min(100, Math.max(1, size));
+        return ApiResultUtils.clampSize(size);
     }
 
-    /** 分页结果（与全站口径一致：total/page/size/pages/records） */
+    /** 分页结果（全站口径 total/page/size/pages/records；委托 ApiResultUtils） */
     public static Map<String, Object> pageResult(long total, int page, int size, List<?> records) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("total", total);
-        out.put("page", page);
-        out.put("size", size);
-        out.put("pages", size <= 0 ? 0 : (total + size - 1) / size);
-        out.put("records", records);
-        return out;
+        return ApiResultUtils.pageResult(total, page, size, records);
     }
 
     private static String hhmm(LocalDateTime t) {

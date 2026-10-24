@@ -6,6 +6,7 @@ import com.qgyun.hltgq.hltgqsite.h5.mapper.MessageReceiveMapper;
 import com.qgyun.hltgq.hltgqsite.h5.mapper.MessageRuleMapper;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessagePageVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessageSummaryVO;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -139,7 +140,7 @@ public class MessageService {
                 long total = queryMapper.countComplaint(userId);
                 List<MessagePageVO.ComplaintMessage> rows =
                         queryMapper.selectComplaintPage(userId, limit, offset);
-                rows.forEach(r -> r.setComplaintTypeLabel(label(r.getComplaintType(), COMPLAINT_LABELS)));
+                rows.forEach(r -> r.setComplaintTypeLabel(DictUtils.label(COMPLAINT_LABELS, r.getComplaintType())));
                 vo.setTotal(total);
                 vo.setPages(pages(total, pageSize));
                 vo.setRecords(rows);
@@ -150,8 +151,8 @@ public class MessageService {
                 List<MessagePageVO.DutyMessage> rows =
                         queryMapper.selectDutyPage(userId, limit, offset);
                 rows.forEach(r -> {
-                    r.setScheduleStatusLabel(label(r.getScheduleStatus(), SCHEDULE_LABELS));
-                    r.setDutyRoleLabel(label(r.getDutyRole(), DUTY_ROLE_LABELS));
+                    r.setScheduleStatusLabel(DictUtils.label(SCHEDULE_LABELS, r.getScheduleStatus()));
+                    r.setDutyRoleLabel(DictUtils.label(DUTY_ROLE_LABELS, r.getDutyRole()));
                 });
                 vo.setTotal(total);
                 vo.setPages(pages(total, pageSize));
@@ -172,7 +173,7 @@ public class MessageService {
                 long total = queryMapper.countSuggestion(userId);
                 List<MessagePageVO.SuggestionMessage> rows =
                         queryMapper.selectSuggestionPage(userId, limit, offset);
-                rows.forEach(r -> r.setSuggestionTypeLabel(label(r.getSuggestionType(), SUGGESTION_LABELS)));
+                rows.forEach(r -> r.setSuggestionTypeLabel(DictUtils.label(SUGGESTION_LABELS, r.getSuggestionType())));
                 vo.setTotal(total);
                 vo.setPages(pages(total, pageSize));
                 vo.setRecords(rows);
@@ -488,7 +489,7 @@ public class MessageService {
             for (MessagePageVO.ModelCalcMessage d : part) {
                 if (d.getMessageId() != null) {
                     d.setModule(entry.getKey());
-                    d.setModuleLabel(label(entry.getKey(), MODULE_LABELS));
+                    d.setModuleLabel(DictUtils.label(MODULE_LABELS, entry.getKey()));
                     details.put(d.getMessageId(), d);
                 }
             }
@@ -508,17 +509,5 @@ public class MessageService {
 
     private long pages(long total, long pageSize) {
         return (total + pageSize - 1) / pageSize;
-    }
-
-    private String label(String code, String[][] mapping) {
-        if (code == null) {
-            return null;
-        }
-        for (String[] pair : mapping) {
-            if (pair[0].equals(code)) {
-                return pair[1];
-            }
-        }
-        return code;
     }
 }

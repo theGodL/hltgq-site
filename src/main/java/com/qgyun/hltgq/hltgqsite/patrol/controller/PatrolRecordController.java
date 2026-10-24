@@ -1,7 +1,10 @@
 package com.qgyun.hltgq.hltgqsite.patrol.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.MediaTypeUtils;
 import com.qgyun.hltgq.hltgqsite.patrol.service.PatrolRecordService;
+import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolPhotoSupport;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolOptionVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolRecordDetailVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolRecordPhotoItemVO;
@@ -10,7 +13,6 @@ import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolRecordSaveRequest;
 import lombok.Data;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.CacheControl;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -97,18 +99,14 @@ public class PatrolRecordController {
     @PostMapping("/delete")
     public Map<String, Object> delete(@RequestBody IdRequest request) {
         recordService.remove(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 提交记录（草稿 → 已提交）：缺站点/对象/结果/照片的脏草稿拒绝提交。 */
     @PostMapping("/submit")
     public Map<String, Object> submit(@RequestBody IdRequest request) {
         recordService.submit(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /**
@@ -123,9 +121,9 @@ public class PatrolRecordController {
     /** 读取现场照片（浏览器 img 直连；登录态校验由拦截器统一处理）。 */
     @GetMapping("/photo/{id}")
     public ResponseEntity<byte[]> photo(@PathVariable String id) {
-        PatrolRecordService.PhotoContent data = recordService.readPhoto(id);
+        PatrolPhotoSupport.PhotoContent data = recordService.readPhoto(id);
         return ResponseEntity.ok()
-                .contentType(mediaTypeOf(data.getExt()))
+                .contentType(MediaTypeUtils.of(data.getExt()))
                 .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePrivate())
                 .body(data.getContent());
     }
@@ -134,31 +132,7 @@ public class PatrolRecordController {
     @PostMapping("/photo/remove")
     public Map<String, Object> removePhoto(@RequestBody IdRequest request) {
         recordService.removePhoto(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
-    }
-
-    /** 扩展名 → 图片 Content-Type（未知按二进制流，避免浏览器猜测）。 */
-    private static MediaType mediaTypeOf(String ext) {
-        if (ext == null) {
-            return MediaType.APPLICATION_OCTET_STREAM;
-        }
-        switch (ext.toLowerCase()) {
-            case "jpg":
-            case "jpeg":
-                return MediaType.IMAGE_JPEG;
-            case "png":
-                return MediaType.IMAGE_PNG;
-            case "gif":
-                return MediaType.IMAGE_GIF;
-            case "bmp":
-                return MediaType.parseMediaType("image/bmp");
-            case "webp":
-                return MediaType.parseMediaType("image/webp");
-            default:
-                return MediaType.APPLICATION_OCTET_STREAM;
-        }
+        return ApiResultUtils.ok();
     }
 
     /** 单条操作请求体（{ "id": "..." }）。 */

@@ -1,7 +1,10 @@
 package com.qgyun.hltgq.hltgqsite.patrol.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.MediaTypeUtils;
 import com.qgyun.hltgq.hltgqsite.patrol.service.PatrolIssueService;
+import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolPhotoSupport;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolIssueAdminDetailVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolIssueAdminRequest;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolIssueCreateRequest;
@@ -14,7 +17,6 @@ import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderCreateVO;
 import lombok.Data;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.CacheControl;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -78,36 +80,28 @@ public class PatrolIssueController {
     @PostMapping("/void")
     public Map<String, Object> voidIssue(@RequestBody PatrolIssueAdminRequest request) {
         issueService.voidIssue(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 关闭问题（仅处理中）：置已关闭。 */
     @PostMapping("/close")
     public Map<String, Object> closeIssue(@RequestBody PatrolIssueAdminRequest request) {
         issueService.closeIssue(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 直接处理（仅待处理）：状态转为处理中，处理方式置直接处理。 */
     @PostMapping("/handle")
     public Map<String, Object> directHandle(@RequestBody PatrolIssueAdminRequest request) {
         issueService.directHandle(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 填写处理结果（仅处理中）：只写处理结果，不改状态，可重复保存。 */
     @PostMapping("/result")
     public Map<String, Object> saveResult(@RequestBody PatrolIssueAdminRequest request) {
         issueService.saveResult(request);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /**
@@ -146,9 +140,9 @@ public class PatrolIssueController {
     /** 读取现场照片（浏览器 img 直连；登录态校验由拦截器统一处理）。 */
     @GetMapping("/photo/{id}")
     public ResponseEntity<byte[]> photo(@PathVariable String id) {
-        PatrolIssueService.PhotoContent data = issueService.readPhoto(id);
+        PatrolPhotoSupport.PhotoContent data = issueService.readPhoto(id);
         return ResponseEntity.ok()
-                .contentType(mediaTypeOf(data.getExt()))
+                .contentType(MediaTypeUtils.of(data.getExt()))
                 .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePrivate())
                 .body(data.getContent());
     }
@@ -166,31 +160,7 @@ public class PatrolIssueController {
     @PostMapping("/photo/remove")
     public Map<String, Object> removePhoto(@RequestBody PhotoRemoveRequest request) {
         issueService.removePhoto(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
-    }
-
-    /** 扩展名 → 图片 Content-Type（未知按二进制流，避免浏览器猜测）。 */
-    private static MediaType mediaTypeOf(String ext) {
-        if (ext == null) {
-            return MediaType.APPLICATION_OCTET_STREAM;
-        }
-        switch (ext.toLowerCase()) {
-            case "jpg":
-            case "jpeg":
-                return MediaType.IMAGE_JPEG;
-            case "png":
-                return MediaType.IMAGE_PNG;
-            case "gif":
-                return MediaType.IMAGE_GIF;
-            case "bmp":
-                return MediaType.parseMediaType("image/bmp");
-            case "webp":
-                return MediaType.parseMediaType("image/webp");
-            default:
-                return MediaType.APPLICATION_OCTET_STREAM;
-        }
+        return ApiResultUtils.ok();
     }
 
     /** 移除照片请求体（{ "id": "..." }）。 */

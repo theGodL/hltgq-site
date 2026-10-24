@@ -70,6 +70,11 @@
 /* 本页专属：下拉选项基准（min-height 36px；其余下拉样式见公共件） */
 .sel-opt{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer;line-height:20px}
 /* .sel-opt 状态与内部元素：见 lib/water-saving-common.css */
+/* 计算方式下拉：主文字整行完整展示，公式说明另起一行置灰放其下（避免同行挤压截断） */
+#sel-method .sel-opt{display:grid;grid-template-columns:1fr auto;column-gap:8px;row-gap:2px;align-items:center;min-height:44px;padding:8px 12px}
+#sel-method .sel-opt .opt-name{white-space:normal;overflow:visible;text-overflow:clip;line-height:20px}
+#sel-method .sel-opt .opt-sub{grid-column:1;margin-left:0;line-height:18px;white-space:normal}
+#sel-method .sel-opt .tick{grid-column:2;grid-row:1 / span 2;justify-self:end}
 
 /* 确认弹窗（.mbox）：见 lib/water-saving-common.css */
 
@@ -153,11 +158,16 @@
           <div class="f-hint" id="method-hint">选定后由服务端按公式计算，不支持自由编辑</div>
         </div>
         <div class="f-item span2">
-          <label class="f-label">目标值</label>
-          <input class="field" id="in-target" inputmode="decimal" placeholder="选填，如 12.5" autocomplete="off">
-          <div class="f-hint">未设置目标的指标：关联方案展示「待设置目标」、不产生达标结论</div>
+          <label class="f-label"><i class="req">*</i>目标值</label>
+          <input class="field" id="in-target" inputmode="decimal" placeholder="如 12.5" autocomplete="off">
+          <div class="f-hint">结果大于或等于目标值即达标</div>
         </div>
-        <div class="f-item span2">
+        <div class="f-item span2" id="fi-status">
+          <label class="f-label">状态</label>
+          <div class="sel" id="sel-form-status"></div>
+          <div class="f-hint">新增默认停用，启用后可在列表操作列切换</div>
+        </div>
+        <div class="f-item span4">
           <label class="f-label">指标用途</label>
           <input class="field" id="in-purpose" maxlength="200" placeholder="选填，如「年度考核」" autocomplete="off">
           <div class="f-hint">仅作说明展示</div>
@@ -328,11 +338,12 @@ function guardEnabledOnly(id, action) {
    jumpToPage / onPagerClick 顶部已按本页刷新方式（renderTable + renderPager）包装 */
 
 /* ============================ 抽屉与表单 ============================ */
-let selFEnabled, selMethod;
+let selFEnabled, selMethod, selFormStatus;
 
 function initSelects() {
   selFEnabled = createSelect($('f-enabled')).setPlaceholder('全部状态');
   selMethod = createSelect($('sel-method')).setPlaceholder('请选择计算方式');
+  selFormStatus = createSelect($('sel-form-status')).setPlaceholder('请选择状态');
 }
 
 function fillEnabledOptions() {
@@ -353,6 +364,15 @@ function fillMethodOptions() {
   selMethod.setOptions(opts);
 }
 
+/** 新增指标状态：默认停用（取值字典 flags.no）；编辑态不展示（启停走列表操作列） */
+function fillFormStatusOptions() {
+  const flags = S.meta.flags || { yes: '#1#', no: '#2#' };
+  selFormStatus.setOptions([
+    { value: flags.yes, label: '启用' },
+    { value: flags.no, label: '停用' }
+  ]).setValue(flags.no);
+}
+
 /* openDrawer / closeDrawer 见 lib/water-saving-common.js（顶部已解构别名） */
 
 function setMode(mode) {
@@ -360,6 +380,7 @@ function setMode(mode) {
   const isView = mode === 'view';
   $('drawer-title').textContent = isView ? '指标详情' : (mode === 'edit' ? '编辑指标' : '新增指标');
   $('form-box').hidden = isView;
+  $('fi-status').hidden = mode !== 'create';
   $('view-box').hidden = !isView;
   $('btn-save').hidden = isView;
   $('btn-cancel').textContent = isView ? '关闭' : '取消';
@@ -413,6 +434,7 @@ function resetForm() {
   $('in-target').value = '';
   $('in-purpose').value = '';
   selMethod.setValue('').setDisabled(false).setError(false);
+  selFormStatus.setValue((S.meta.flags && S.meta.flags.no) || '#2#');
   $('method-hint').textContent = METHOD_HINT_DEFAULT;
   $('form-tip').hidden = true;
 }
@@ -459,15 +481,13 @@ function collectForm() {
   if (name.length > 200) { $('in-name').classList.add('is-err'); throw new Error('指标名称不能超过 200 字'); }
   const method = selMethod.getValue();
   if (!method) { selMethod.setError(true); throw new Error('请选择计算方式'); }
-  let target = null;
   const raw = $('in-target').value.trim();
-  if (raw) {
-    target = Number(raw);
-    const dot = raw.indexOf('.');
-    if (isNaN(target) || target <= 0 || (dot >= 0 && raw.length - dot - 1 > 6)) {
-      $('in-target').classList.add('is-err');
-      throw new Error('目标值需为大于 0 的数字（最多 6 位小数）');
-    }
+  if (!raw) { $('in-target').classList.add('is-err'); throw new Error('请填写目标值'); }
+  const target = Number(raw);
+  const dot = raw.indexOf('.');
+  if (isNaN(target) || target <= 0 || (dot >= 0 && raw.length - dot - 1 > 6)) {
+    $('in-target').classList.add('is-err');
+    throw new Error('目标值需为大于 0 的数字（最多 6 位小数）');
   }
   const purpose = $('in-purpose').value.trim();
   if (purpose.length > 200) { $('in-purpose').classList.add('is-err'); throw new Error('指标用途不能超过 200 字'); }
@@ -491,6 +511,7 @@ async function save() {
     if (isEdit) {
       await api('/water-saving/indicators/update?id=' + encodeURIComponent(S.row.id), { method: 'PUT', body: body });
     } else {
+      body.enabled = selFormStatus.getValue() || (S.meta.flags && S.meta.flags.no) || '#2#';
       await api('/water-saving/indicators/create', { method: 'POST', body: body });
     }
     closeDrawer();
@@ -616,6 +637,7 @@ async function init() {
   }
   fillEnabledOptions();
   fillMethodOptions();
+  fillFormStatusOptions();
   await loadList();
 }
 

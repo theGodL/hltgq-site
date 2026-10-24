@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.workorder.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.mapper.ArchiveLookupMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
@@ -101,6 +102,10 @@ public class WorkOrderService {
 
     @Autowired
     private WorkOrderMapper mapper;
+
+    /** 站点/设备/人员/部门档案存在性校验（跨模块唯一实现） */
+    @Autowired
+    private ArchiveLookupMapper lookupMapper;
 
     /** 工单取消/删除后回退关联问题 */
     @Autowired
@@ -242,19 +247,19 @@ public class WorkOrderService {
         }
         d.content = CheckUtils.maxLength(CheckUtils.trim(req.getContent()), CONTENT_MAX_LENGTH, "内容描述");
         d.siteId = CheckUtils.requireText(req.getSiteId(), "所属站点不能为空");
-        if (mapper.countSite(d.siteId) == 0) {
+        if (lookupMapper.countSite(d.siteId) == 0) {
             throw new IllegalArgumentException("所属站点不存在：" + d.siteId);
         }
         d.deviceId = CheckUtils.trim(req.getDeviceId());
-        if (d.deviceId != null && mapper.countDeviceInSite(d.siteId, d.deviceId) == 0) {
+        if (d.deviceId != null && lookupMapper.countDeviceInSite(d.siteId, d.deviceId) == 0) {
             throw new IllegalArgumentException("所选设备不属于该站点");
         }
         d.orgId = CheckUtils.trim(req.getOrgId());
-        if (d.orgId != null && mapper.countOrg(d.orgId) == 0) {
+        if (d.orgId != null && lookupMapper.countOrg(d.orgId) == 0) {
             throw new IllegalArgumentException("负责部门不存在：" + d.orgId);
         }
         d.userId = CheckUtils.trim(req.getUserId());
-        if (d.userId != null && mapper.countUser(d.userId) == 0) {
+        if (d.userId != null && lookupMapper.countUser(d.userId) == 0) {
             throw new IllegalArgumentException("处理人员不存在：" + d.userId);
         }
         d.time = parseTime(req.getTime(), "要求完成时间");
@@ -287,11 +292,11 @@ public class WorkOrderService {
         }
         String id = CheckUtils.requireText(req.getId(), "工单 id 不能为空");
         String userId = CheckUtils.requireText(req.getUserId(), "请选择处理人员");
-        if (mapper.countUser(userId) == 0) {
+        if (lookupMapper.countUser(userId) == 0) {
             throw new IllegalArgumentException("处理人员不存在：" + userId);
         }
         String orgId = CheckUtils.trim(req.getOrgId());
-        if (orgId != null && mapper.countOrg(orgId) == 0) {
+        if (orgId != null && lookupMapper.countOrg(orgId) == 0) {
             throw new IllegalArgumentException("负责部门不存在：" + orgId);
         }
         LocalDateTime time = parseTime(req.getTime(), "要求完成时间");
@@ -368,20 +373,20 @@ public class WorkOrderService {
         }
         String c = CheckUtils.maxLength(CheckUtils.trim(content), CONTENT_MAX_LENGTH, "内容描述");
         String site = CheckUtils.requireText(siteId, "工单所属站点不能为空");
-        if (mapper.countSite(site) == 0) {
+        if (lookupMapper.countSite(site) == 0) {
             throw new IllegalArgumentException("所属站点不存在：" + site);
         }
         String dev = CheckUtils.trim(deviceId);
-        if (dev != null && mapper.countDeviceInSite(site, dev) == 0) {
+        if (dev != null && lookupMapper.countDeviceInSite(site, dev) == 0) {
             log.warn("[工单] 问题关联设备已删除或换绑，转工单不关联设备：deviceId={}, site={}", dev, site);
             dev = null;
         }
         String org = CheckUtils.trim(orgId);
-        if (org != null && mapper.countOrg(org) == 0) {
+        if (org != null && lookupMapper.countOrg(org) == 0) {
             throw new IllegalArgumentException("负责部门不存在：" + org);
         }
         String user = CheckUtils.trim(userId);
-        if (user != null && mapper.countUser(user) == 0) {
+        if (user != null && lookupMapper.countUser(user) == 0) {
             throw new IllegalArgumentException("处理人员不存在：" + user);
         }
         return insertOrder(t, typeCode, c, site, dev, org, user, time, "转工单");

@@ -15,31 +15,23 @@ import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeDownloadVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakePageItemVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeSaveVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeUpdateVO;
+import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -81,13 +73,6 @@ public class StocktakeService {
 
     /** 附件存储根目录名（file-dir 下的盘点专属目录） */
     private static final String STOCKTAKE_DIR = "stocktake";
-
-    /** 附件扩展名白名单（图片 / PDF / Word / Excel） */
-    private static final Set<String> ALLOWED_EXT = new HashSet<>(Arrays.asList(
-            "jpg", "jpeg", "png", "gif", "bmp", "webp", "pdf", "doc", "docx", "xls", "xlsx"));
-
-    /** 附件按月分桶目录（yyyy-MM） */
-    private static final DateTimeFormatter MONTH_DIR = DateTimeFormatter.ofPattern("yyyy-MM");
 
     private final InventoryStocktakeMapper stocktakeMapper;
 
@@ -429,7 +414,7 @@ public class StocktakeService {
                 }
             }
         }
-        registerAfterCommitFileCleanup(removedPaths);
+        LocalFileStorageUtils.deleteAfterCommit(fileDirPath(), removedPaths);
 
         log.info("[盘点] 编辑盘点单：{}（{}），盘点人={}，保留附件 {} 个，操作人={}",
                 id, req.getRemark(), operatorName, keepIds.size(), operator);
@@ -443,22 +428,16 @@ public class StocktakeService {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空");
         }
-        String originalName = sanitizeFileName(file.getOriginalFilename());
-        String ext = extOf(originalName);
-        if (ext == null || !ALLOWED_EXT.contains(ext)) {
+        String originalName = LocalFileStorageUtils.sanitizeFileName(file.getOriginalFilename());
+        String ext = LocalFileStorageUtils.extOf(originalName);
+        if (!LocalFileStorageUtils.isAllowedExt(ext)) {
             throw new IllegalArgumentException("不支持的文件类型（仅支持图片、PDF、Word、Excel）：" + originalName);
         }
         String operator = currentOperatorId(fallbackOperator);
         LocalDateTime now = LocalDateTime.now();
         String storedName = shortIdGenerator.nextUUID(null) + "_" + originalName;
-        String relPath = STOCKTAKE_DIR + "/" + now.format(MONTH_DIR) + "/" + storedName;
-        Path target = resolveUnderBase(fileDirPath(), relPath);
-        try {
-            Files.createDirectories(target.getParent());
-            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new IllegalStateException("附件保存失败: " + e.getMessage());
-        }
+        String relPath = STOCKTAKE_DIR + "/" + now.format(LocalFileStorageUtils.MONTH_DIR) + "/" + storedName;
+        LocalFileStorageUtils.write(fileDirPath(), relPath, file);
 
         String attachmentId = shortIdGenerator.nextUUID(null);
         Map<String, Object> row = new LinkedHashMap<>();
@@ -474,7 +453,7 @@ public class StocktakeService {
             stocktakeMapper.insertAttachment(row);
         } catch (RuntimeException e) {
             // 行写入失败：清理已落盘文件，避免孤儿文件
-            deleteFileQuietly(relPath);
+            LocalFileStorageUtils.deleteQuietly(fileDirPath(), relPath);
             throw e;
         }
 
@@ -494,16 +473,7 @@ public class StocktakeService {
         if (att == null) {
             throw new IllegalArgumentException("附件不存在或已删除");
         }
-        Path target = resolveUnderBase(fileDirPath(), requireText(att.getFilePath(), "附件路径缺失"));
-        if (!Files.exists(target)) {
-            throw new IllegalArgumentException("附件文件不存在，可能已被清理");
-        }
-        byte[] bytes;
-        try {
-            bytes = Files.readAllBytes(target);
-        } catch (IOException e) {
-            throw new IllegalStateException("附件读取失败: " + e.getMessage());
-        }
+        byte[] bytes = LocalFileStorageUtils.readBytes(fileDirPath(), requireText(att.getFilePath(), "附件路径缺失"));
         StocktakeDownloadVO vo = new StocktakeDownloadVO();
         vo.setContent(bytes);
         vo.setFileName(att.getFileName());
@@ -522,83 +492,13 @@ public class StocktakeService {
         if (stocktakeMapper.deleteUnboundAttachment(key) == 0) {
             throw new IllegalArgumentException("附件已保存到盘点单，不能直接移除");
         }
-        deleteFileQuietly(att.getFilePath());
+        LocalFileStorageUtils.deleteQuietly(fileDirPath(), att.getFilePath());
         log.info("[盘点] 附件已移除：{}（{}）", att.getFileName(), att.getId());
     }
 
-    /** 附件存储根目录（绝对路径归一，用作穿越校验基准）。 */
+    /** 附件存储根目录（绝对路径归一，用作穿越校验基准；文件操作见 LocalFileStorageUtils）。 */
     private Path fileDirPath() {
-        return Paths.get(fileDir).toAbsolutePath().normalize();
-    }
-
-    /** 相对路径解析 + 目录穿越校验（normalize 后必须仍在根目录下）。 */
-    private static Path resolveUnderBase(Path base, String relPath) {
-        Path target = base.resolve(relPath).normalize();
-        if (!target.startsWith(base)) {
-            throw new IllegalArgumentException("附件路径非法");
-        }
-        return target;
-    }
-
-    /** 物理删除附件文件（失败仅告警，不阻断业务）。 */
-    private void deleteFileQuietly(String relPath) {
-        if (trim(relPath) == null) {
-            return;
-        }
-        try {
-            Files.deleteIfExists(resolveUnderBase(fileDirPath(), relPath));
-        } catch (Exception e) {
-            log.warn("[盘点] 附件文件删除失败（忽略）：path={}, error={}", relPath, e.getMessage());
-        }
-    }
-
-    /** 事务提交后再物理删文件（回滚时附件行仍在、文件不丢）；无事务同步上下文时立即执行。 */
-    private void registerAfterCommitFileCleanup(List<String> relPaths) {
-        if (relPaths.isEmpty()) {
-            return;
-        }
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            relPaths.forEach(this::deleteFileQuietly);
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                relPaths.forEach(StocktakeService.this::deleteFileQuietly);
-            }
-        });
-    }
-
-    /** 原始文件名清洗：去路径段与控制字符、空白兜底、超长截断（保留扩展名）。 */
-    private static String sanitizeFileName(String raw) {
-        String name = raw == null ? "" : raw;
-        name = name.replace('\\', '/');
-        int idx = name.lastIndexOf('/');
-        if (idx >= 0) {
-            name = name.substring(idx + 1);
-        }
-        name = name.replaceAll("[\\r\\n\\t\\u0000]", "").trim();
-        if (name.isEmpty()) {
-            name = "file";
-        }
-        if (name.length() > 120) {
-            String ext = extOf(name);
-            String stem = ext == null ? name : name.substring(0, name.length() - ext.length() - 1);
-            if (stem.length() > 100) {
-                stem = stem.substring(0, 100);
-            }
-            name = ext == null ? stem : stem + "." + ext;
-        }
-        return name;
-    }
-
-    /** 扩展名提取（小写；无扩展名返回 null）。 */
-    private static String extOf(String fileName) {
-        int idx = fileName.lastIndexOf('.');
-        if (idx < 0 || idx == fileName.length() - 1) {
-            return null;
-        }
-        return fileName.substring(idx + 1).toLowerCase(Locale.ROOT);
+        return LocalFileStorageUtils.root(fileDir);
     }
 
     // ==================== 校验与工具 ====================

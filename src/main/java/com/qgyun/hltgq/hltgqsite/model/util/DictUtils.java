@@ -26,6 +26,19 @@ public final class DictUtils {
         return labels.getOrDefault(code, code);
     }
 
+    /** 编码 → 中文（{编码, 名称} 成对数组形态；null/未知编码原样返回） */
+    public static String label(String[][] mapping, String code) {
+        if (code == null) {
+            return null;
+        }
+        for (String[] pair : mapping) {
+            if (pair[0].equals(code)) {
+                return pair[1];
+            }
+        }
+        return code;
+    }
+
     /**
      * 多选编码（「|」分隔）→ 中文顿号拼接：空段跳过，未知段原样保留；入参空值原样返回。
      */

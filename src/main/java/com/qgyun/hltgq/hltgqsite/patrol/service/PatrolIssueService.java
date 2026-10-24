@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.patrol.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.mapper.ArchiveLookupMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
@@ -8,6 +9,8 @@ import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolIssueMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolPlanMapper;
+import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolDicts;
+import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolPhotoSupport;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolIssueAdminDetailVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolIssueAdminRequest;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolIssueCreateRequest;
@@ -30,12 +33,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -98,15 +99,6 @@ public class PatrolIssueService {
     /** 风险等级填写值 → 落库编码（选项组 Tzocc3TligWY99Y7QBo） */
     private static final Map<String, String> RISK_LEVEL_CODES = new LinkedHashMap<>();
 
-    /** 问题状态编码 → 名称（与站点详情一致：#1# 待处理、#2# 处理中、#3# 已转工单、#4# 已关闭、#5# 已作废） */
-    private static final Map<String, String> ISSUE_STATUS_LABELS = new LinkedHashMap<>();
-
-    /** 处理方式编码 → 名称（#1# 待确认、#2# 转工单、#3# 直接处理） */
-    private static final Map<String, String> HANDLE_LABELS = new LinkedHashMap<>();
-
-    /** 风险等级编码 → 名称（选项组 Tzocc3TligWY99Y7QBo） */
-    private static final Map<String, String> RISK_LABELS = new LinkedHashMap<>();
-
     static {
         RISK_LEVEL_CODES.put("低风险", "#1#");
         RISK_LEVEL_CODES.put("中风险", "#2#");
@@ -114,24 +106,14 @@ public class PatrolIssueService {
         RISK_LEVEL_CODES.put("#1#", "#1#");
         RISK_LEVEL_CODES.put("#2#", "#2#");
         RISK_LEVEL_CODES.put("#3#", "#3#");
-
-        ISSUE_STATUS_LABELS.put("#1#", "待处理");
-        ISSUE_STATUS_LABELS.put("#2#", "处理中");
-        ISSUE_STATUS_LABELS.put("#3#", "已转工单");
-        ISSUE_STATUS_LABELS.put("#4#", "已关闭");
-        ISSUE_STATUS_LABELS.put("#5#", "已作废");
-
-        HANDLE_LABELS.put("#1#", "待确认");
-        HANDLE_LABELS.put("#2#", "转工单");
-        HANDLE_LABELS.put("#3#", "直接处理");
-
-        RISK_LABELS.put("#1#", "低风险");
-        RISK_LABELS.put("#2#", "中风险");
-        RISK_LABELS.put("#3#", "高风险");
     }
 
     @Autowired
     private PatrolIssueMapper mapper;
+
+    /** 站点/设备/人员档案存在性校验（跨模块唯一实现） */
+    @Autowired
+    private ArchiveLookupMapper lookupMapper;
 
     /** 复用计划巡查范围查询（与「添加巡检记录」同一口径） */
     @Autowired
@@ -196,11 +178,11 @@ public class PatrolIssueService {
         if (siteId == null) {
             throw new IllegalArgumentException("所属站点不能为空");
         }
-        if (mapper.countSite(siteId) == 0) {
+        if (lookupMapper.countSite(siteId) == 0) {
             throw new IllegalArgumentException("所属站点不存在：" + siteId);
         }
         String deviceId = CheckUtils.trim(req.getDeviceId());
-        if (deviceId != null && mapper.countDeviceInSite(siteId, deviceId) == 0) {
+        if (deviceId != null && lookupMapper.countDeviceInSite(siteId, deviceId) == 0) {
             throw new IllegalArgumentException("所选设备不属于该站点");
         }
         String content = CheckUtils.trim(req.getContent());
@@ -223,7 +205,7 @@ public class PatrolIssueService {
         if (userId == null) {
             userId = operatorId;
         }
-        if (mapper.countUser(userId) == 0) {
+        if (lookupMapper.countUser(userId) == 0) {
             throw new IllegalArgumentException("发现人不存在：" + userId);
         }
         String recordId = CheckUtils.trim(req.getRecordId());
@@ -240,7 +222,7 @@ public class PatrolIssueService {
                 throw new IllegalArgumentException("所属站点须与巡检记录一致");
             }
         }
-        List<String> photoIds = normalizePhotoIds(req.getPhotoIds());
+        List<String> photoIds = PatrolPhotoSupport.normalizePhotoIds(req.getPhotoIds(), PHOTO_MAX_COUNT);
         // 预校验：照片必须存在、属于当前上传人且未绑定过其他问题
         for (String photoId : photoIds) {
             PatrolIssuePhotoFileVO photo = mapper.selectPhoto(photoId);
@@ -280,7 +262,7 @@ public class PatrolIssueService {
         long s = Math.min(Math.max(1, size), 100);
         String t = CheckUtils.trim(title);
         String sid = CheckUtils.trim(siteId);
-        String statusCode = DictUtils.resolveCode(ISSUE_STATUS_LABELS, status);
+        String statusCode = DictUtils.resolveCode(PatrolDicts.ISSUE_STATUS_LABELS, status);
         Page<PatrolIssueRowVO> out = new Page<>(p, s);
         long total = mapper.countAdminPage(t, sid, statusCode);
         out.setTotal(total);
@@ -290,8 +272,8 @@ public class PatrolIssueService {
         }
         List<PatrolIssueRowVO> rows = mapper.selectAdminPage(t, sid, statusCode, s, (p - 1) * s);
         for (PatrolIssueRowVO row : rows) {
-            row.setHandleLabel(DictUtils.label(HANDLE_LABELS, row.getHandleCode()));
-            row.setStatusLabel(DictUtils.label(ISSUE_STATUS_LABELS, row.getStatusCode()));
+            row.setHandleLabel(DictUtils.label(PatrolDicts.HANDLE_STATUS_LABELS, row.getHandleCode()));
+            row.setStatusLabel(DictUtils.label(PatrolDicts.ISSUE_STATUS_LABELS, row.getStatusCode()));
         }
         out.setRecords(rows);
         return out;
@@ -307,9 +289,9 @@ public class PatrolIssueService {
         if (vo == null) {
             throw new IllegalArgumentException("问题记录不存在：" + key);
         }
-        vo.setHandleLabel(DictUtils.label(HANDLE_LABELS, vo.getHandleCode()));
-        vo.setStatusLabel(DictUtils.label(ISSUE_STATUS_LABELS, vo.getStatusCode()));
-        vo.setRiskLabel(DictUtils.label(RISK_LABELS, vo.getRiskCode()));
+        vo.setHandleLabel(DictUtils.label(PatrolDicts.HANDLE_STATUS_LABELS, vo.getHandleCode()));
+        vo.setStatusLabel(DictUtils.label(PatrolDicts.ISSUE_STATUS_LABELS, vo.getStatusCode()));
+        vo.setRiskLabel(DictUtils.label(PatrolDicts.RISK_LABELS, vo.getRiskCode()));
         vo.setWorkOrderStatusLabel(WorkOrderService.statusLabel(vo.getWorkOrderStatusCode()));
         return vo;
     }
@@ -467,7 +449,7 @@ public class PatrolIssueService {
     }
 
     /** 读取照片字节（预览；路径穿越校验由存储工具兜底）。 */
-    public PhotoContent readPhoto(String id) {
+    public PatrolPhotoSupport.PhotoContent readPhoto(String id) {
         String photoId = CheckUtils.trim(id);
         if (photoId == null) {
             throw new IllegalArgumentException("照片 id 不能为空");
@@ -482,7 +464,7 @@ public class PatrolIssueService {
         }
         byte[] bytes = LocalFileStorageUtils.readBytes(LocalFileStorageUtils.root(fileDir), relPath);
         String ext = photo.getFileExt() == null ? LocalFileStorageUtils.extOf(photo.getFileName()) : photo.getFileExt();
-        return new PhotoContent(bytes, ext == null ? "" : ext.toLowerCase(Locale.ROOT));
+        return new PatrolPhotoSupport.PhotoContent(bytes, ext == null ? "" : ext.toLowerCase(Locale.ROOT));
     }
 
     /**
@@ -524,24 +506,6 @@ public class PatrolIssueService {
 
     // ==================== 工具 ====================
 
-    /** 照片 id 归一：去空、去重（保持顺序），并校验数量上限。 */
-    private static List<String> normalizePhotoIds(List<String> raw) {
-        if (raw == null || raw.isEmpty()) {
-            return new ArrayList<>();
-        }
-        Set<String> unique = new LinkedHashSet<>();
-        for (String v : raw) {
-            String id = CheckUtils.trim(v);
-            if (id != null) {
-                unique.add(id);
-            }
-        }
-        if (unique.size() > PHOTO_MAX_COUNT) {
-            throw new IllegalArgumentException("现场照片最多上传 " + PHOTO_MAX_COUNT + " 张");
-        }
-        return new ArrayList<>(unique);
-    }
-
     /** 问题编号生成：QST-毫秒时间戳；同毫秒撞号时重试（最多 5 次）。 */
     private String generateCode() {
         for (int i = 0; i < 5; i++) {
@@ -557,25 +521,5 @@ public class PatrolIssueService {
             }
         }
         throw new IllegalStateException("问题编号生成失败，请重试");
-    }
-
-    /** 照片字节与扩展名（Controller 组装 Content-Type）。 */
-    public static class PhotoContent {
-
-        private final byte[] content;
-        private final String ext;
-
-        public PhotoContent(byte[] content, String ext) {
-            this.content = content;
-            this.ext = ext;
-        }
-
-        public byte[] getContent() {
-            return content;
-        }
-
-        public String getExt() {
-            return ext;
-        }
     }
 }

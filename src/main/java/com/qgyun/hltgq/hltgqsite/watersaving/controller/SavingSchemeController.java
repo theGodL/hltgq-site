@@ -8,11 +8,11 @@ import com.qgyun.hltgq.hltgqsite.watersaving.vo.SavingSchemeVO;
 import com.qgyun.hltgq.hltgqsite.watersaving.vo.SavingVerifyVO;
 import com.qgyun.hltgq.hltgqsite.model.vo.FileDownloadVO;
 import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.MediaTypeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -131,7 +131,7 @@ public class SavingSchemeController {
         FileDownloadVO file = schemeService.downloadAttachment(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, DownloadHeaderUtils.attachment(file.getFileName()))
-                .contentType(mediaTypeOf(file.getFileExt()))
+                .contentType(MediaTypeUtils.of(file.getFileExt()))
                 .body(file.getContent());
     }
 
@@ -150,33 +150,7 @@ public class SavingSchemeController {
         FileDownloadVO file = schemeService.exportCsv(includeDemo);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, DownloadHeaderUtils.attachment(file.getFileName()))
-                .contentType(mediaTypeOf(file.getFileExt()))
+                .contentType(MediaTypeUtils.of(file.getFileExt()))
                 .body(file.getContent());
-    }
-
-    /** 下载 Content-Type 按扩展名映射（csv 带 UTF-8；其余按二进制流） */
-    private static MediaType mediaTypeOf(String ext) {
-        if (ext == null) {
-            return MediaType.APPLICATION_OCTET_STREAM;
-        }
-        switch (ext.toLowerCase()) {
-            case "jpg":
-            case "jpeg":
-                return MediaType.IMAGE_JPEG;
-            case "png":
-                return MediaType.IMAGE_PNG;
-            case "gif":
-                return MediaType.IMAGE_GIF;
-            case "bmp":
-                return MediaType.parseMediaType("image/bmp");
-            case "webp":
-                return MediaType.parseMediaType("image/webp");
-            case "pdf":
-                return MediaType.APPLICATION_PDF;
-            case "csv":
-                return MediaType.parseMediaType("text/csv;charset=UTF-8");
-            default:
-                return MediaType.APPLICATION_OCTET_STREAM;
-        }
     }
 }

@@ -2,8 +2,9 @@ package com.qgyun.hltgq.hltgqsite.waterusage;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.qgyun.hltgq.hltgqsite.auth.UserContext;
-import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
+import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.PlanRefVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +28,7 @@ import java.util.function.Supplier;
  *   <li>单位口径（设计方案 2.4）：存储 m³（2 位小数）、亩（2 位）、水价 元/m³（3 位）；
  *       万m³（1 位）仅用于提示文案换算，库内外均为 m³；</li>
  *   <li>测算水量 = 灌溉面积 × 定额标准（HALF_UP 保留 2 位）；</li>
- *   <li>分页结果口径与全站一致：total/page/size/pages/records。</li>
+ *   <li>分页结果口径与全站一致：total/page/size/pages/records（委托 ApiResultUtils）。</li>
  * </ul>
  */
 public final class WaterUsageSupport {
@@ -54,51 +55,34 @@ public final class WaterUsageSupport {
     private WaterUsageSupport() {
     }
 
-    /** 去首尾空白，空串按 null 处理 */
+    /** 去首尾空白，空串按 null 处理（委托 CheckUtils） */
     public static String trim(String value) {
-        if (value == null) {
-            return null;
-        }
-        String s = value.trim();
-        return s.isEmpty() ? null : s;
+        return CheckUtils.trim(value);
     }
 
-    /** 必填文本（trim 后为空报 400） */
+    /** 必填文本（trim 后为空报 400；委托 CheckUtils） */
     public static String requireText(String value, String message) {
-        String s = trim(value);
-        if (s == null) {
-            throw new IllegalArgumentException(message);
-        }
-        return s;
+        return CheckUtils.requireText(value, message);
     }
 
-    /** 长度上限校验（列宽约束前置拦截；null 放过） */
+    /** 长度上限校验（列宽约束前置拦截；null 放过；委托 CheckUtils） */
     public static String maxLength(String value, int max, String label) {
-        if (value != null && value.length() > max) {
-            throw new IllegalArgumentException(label + "不能超过 " + max + " 字");
-        }
-        return value;
+        return CheckUtils.maxLength(value, max, label);
     }
 
-    /** 页码收敛（1 ~ 100000） */
+    /** 页码收敛（1 ~ 100000；委托 ApiResultUtils） */
     public static int clampPage(int page) {
-        return Math.min(100_000, Math.max(1, page));
+        return ApiResultUtils.clampPage(page);
     }
 
-    /** 页大小收敛（1 ~ 100） */
+    /** 页大小收敛（1 ~ 100；委托 ApiResultUtils） */
     public static int clampSize(int size) {
-        return Math.min(100, Math.max(1, size));
+        return ApiResultUtils.clampSize(size);
     }
 
-    /** 分页结果（与全站口径一致：total/page/size/pages/records） */
+    /** 分页结果（全站口径 total/page/size/pages/records；委托 ApiResultUtils） */
     public static Map<String, Object> pageResult(long total, int page, int size, List<?> records) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("total", total);
-        out.put("page", page);
-        out.put("size", size);
-        out.put("pages", size <= 0 ? 0 : (total + size - 1) / size);
-        out.put("records", records);
-        return out;
+        return ApiResultUtils.pageResult(total, page, size, records);
     }
 
     /**
@@ -124,36 +108,19 @@ public final class WaterUsageSupport {
         return out;
     }
 
-    /** 当前操作人（会话缺失时用配置兜底；审计列 NOT NULL） */
+    /** 当前操作人（会话缺失时用配置兜底；审计列 NOT NULL；委托 OperatorUtils） */
     public static String currentOperatorId(String fallbackOperator) {
-        UserContext user = UserContextHolder.currentUser();
-        if (user != null && user.getUserId() != null && !user.getUserId().trim().isEmpty()) {
-            return user.getUserId().trim();
-        }
-        log.warn("[灌区用水] 当前请求无用户上下文，审计字段使用兜底值：{}", fallbackOperator);
-        return fallbackOperator;
+        return OperatorUtils.currentOperatorId(fallbackOperator);
     }
 
-    /** 必填正数（>0，小数位不超过 maxScale；label 如「水价」「计划水量」） */
+    /** 必填正数（>0，小数位不超过 maxScale；label 如「水价」「计划水量」；委托 CheckUtils） */
     public static BigDecimal requirePositive(BigDecimal value, String label, int maxScale) {
-        if (value == null) {
-            throw new IllegalArgumentException("请填写" + label);
-        }
-        if (value.scale() > maxScale) {
-            throw new IllegalArgumentException(label + "最多保留 " + maxScale + " 位小数");
-        }
-        if (value.signum() <= 0) {
-            throw new IllegalArgumentException(label + "必须大于 0");
-        }
-        return value;
+        return CheckUtils.requirePositive(value, label, maxScale);
     }
 
-    /** 选填正数（null 放过；填写则 >0 且小数位不超过 maxScale） */
+    /** 选填正数（null 放过；填写则 >0 且小数位不超过 maxScale；委托 CheckUtils） */
     public static BigDecimal optionalPositive(BigDecimal value, String label, int maxScale) {
-        if (value == null) {
-            return null;
-        }
-        return requirePositive(value, label, maxScale);
+        return CheckUtils.optionalPositive(value, label, maxScale);
     }
 
     /** 测算水量 = 灌溉面积(亩) × 定额标准(m³/亩)，HALF_UP 保留 2 位（存储口径 m³） */
@@ -246,11 +213,9 @@ public final class WaterUsageSupport {
         }
     }
 
-    /** 操作成功应答（{"success": true}） */
+    /** 操作成功应答（{"success": true}；委托 ApiResultUtils） */
     public static Map<String, Object> ok() {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /**

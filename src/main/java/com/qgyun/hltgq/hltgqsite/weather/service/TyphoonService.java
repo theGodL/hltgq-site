@@ -603,14 +603,10 @@ public class TyphoonService {
 
     /**
      * 是否已超旧值上限：以拉取时刻为准；若信封缺失该字段（异常/历史数据），
-     * 退化为「过期时长超过上限」判定，宁可少用旧值。
+     * 退化为「过期时长超过上限」判定，宁可少用旧值（委托 StaleCacheSupport）。
      */
     private boolean beyondStaleLimit(StaleCacheSupport.Envelope<?> envelope, long now) {
-        long staleMaxMs = staleMaxSeconds() * 1000L;
-        if (envelope.getPulledAtMs() > 0) {
-            return now - envelope.getPulledAtMs() > staleMaxMs;
-        }
-        return now - envelope.getExpireAt() > staleMaxMs;
+        return StaleCacheSupport.beyondStaleLimit(envelope, now, staleMaxSeconds() * 1000L);
     }
 
     private long ttlSeconds() {

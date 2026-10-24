@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.patrol.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.PatrolSchedule;
+import com.qgyun.hltgq.hltgqsite.mapper.ArchiveLookupMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
@@ -9,8 +10,9 @@ import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolPlanMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolRecordMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolScheduleMapper;
+import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolDicts;
+import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolPhotoSupport;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolOptionVO;
-import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolRecordPhotoFileVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolRecordSaveVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolRecordVO;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolScheduleDetailVO;
@@ -83,10 +85,6 @@ public class PatrolPlanService {
     private static final Map<String, String> STATUS_LABELS = new LinkedHashMap<>();
     /** 计划类型编码 → 名称（选项组 LV9fsnKRCbmPOaL2Hxu） */
     private static final Map<String, String> PLAN_TYPE_LABELS = new LinkedHashMap<>();
-    /** 巡检结果编码 → 名称（选项组 IYBBDt3IqXJL71kqrYE） */
-    private static final Map<String, String> RESULT_LABELS = new LinkedHashMap<>();
-    /** 巡检记录状态编码 → 名称（选项组 mITE3MttOBlt5Hb83Yw） */
-    private static final Map<String, String> RECORD_STATUS_LABELS = new LinkedHashMap<>();
 
     /** 新增计划：计划类型填写值 → 落库编码 */
     private static final Map<String, String> PLAN_TYPE_CODES = new LinkedHashMap<>();
@@ -105,15 +103,6 @@ public class PatrolPlanService {
         PLAN_TYPE_LABELS.put("#1#", "年度计划");
         PLAN_TYPE_LABELS.put("#wavn#", "年度计划");
         PLAN_TYPE_LABELS.put("#zjgg#", "月度计划");
-
-        RESULT_LABELS.put("#2#", "正常");
-        RESULT_LABELS.put("#3#", "异常");
-        RESULT_LABELS.put("#4#", "隐患");
-        RESULT_LABELS.put("#5#", "缺陷");
-        RESULT_LABELS.put("#6#", "故障");
-
-        RECORD_STATUS_LABELS.put("#1#", "草稿");
-        RECORD_STATUS_LABELS.put("#2#", "已提交");
 
         PLAN_TYPE_CODES.put("年度计划", "#1#");
         PLAN_TYPE_CODES.put("月度计划", "#zjgg#");
@@ -140,6 +129,10 @@ public class PatrolPlanService {
 
     @Autowired
     private PatrolPlanMapper mapper;
+
+    /** 站点/设备/人员档案存在性校验（跨模块唯一实现） */
+    @Autowired
+    private ArchiveLookupMapper lookupMapper;
 
     @Autowired
     private PatrolScheduleMapper scheduleMapper;
@@ -208,7 +201,7 @@ public class PatrolPlanService {
     /** 计划下的巡检记录分页（列表页「查看巡检记录」弹窗）。 */
     public Page<PatrolRecordVO> records(String scheduleId, long page, long size) {
         String id = requireId(scheduleId, "计划 id 不能为空");
-        if (mapper.countSchedule(id) == 0) {
+        if (recordMapper.countSchedule(id) == 0) {
             throw new IllegalArgumentException("巡检计划不存在：" + id);
         }
         long current = page > 0 ? page : 1;
@@ -223,8 +216,8 @@ public class PatrolPlanService {
         }
         List<PatrolRecordVO> rows = mapper.selectRecordPage(id, pageSize, (current - 1) * pageSize);
         for (PatrolRecordVO row : rows) {
-            row.setResultLabel(DictUtils.label(RESULT_LABELS, row.getResultCode()));
-            row.setStatusLabel(DictUtils.label(RECORD_STATUS_LABELS, row.getStatusCode()));
+            row.setResultLabel(DictUtils.label(PatrolDicts.RESULT_LABELS, row.getResultCode()));
+            row.setStatusLabel(DictUtils.label(PatrolDicts.RECORD_STATUS_LABELS, row.getStatusCode()));
         }
         result.setRecords(rows);
         return result;
@@ -244,7 +237,7 @@ public class PatrolPlanService {
             throw new IllegalArgumentException("请求体不能为空");
         }
         String scheduleId = requireId(req.getScheduleId(), "巡检计划不能为空");
-        if (mapper.countSchedule(scheduleId) == 0) {
+        if (recordMapper.countSchedule(scheduleId) == 0) {
             throw new IllegalArgumentException("巡检计划不存在：" + scheduleId);
         }
         String siteId = requireId(req.getSiteId(), "巡检站点不能为空");
@@ -252,7 +245,7 @@ public class PatrolPlanService {
             throw new IllegalArgumentException("所选站点不在该计划的巡查范围内");
         }
         String deviceId = requireId(req.getDeviceId(), "巡检设备不能为空");
-        if (mapper.countDeviceInSite(siteId, deviceId) == 0) {
+        if (lookupMapper.countDeviceInSite(siteId, deviceId) == 0) {
             throw new IllegalArgumentException("所选设备不属于该站点");
         }
         String result = RESULT_CODES.get(CheckUtils.trim(req.getResult()));
@@ -285,11 +278,11 @@ public class PatrolPlanService {
                 throw new IllegalArgumentException("巡检记录状态无效（应为 草稿/已提交）");
             }
         }
-        List<String> photoIds = normalizePhotoIds(req.getPhotoIds());
+        List<String> photoIds = PatrolPhotoSupport.normalizePhotoIds(req.getPhotoIds(), PHOTO_MAX_COUNT);
         if (RECORD_STATUS_SUBMITTED.equals(statusCode) && photoIds.isEmpty()) {
             throw new IllegalArgumentException("已提交的巡检记录需上传现场照片（至少 1 张）");
         }
-        precheckNewPhotos(photoIds, operatorId);
+        PatrolPhotoSupport.precheckNewPhotos(photoIds, operatorId, recordMapper::selectPhoto);
         LocalDateTime now = LocalDateTime.now();
         String id = recordMapper.selectBlankDraftId(scheduleId);
         boolean reused = false;
@@ -304,8 +297,8 @@ public class PatrolPlanService {
         }
         if (id == null) {
             id = shortIdGenerator.nextUUID(null);
-            mapper.insertRecord(id, corpCode, operatorId, now, time, scheduleId, siteId, deviceId,
-                    userId, result, content, statusCode);
+            recordMapper.insertRecord(id, corpCode, operatorId, now, time, scheduleId, siteId, deviceId,
+                    userId, result, content, statusCode, null);
         }
         for (int i = 0; i < photoIds.size(); i++) {
             if (recordMapper.bindPhoto(photoIds.get(i), id, i + 1, operatorId, now) == 0) {
@@ -315,37 +308,6 @@ public class PatrolPlanService {
         int cleaned = recordMapper.deleteBlankDrafts(scheduleId, id);
         log.info("[巡检计划] {}巡检记录：计划id={}, 记录id={}, 站点={}, 设备={}, 结果={}, 照片={} 张, 清理空草稿={} 条, 操作人={}",
                 reused ? "填充草稿生成" : "添加", scheduleId, id, siteId, deviceId, result, photoIds.size(), cleaned, operatorId);
-    }
-
-    /** 照片 id 归一：去空、去重（保持顺序），并校验数量上限。 */
-    private static List<String> normalizePhotoIds(List<String> raw) {
-        if (raw == null || raw.isEmpty()) {
-            return new ArrayList<>();
-        }
-        Set<String> unique = new LinkedHashSet<>();
-        for (String v : raw) {
-            String id = CheckUtils.trim(v);
-            if (id != null) {
-                unique.add(id);
-            }
-        }
-        if (unique.size() > PHOTO_MAX_COUNT) {
-            throw new IllegalArgumentException("现场照片最多上传 " + PHOTO_MAX_COUNT + " 张");
-        }
-        return new ArrayList<>(unique);
-    }
-
-    /** 新照片预校验：存在、属于当前上传人且未绑定过其他记录。 */
-    private void precheckNewPhotos(List<String> photoIds, String operatorId) {
-        for (String photoId : photoIds) {
-            PatrolRecordPhotoFileVO photo = recordMapper.selectPhoto(photoId);
-            if (photo == null) {
-                throw new IllegalArgumentException("现场照片不存在或已失效，请重新上传");
-            }
-            if (!operatorId.equals(photo.getCreatedBy()) || photo.getRecordId() != null) {
-                throw new IllegalArgumentException("现场照片不可用（非本人上传或已保存），请重新上传");
-            }
-        }
     }
 
     // ==================== 状态流转 / 删除 ====================
@@ -583,19 +545,8 @@ public class PatrolPlanService {
 
     /** 展示状态推导 + 中文翻译（列表行与详情共用）。 */
     private void applyDisplayStatus(PatrolScheduleVO vo, boolean started) {
-        vo.setStatusCode(deriveDisplayStatus(vo.getStatusCode(), started));
+        vo.setStatusCode(PatrolDicts.displayStatus(vo.getStatusCode(), started));
         vo.setStatusLabel(DictUtils.label(STATUS_LABELS, vo.getStatusCode()));
-    }
-
-    /**
-     * 展示状态推导：草稿/已完成/已取消为人工状态，原样返回；
-     * 已发布 #2# 按是否已开始巡检（该计划下存在巡检记录）——有记录=进行中 #2#，无记录=未开始 #5#。
-     */
-    private String deriveDisplayStatus(String storedStatus, boolean started) {
-        if ("#2#".equals(storedStatus)) {
-            return started ? "#2#" : "#5#";
-        }
-        return storedStatus;
     }
 
     /**

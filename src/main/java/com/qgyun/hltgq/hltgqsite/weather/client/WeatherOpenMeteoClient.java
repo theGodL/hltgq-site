@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.weather.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -92,7 +93,7 @@ public class WeatherOpenMeteoClient {
         } catch (HttpClientErrorException | HttpServerErrorException e) {
             throw new WeatherCallException("Open-Meteo HTTP 错误: " + e.getStatusCode().value());
         } catch (ResourceAccessException e) {
-            throw new WeatherCallException("Open-Meteo 不可达或超时: " + rootMessage(e));
+            throw new WeatherCallException("Open-Meteo 不可达或超时: " + ExceptionUtils.rootMessage(e));
         } catch (Exception e) {
             throw new WeatherCallException("解析 Open-Meteo 响应失败: " + e.getMessage());
         }
@@ -107,13 +108,5 @@ public class WeatherOpenMeteoClient {
             return body;
         }
         return body.substring(0, RESPONSE_LOG_LIMIT) + "...(截断" + body.length() + "字符)";
-    }
-
-    private String rootMessage(Throwable e) {
-        Throwable root = e;
-        while (root.getCause() != null) {
-            root = root.getCause();
-        }
-        return root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
     }
 }

@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.weather.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -112,17 +113,9 @@ public class RadarClient {
         } catch (HttpClientErrorException | HttpServerErrorException e) {
             throw new WeatherCallException("雷达 HTTP 错误: " + e.getStatusCode().value());
         } catch (ResourceAccessException e) {
-            throw new WeatherCallException("雷达不可达或超时: " + rootMessage(e));
+            throw new WeatherCallException("雷达不可达或超时: " + ExceptionUtils.rootMessage(e));
         } catch (Exception e) {
             throw new WeatherCallException("雷达请求失败: " + e.getMessage());
         }
-    }
-
-    private String rootMessage(Throwable e) {
-        Throwable root = e;
-        while (root.getCause() != null) {
-            root = root.getCause();
-        }
-        return root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
     }
 }

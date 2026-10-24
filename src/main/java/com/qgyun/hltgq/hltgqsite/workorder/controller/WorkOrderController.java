@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.workorder.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
 import com.qgyun.hltgq.hltgqsite.workorder.service.WorkOrderService;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAssignRequest;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderCreateVO;
@@ -104,54 +105,42 @@ public class WorkOrderController {
     @PostMapping("/update")
     public Map<String, Object> update(@RequestBody WorkOrderSaveRequest request) {
         workOrderService.update(request);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 删除工单（仅待指派）：关联问题回退为待处理。 */
     @PostMapping("/delete")
     public Map<String, Object> delete(@RequestBody IdRequest request) {
         workOrderService.remove(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 指派工单（仅待指派）：处理人员必填，负责部门/要求完成时间可选。 */
     @PostMapping("/assign")
     public Map<String, Object> assign(@RequestBody WorkOrderAssignRequest request) {
         workOrderService.assign(request);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 取消工单（仅待指派）：关联问题回退为待处理。 */
     @PostMapping("/cancel")
     public Map<String, Object> cancel(@RequestBody IdRequest request) {
         workOrderService.cancel(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 填写处理结果（仅处理中）：写处理结果与处理时间，可重复保存。 */
     @PostMapping("/result")
     public Map<String, Object> result(@RequestBody WorkOrderResultRequest request) {
         workOrderService.saveResult(request);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 提交验收（仅处理中且已填写处理结果）：状态置为已关闭。 */
     @PostMapping("/submit-accept")
     public Map<String, Object> submitAccept(@RequestBody IdRequest request) {
         workOrderService.submitAccept(request == null ? null : request.getId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /** 单条操作请求体（{ "id": "..." }）。 */

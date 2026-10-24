@@ -8,6 +8,7 @@ import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolStationVO;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
+import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolDicts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -94,7 +95,7 @@ public class H5PatrolScheduleService {
                 pageSize, (current - 1) * pageSize);
         for (H5PatrolScheduleVO row : rows) {
             row.setPlanTypeLabel(DictUtils.label(PLAN_TYPE_LABELS, row.getPlanType()));
-            row.setStatusCode(deriveDisplayStatus(row.getStatusCode(), Boolean.TRUE.equals(row.getStarted())));
+            row.setStatusCode(PatrolDicts.displayStatus(row.getStatusCode(), Boolean.TRUE.equals(row.getStarted())));
             row.setStatusLabel(DictUtils.label(STATUS_LABELS, row.getStatusCode()));
         }
         attachStations(rows);
@@ -181,18 +182,6 @@ public class H5PatrolScheduleService {
             throw new IllegalArgumentException("状态筛选仅支持 未开始/进行中/已完成");
         }
         return code;
-    }
-
-    /**
-     * 展示态推导（与管理端 PatrolPlanService.deriveDisplayStatus 同口径）：
-     * 已完成 #3# 原样返回；已发布 #2# 按该计划是否已开始巡检（存在巡检记录）——
-     * 有记录=#2# 进行中、无记录=#5# 未开始。
-     */
-    private String deriveDisplayStatus(String storedStatus, boolean started) {
-        if ("#2#".equals(storedStatus)) {
-            return started ? "#2#" : "#5#";
-        }
-        return storedStatus;
     }
 
     /**

@@ -8,11 +8,11 @@ import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeDownloadVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeSaveVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeUpdateVO;
 import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.MediaTypeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -160,7 +160,7 @@ public class InventoryStocktakeController {
         StocktakeDownloadVO file = stocktakeService.downloadAttachment(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, DownloadHeaderUtils.attachment(file.getFileName()))
-                .contentType(mediaTypeOf(file.getFileExt()))
+                .contentType(MediaTypeUtils.of(file.getFileExt()))
                 .body(file.getContent());
     }
 
@@ -173,29 +173,5 @@ public class InventoryStocktakeController {
         Map<String, Object> result = new HashMap<>();
         result.put("ok", true);
         return result;
-    }
-
-    /** 下载 Content-Type 按扩展名映射（预览图片/PDF 需正确类型，其余按二进制流）。 */
-    private static MediaType mediaTypeOf(String ext) {
-        if (ext == null) {
-            return MediaType.APPLICATION_OCTET_STREAM;
-        }
-        switch (ext.toLowerCase()) {
-            case "jpg":
-            case "jpeg":
-                return MediaType.IMAGE_JPEG;
-            case "png":
-                return MediaType.IMAGE_PNG;
-            case "gif":
-                return MediaType.IMAGE_GIF;
-            case "bmp":
-                return MediaType.parseMediaType("image/bmp");
-            case "webp":
-                return MediaType.parseMediaType("image/webp");
-            case "pdf":
-                return MediaType.APPLICATION_PDF;
-            default:
-                return MediaType.APPLICATION_OCTET_STREAM;
-        }
     }
 }

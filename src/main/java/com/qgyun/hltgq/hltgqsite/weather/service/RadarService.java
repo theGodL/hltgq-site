@@ -353,13 +353,9 @@ public class RadarService {
         return framesStaleMaxHours * 3600L;
     }
 
-    /** 是否已超旧值上限（口径与既有接口一致：以拉取时刻为准，缺字段时退化为过期时长判定） */
+    /** 是否已超旧值上限（口径与既有接口一致：以拉取时刻为准，缺字段时退化为过期时长判定；委托 StaleCacheSupport） */
     private boolean beyondStaleLimit(StaleCacheSupport.Envelope<?> envelope, long now) {
-        long staleMaxMs = staleMaxSeconds() * 1000L;
-        if (envelope.getPulledAtMs() > 0) {
-            return now - envelope.getPulledAtMs() > staleMaxMs;
-        }
-        return now - envelope.getExpireAt() > staleMaxMs;
+        return StaleCacheSupport.beyondStaleLimit(envelope, now, staleMaxSeconds() * 1000L);
     }
 
     // ==================== 取值工具 ====================

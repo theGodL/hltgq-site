@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * 灌溉用水接口（/irrigation-water）。
- * <p>页面：static/irrigation-water.html（需水方案多选 → 四县需水/供水/保证率列表）。
+ * <p>原页面 static/irrigation-water.html 已下线，接口保留供大屏调用（需水方案多选 → 四县需水/供水/保证率列表）。
  * <p>取数口径与配置见 {@link com.qgyun.hltgq.hltgqsite.irrigation.config.IrrigationStationConfig}。
  */
 @RestController

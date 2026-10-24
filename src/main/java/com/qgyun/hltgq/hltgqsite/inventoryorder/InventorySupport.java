@@ -1,12 +1,11 @@
 package com.qgyun.hltgq.hltgqsite.inventoryorder;
 
-import com.qgyun.hltgq.hltgqsite.auth.UserContext;
-import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.mapper.InventoryLedgerMapper;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.MaterialVO;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.WarehouseVO;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,12 +18,12 @@ import java.util.Map;
  * 库存业务（出入库/盘点）共用支撑（复用的单一实现点，供 OrderService / LedgerService /
  * OrderNoService / StocktakeService 共享）。
  * <ul>
- *   <li>文本归一：{@link #trim(String)} / {@link #requireText(String, String)}；</li>
+ *   <li>文本归一：{@link #trim(String)} / {@link #requireText(String, String)}（委托 CheckUtils）；</li>
  *   <li>分页参数与结果：{@link #clampPage(int)} / {@link #clampSize(int)} /
- *       {@link #pageResult(long, int, int, List)}（与全站口径一致：total/page/size/pages/records）；</li>
- *   <li>审计操作人：{@link #currentOperatorId(String)}（会话缺失时用配置兜底，审计列 NOT NULL）；</li>
- *   <li>业务校验：{@link #requireDate(String, String)} / {@link #normalizeDay(String, String)} /
- *       {@link #normalizeRemark(String, int)} / {@link #safeItems(List, String)} /
+ *       {@link #pageResult(long, int, int, List)}（委托 ApiResultUtils，全站口径 total/page/size/pages/records）；</li>
+ *   <li>审计操作人：{@link #currentOperatorId(String)}（委托 OperatorUtils，会话缺失时用配置兜底，审计列 NOT NULL）；</li>
+ *   <li>业务校验：{@link #requireDate(String, String)} / {@link #normalizeDay(String, String)}
+ *       （委托 CheckUtils） / {@link #normalizeRemark(String, int)} / {@link #safeItems(List, String)} /
  *       {@link #requireEnabledWarehouse(InventoryLedgerMapper, String)}；</li>
  *   <li>台账建账要素：{@link #buildNewLedgerRow} / {@link #parseSafetyStock(String)} /
  *       {@link #nullToEmpty(String)}。</li>
@@ -32,88 +31,50 @@ import java.util.Map;
  */
 public final class InventorySupport {
 
-    private static final Logger log = LoggerFactory.getLogger(InventorySupport.class);
-
     /** 明细行数防御上限（保存事务逐行写台账，出入库与盘点共用口径） */
     public static final int MAX_ITEMS = 500;
 
     private InventorySupport() {
     }
 
-    /** 去首尾空白，空串按 null 处理 */
+    /** 去首尾空白，空串按 null 处理（委托 CheckUtils） */
     public static String trim(String value) {
-        if (value == null) {
-            return null;
-        }
-        String s = value.trim();
-        return s.isEmpty() ? null : s;
+        return CheckUtils.trim(value);
     }
 
-    /** 必填文本（trim 后为空报 400） */
+    /** 必填文本（trim 后为空报 400；委托 CheckUtils） */
     public static String requireText(String value, String message) {
-        String s = trim(value);
-        if (s == null) {
-            throw new IllegalArgumentException(message);
-        }
-        return s;
+        return CheckUtils.requireText(value, message);
     }
 
-    /** 页码收敛（1 ~ 100000） */
+    /** 页码收敛（1 ~ 100000；委托 ApiResultUtils） */
     public static int clampPage(int page) {
-        return Math.min(100_000, Math.max(1, page));
+        return ApiResultUtils.clampPage(page);
     }
 
-    /** 页大小收敛（1 ~ 100） */
+    /** 页大小收敛（1 ~ 100；委托 ApiResultUtils） */
     public static int clampSize(int size) {
-        return Math.min(100, Math.max(1, size));
+        return ApiResultUtils.clampSize(size);
     }
 
-    /** 分页结果（与全站口径一致：total/page/size/pages/records） */
+    /** 分页结果（全站口径 total/page/size/pages/records；委托 ApiResultUtils） */
     public static Map<String, Object> pageResult(long total, int page, int size, List<?> records) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("total", total);
-        out.put("page", page);
-        out.put("size", size);
-        out.put("pages", size <= 0 ? 0 : (total + size - 1) / size);
-        out.put("records", records);
-        return out;
+        return ApiResultUtils.pageResult(total, page, size, records);
     }
 
-    /** 当前操作人（会话缺失时用配置兜底；审计列 NOT NULL） */
+    /** 当前操作人（会话缺失时用配置兜底；审计列 NOT NULL；委托 OperatorUtils） */
     public static String currentOperatorId(String fallbackOperator) {
-        UserContext user = UserContextHolder.currentUser();
-        if (user != null && user.getUserId() != null && !user.getUserId().trim().isEmpty()) {
-            return user.getUserId().trim();
-        }
-        log.warn("[出入库] 当前请求无用户上下文，审计字段使用兜底值：{}", fallbackOperator);
-        return fallbackOperator;
+        return OperatorUtils.currentOperatorId(fallbackOperator);
     }
 
-    /** 日期必填校验（yyyy-MM-dd；label 如「单据日期」「盘点日期」） */
+    /** 日期必填校验（yyyy-MM-dd；label 如「单据日期」「盘点日期」；委托 CheckUtils） */
     public static LocalDate requireDate(String value, String label) {
-        String s = trim(value);
-        if (s == null) {
-            throw new IllegalArgumentException("请选择" + label);
-        }
-        try {
-            return LocalDate.parse(s);
-        } catch (Exception e) {
-            throw new IllegalArgumentException(label + "格式应为 yyyy-MM-dd：" + s);
-        }
+        return CheckUtils.requireDate(value, label);
     }
 
-    /** 查询日期参数校验（可空；yyyy-MM-dd） */
+    /** 查询日期参数校验（可空；yyyy-MM-dd；委托 CheckUtils） */
     public static String normalizeDay(String value, String label) {
-        String s = trim(value);
-        if (s == null) {
-            return null;
-        }
-        try {
-            LocalDate.parse(s);
-        } catch (Exception e) {
-            throw new IllegalArgumentException(label + "格式应为 yyyy-MM-dd：" + s);
-        }
-        return s;
+        return CheckUtils.normalizeDay(value, label);
     }
 
     /** 备注归一（trim；超过 maxLength 字报 400） */

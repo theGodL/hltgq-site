@@ -16,7 +16,7 @@ import java.util.Map;
 
 /**
  * 节水潜力测算接口（/water-saving-potential）。
- * <p>页面：static/water-saving-potential.html（基础数据 + 分行业测算 + 结果指标前端实时计算）。
+ * <p>原页面 static/water-saving-potential.html 已下线（基础数据 + 分行业测算 + 结果指标原由前端实时计算），接口保留。
  * <p>一个「年度 + 分析范围」一行记录：GET 读回显（无记录 record=null），POST 保存
  * （存在即整行覆盖、不存在即新增）。数值单位统一万m³。
  */

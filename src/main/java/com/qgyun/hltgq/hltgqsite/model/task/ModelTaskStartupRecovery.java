@@ -7,6 +7,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.LongPredictRecordMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.LossRecordMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.MoistureRecordMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.ShortForecastRecordMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -79,16 +80,8 @@ public class ModelTaskStartupRecovery implements ApplicationRunner {
             return cleaner.getAsInt();
         } catch (Exception e) {
             log.warn("启动清理跳过[{}]：{}（表 DDL 未执行或数据库异常，不影响其他模块）",
-                    module, rootMessage(e));
+                    module, ExceptionUtils.rootMessage(e));
             return 0;
         }
-    }
-
-    private String rootMessage(Throwable e) {
-        Throwable root = e;
-        while (root.getCause() != null) {
-            root = root.getCause();
-        }
-        return root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
     }
 }

@@ -10,6 +10,7 @@ import com.qgyun.hltgq.hltgqsite.duty.vo.ScheduleDetailVO;
 import com.qgyun.hltgq.hltgqsite.duty.vo.ScheduleListRowVO;
 import com.qgyun.hltgq.hltgqsite.duty.vo.ScheduleRowVO;
 import com.qgyun.hltgq.hltgqsite.duty.vo.ScheduleSaveRequest;
+import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -200,9 +201,7 @@ public class DutyScheduleService {
         }
         mapper.deleteMembers(scheduleId);
         mapper.deleteSchedule(scheduleId);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     /**

@@ -10,6 +10,7 @@ import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.entity.WaterThreshold;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterThresholdMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.service.ThresholdService;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
@@ -614,12 +615,8 @@ public class ThresholdServiceImpl implements ThresholdService {
         return Math.min(size, PAGE_SIZE_MAX);
     }
 
-    /** 去首尾空白，空串按 null 处理 */
+    /** 去首尾空白，空串按 null 处理（委托 CheckUtils） */
     private static String trim(String value) {
-        if (value == null) {
-            return null;
-        }
-        String s = value.trim();
-        return s.isEmpty() ? null : s;
+        return CheckUtils.trim(value);
     }
 }

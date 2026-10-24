@@ -14,6 +14,7 @@ import com.qgyun.hltgq.hltgqsite.duty.vo.HandoverTimelineRowVO;
 import com.qgyun.hltgq.hltgqsite.duty.vo.OngoingTimelineRowVO;
 import com.qgyun.hltgq.hltgqsite.duty.vo.PendingTimelineRowVO;
 import com.qgyun.hltgq.hltgqsite.duty.vo.ScheduleRowVO;
+import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -216,9 +217,7 @@ public class DutyAttendanceService {
         if (updated == 0) {
             throw new DutyConflictException("当前记录不在值班中，无法填写报告");
         }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        return out;
+        return ApiResultUtils.ok();
     }
 
     // ==================== #10 交班（核心事务） ====================

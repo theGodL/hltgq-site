@@ -32,21 +32,6 @@ public interface PatrolIssueMapper {
 
     // ==================== 前置校验 ====================
 
-    /** 站点是否存在。 */
-    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" " +
-            "WHERE id = #{id} AND corp_code = 'hltgq'")
-    long countSite(@Param("id") String id);
-
-    /** 设备是否存在且属于该站点。 */
-    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" " +
-            "WHERE id = #{deviceId} AND site = #{siteId}")
-    long countDeviceInSite(@Param("siteId") String siteId, @Param("deviceId") String deviceId);
-
-    /** 发现人是否存在。 */
-    @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_apaas_uc_user\" " +
-            "WHERE id = #{id} AND corp_code = 'hltgq'")
-    long countUser(@Param("id") String id);
-
     /** 问题编号是否已存在（生成时防重）。 */
     @Select("SELECT COUNT(*) FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" " +
             "WHERE code = #{code} AND corp_code = 'hltgq'")

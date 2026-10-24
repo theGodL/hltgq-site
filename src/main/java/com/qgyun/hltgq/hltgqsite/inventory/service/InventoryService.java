@@ -92,9 +92,9 @@ public class InventoryService {
                 detail.setName(JsonFieldUtils.textOf(node, "lmtibt"));
                 detail.setBrand(JsonFieldUtils.textOf(node, "ihcepa"));
                 detail.setUnit(JsonFieldUtils.textOf(node, "lwlpnf"));
-                detail.setInboundQty(decimalOf(node, "jynpfu"));
-                detail.setOutboundQty(decimalOf(node, "uxsxkn"));
-                detail.setOutboundTotalQty(decimalOf(node, "dsanix"));
+                detail.setInboundQty(JsonFieldUtils.decimalOf(node, "jynpfu"));
+                detail.setOutboundQty(JsonFieldUtils.decimalOf(node, "uxsxkn"));
+                detail.setOutboundTotalQty(JsonFieldUtils.decimalOf(node, "dsanix"));
                 detail.setQuantity(resolveQuantity(node, detail));
                 details.add(detail);
             }
@@ -110,7 +110,7 @@ public class InventoryService {
      * （《数据表结构汇总.md》定稿：tzqqhz = jynpfu − uxsxkn，uxsxkn 为隐藏字段默认 0，缺失按 0 计）。
      */
     private BigDecimal resolveQuantity(JsonNode node, InventoryVO.Detail detail) {
-        BigDecimal quantity = decimalOf(node, "tzqqhz");
+        BigDecimal quantity = JsonFieldUtils.decimalOf(node, "tzqqhz");
         if (quantity != null) {
             return quantity;
         }
@@ -119,10 +119,5 @@ public class InventoryService {
             return detail.getInboundQty().subtract(outbound);
         }
         return null;
-    }
-
-    /** JSON 节点数值（文本解析失败/空恒 null） */
-    private BigDecimal decimalOf(JsonNode node, String key) {
-        return ValueConvertUtils.decimalOf(JsonFieldUtils.textOf(node, key));
     }
 }

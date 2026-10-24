@@ -11,6 +11,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.LongPredictTendayMapper;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelClient;
 import com.qgyun.hltgq.hltgqsite.model.task.ModelTaskExecutor;
 import com.qgyun.hltgq.hltgqsite.model.util.BoolTextUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.TenDayDateUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.LongPredictRequest;
 import org.slf4j.Logger;
@@ -300,7 +301,8 @@ public class LongPredictService {
         log.error("中长期来水预测失败：recordId={}, error={}", recordId, errorMsg);
     }
 
+    /** 保留 2 位小数（委托 JsonFieldUtils） */
     private static double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return JsonFieldUtils.round2(value);
     }
 }

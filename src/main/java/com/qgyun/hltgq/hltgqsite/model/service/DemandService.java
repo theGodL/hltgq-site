@@ -11,6 +11,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.DemandBranchDetailMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.DemandRecordMapper;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelClient;
 import com.qgyun.hltgq.hltgqsite.model.task.ModelTaskExecutor;
+import com.qgyun.hltgq.hltgqsite.model.util.AuditUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.BoolTextUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.TenDayMapUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.DemandSubmitRequest;
@@ -249,12 +250,9 @@ public class DemandService {
         return peak;
     }
 
+    /** 审计五连写（委托 AuditUtils） */
     private void fillBase(BaseWaterEntity entity, LocalDateTime now) {
-        entity.setCorpCode(corpCode);
-        entity.setCreatedAt(now);
-        entity.setCreatedBy(createdBy);
-        entity.setUpdatedAt(now);
-        entity.setUpdatedBy(createdBy);
+        AuditUtils.fillCreate(entity, now, createdBy, corpCode);
     }
 
     private void markFailed(String recordId, Exception e) {

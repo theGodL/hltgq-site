@@ -4,7 +4,9 @@ import com.qgyun.hltgq.hltgqsite.auth.UserContext;
 import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
 import com.qgyun.hltgq.hltgqsite.entity.PatrolSchedule;
 import com.qgyun.hltgq.hltgqsite.model.util.ExcelParseUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.ExceptionUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolScheduleMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolImportResult;
 import com.qgyun.hltgq.hltgqsite.patrol.vo.PatrolImportRowResult;
@@ -179,7 +181,7 @@ public class PatrolScheduleImportService {
                 rowResult.setOk(false);
                 rowResult.setId(null);
                 rowResult.setCode(null);
-                rowResult.setMessage(rootMessage(e));
+                rowResult.setMessage(ExceptionUtils.rootMessage(e, 200));
                 result.setFailed(result.getFailed() + 1);
                 log.error("[巡查导入] 第 {} 行失败：{}", entry.getRowNum(), e.getMessage());
             }
@@ -346,7 +348,7 @@ public class PatrolScheduleImportService {
                 }
             });
         } catch (Exception e) {
-            throw new IllegalArgumentException("入库失败：" + rootMessage(e));
+            throw new IllegalArgumentException("入库失败：" + ExceptionUtils.rootMessage(e, 200));
         }
         usedCodes.add(code);
         rowResult.setCode(code);
@@ -396,32 +398,15 @@ public class PatrolScheduleImportService {
         }
     }
 
-    /** 多值拆分：按顿号/逗号/竖线/全角分号拆分，去首尾空白，剔除空项 */
+    /** 多值拆分：按顿号/逗号/竖线/全角分号拆分，去首尾空白，剔除空项（委托 ValueConvertUtils） */
     private List<String> splitMulti(String raw) {
-        List<String> items = new ArrayList<>();
-        for (String part : raw.split(MULTI_VALUE_SEPARATOR)) {
-            String item = part.trim();
-            if (!item.isEmpty()) {
-                items.add(item);
-            }
-        }
-        return items;
+        return ValueConvertUtils.split(raw, MULTI_VALUE_SEPARATOR);
     }
 
     /** 取单元格值（缺列/空值返回空串，统一去首尾空白） */
     private String value(Map<String, String> data, String column) {
         String v = data.get(column);
         return v == null ? "" : v.trim();
-    }
-
-    /** 取最深层原因消息（供逐行失败原因展示），截断 200 字 */
-    private String rootMessage(Throwable e) {
-        Throwable t = e;
-        while (t.getCause() != null && t.getCause() != t) {
-            t = t.getCause();
-        }
-        String msg = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
-        return msg.length() > 200 ? msg.substring(0, 200) : msg;
     }
 
     /** 当前登录人 userId（鉴权已由拦截器保证；异常场景容错为 null，审计字段留空） */

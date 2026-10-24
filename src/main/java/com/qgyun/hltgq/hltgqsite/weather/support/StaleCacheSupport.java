@@ -255,6 +255,17 @@ public class StaleCacheSupport {
         }
     }
 
+    /**
+     * 信封是否已超旧值上限（唯一实现点）：以拉取时刻为准；信封缺该字段（异常/历史数据）时
+     * 退化为「过期时长超过上限」判定，宁可少用旧值（雷达 / 台风共用此口径）。
+     */
+    public static boolean beyondStaleLimit(Envelope<?> envelope, long now, long staleMaxMs) {
+        if (envelope.getPulledAtMs() > 0) {
+            return now - envelope.getPulledAtMs() > staleMaxMs;
+        }
+        return now - envelope.getExpireAt() > staleMaxMs;
+    }
+
     public static long nowMs() {
         return System.currentTimeMillis();
     }

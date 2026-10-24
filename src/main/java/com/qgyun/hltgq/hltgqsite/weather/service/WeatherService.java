@@ -212,16 +212,9 @@ public class WeatherService {
         return hours * 3600L;
     }
 
-    /**
-     * 是否已超旧值上限：以拉取时刻为准；信封缺失该字段（异常/历史数据）时
-     * 退化为「过期时长超过上限」判定，宁可少用旧值。
-     */
+    /** 是否已超旧值上限（委托 StaleCacheSupport，与雷达 / 台风同一口径） */
     private boolean beyondStaleLimit(StaleCacheSupport.Envelope<?> envelope, long now, int staleMaxHours) {
-        long staleMaxMs = staleMaxSeconds(staleMaxHours) * 1000L;
-        if (envelope.getPulledAtMs() > 0) {
-            return now - envelope.getPulledAtMs() > staleMaxMs;
-        }
-        return now - envelope.getExpireAt() > staleMaxMs;
+        return StaleCacheSupport.beyondStaleLimit(envelope, now, staleMaxHours * 3600_000L);
     }
 
     // ==================== Open-Meteo 响应转换 ====================

@@ -28,9 +28,16 @@ public final class ExceptionUtils {
     /** 根因可读信息（沿 cause 链下钻到最后一层；HTTP/SDK 包装异常的真实原因在根因上） */
     public static String rootMessage(Throwable e) {
         Throwable root = e;
-        while (root.getCause() != null) {
+        // cause 自引用病态链防死循环
+        while (root.getCause() != null && root.getCause() != root) {
             root = root.getCause();
         }
         return message(root);
+    }
+
+    /** 根因可读信息并截断（导入类逐行回写 message 列用，如 maxLength=200） */
+    public static String rootMessage(Throwable e, int maxLength) {
+        String msg = rootMessage(e);
+        return msg.length() > maxLength ? msg.substring(0, maxLength) : msg;
     }
 }

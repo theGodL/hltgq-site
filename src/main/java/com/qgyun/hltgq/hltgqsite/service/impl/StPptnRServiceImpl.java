@@ -361,7 +361,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         // 3. 查询原始记录
         List<StPptnR> records = baseMapper.selectByStcdAndTimeRange(stcd, queryStart, endTime);
 
-        // 4. 按小时汇总增量（hydro-monitor 规则：第一条 inc=0，后续 inc=max(0, cur-prev)）
+        // 4. 按小时汇总增量（原 hydro-monitor 页规则：第一条 inc=0，后续 inc=max(0, cur-prev)）
         //    LinkedHashMap 保持时间顺序
         Map<String, BigDecimal> hourRainfall = new LinkedHashMap<>();
         if (!records.isEmpty()) {
@@ -430,7 +430,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 ? Collections.emptyList()
                 : baseMapper.selectByStcdsAndTimeRange(reservoirStcds, queryStart, queryEnd);
 
-        // 4. 按站点 + 水文日聚合增量（对齐 hydro-monitor.html buildPptnPivot 逻辑）
+        // 4. 按站点 + 水文日聚合增量（对齐原 hydro-monitor.html（已下线）buildPptnPivot 逻辑）
         //    Map<水文日标签, Map<stcd, 累加增量>>
         Map<String, Map<String, BigDecimal>> bucketMap = aggregateHydroDay(resolved, records);
 
@@ -833,7 +833,7 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
                 ? Collections.emptyList()
                 : baseMapper.selectByStcdsAndTimeRange(reservoirStcds, queryStart, queryEnd);
 
-        // 4. 按站点 + 时间间隔聚合增量（对齐 hydro-monitor.html buildPeriodPivot 逻辑）
+        // 4. 按站点 + 时间间隔聚合增量（对齐原 hydro-monitor.html（已下线）buildPeriodPivot 逻辑）
         //    Map<时段标签, Map<stcd, 累加增量>>
         Map<String, Map<String, BigDecimal>> bucketMap = new LinkedHashMap<>();
 

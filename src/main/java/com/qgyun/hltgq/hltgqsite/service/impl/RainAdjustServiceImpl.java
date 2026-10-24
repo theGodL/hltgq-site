@@ -8,6 +8,7 @@ import com.qgyun.hltgq.hltgqsite.auth.UserContext;
 import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
 import com.qgyun.hltgq.hltgqsite.entity.RainAdjust;
 import com.qgyun.hltgq.hltgqsite.mapper.RainAdjustMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.service.RainAdjustService;
 import com.qgyun.hltgq.hltgqsite.vo.RainAdjustSaveVO;
 import com.qgyun.hltgq.hltgqsite.vo.RainAdjustVO;
@@ -493,12 +494,8 @@ public class RainAdjustServiceImpl implements RainAdjustService {
         return (int) Math.min(size, PAGE_SIZE_MAX);
     }
 
-    /** 去首尾空白，空串按 null 处理 */
+    /** 去首尾空白，空串按 null 处理（委托 CheckUtils） */
     private static String trim(String value) {
-        if (value == null) {
-            return null;
-        }
-        String s = value.trim();
-        return s.isEmpty() ? null : s;
+        return CheckUtils.trim(value);
     }
 }

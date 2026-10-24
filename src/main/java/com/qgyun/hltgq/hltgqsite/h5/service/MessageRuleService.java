@@ -11,6 +11,8 @@ import com.qgyun.hltgq.hltgqsite.h5.vo.MessageRuleMetaVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessageRuleSaveVO;
 import com.qgyun.hltgq.hltgqsite.h5.vo.MessageRuleVO;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.PickerOptionVO;
+import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -346,8 +348,8 @@ public class MessageRuleService {
         Map<String, Set<String>> targetsByType = new HashMap<>();
         Set<String> siteIds = new LinkedHashSet<>();
         for (MessageRuleVO row : rows) {
-            row.setMessageTypeLabel(label(row.getMessageType(), MESSAGE_TYPE_LABELS));
-            row.setTargetTypeLabel(label(row.getTargetType(), TARGET_TYPE_LABELS));
+            row.setMessageTypeLabel(DictUtils.label(MESSAGE_TYPE_LABELS, row.getMessageType()));
+            row.setTargetTypeLabel(DictUtils.label(TARGET_TYPE_LABELS, row.getTargetType()));
             Set<String> bucket = targetsByType.computeIfAbsent(row.getTargetType(), k -> new LinkedHashSet<>());
             bucket.addAll(splitItems(row.getTargetId()));
             siteIds.addAll(splitItems(row.getSiteId()));
@@ -387,7 +389,7 @@ public class MessageRuleService {
 
     /** 维度名称（错误文案用） */
     private static String targetTypeName(String targetType) {
-        String name = label(targetType, TARGET_TYPE_LABELS);
+        String name = DictUtils.label(TARGET_TYPE_LABELS, targetType);
         return name != null ? name : targetType;
     }
 
@@ -462,18 +464,6 @@ public class MessageRuleService {
         return String.join("、", names);
     }
 
-    private static String label(String code, String[][] mapping) {
-        if (code == null) {
-            return null;
-        }
-        for (String[] pair : mapping) {
-            if (pair[0].equals(code)) {
-                return pair[1];
-            }
-        }
-        return code;
-    }
-
     private static int normalizeSize(int size) {
         if (size < 1) {
             return PAGE_SIZE_DEFAULT;
@@ -481,12 +471,8 @@ public class MessageRuleService {
         return Math.min(size, PAGE_SIZE_MAX);
     }
 
-    /** 去首尾空白，空串按 null 处理 */
+    /** 去首尾空白，空串按 null 处理（委托 CheckUtils） */
     private static String trim(String value) {
-        if (value == null) {
-            return null;
-        }
-        String s = value.trim();
-        return s.isEmpty() ? null : s;
+        return CheckUtils.trim(value);
     }
 }

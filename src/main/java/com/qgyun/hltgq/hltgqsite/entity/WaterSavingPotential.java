@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 /**
  * 节水潜力测算记录实体（t_auto_hltgq_water_saving_potential，业主 2026-09-12 平台建表）。
- * <p>一行 = 一个「年度 + 分析范围」的测算；页面 static/water-saving-potential.html。
+ * <p>一行 = 一个「年度 + 分析范围」的测算（原页面 static/water-saving-potential.html 已下线，接口保留）。
  * <p>数值口径：基础数据三件套与分行业（农业/工业/生活）基准/节水后需水量，单位均为万m³，
  * 由业主在页面人工录入；结果指标（节水总量/率/供需缺口/占比）由前端实时计算、不入库。
  * <p>时间口径：year 列存该年 1 月 1 日 00:00:00（年度锚点），查询按年份区间匹配，
