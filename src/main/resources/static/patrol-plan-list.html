@@ -214,6 +214,8 @@ td.empty:hover{background:transparent}
 .photo-add:disabled{opacity:.55;cursor:not-allowed}
 .photo-add .plus{font-size:22px;line-height:22px;font-weight:300}
 .f-hint{margin-top:4px;font-size:12px;color:var(--el-text-color-secondary)}
+/* 只读展示（设备型号：选设备后自动带出） */
+.readonly-box{min-height:var(--el-control-height);border:1px solid var(--el-border-color-light);border-radius:var(--el-radius-control);background:var(--el-fill-color-light);padding:0 12px;display:flex;align-items:center;font-size:14px;color:var(--el-text-color-regular);line-height:20px}
 .confirm-text{font-size:14px;line-height:22px;color:var(--el-text-color-primary);white-space:pre-wrap}
 /* 巡检记录弹窗内表格 */
 .rec-wrap{border:1px solid var(--el-table-border);border-radius:var(--el-radius)}
@@ -418,6 +420,8 @@ td.empty:hover{background:transparent}
           <label class="f-label"><i class="req">*</i>巡检设备</label>
           <div class="sel" id="r-device"></div>
           <div class="f-err" id="r-device-err"></div>
+          <label class="f-label" style="margin-top:16px">设备型号</label>
+          <div class="readonly-box" id="r-device-model">选择设备后自动带出</div>
         </div>
         <div class="f-item">
           <label class="f-label"><i class="req">*</i>巡检结果</label>
@@ -638,6 +642,10 @@ function createSelect(el) {
     getLabel() {
       const hit = st.options.filter(o => o.value === st.value)[0];
       return hit ? hit.label : '';
+    },
+    getModel() {
+      const hit = st.options.filter(o => o.value === st.value)[0];
+      return hit ? (hit.model || '') : '';
     },
     setOptions(options) { st.options = options || []; sync(); render(); return this; },
     setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
@@ -1023,6 +1031,7 @@ async function openAddRecord(id, title) {
   clearErrs(['r-time-err', 'r-site-err', 'r-device-err', 'r-result-err', 'r-content-err', 'r-photo-err']);
   UI.siteSel.setOptions([]).setValue('').setPlaceholder('加载中...').setLoading(true).setError(false);
   UI.deviceSel.setOptions([]).setValue('').setPlaceholder('请先选择站点').setDisabled(true).setError(false);
+  syncDeviceModel();
   UI.resultSel.setValue('#2#').setError(false);
   UI.userSel.setValue(S.currentUser ? S.currentUser.userId : '', S.currentUser ? S.currentUser.name : '');
   UI.statusSel.setValue('#2#');
@@ -1043,11 +1052,23 @@ async function openAddRecord(id, title) {
   }
 }
 
+/**
+ * 设备型号只读展示：随所选巡检设备带出（设备表 evkmpl）。
+ * 未选设备时提示待选；设备已选但未维护型号时提示未维护。
+ */
+function syncDeviceModel() {
+  const box = $('r-device-model');
+  if (!box) return;
+  const model = UI.deviceSel.getModel();
+  box.textContent = model || (UI.deviceSel.getValue() ? '该设备未维护型号' : '选择设备后自动带出');
+}
+
 async function loadDevices(siteId) {
   const seq = ++S.add.deviceSeq;
   S.add.devices = [];
   UI.deviceSel.setValue('').setError(false);
   markErr('r-device-err', false);
+  syncDeviceModel();
   if (!siteId) {
     UI.deviceSel.setOptions([]).setDisabled(true).setPlaceholder('请先选择站点');
     return;
@@ -1057,12 +1078,14 @@ async function loadDevices(siteId) {
     const list = await api('/patrol-schedule/devices?siteId=' + encodeURIComponent(siteId));
     if (seq !== S.add.deviceSeq) return;
     S.add.devices = Array.isArray(list) ? list : [];
-    UI.deviceSel.setOptions(S.add.devices.map(d => ({ value: d.value, label: d.label || d.value, sub: d.sub || '' })));
+    UI.deviceSel.setOptions(S.add.devices.map(d => ({ value: d.value, label: d.label || d.value, sub: d.sub || '', model: d.model || '' })));
     UI.deviceSel.setPlaceholder(S.add.devices.length ? '请选择设备' : '该站点暂无设备');
+    syncDeviceModel();
   } catch (e) {
     if (seq !== S.add.deviceSeq) return;
     S.add.devices = [];
     UI.deviceSel.setOptions([]).setPlaceholder('设备加载失败');
+    syncDeviceModel();
     showToast(e.message || '设备加载失败', true);
   } finally {
     if (seq === S.add.deviceSeq) UI.deviceSel.setLoading(false);
@@ -1466,7 +1489,7 @@ function bindEvents() {
 
   // 添加记录：站点联动设备、字数统计、错误清除
   UI.siteSel.onChange(v => loadDevices(v));
-  UI.deviceSel.onChange(() => { markErr('r-device-err', false); UI.deviceSel.setError(false); });
+  UI.deviceSel.onChange(() => { markErr('r-device-err', false); UI.deviceSel.setError(false); syncDeviceModel(); });
   UI.resultSel.onChange(() => { markErr('r-result-err', false); UI.resultSel.setError(false); });
   $('r-time').addEventListener('input', () => markErr('r-time-err', false));
   $('r-content').addEventListener('input', () => {

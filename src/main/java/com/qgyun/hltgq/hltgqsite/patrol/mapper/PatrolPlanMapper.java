@@ -279,8 +279,8 @@ public interface PatrolPlanMapper {
             "</script>")
     List<PatrolOptionVO> selectSiteOptions(@Param("keyword") String keyword);
 
-    /** 设备候选（按站点；名称/编号，按名称升序）。 */
-    @Select("SELECT d.id AS value, d.name AS label, d.code AS sub " +
+    /** 设备候选（按站点；名称/编号/型号，按名称升序）。 */
+    @Select("SELECT d.id AS value, d.name AS label, d.code AS sub, d.evkmpl AS model " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
             "WHERE d.site = #{siteId} " +
             "ORDER BY d.name ASC, d.code ASC LIMIT 500")

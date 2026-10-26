@@ -551,6 +551,7 @@ a.photo-thumb:hover{border-color:#1677ff}
                 <th style="width:56px">选择</th>
                 <th>设备名称</th>
                 <th>设备编号</th>
+                <th>设备型号</th>
                 <th>设备类型</th>
                 <th>当前绑定站点</th>
               </tr>
@@ -1029,7 +1030,7 @@ a.photo-thumb:hover{border-color:#1677ff}
     bindSelected = null;
     bindRows = {};
     document.getElementById('bind-keyword').value = '';
-    document.getElementById('bind-tbody').innerHTML = emptyRow(5, '加载中...');
+    document.getElementById('bind-tbody').innerHTML = emptyRow(6, '加载中...');
     var tip = document.getElementById('bind-tip');
     tip.className = 'bind-tip';
     tip.textContent = '搜索并选择要绑定到本站的设备';
@@ -1050,7 +1051,7 @@ a.photo-thumb:hover{border-color:#1677ff}
     var tip = document.getElementById('bind-tip');
     tip.className = 'bind-tip';
     tip.textContent = '加载中...';
-    document.getElementById('bind-tbody').innerHTML = emptyRow(5, '加载中...');
+    document.getElementById('bind-tbody').innerHTML = emptyRow(6, '加载中...');
     try {
       var data = await fetchApi('/station-detail/device/bindable' + qs({
         stationId: stationId,
@@ -1065,7 +1066,7 @@ a.photo-thumb:hover{border-color:#1677ff}
       if (seq !== bindSeq) return;
       var fail = (e && e.message) || '加载失败';
       tip.textContent = fail;
-      document.getElementById('bind-tbody').innerHTML = emptyRow(5, fail);
+      document.getElementById('bind-tbody').innerHTML = emptyRow(6, fail);
     }
   }
 
@@ -1087,10 +1088,11 @@ a.photo-thumb:hover{border-color:#1677ff}
         '<td><input type="radio" name="bind-device"></td>' +
         '<td class="name-strong">' + esc(dash(r.name)) + '</td>' +
         '<td class="muted">' + esc(dash(r.code)) + '</td>' +
+        '<td class="muted">' + esc(dash(r.model)) + '</td>' +
         '<td>' + esc(dash(r.type)) + '</td>' +
         '<td>' + esc(dash(r.siteName)) + '</td>' +
         '</tr>';
-    }).join('') || emptyRow(5);
+    }).join('') || emptyRow(6);
   }
 
   function selectBindCandidate(tr) {

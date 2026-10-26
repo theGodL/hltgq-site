@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.model.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qgyun.hltgq.hltgqsite.entity.BaseWaterEntity;
@@ -15,6 +16,9 @@ import com.qgyun.hltgq.hltgqsite.model.util.AuditUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.BoolTextUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.TenDayMapUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.DemandSubmitRequest;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,10 +27,17 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.doubleOf;
 import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.round2;
@@ -35,7 +46,8 @@ import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.textOf;
 /**
  * 需水预测服务。
  * <p>写参数(calculating) → 调 /demand(guarantee_rate/canal_eff/target_total，表格直传 demand_table) →
- * 支渠明细纵向展开 18 旬 + 片区/分灌区汇总(summary_type) →
+ * 支渠明细纵向展开 18 旬 + 片区/分灌区汇总(summary_type) + 行政区透视（模型响应无行政区汇总表，
+ * 后端按支渠明细 county×旬 聚合）→
  * irrigated_area 按支渠去重求和、peak_tenday 分组 argmax 回写 → completed。
  */
 @Service
@@ -150,6 +162,25 @@ public class DemandService {
         try {
             JsonNode response = modelClient.postJson(ModelClient.PATH_DEMAND, modelBody);
 
+            // 模型响应支渠明细无「行政区」列（手册 4.4：仅 片区/分灌区/支渠/灌区面积/种植作物种类 及逐旬需水），
+            // 而行政区是入参 demand_table 必填列 → 按支渠名从入参匹配，作为 county 主数据源；
+            // 响应若含「行政区」键则优先直取（兼容模型后续升级）
+            Map<String, String> countyByBranch = new HashMap<>();
+            Object demandTable = modelBody.get("demand_table");
+            if (demandTable instanceof List) {
+                for (Object rowObj : (List<?>) demandTable) {
+                    if (!(rowObj instanceof Map)) {
+                        continue;
+                    }
+                    Map<?, ?> row = (Map<?, ?>) rowObj;
+                    Object branch = row.get("支渠");
+                    Object countyValue = row.get("行政区");
+                    if (branch != null && countyValue != null) {
+                        countyByBranch.put(String.valueOf(branch), String.valueOf(countyValue));
+                    }
+                }
+            }
+
             // 1. 回写 summary 接口直出字段
             JsonNode summary = response.path("summary");
             DemandRecord record = new DemandRecord();
@@ -163,13 +194,26 @@ public class DemandService {
                 protected void doInTransactionWithoutResult(TransactionStatus status) {
                     LocalDateTime now = LocalDateTime.now();
 
-                    // 2.1 支渠明细纵向展开 18 旬（每支渠 1 条 → 18 条）
+                    // 2.1 支渠明细纵向展开 18 旬（每支渠 1 条 → 18 条），同时聚行政区×旬透视
                     Map<String, Double> tendayTotal = new HashMap<>();
                     Map<String, Double> branchArea = new HashMap<>();
+                    Map<String, Map<String, Double>> countyTenday = new HashMap<>();
+                    boolean countyKeyChecked = false;
                     for (JsonNode item : response.path("支渠明细")) {
+                        if (!countyKeyChecked) {
+                            countyKeyChecked = true;
+                            if (!item.has("行政区")) {
+                                log.info("需水支渠明细无「行政区」列（手册 4.4 契约），county 改按入参 tableRows 匹配，命中{}条",
+                                        countyByBranch.size());
+                            }
+                        }
                         String branchName = textOf(item, "支渠");
                         String district = textOf(item, "片区");
                         String subDistrict = textOf(item, "分灌区");
+                        String county = textOf(item, "行政区");
+                        if (county == null) {
+                            county = countyByBranch.get(branchName);
+                        }
                         String cropTypes = textOf(item, "种植作物种类");
                         Double area = doubleOf(item, "灌区面积");
                         if (branchName != null && area != null) {
@@ -180,6 +224,7 @@ public class DemandService {
                             detail.setRecordId(recordId);
                             detail.setDistrict(district);
                             detail.setSubDistrict(subDistrict);
+                            detail.setCounty(county);
                             detail.setBranchName(branchName);
                             detail.setArea(area);
                             detail.setCropTypes(cropTypes);
@@ -191,13 +236,18 @@ public class DemandService {
                             branchDetailMapper.insert(detail);
                             if (detail.getDemandVolume() != null) {
                                 tendayTotal.merge(label, detail.getDemandVolume(), Double::sum);
+                                if (county != null) {
+                                    countyTenday.computeIfAbsent(county, k -> new HashMap<>())
+                                            .merge(label, detail.getDemandVolume(), Double::sum);
+                                }
                             }
                         }
                     }
 
-                    // 2.2 片区汇总 / 分灌区汇总 → area_summary（summary_type 区分）
+                    // 2.2 片区汇总 / 分灌区汇总 / 行政区透视 → area_summary（summary_type 区分）
                     writeAreaSummary(recordId, response.path("片区汇总"), "片区", "片区", now);
                     writeAreaSummary(recordId, response.path("分灌区汇总"), "分灌区", "分灌区", now);
+                    writeCountySummary(recordId, countyTenday, now);
 
                     // 2.3 回写预计算字段：irrigated_area（支渠去重求和）、peak_tenday（argmax）
                     double irrigatedArea = 0;
@@ -237,6 +287,25 @@ public class DemandService {
         }
     }
 
+    /** 行政区汇总：模型响应无独立行政区汇总表，按支渠明细 county×旬 透视聚合写入 area_summary */
+    private void writeCountySummary(String recordId, Map<String, Map<String, Double>> countyTenday,
+                                    LocalDateTime now) {
+        for (Map.Entry<String, Map<String, Double>> countyEntry : countyTenday.entrySet()) {
+            for (String label : TenDayMapUtils.TEN_DAY_MAP.keySet()) {
+                DemandAreaSummary summary = new DemandAreaSummary();
+                summary.setRecordId(recordId);
+                summary.setSummaryType("行政区");
+                summary.setAreaName(countyEntry.getKey());
+                summary.setTendayLabel(label);
+                summary.setDemandVolume(countyEntry.getValue().get(label));
+                Integer order = TenDayMapUtils.sortOrderOf(label);
+                summary.setSortOrder(order == null ? null : order.doubleValue());
+                fillBase(summary, now);
+                areaSummaryMapper.insert(summary);
+            }
+        }
+    }
+
     /** 按旬分组求和的 argmax：返回需水量合计最大的旬标签，无数据返回 null */
     private String argmax(Map<String, Double> tendayTotal) {
         String peak = null;
@@ -248,6 +317,141 @@ public class DemandService {
             }
         }
         return peak;
+    }
+
+    /**
+     * 生成需水预测逐旬明细 Excel（模型无 Excel 输出，后端按落库明细生成）：
+     * Sheet「支渠明细」18 旬宽表（每支渠一行）+ Sheet「分区汇总」（片区/分灌区/行政区三类）。
+     * 明细字段保留原始精度，行合计保留 2 位；无明细（failed 方案）仅输出表头。
+     */
+    public byte[] exportExcel(String recordId) {
+        QueryWrapper<DemandBranchDetail> branchWrapper = new QueryWrapper<>();
+        branchWrapper.eq("\"record_id\"", recordId).orderByAsc("\"sort_order\"").orderByAsc("\"branch_name\"");
+        List<DemandBranchDetail> branchDetails = branchDetailMapper.selectList(branchWrapper);
+        QueryWrapper<DemandAreaSummary> summaryWrapper = new QueryWrapper<>();
+        summaryWrapper.eq("\"record_id\"", recordId).orderByAsc("\"sort_order\"").orderByAsc("\"area_name\"");
+        List<DemandAreaSummary> areaSummaries = areaSummaryMapper.selectList(summaryWrapper);
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            List<String> labels = new ArrayList<>(TenDayMapUtils.TEN_DAY_MAP.keySet());
+            writeBranchSheet(workbook, branchDetails, labels);
+            writeSummarySheet(workbook, areaSummaries, labels);
+            workbook.write(out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new IllegalStateException("需水明细 Excel 生成失败: " + e.getMessage());
+        }
+    }
+
+    /** 支渠明细宽表：片区/分灌区/支渠/行政区/灌区面积(万亩)/种植作物种类 + 18 旬 + 合计(万方) */
+    private void writeBranchSheet(XSSFWorkbook workbook, List<DemandBranchDetail> rows, List<String> labels) {
+        Sheet sheet = workbook.createSheet("支渠明细");
+        Row header = sheet.createRow(0);
+        int col = 0;
+        for (String h : new String[]{"片区", "分灌区", "支渠", "行政区", "灌区面积(万亩)", "种植作物种类"}) {
+            header.createCell(col++).setCellValue(h);
+        }
+        for (String label : labels) {
+            header.createCell(col++).setCellValue(label);
+        }
+        header.createCell(col).setCellValue("合计(万方)");
+        // 按支渠分组（保持查询顺序），组内按旬填充
+        Map<String, DemandBranchDetail> meta = new LinkedHashMap<>();
+        Map<String, Map<String, Double>> volumes = new LinkedHashMap<>();
+        for (DemandBranchDetail d : rows) {
+            if (d.getBranchName() == null) {
+                continue;
+            }
+            meta.putIfAbsent(d.getBranchName(), d);
+            volumes.computeIfAbsent(d.getBranchName(), k -> new LinkedHashMap<>())
+                    .put(d.getTendayLabel(), d.getDemandVolume());
+        }
+        int r = 1;
+        for (Map.Entry<String, DemandBranchDetail> entry : meta.entrySet()) {
+            DemandBranchDetail m = entry.getValue();
+            Row row = sheet.createRow(r++);
+            int c = 0;
+            row.createCell(c++).setCellValue(m.getDistrict() == null ? "" : m.getDistrict());
+            row.createCell(c++).setCellValue(m.getSubDistrict() == null ? "" : m.getSubDistrict());
+            row.createCell(c++).setCellValue(entry.getKey());
+            row.createCell(c++).setCellValue(m.getCounty() == null ? "" : m.getCounty());
+            if (m.getArea() != null) {
+                row.createCell(c).setCellValue(m.getArea());
+            }
+            c++;
+            row.createCell(c++).setCellValue(m.getCropTypes() == null ? "" : m.getCropTypes());
+            double total = 0;
+            Map<String, Double> v = volumes.get(entry.getKey());
+            for (String label : labels) {
+                Double val = v.get(label);
+                if (val != null) {
+                    row.createCell(c).setCellValue(val);
+                    total += val;
+                }
+                c++;
+            }
+            row.createCell(c).setCellValue(round2(total));
+        }
+    }
+
+    /** 分区汇总：汇总类型/区域名称 + 18 旬 + 合计(万方)；类型顺序 片区→分灌区→行政区，同类按区域名 */
+    private void writeSummarySheet(XSSFWorkbook workbook, List<DemandAreaSummary> rows, List<String> labels) {
+        Sheet sheet = workbook.createSheet("分区汇总");
+        Row header = sheet.createRow(0);
+        header.createCell(0).setCellValue("汇总类型");
+        header.createCell(1).setCellValue("区域名称");
+        int col = 2;
+        for (String label : labels) {
+            header.createCell(col++).setCellValue(label);
+        }
+        header.createCell(col).setCellValue("合计(万方)");
+        // 分组保序：类型 片区→分灌区→行政区 优先，其余按首现；同类按区域名排序
+        List<String[]> pairs = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        Map<String, Map<String, Double>> values = new LinkedHashMap<>();
+        for (DemandAreaSummary s : rows) {
+            String type = s.getSummaryType() == null ? "" : s.getSummaryType();
+            String name = s.getAreaName() == null ? "" : s.getAreaName();
+            String key = type + "|" + name;
+            if (seen.add(key)) {
+                pairs.add(new String[]{type, name});
+            }
+            values.computeIfAbsent(key, k -> new LinkedHashMap<>())
+                    .put(s.getTendayLabel(), s.getDemandVolume());
+        }
+        final List<String> typeOrder = Arrays.asList("片区", "分灌区", "行政区");
+        pairs.sort((a, b) -> {
+            int ia = typeOrder.indexOf(a[0]);
+            int ib = typeOrder.indexOf(b[0]);
+            if (ia < 0) {
+                ia = typeOrder.size();
+            }
+            if (ib < 0) {
+                ib = typeOrder.size();
+            }
+            if (ia != ib) {
+                return Integer.compare(ia, ib);
+            }
+            return a[1].compareTo(b[1]);
+        });
+        int r = 1;
+        for (String[] pair : pairs) {
+            Row row = sheet.createRow(r++);
+            row.createCell(0).setCellValue(pair[0]);
+            row.createCell(1).setCellValue(pair[1]);
+            Map<String, Double> v = values.get(pair[0] + "|" + pair[1]);
+            int c = 2;
+            double total = 0;
+            for (String label : labels) {
+                Double val = v.get(label);
+                if (val != null) {
+                    row.createCell(c).setCellValue(val);
+                    total += val;
+                }
+                c++;
+            }
+            row.createCell(c).setCellValue(round2(total));
+        }
     }
 
     /** 审计五连写（委托 AuditUtils） */

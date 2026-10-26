@@ -349,7 +349,12 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     @Override
-    public GqRainfallChartVO gqRainfallChart(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+    public GqRainfallChartVO gqRainfallChart(String stcd, LocalDateTime startTime, LocalDateTime endTime,
+                                             String granularity) {
+        // 分钟级：按实际采集时刻逐条输出增量（x 轴为真实时间）
+        if ("minute".equalsIgnoreCase(granularity)) {
+            return gqRainfallChartByMinute(stcd, startTime, endTime);
+        }
         // 1. 查询站点名称
         StStinfo stinfo = stStinfoMapper.selectById(stcd);
 
@@ -411,6 +416,51 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         vo.setStartTime(startTime);
         vo.setEndTime(endTime);
         vo.setHours(hours);
+        return vo;
+    }
+
+    /**
+     * 分钟级雨量曲线：按实际采集时刻逐条输出增量与累计值，不做小时汇总，也不补齐整点。
+     * <p>增量口径与小时级一致：相邻两条记录 DYP 正向增量（首条/回退记 0）；
+     * 序列起点仍为查询起始日 8:00，起点前的记录仅作为首点增量基线，不输出。
+     */
+    private GqRainfallChartVO gqRainfallChartByMinute(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+        StStinfo stinfo = stStinfoMapper.selectById(stcd);
+
+        // 序列起点对齐查询起始日当天 8:00；向前扩 2h 取首点增量基线
+        LocalDateTime hourStart = startTime.toLocalDate().atTime(8, 0);
+        LocalDateTime queryStart = hourStart.minusHours(2);
+        List<StPptnR> records = baseMapper.selectByStcdAndTimeRange(stcd, queryStart, endTime);
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        List<GqRainfallChartVO.HourPoint> points = new ArrayList<>();
+        BigDecimal cumulative = BigDecimal.ZERO;
+        for (int i = 0; i < records.size(); i++) {
+            StPptnR cur = records.get(i);
+            BigDecimal inc = BigDecimal.ZERO;
+            if (i > 0) {
+                StPptnR prev = records.get(i - 1);
+                BigDecimal curDyp = cur.getDyp() != null ? cur.getDyp() : BigDecimal.ZERO;
+                BigDecimal prevDyp = prev.getDyp() != null ? prev.getDyp() : BigDecimal.ZERO;
+                inc = safeDypIncrement(curDyp, prevDyp);
+            }
+            // 起点前的基线记录只用于计算增量，不输出
+            if (cur.getTm() == null || cur.getTm().isBefore(hourStart)) continue;
+            cumulative = cumulative.add(inc);
+
+            GqRainfallChartVO.HourPoint point = new GqRainfallChartVO.HourPoint();
+            point.setHour(cur.getTm().format(fmt));
+            point.setRainfall(inc);
+            point.setCumulative(cumulative);
+            points.add(point);
+        }
+
+        GqRainfallChartVO vo = new GqRainfallChartVO();
+        vo.setStcd(stcd);
+        vo.setStnm(stinfo != null ? stinfo.getStnm() : null);
+        vo.setStartTime(startTime);
+        vo.setEndTime(endTime);
+        vo.setHours(points);
         return vo;
     }
 

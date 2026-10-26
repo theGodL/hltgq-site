@@ -31,6 +31,9 @@ public class RainAdjustVO {
     /** 设备编号（设备表 code） */
     private String deviceCode;
 
+    /** 设备型号（设备表 evkmpl；未维护为空） */
+    private String deviceModel;
+
     /** 站点 RTU 站号（识别辅助列，可空） */
     private String stcd;
 

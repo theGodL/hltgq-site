@@ -45,7 +45,11 @@ public class WaterQualityServiceImpl implements WaterQualityService {
     }
 
     @Override
-    public WaterQualityTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+    public WaterQualityTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime, String granularity) {
+        // 分钟级：按实际采集时刻逐条出点（图表 x 轴为真实时间）
+        if ("minute".equalsIgnoreCase(granularity)) {
+            return trendByMinute(stcd, startTime, endTime);
+        }
         // 1. 默认时间范围：近 24 小时，起点/终点对齐偶数小时（桶边界与数据桶一致）
         LocalDateTime now = alignEvenHour(LocalDateTime.now());
         if (endTime == null) {
@@ -112,6 +116,62 @@ public class WaterQualityServiceImpl implements WaterQualityService {
         }
 
         // 5. 组装结果（附该站水质阈值行供预警线）
+        WaterQualityTrendVO vo = new WaterQualityTrendVO();
+        vo.setStcd(stcd);
+        vo.setStnm(stnm);
+        vo.setStartTime(startTime);
+        vo.setEndTime(endTime);
+        vo.setPoints(points);
+        vo.setThresholds(loadThresholds(siteId != null ? Collections.singletonList(siteId) : Collections.emptyList()));
+        return vo;
+    }
+
+    /**
+     * 分钟级趋势：按实际采集时刻逐条输出原始记录，不做 2 小时平均，也不补齐桶。
+     */
+    private WaterQualityTrendVO trendByMinute(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+        if (endTime == null) {
+            endTime = LocalDateTime.now();
+        }
+        if (startTime == null) {
+            startTime = endTime.minusHours(24);
+        }
+        if (startTime.isAfter(endTime)) {
+            LocalDateTime t = startTime;
+            startTime = endTime;
+            endTime = t;
+        }
+
+        String stnm = stcd;
+        String siteId = null;
+        List<WaterQualityVO> stationInfo = waterQualityMapper.selectLatestPerStation(
+                Collections.singletonList(stcd), null, null);
+        if (!stationInfo.isEmpty()) {
+            WaterQualityVO row = stationInfo.get(0);
+            if (row.getStnm() != null) {
+                stnm = row.getStnm();
+            }
+            siteId = row.getSiteId();
+        }
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        List<WaterQualityTrendVO.HourPoint> points = new ArrayList<>();
+        for (Map<String, Object> row : waterQualityMapper.selectTrendDetail(stcd, startTime, endTime)) {
+            LocalDateTime tm = ValueConvertUtils.dateTime(row.get("tm"));
+            if (tm == null) continue;
+            WaterQualityTrendVO.HourPoint point = new WaterQualityTrendVO.HourPoint();
+            point.setHour(tm.format(fmt));
+            point.setNh3n(ValueConvertUtils.decimal(row.get("nh3n")));
+            point.setCodmn(ValueConvertUtils.decimal(row.get("codmn")));
+            point.setCodcr(ValueConvertUtils.decimal(row.get("codcr")));
+            point.setBod5(ValueConvertUtils.decimal(row.get("bod5")));
+            point.setTp(ValueConvertUtils.decimal(row.get("tp")));
+            point.setTn(ValueConvertUtils.decimal(row.get("tn")));
+            point.setDox(ValueConvertUtils.decimal(row.get("dox")));
+            point.setWt(ValueConvertUtils.decimal(row.get("wt")));
+            points.add(point);
+        }
+
         WaterQualityTrendVO vo = new WaterQualityTrendVO();
         vo.setStcd(stcd);
         vo.setStnm(stnm);

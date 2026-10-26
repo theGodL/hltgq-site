@@ -84,8 +84,9 @@ public class LongPredictService {
         }
         String scenario = req.getScenario() == null || req.getScenario().trim().isEmpty()
                 ? null : req.getScenario().trim();
-        if (scenario != null && !"丰".equals(scenario) && !"平".equals(scenario) && !"枯".equals(scenario)) {
-            throw new IllegalArgumentException("来水情景必须是 丰 / 平 / 枯 之一");
+        if (scenario != null && !"丰".equals(scenario) && !"平".equals(scenario) && !"枯".equals(scenario)
+                && !"推荐值".equals(scenario)) {
+            throw new IllegalArgumentException("来水情景必须是 丰 / 平 / 枯 / 推荐值 之一");
         }
         boolean useHistorical = Boolean.TRUE.equals(req.getUseHistorical());
         boolean retrain = Boolean.TRUE.equals(req.getRetrain());

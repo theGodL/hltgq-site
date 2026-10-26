@@ -68,6 +68,9 @@ public class DeviceVO {
         /** 设备编码（设备表 code） */
         private String code;
 
+        /** 设备型号（设备表 evkmpl；未维护为 null） */
+        private String model;
+
         /** 设备类型（type 翻译文本，多类型「、」分隔） */
         private String type;
 

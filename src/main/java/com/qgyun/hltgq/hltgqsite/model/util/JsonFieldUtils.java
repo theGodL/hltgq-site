@@ -48,6 +48,12 @@ public final class JsonFieldUtils {
         return Double.isNaN(number) || Double.isInfinite(number) ? null : number;
     }
 
+    /** 取整数字段，缺失/null/非数值返回 null */
+    public static Integer intOf(JsonNode node, String field) {
+        Double value = doubleOf(node, field);
+        return value == null ? null : value.intValue();
+    }
+
     /** 兼容多个候选字段名，返回第一个非空数值 */
     public static Double doubleOfAny(JsonNode node, String... fields) {
         for (String field : fields) {

@@ -10,6 +10,7 @@
 <script src="./lib/xlsx.full.min.js"></script>
 <script src="./lib/monitor-export.js"></script>
 <script src="./lib/station-sort.js"></script>
+<script src="./lib/message-viewer.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -194,6 +195,9 @@ tbody tr:hover td{background:#fafafa}
 .modal-filter input{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;outline:none;background:#fff;transition:border-color .2s}
 .modal-filter input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 .modal-filter input[type=date]{width:140px}
+/* 趋势弹窗单站选择（河道/日时段水情表） */
+.modal-filter select{height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 26px 0 11px;font-size:14px;outline:none;background-color:#fff;color:#333;min-width:150px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23999' stroke-width='1.4' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center;background-size:12px;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;transition:border-color .2s}
+.modal-filter select:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 /* 详情弹窗内 Tab（数据列表 / 图表） */
 .modal-tabs{display:flex;border-bottom:1px solid #f0f0f0;margin:0 -20px;padding:0 20px;flex-shrink:0}
 .modal-tab{padding:12px 14px;cursor:pointer;color:#666;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none;white-space:nowrap}
@@ -483,6 +487,7 @@ tbody tr:hover td{background:#fafafa}
                 <th>监测日期</th>
                 <th>闸前水位 (m)</th>
                 <th>闸后水位 (m)</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody id="gr-hist-body"></tbody>
@@ -517,6 +522,10 @@ tbody tr:hover td{background:#fafafa}
         <input type="date" id="trend-start">
         <span class="date-sep">—</span>
         <input type="date" id="trend-end">
+        <div class="filter-item" id="trend-stcd-wrap" style="display:none">
+          <label style="color:#666;white-space:nowrap">站点</label>
+          <select id="trend-stcd"></select>
+        </div>
         <span style="white-space:nowrap">
           <button class="btn btn-primary" id="trend-query-btn">查询</button>
           <button class="btn btn-default" id="trend-reset-btn">重置</button>
@@ -1558,7 +1567,7 @@ async function loadGrHist() {
     console.error('历史水位加载失败', e);
     GR_HIST.rows = [];
     GR_HIST.total = 0;
-    $('gr-hist-body').innerHTML = '<tr><td colspan="3" class="empty">数据加载失败，请重试</td></tr>';
+    $('gr-hist-body').innerHTML = '<tr><td colspan="4" class="empty">数据加载失败，请重试</td></tr>';
   } finally {
     setLoading(wrap, false);
     renderGrHistPager();
@@ -1569,14 +1578,18 @@ async function loadGrHist() {
 function renderGrHistRows() {
   const tbody = $('gr-hist-body');
   if (!GR_HIST.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">暂无数据</td></tr>';
     return;
   }
+  // 报文关联站点：与历史接口同一标识（站点 UUID）
+  const key = GR_HIST.row ? GR_HIST.row.siteId : '';
+  const name = GR_HIST.row ? (GR_HIST.row.siteName || GR_HIST.row.siteId) : '';
   tbody.innerHTML = GR_HIST.rows.map(r => `
     <tr>
       <td>${fmtTm(r.tm)}</td>
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
+      <td>${MessageViewer.button({ key, tm: fmtTm(r.tm), name })}</td>
     </tr>
   `).join('');
 }
@@ -1747,8 +1760,8 @@ function renderGrHistChart(rows) {
   chart.setOption(option, true);
 }
 
-/* ===== 水库三表「水情趋势」：多站点多条水位曲线 + 日期区间 ===== */
-const TREND = { stcds: [], inst: null, title: '' };
+/* ===== 水库三表「水情趋势」：河道/日时段单站曲线（弹窗内切换站点），水库按勾选多站 + 日期区间 ===== */
+const TREND = { stcds: [], inst: null, title: '', single: false, stcd: '' };
 const TREND_MAX_SPAN_DAYS = 31;
 const TREND_COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1'];
 
@@ -1794,14 +1807,36 @@ function currentTrendStations() {
   return [];
 }
 
-/** 打开趋势弹窗：标题随当前水情表，站点取当前勾选 */
+/** 站点编号 → 名称：取筛选栏站点勾选框文案，避免再维护一份站点名表 */
+function trendStationName(stcd) {
+  const input = document.querySelector(`#river-cks input[value="${stcd}"], #period-cks input[value="${stcd}"], #reservoir-cks input[value="${stcd}"]`);
+  const label = input && input.closest('.ck');
+  return label ? label.textContent.trim() : stcd;
+}
+
+/**
+ * 打开趋势弹窗：标题随当前水情表，站点取当前勾选。
+ * 河道/日时段：同图多条曲线相互遮挡看不出趋势，改为弹窗内单站切换（一次只画一条曲线）；
+ * 水库水情表站点唯一，保持按勾选站点出图。
+ */
 function openResTrend() {
   const stcds = currentTrendStations();
   if (!stcds.length) { alert('请先勾选站点'); return; }
+  const single = S.resTab === 'river' || S.resTab === 'period';
   TREND.stcds = stcds;
+  TREND.single = single;
+  TREND.stcd = stcds[0];
   TREND.title = (RES_META[S.resTab].name || '水情') + '趋势';
   $('res-trend-title').textContent = `花凉亭水库 · ${TREND.title}`;
-  $('trend-tip').textContent = `共 ${stcds.length} 个站点`;
+  $('trend-stcd-wrap').style.display = single ? '' : 'none';
+  if (single) {
+    $('trend-stcd').innerHTML = stcds
+      .map(s => `<option value="${esc(s)}">${esc(trendStationName(s))}</option>`).join('');
+    $('trend-stcd').value = TREND.stcd;
+  }
+  $('trend-tip').textContent = single
+    ? `单站曲线（可切换站点） · 共 ${stcds.length} 个站点可选`
+    : `共 ${stcds.length} 个站点`;
   setTrendDefaultDates();
   openModal('res-trend-overlay');
   loadResTrend();
@@ -1821,7 +1856,9 @@ async function loadResTrend() {
   setLoading(box, true);
   const failed = [];
   try {
-    const groups = await Promise.all(TREND.stcds.map(async stcd => {
+    // 单站模式只取弹窗内所选站点；多站模式（水库水情表）取全部勾选站点
+    const targets = (TREND.single && TREND.stcd) ? [TREND.stcd] : TREND.stcds;
+    const groups = await Promise.all(targets.map(async stcd => {
       try {
         return { stcd, rows: await fetchTrendRows(stcd) };
       } catch (err) {
@@ -1861,7 +1898,10 @@ function renderTrendChart(groups, failed) {
     });
   });
   const failTip = (failed && failed.length) ? ` · ${failed.length} 个站点取数失败` : '';
-  $('trend-tip').textContent = `${TREND.stcds.length} 个站点 · 共 ${total} 条记录（曲线最多 2000 点/站）${failTip}`;
+  const scopeTip = TREND.single
+    ? `${trendStationName(TREND.stcd)} · 共 ${total} 条记录（曲线最多 2000 点/站）`
+    : `${TREND.stcds.length} 个站点 · 共 ${total} 条记录（曲线最多 2000 点/站）`;
+  $('trend-tip').textContent = scopeTip + failTip;
   if (!series.length) {
     chart.clear();
     chart.setOption({
@@ -1982,6 +2022,11 @@ function bindGrHistModal() {
   }, { loadingText: '重置中...' });
   bindAsyncClick($('gr-hist-export-btn'), async () => { exportGrHistData(); }, { wait: 800, loadingText: '准备导出...' });
   bindAsyncClick($('trend-query-btn'), loadResTrend);
+  // 弹窗内切换站点：只重画所选站点的单条曲线
+  $('trend-stcd').addEventListener('change', () => {
+    TREND.stcd = $('trend-stcd').value;
+    loadResTrend();
+  });
   bindAsyncClick($('trend-reset-btn'), async () => {
     setTrendDefaultDates();
     await loadResTrend();

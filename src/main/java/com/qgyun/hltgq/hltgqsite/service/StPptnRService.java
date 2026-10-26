@@ -54,9 +54,11 @@ public interface StPptnRService extends IService<StPptnR> {
     List<GqRainfallVO> gqRainfallMonitoringAll();
 
     /**
-     * 灌区雨量变化图表：单站点小时级增量+累计雨量
+     * 灌区雨量变化图表：单站点增量+累计雨量
+     *
+     * @param granularity 统计粒度：hour（每小时汇总，默认）/ minute（按实际采集时刻逐条出点）
      */
-    GqRainfallChartVO gqRainfallChart(String stcd, LocalDateTime startTime, LocalDateTime endTime);
+    GqRainfallChartVO gqRainfallChart(String stcd, LocalDateTime startTime, LocalDateTime endTime, String granularity);
 
     /**
      * 灌区雨量历史：单站点全部记录（含1h/3h/6h增量），支持时间范围筛选，分页

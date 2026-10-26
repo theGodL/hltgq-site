@@ -57,6 +57,55 @@ CREATE INDEX idx_decision_branch_detail_record_branch ON t_auto_hltgq_water_deci
 CREATE INDEX idx_decision_branch_detail_record_tenday ON t_auto_hltgq_water_decision_branch_detail(record_id, tenday_label);
 CREATE INDEX idx_decision_branch_detail_record_satisfied ON t_auto_hltgq_water_decision_branch_detail(record_id, is_satisfied);
 
+-- ========== 配水调度 V3 汇总三表（2026-10 新增，模型 /decision 响应 行政区月汇总/行政区年汇总/供水分配汇总） ==========
+-- 前两张来自 admin 表的县级自流/提灌面积比例拆分（admin_month/admin_year，按面积分配.xlsx 面积比例估算）；
+-- 供水分配汇总与响应「总计_全部旬」同口径同值（仅 sheet 名别名），单行落库；"year"/"month" 加引号防保留字
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_decision_admin_month (
+    id             VARCHAR(64) PRIMARY KEY,
+    record_id      VARCHAR(64),                    -- 关联方案ID（t_auto_hltgq_water_decision_record.id）
+    "year"         INTEGER,                        -- 年份
+    "month"        INTEGER,                        -- 月份（5~10）
+    district       VARCHAR(255),                   -- 行政区
+    gravity_supply DOUBLE PRECISION,               -- 自流建议供水量(万方)
+    lift_supply    DOUBLE PRECISION,               -- 提灌建议供水量(万方)
+    corp_code      VARCHAR(64),
+    created_at     TIMESTAMP,
+    created_by     VARCHAR(64),
+    updated_at     TIMESTAMP,
+    updated_by     VARCHAR(64)
+);
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_decision_admin_year (
+    id             VARCHAR(64) PRIMARY KEY,
+    record_id      VARCHAR(64),
+    "year"         INTEGER,                        -- 年份
+    district       VARCHAR(255),                   -- 行政区
+    gravity_supply DOUBLE PRECISION,               -- 自流建议供水量(万方)
+    lift_supply    DOUBLE PRECISION,               -- 提灌建议供水量(万方)
+    corp_code      VARCHAR(64),
+    created_at     TIMESTAMP,
+    created_by     VARCHAR(64),
+    updated_at     TIMESTAMP,
+    updated_by     VARCHAR(64)
+);
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_decision_supply_alloc (
+    id                VARCHAR(64) PRIMARY KEY,
+    record_id         VARCHAR(64),
+    demand_volume     DOUBLE PRECISION,            -- 需水量(万方)
+    suggested_supply  DOUBLE PRECISION,            -- 建议供水量(万方)
+    pond_supplement   DOUBLE PRECISION,            -- 塘坝补水量(万方)
+    supply_after_pond DOUBLE PRECISION,            -- 补水后总供水量(万方)
+    net_demand        DOUBLE PRECISION,            -- 净需水量合计(万方)
+    is_satisfied      VARCHAR(16),                 -- 是否满足：#1# 是 / #2# 否
+    corp_code         VARCHAR(64),
+    created_at        TIMESTAMP,
+    created_by        VARCHAR(64),
+    updated_at        TIMESTAMP,
+    updated_by        VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_decision_admin_month_record ON "qixiao-apaas".t_auto_hltgq_water_decision_admin_month(record_id, "year", "month");
+CREATE INDEX IF NOT EXISTS idx_decision_admin_year_record ON "qixiao-apaas".t_auto_hltgq_water_decision_admin_year(record_id, "year");
+CREATE INDEX IF NOT EXISTS idx_decision_supply_alloc_record ON "qixiao-apaas".t_auto_hltgq_water_decision_supply_alloc(record_id);
+
 -- 短期来水预测
 ALTER TABLE t_auto_hltgq_water_short_forecast_record ALTER COLUMN request_json TYPE TEXT;
 ALTER TABLE t_auto_hltgq_water_short_forecast_record ALTER COLUMN rainfall_json TYPE TEXT;
@@ -816,3 +865,47 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_patrol_record_photo
 );
 CREATE INDEX IF NOT EXISTS idx_patrol_record_photo_record
     ON "qixiao-apaas".t_auto_hltgq_water_patrol_record_photo(record_id);
+
+-- ========== 模型一体化 V3（2026-10-26 会议定稿改造） ==========
+-- 需水：支渠明细加行政区列（county 主数据源为入参 demand_table 按支渠匹配；模型响应支渠明细无行政区列时同源）
+ALTER TABLE t_auto_hltgq_water_demand_branch_detail ADD COLUMN IF NOT EXISTS county VARCHAR(255);
+
+-- 水量损失定稿：删来源方案链路，新增年渗漏量入参（annual_leakage_wan_m3，默认 156）与蒸发/渗漏分离列
+ALTER TABLE t_auto_hltgq_water_loss_record ADD COLUMN IF NOT EXISTS annual_leakage_wan_m3 DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_loss_record ADD COLUMN IF NOT EXISTS total_evaporation DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_loss_record ADD COLUMN IF NOT EXISTS total_leakage DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_loss_detail ADD COLUMN IF NOT EXISTS evaporation_volume DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_loss_detail ADD COLUMN IF NOT EXISTS leakage_volume DOUBLE PRECISION;
+
+-- 水资源配置：V3 两视图（年汇总/灌区水资源配置/水库逐旬清单/水库月汇总/水库年汇总/diagnostics/口径变更）原始快照
+ALTER TABLE t_auto_hltgq_water_allocate_record ADD COLUMN IF NOT EXISTS views_json TEXT;
+-- 水资源配置：归档所选水量损失方案（年渗漏量 annual_leakage_wan_m3 提取进 /allocate）
+ALTER TABLE t_auto_hltgq_water_allocate_record ADD COLUMN IF NOT EXISTS loss_record_id VARCHAR(64);
+
+-- 配水调度：支渠明细加行政区/缺水量/塘坝补水量/补水后总供水量四列（手册 4.7 支渠明细行含行政区列）
+ALTER TABLE t_auto_hltgq_water_decision_branch_detail ADD COLUMN IF NOT EXISTS county VARCHAR(255);
+ALTER TABLE t_auto_hltgq_water_decision_branch_detail ADD COLUMN IF NOT EXISTS deficit DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_decision_branch_detail ADD COLUMN IF NOT EXISTS pond_supplement DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_decision_branch_detail ADD COLUMN IF NOT EXISTS supply_after_pond DOUBLE PRECISION;
+
+-- 配水调度：不满足需水双口径标量（unsatisfied_count=去重支渠数；unsatisfied_row_count=未满足明细行数/旬次）
+-- 前端直接取用不做自算（tens 部分旬时两口径均为所选旬范围，与全量明细不同源，避免自算口径不一致）
+ALTER TABLE t_auto_hltgq_water_decision_record ADD COLUMN IF NOT EXISTS unsatisfied_row_count DOUBLE PRECISION;
+
+-- 配水调度扩展表：模型响应 4 张表（总计_全部旬/月汇总_5至10月/分灌区汇总/片区汇总）逐行原始快照落库
+-- 行内容 row_json 原样归档模型键值（键名以模型实测为准），table_key 区分表、row_key 标识行、sort_order 排序
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_decision_extra_table (
+    id         VARCHAR(64) PRIMARY KEY,
+    record_id  VARCHAR(64),                        -- 关联方案ID（t_auto_hltgq_water_decision_record.id）
+    table_key  VARCHAR(64),                        -- 表标识：总计_全部旬 / 月汇总_5至10月 / 分灌区汇总 / 片区汇总
+    row_key    VARCHAR(255),                       -- 行标识：数组行名称或序号；对象表固定「总计」
+    row_json   TEXT,                               -- 行内容 JSON（原始键值快照）
+    sort_order DOUBLE PRECISION,                   -- 行排序（数组行 1~n；对象表恒 1）
+    corp_code  VARCHAR(64),
+    created_at TIMESTAMP,
+    created_by VARCHAR(64),
+    updated_at TIMESTAMP,
+    updated_by VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_decision_extra_table_record
+    ON "qixiao-apaas".t_auto_hltgq_water_decision_extra_table(record_id, table_key, sort_order);

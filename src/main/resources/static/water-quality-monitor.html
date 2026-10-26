@@ -8,6 +8,7 @@
 <script src="./lib/chart-common.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
 <script src="./lib/monitor-export.js"></script>
+<script src="./lib/message-viewer.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
@@ -297,6 +298,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
                 <th>TN (mg/L)<div class="th-sub">总氮</div></th>
                 <th>溶解氧 (mg/L)</th>
                 <th>水温 (℃)</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody id="hist-tbody"></tbody>
@@ -710,6 +712,8 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     const e = $('m-end').value;
     const p = new URLSearchParams();
     p.set('stcd', stcd);
+    // 分钟级：按实际采集时刻出点（后端不再按 2 小时平均），x 轴为真实时间
+    p.set('granularity', 'minute');
     if (s) p.set('startTime', s + ' 00:00:00');
     if (e) p.set('endTime', e + ' 23:59:59');
     ensureCharts();
@@ -775,6 +779,11 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
       state.hist.records = Array.isArray(data.records) ? data.records : [];
       $('hist-tbody').innerHTML = state.hist.records.map(r => {
         const tm = parseTm(r.tm);
+        // 报文关联站点：优先行内测站编码，回退当前详情站点（含 MQTT 站 UUID）
+        const key = r.stcd || state.current.stcd || state.current.site;
+        const tmv = tm.date === '--' ? '' : `${tm.date} ${tm.time || '00:00:00'}`;
+        // 水质历史多为整点补齐行，实际报文随机分钟入库，窗口放宽到该小时（after=60）
+        const msgBtn = (key && tmv) ? MessageViewer.button({ key, tm: tmv, name: state.current.stnm, after: 60 }) : '';
         return `<tr>
           <td>${esc(tm.date)} ${esc(tm.time)}</td>
           <td>${cellHtml(r.nh3n)}</td>
@@ -784,13 +793,14 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
           <td>${cellHtml(r.tn)}</td>
           <td>${cellHtml(r.dox)}</td>
           <td>${cellHtml(r.wt)}</td>
+          <td>${msgBtn}</td>
         </tr>`;
-      }).join('') || '<tr><td class="empty" colspan="8">暂无数据</td></tr>';
+      }).join('') || '<tr><td class="empty" colspan="9">暂无数据</td></tr>';
       renderHistPager();
     } catch (err) {
       console.error(err);
       toast((err && err.message) || '历史数据加载失败');
-      $('hist-tbody').innerHTML = '<tr><td class="empty" colspan="8">加载失败</td></tr>';
+      $('hist-tbody').innerHTML = '<tr><td class="empty" colspan="9">加载失败</td></tr>';
     }
   }
 

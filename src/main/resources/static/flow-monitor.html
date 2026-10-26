@@ -10,6 +10,7 @@
 <script src="./lib/station-sort.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
 <script src="./lib/monitor-export.js"></script>
+<script src="./lib/message-viewer.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;font-size:14px}
@@ -354,6 +355,7 @@ tbody tr:hover td{background:#fafafa}
                 <th>瞬时流量 (m³/s)</th>
                 <th>累计水量 (万m³)</th>
                 <th>采集时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody id="hist-body"></tbody>
@@ -1040,6 +1042,8 @@ async function reloadChart() {
   try {
     const p = new URLSearchParams();
     p.set('stcd', S.current.site || S.current.stcd);
+    // 分钟级：按实际采集时刻出点（后端不再按小时平均），x 轴为真实时间
+    p.set('granularity', 'minute');
     const s = dateToStart($('chart-start').value);
     const e = dateToEnd($('chart-end').value);
     if (s) p.set('startTime', s);
@@ -1057,14 +1061,18 @@ async function reloadChart() {
 function renderHistory() {
   const tbody = $('hist-body');
   if (!HIST.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">暂无数据</td></tr>';
     return;
   }
+  // 报文关联站点：与历史接口同一标识（site 优先，MQTT 站无 stcd 时用站点 UUID）
+  const key = S.current ? (S.current.site || S.current.stcd) : '';
+  const name = S.current ? (S.current.stnm || S.current.stcd) : '';
   tbody.innerHTML = HIST.rows.map(r => `
     <tr>
       <td>${fmtN3(r.q)}</td>
       <td>${fmtN3(r.tf)}</td>
       <td>${fmtTm(r.tm)}</td>
+      <td>${MessageViewer.button({ key, tm: fmtTm(r.tm), name })}</td>
     </tr>
   `).join('');
 }
@@ -1134,7 +1142,7 @@ async function reloadHistory() {
     HIST.rows = [];
     renderHistory();
     renderHistPager();
-    $('hist-body').innerHTML = `<tr><td colspan="3" class="empty">加载失败：${err.message || err}</td></tr>`;
+    $('hist-body').innerHTML = `<tr><td colspan="4" class="empty">加载失败：${err.message || err}</td></tr>`;
   } finally {
     setLoading(wrap, false);
   }

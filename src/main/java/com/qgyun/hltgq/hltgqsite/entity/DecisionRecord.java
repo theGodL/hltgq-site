@@ -48,4 +48,8 @@ public class DecisionRecord extends BaseRecordEntity {
     /** 不满足需水支渠数量：COUNT(DISTINCT branch_name WHERE is_satisfied='#2#') */
     @TableField("\"unsatisfied_count\"")
     private Double unsatisfiedCount;
+
+    /** 不满足需水明细行数（旬次口径）：COUNT(WHERE is_satisfied='#2#')，与 unsatisfied_count 并存双口径 */
+    @TableField("\"unsatisfied_row_count\"")
+    private Double unsatisfiedRowCount;
 }

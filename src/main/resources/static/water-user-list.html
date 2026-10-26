@@ -93,14 +93,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 /* ===== 表格（自然高度随内容展开，分页跟随列表；横向宽度只增不减，收窄时本容器出横向滚动条） ===== */
 .tbl-wrap{overflow-x:auto;max-width:100%}
 table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
+/* 列表表最小宽度：列宽合计按比例展开，窗口装不下时由 .tbl-wrap 整表横向滚动（不拆行、不在单元格内单独出滚动条） */
+.tbl-wrap table{min-width:1600px}
 thead tr{background:var(--el-table-header-bg)}
 th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
 td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(--el-table-border);font-size:14px;color:var(--el-text-color-primary);text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 th:first-child,td:first-child{padding-left:16px}
 tbody tr:nth-child(even) td{background:var(--el-table-stripe-bg)}
 tbody tr:hover td{background:var(--el-fill-color-light)}
-/* 操作列文字链接（同调度方案页；换行时由 gap 控制行距/列距，行首不缩进） */
-td.col-act{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;white-space:normal;overflow:visible}
+/* 操作列文字链接：固定单行不换行；放不下时由 .tbl-wrap 整表横向滚动（表格最小宽度兜底），不在单元格内单独出滚动条 */
+td.col-act{display:flex;flex-wrap:nowrap;align-items:center;gap:8px 10px;white-space:normal}
 .act{color:var(--el-color-primary);cursor:pointer;white-space:nowrap;transition:color .2s}
 .act:hover{color:var(--el-color-primary-hover)}
 .act.del{color:var(--el-color-danger)}
@@ -275,8 +277,8 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
       <div class="tbl-wrap">
         <table>
           <colgroup>
-            <col style="width:14%"><col style="width:7%"><col style="width:8%"><col style="width:8%"><col style="width:12%">
-            <col style="width:9%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:7%"><col style="width:9%">
+            <col style="width:13%"><col style="width:7%"><col style="width:8%"><col style="width:8%"><col style="width:11%">
+            <col style="width:9%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:7%"><col style="width:11%">
           </colgroup>
           <thead>
             <tr>

@@ -23,11 +23,19 @@ public class LossDetail extends BaseWaterEntity {
     @TableField("\"data_date\"")
     private LocalDateTime dataDate;
 
-    /** 预测水量(万方)（data[].预测水量_万方，无此字段留空） */
+    /** 预测水量(万方)：中长期模式恒 null（蒸发/渗漏分离后无此列） */
     @TableField("\"predict_volume\"")
     private Double predictVolume;
 
-    /** 损失水量(万方)（data[].损失水量_万方 或 data[].蒸发损失_万方，兼容映射） */
+    /** 损失水量(万方)：蒸发量 + 渗漏量（两列均无时留空） */
     @TableField("\"loss_volume\"")
     private Double lossVolume;
+
+    /** 蒸发量(万方)（data[].蒸发损失_万方） */
+    @TableField("\"evaporation_volume\"")
+    private Double evaporationVolume;
+
+    /** 渗漏量(万方)（data[].渗漏损失_万方） */
+    @TableField("\"leakage_volume\"")
+    private Double leakageVolume;
 }

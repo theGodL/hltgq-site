@@ -145,6 +145,37 @@ public interface WaterQualityMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
+     * 分钟级水质趋势明细（按实际采集时刻逐条输出，不做 2 小时平均）
+     * <p>-999（设备不存在）转 null；-9991（设备异常）保留透传，前端按异常断线；
+     * 水温 wt 联查 pcp_info（时间列 spt 与 nmisp tm 同组对齐，缺对标为 null）。
+     *
+     * @param stcd      站点编号或 site UUID（必填）
+     * @param startTime 起始时间（含，必填）
+     * @param endTime   截止时间（含，必填）
+     */
+    @Select("<script>" +
+            "SELECT n.tm, " +
+            "CASE WHEN n.nh3n = -999 THEN NULL ELSE TRUNC(n.nh3n, 3) END AS nh3n, " +
+            "CASE WHEN n.codmn = -999 THEN NULL ELSE TRUNC(n.codmn, 3) END AS codmn, " +
+            "CASE WHEN n.codcr = -999 THEN NULL ELSE TRUNC(n.codcr, 3) END AS codcr, " +
+            "CASE WHEN n.bod5 = -999 THEN NULL ELSE TRUNC(n.bod5, 3) END AS bod5, " +
+            "CASE WHEN n.tp = -999 THEN NULL ELSE TRUNC(n.tp, 3) END AS tp, " +
+            "CASE WHEN n.tn = -999 THEN NULL ELSE TRUNC(n.tn, 3) END AS tn, " +
+            "CASE WHEN n.dox = -999 THEN NULL ELSE TRUNC(n.dox, 3) END AS dox, " +
+            "CASE WHEN p.wt = -999 THEN NULL ELSE TRUNC(p.wt, 3) END AS wt " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
+            "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_water_pcp_info p ON p.stcd = n.stcd AND p.spt = n.tm " +
+            "WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +
+            "AND n.tm &gt;= #{startTime} " +
+            "AND n.tm &lt;= #{endTime} " +
+            "ORDER BY n.tm" +
+            "</script>")
+    List<Map<String, Object>> selectTrendDetail(
+            @Param("stcd") String stcd,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
+
+    /**
      * 历史水质数据分页查询（按监测时间倒序）
      * <p>-999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'；
      * 水温 wt 联查 pcp_info（时间列 spt 与 nmisp tm 同组对齐，缺对标为 null）。

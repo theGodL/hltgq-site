@@ -37,7 +37,7 @@ public class DemandRecord extends BaseRecordEntity {
     @TableField("\"branch_count\"")
     private Double branchCount;
 
-    /** 灌溉面积(亩)：支渠面积按支渠名去重求和 */
+    /** 灌溉面积(万亩，模型原始值)：支渠面积按支渠名去重求和 */
     @TableField("\"irrigated_area\"")
     private Double irrigatedArea;
 

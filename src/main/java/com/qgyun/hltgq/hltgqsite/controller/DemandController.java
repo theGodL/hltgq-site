@@ -10,15 +10,11 @@ import com.qgyun.hltgq.hltgqsite.mapper.DemandRecordMapper;
 import com.qgyun.hltgq.hltgqsite.model.service.DemandService;
 import com.qgyun.hltgq.hltgqsite.model.service.ModelRecordCommonService;
 import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
-import com.qgyun.hltgq.hltgqsite.model.util.ExcelParseUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.DemandSubmitRequest;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.StreamUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,9 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,15 +32,12 @@ import java.util.Map;
 
 /**
  * 需水预测接口（/water-forecast/demand）。
- * <p>两种输入方式：① 模板上传解析（POST /upload）② 拓扑图表格 JSON 输入（POST 本体）。
- * 模型接口表格入参改造完成前，表格数据仅随 request_json 归档，按保证率/渠系系数调模型。
+ * <p>2026-10-26 定稿：模板下载/上传已下线，仅保留拓扑图表格 JSON 输入（POST 本体 tableRows 直传模型 demand_table）。
+ * 详情返回主表 + 支渠明细 + 片区/分灌区/行政区三类 area_summary。
  */
 @RestController
 @RequestMapping("/water-forecast/demand")
 public class DemandController {
-
-    /** 需水基础数据收集表模板（classpath:static/templates 下） */
-    private static final String TEMPLATE_LOCATION = "classpath:static/templates/WaterDemandForecast_Template.xlsx";
 
     @Autowired
     private DemandService demandService;
@@ -63,27 +54,6 @@ public class DemandController {
     @Autowired
     private DemandAreaSummaryMapper areaSummaryMapper;
 
-    @Autowired
-    private ResourceLoader resourceLoader;
-
-    /** 下载需水基础数据收集表模板 */
-    @GetMapping("/template")
-    public ResponseEntity<byte[]> downloadTemplate() throws Exception {
-        Resource resource = resourceLoader.getResource(TEMPLATE_LOCATION);
-        if (!resource.exists()) {
-            return ResponseEntity.notFound().build();
-        }
-        byte[] bytes;
-        try (java.io.InputStream in = resource.getInputStream()) {
-            bytes = StreamUtils.copyToByteArray(in);
-        }
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        DownloadHeaderUtils.attachment("WaterDemandForecast_Template.xlsx"))
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(bytes);
-    }
-
     /**
      * 拓扑图表格 JSON 输入：body 含 guaranteeRate/canalEff/targetTotal/tableRows。
      * 秒回 recordId，后台异步调模型。
@@ -95,74 +65,28 @@ public class DemandController {
         return result;
     }
 
-    /**
-     * 模板上传解析：multipart file（WaterDemandForecast_Template.xlsx 格式）
-     * + guaranteeRate/canalEff/targetTotal/schemeName 表单参数。
-     * POI 解析 rows 归档后异步调模型，秒回 recordId。
-     */
-    @PostMapping("/upload")
-    public Map<String, Object> upload(@RequestParam("file") MultipartFile file,
-                                      @RequestParam(required = false) String guaranteeRate,
-                                      @RequestParam(required = false) Double canalEff,
-                                      @RequestParam(required = false) Double targetTotal,
-                                      @RequestParam(required = false) String schemeName) {
-        if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("上传文件不能为空");
-        }
-        DemandSubmitRequest req = new DemandSubmitRequest();
-        req.setGuaranteeRate(guaranteeRate);
-        req.setCanalEff(canalEff);
-        req.setTargetTotal(targetTotal);
-        req.setSchemeName(schemeName);
-        req.setTableRows(parseTableRows(file));
-        Map<String, Object> result = new HashMap<>();
-        result.put("recordId", demandService.submit(req));
-        return result;
-    }
-
-    /** POI 解析上传 Excel → 表格行归档（灌区面积列转数值，其余保留字符串） */
-    private List<Map<String, Object>> parseTableRows(MultipartFile file) {
-        List<Map<String, String>> rows;
-        try {
-            rows = ExcelParseUtils.parseRows(file.getInputStream());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("模板解析失败（仅支持 .xlsx 格式）: " + e.getMessage());
-        }
-        if (rows.isEmpty()) {
-            throw new IllegalArgumentException("模板无数据行");
-        }
-        Map<String, String> first = rows.get(0);
-        if (!first.containsKey("片区") || !first.containsKey("支渠")) {
-            throw new IllegalArgumentException("模板表头缺少必需列：片区 / 支渠");
-        }
-        List<Map<String, Object>> tableRows = new ArrayList<>();
-        for (Map<String, String> row : rows) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            for (Map.Entry<String, String> entry : row.entrySet()) {
-                String key = entry.getKey();
-                String value = entry.getValue();
-                if ("灌区面积".equals(key) && value != null && !value.isEmpty()) {
-                    try {
-                        item.put(key, Double.parseDouble(value));
-                        continue;
-                    } catch (NumberFormatException ignored) {
-                        // 非数值保留原始字符串
-                    }
-                }
-                item.put(key, value);
-            }
-            tableRows.add(item);
-        }
-        return tableRows;
-    }
-
     /** 轮询需水方案执行状态：{id, status, errorMsg} */
     @GetMapping("/status/{id}")
     public Map<String, Object> status(@PathVariable String id) {
         return commonService.status(id, recordMapper);
     }
 
-    /** 需水方案详情：主表 + 支渠明细 + 片区/分灌区汇总 */
+    /**
+     * 下载需水预测逐旬明细 Excel：后端按落库明细生成（Sheet1 支渠明细宽表 + Sheet2 分区汇总），
+     * 与详情接口同口径。
+     */
+    @GetMapping("/download")
+    public ResponseEntity<byte[]> download(@RequestParam String recordId) {
+        commonService.require(recordId, recordMapper);
+        byte[] bytes = demandService.exportExcel(recordId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        DownloadHeaderUtils.attachment("需水预测逐旬明细_" + recordId + ".xlsx"))
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(bytes);
+    }
+
+    /** 需水方案详情：主表 + 支渠明细 + 片区/分灌区/行政区汇总 */
     @GetMapping("/{id}")
     public Map<String, Object> detail(@PathVariable String id) {
         DemandRecord record = commonService.require(id, recordMapper);

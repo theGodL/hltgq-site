@@ -53,7 +53,11 @@ public class SoilMoistureServiceImpl implements SoilMoistureService {
     }
 
     @Override
-    public SoilMoistureTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+    public SoilMoistureTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime, String granularity) {
+        // 分钟级：按实际采集时刻逐条出点（图表 x 轴为真实时间）
+        if ("minute".equalsIgnoreCase(granularity)) {
+            return trendByMinute(stcd, startTime, endTime);
+        }
         // 1. 默认时间范围：近 7 天（与流量趋势一致）
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.HOURS);
         if (endTime == null) {
@@ -105,6 +109,51 @@ public class SoilMoistureServiceImpl implements SoilMoistureService {
         }
 
         // 5. 组装结果
+        SoilMoistureTrendVO vo = new SoilMoistureTrendVO();
+        vo.setStcd(stcd);
+        vo.setStnm(stnm);
+        vo.setStartTime(startTime);
+        vo.setEndTime(endTime);
+        vo.setPoints(points);
+        return vo;
+    }
+
+    /**
+     * 分钟级趋势：按实际采集时刻逐条输出原始记录，不做小时平均，也不补齐整点。
+     */
+    private SoilMoistureTrendVO trendByMinute(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+        if (endTime == null) {
+            endTime = LocalDateTime.now();
+        }
+        if (startTime == null) {
+            startTime = endTime.minusDays(7);
+        }
+
+        String stnm = stcd;
+        List<SoilMoistureVO> stationInfo = soilMoistureMapper.selectLatestPerStation(
+                Collections.singletonList(stcd), null, null, null);
+        if (!stationInfo.isEmpty() && stationInfo.get(0).getStnm() != null) {
+            stnm = stationInfo.get(0).getStnm();
+        }
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        List<SoilMoistureTrendVO.HourPoint> points = new ArrayList<>();
+        for (Map<String, Object> row : soilMoistureMapper.selectTrendDetail(stcd, startTime, endTime)) {
+            LocalDateTime tm = ValueConvertUtils.dateTime(row.get("tm"));
+            if (tm == null) continue;
+            SoilMoistureTrendVO.HourPoint point = new SoilMoistureTrendVO.HourPoint();
+            point.setHour(tm.format(fmt));
+            point.setMten(ValueConvertUtils.decimal(row.get("mten")));
+            point.setMtwenty(ValueConvertUtils.decimal(row.get("mtwenty")));
+            point.setMthirty(ValueConvertUtils.decimal(row.get("mthirty")));
+            point.setMforty(ValueConvertUtils.decimal(row.get("mforty")));
+            point.setMfifty(ValueConvertUtils.decimal(row.get("mfifty")));
+            point.setMsixty(ValueConvertUtils.decimal(row.get("msixty")));
+            point.setMeighty(ValueConvertUtils.decimal(row.get("meighty")));
+            point.setMhundred(ValueConvertUtils.decimal(row.get("mhundred")));
+            points.add(point);
+        }
+
         SoilMoistureTrendVO vo = new SoilMoistureTrendVO();
         vo.setStcd(stcd);
         vo.setStnm(stnm);

@@ -1,10 +1,21 @@
 package com.qgyun.hltgq.hltgqsite.duty.controller;
 
 import com.qgyun.hltgq.hltgqsite.duty.service.DutyAttendanceService;
+import com.qgyun.hltgq.hltgqsite.duty.service.DutyScheduleImportService;
 import com.qgyun.hltgq.hltgqsite.duty.service.DutyScheduleService;
 import com.qgyun.hltgq.hltgqsite.duty.vo.ScheduleDetailVO;
+import com.qgyun.hltgq.hltgqsite.duty.vo.ScheduleImportResult;
 import com.qgyun.hltgq.hltgqsite.duty.vo.ScheduleSaveRequest;
+import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.ExcelTemplateUtils;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,7 +24,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.util.Map;
 
 /**
@@ -31,6 +44,9 @@ public class DutyScheduleController {
 
     @Autowired
     private DutyAttendanceService attendanceService;
+
+    @Autowired
+    private DutyScheduleImportService importService;
 
     /**
      * 今日值班判定（签到提醒弹窗；以当前登录人视角，未命中返回 {onDuty:false}）。
@@ -90,6 +106,17 @@ public class DutyScheduleController {
     }
 
     /**
+     * 排班日历（值班管理日历视图：按月一次性返回全部排班，不分页）。
+     *
+     * @param month 月份 yyyy-MM（可选，默认当月）
+     * @return month / start / end（月末，含）/ records（结构同列表行，含带班领导手机号）
+     */
+    @GetMapping("/schedule/calendar")
+    public Map<String, Object> scheduleCalendar(@RequestParam(required = false) String month) {
+        return scheduleService.calendar(month);
+    }
+
+    /**
      * 排班详情（编辑/查看抽屉回显）。
      *
      * @param id 排班 id（必填）
@@ -135,5 +162,59 @@ public class DutyScheduleController {
     @DeleteMapping("/schedule/{id}")
     public Map<String, Object> scheduleDelete(@PathVariable String id) {
         return scheduleService.delete(id);
+    }
+
+    /** 下载值班排班导入模板（响应文件名：值班排班导入模板.xlsx）。 */
+    @GetMapping("/schedule/import-template")
+    public ResponseEntity<byte[]> downloadImportTemplate() {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        DownloadHeaderUtils.attachment("值班排班导入模板.xlsx"))
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(buildImportTemplate());
+    }
+
+    /**
+     * 上传导入值班排班：multipart file（模板格式 .xlsx）。
+     * <p>整体性错误（空文件/非 xlsx/缺列/超 300 行/无数据行）返回 400；
+     * 行级问题（日期格式/班次/单位或人员不存在/时间冲突等）在响应体中逐行给出，单行失败不影响其他行。
+     */
+    @PostMapping("/schedule/import")
+    public ScheduleImportResult scheduleImport(@RequestParam("file") MultipartFile file) {
+        return importService.importFile(file);
+    }
+
+    /**
+     * POI 动态生成模板：表头（与 {@link DutyScheduleImportService#TEMPLATE_HEADERS} 同源）+ 班次下拉 + 填写提示 + 列宽；
+     * 值班日期列默认文本格式（防止 Excel 自动转换日期造成格式歧义）。
+     */
+    private byte[] buildImportTemplate() {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("值班排班");
+            String[] headers = DutyScheduleImportService.TEMPLATE_HEADERS;
+            Row header = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+            int first = 1;
+            int last = DutyScheduleImportService.MAX_ROWS;
+            CellStyle textStyle = workbook.createCellStyle();
+            textStyle.setDataFormat(workbook.createDataFormat().getFormat("@"));
+            sheet.setDefaultColumnStyle(0, textStyle);
+            ExcelTemplateUtils.addPrompt(sheet, 0, "值班日期", "格式：yyyy-MM-dd（如 2026-10-21）", first, last);
+            ExcelTemplateUtils.addDropdown(sheet, 1, DutyScheduleImportService.SHIFT_OPTIONS, true,
+                    "班次", "下拉选择：白班 / 中班 / 夜班", first, last);
+            ExcelTemplateUtils.addPrompt(sheet, 2, "开始时间", "格式：HH:mm（留空按班次默认时段）", first, last);
+            ExcelTemplateUtils.addPrompt(sheet, 3, "结束时间", "格式：HH:mm（24:00 表示当日 24 点；留空按班次默认时段）", first, last);
+            ExcelTemplateUtils.addPrompt(sheet, 4, "所在单位", "填写单位名称（与系统一致；重名请改填 id）", first, last);
+            ExcelTemplateUtils.addPrompt(sheet, 5, "带班领导", "填写人员姓名（与系统一致；重名请改填 id）", first, last);
+            ExcelTemplateUtils.addPrompt(sheet, 6, "值班人员", "多个姓名用顿号分隔，可留空", first, last);
+            ExcelTemplateUtils.fitColumnWidths(sheet, headers);
+            workbook.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new IllegalStateException("模板生成失败: " + e.getMessage());
+        }
     }
 }

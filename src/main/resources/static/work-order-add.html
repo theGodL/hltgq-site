@@ -160,6 +160,8 @@ textarea.field{height:auto;min-height:96px;padding:8px 12px;line-height:22px;res
           <label class="f-label">关联设备</label>
           <div class="sel" id="f-device"></div>
           <div class="f-err" id="f-device-err"></div>
+          <label class="f-label" style="margin-top:16px">设备型号</label>
+          <div class="readonly-box" id="f-device-model">选择设备后自动带出</div>
         </div>
         <div class="f-item">
           <label class="f-label">负责部门</label>
@@ -355,6 +357,10 @@ function createSelect(el) {
       const hit = st.options.filter(o => o.value === st.value)[0];
       return hit ? hit.label : '';
     },
+    getModel() {
+      const hit = st.options.filter(o => o.value === st.value)[0];
+      return hit ? (hit.model || '') : '';
+    },
     setOptions(options) { st.options = options || []; sync(); render(); return this; },
     setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
     setPlaceholder(t) { st.placeholder = t; sync(); return this; },
@@ -407,6 +413,17 @@ async function loadSites() {
   }
 }
 
+/**
+ * 设备型号只读展示：随所选设备带出（设备表 evkmpl）。
+ * 未选设备时提示待选；设备已选但未维护型号时提示未维护。
+ */
+function syncDeviceModel() {
+  const box = $('f-device-model');
+  if (!box) return;
+  const model = UI.device.getModel();
+  box.textContent = model || (UI.device.getValue() ? '该设备未维护型号' : '选择设备后自动带出');
+}
+
 /** 设备候选（按站点，非必填）；preset 为编辑回填的设备 */
 async function loadDevices(siteId, preset) {
   const seq = ++S.deviceSeq;
@@ -414,6 +431,7 @@ async function loadDevices(siteId, preset) {
   markErr('f-device-err', false);
   if (!siteId) {
     UI.device.setValue('').setOptions([]).setDisabled(true).setPlaceholder('请先选择站点');
+    syncDeviceModel();
     return;
   }
   UI.device.setDisabled(false).setPlaceholder('加载中...').setLoading(true);
@@ -421,13 +439,15 @@ async function loadDevices(siteId, preset) {
     const list = await api('/patrol-schedule/devices?siteId=' + encodeURIComponent(siteId));
     if (seq !== S.deviceSeq) return;
     UI.device.setOptions((Array.isArray(list) ? list : []).map(d => ({
-      value: d.value, label: d.label || d.value, sub: d.sub || ''
+      value: d.value, label: d.label || d.value, sub: d.sub || '', model: d.model || ''
     })));
     UI.device.setPlaceholder('不选择（可选）');
     if (preset && preset.id) UI.device.setValue(preset.id, preset.name || '');
+    syncDeviceModel();
   } catch (e) {
     if (seq !== S.deviceSeq) return;
     UI.device.setOptions([]).setPlaceholder('设备加载失败');
+    syncDeviceModel();
     showToast(e.message || '设备加载失败', true);
   } finally {
     if (seq === S.deviceSeq) UI.device.setLoading(false);
@@ -568,7 +588,7 @@ async function boot() {
   UI.type.setOptions(WO_TYPES.map(t => ({ value: t.value, label: t.label })));
 
   UI.site.onChange(v => loadDevices(v));
-  UI.device.onChange(() => { markErr('f-device-err', false); UI.device.setError(false); });
+  UI.device.onChange(() => { markErr('f-device-err', false); UI.device.setError(false); syncDeviceModel(); });
   UI.org.onChange(() => { markErr('f-org-err', false); UI.org.setError(false); });
   UI.user.onChange(() => { markErr('f-user-err', false); UI.user.setError(false); });
   UI.type.onChange(() => { markErr('f-type-err', false); UI.type.setError(false); });

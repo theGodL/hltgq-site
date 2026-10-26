@@ -34,8 +34,8 @@ public interface DutyScheduleMapper {
             "WHERE g.corp_code = 'hltgq' ORDER BY g.name ASC, g.id ASC")
     List<Map<String, Object>> selectOptionsOrgs();
 
-    /** 人员候选（下拉用：id + name；带班领导与值班人员共用）。 */
-    @Select("SELECT u.id AS id, u.name AS name FROM " + T_USER + " u " +
+    /** 人员候选（下拉用：id + name + mobile，带班领导联系方式随选项带出）。 */
+    @Select("SELECT u.id AS id, u.name AS name, u.mobile AS mobile FROM " + T_USER + " u " +
             "WHERE u.corp_code = 'hltgq' ORDER BY u.name ASC, u.id ASC")
     List<Map<String, Object>> selectOptionsUsers();
 
@@ -103,7 +103,7 @@ public interface DutyScheduleMapper {
             "to_char(s.tneakp_max, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMaxRaw, " +
             "s.fjyyhu AS shiftCode, s.peuzwi AS statusCode, " +
             "s.jepbhm AS orgId, o.name AS orgName, s.ihdflq AS legacyUnit, " +
-            "s.alidpq AS leaderId, u.name AS leader, " +
+            "s.alidpq AS leaderId, u.name AS leader, u.mobile AS leaderPhone, " +
             "(SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +
             "   FROM " + T_MEMBER_REL + " rel LEFT JOIN " + T_USER + " ru ON ru.id = rel.rel_id " +
             "  WHERE rel.biz_id = s.id) AS members, " +
@@ -139,6 +139,33 @@ public interface DutyScheduleMapper {
                                                @Param("offset") int offset,
                                                @Param("now") LocalDateTime now);
 
+    /**
+     * 排班区间查询（值班管理日历视图）：值班日期落在 [startRaw, endRaw) 的全部排班，
+     * 按开始时间升序（同日按班次先后），不分页、不限状态；列与列表一致（含带班领导手机号），
+     * 前端按 date 分日渲染。
+     */
+    @Select("SELECT s.id, " +
+            "to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') AS dutyDateRaw, " +
+            "to_char(s.tneakp_min, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMinRaw, " +
+            "to_char(s.tneakp_max, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMaxRaw, " +
+            "s.fjyyhu AS shiftCode, s.peuzwi AS statusCode, " +
+            "s.jepbhm AS orgId, o.name AS orgName, s.ihdflq AS legacyUnit, " +
+            "s.alidpq AS leaderId, u.name AS leader, u.mobile AS leaderPhone, " +
+            "(SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +
+            "   FROM " + T_MEMBER_REL + " rel LEFT JOIN " + T_USER + " ru ON ru.id = rel.rel_id " +
+            "  WHERE rel.biz_id = s.id) AS members, " +
+            "(SELECT string_agg(rel.rel_id, ',' ORDER BY rel.nature_order) " +
+            "   FROM " + T_MEMBER_REL + " rel WHERE rel.biz_id = s.id) AS memberIdsRaw " +
+            "FROM " + T_SCHEDULE + " s " +
+            "LEFT JOIN " + T_ORG + " o ON o.id = s.jepbhm " +
+            "LEFT JOIN " + T_USER + " u ON u.id = s.alidpq " +
+            "WHERE s.corp_code = 'hltgq' " +
+            "AND to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') >= #{startRaw} " +
+            "AND to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') < #{endRaw} " +
+            "ORDER BY COALESCE(s.tneakp_min, s.owcvsv) ASC NULLS LAST, s.id ASC")
+    List<ScheduleListRowVO> selectScheduleRange(@Param("startRaw") String startRaw,
+                                                @Param("endRaw") String endRaw);
+
     /** 排班详情（编辑/查看回显；成员 id/姓名两数组按 nature_order 对齐）。 */
     @Select("SELECT s.id, " +
             "to_char(COALESCE(s.idjwlq, s.owcvsv), 'YYYY-MM-DD HH24:MI:SS') AS dutyDateRaw, " +
@@ -146,7 +173,7 @@ public interface DutyScheduleMapper {
             "to_char(s.tneakp_max, 'YYYY-MM-DD HH24:MI:SS') AS tneakpMaxRaw, " +
             "s.fjyyhu AS shiftCode, s.peuzwi AS statusCode, " +
             "s.jepbhm AS orgId, o.name AS orgName, s.ihdflq AS legacyUnit, " +
-            "s.alidpq AS leaderId, u.name AS leaderName, " +
+            "s.alidpq AS leaderId, u.name AS leaderName, u.mobile AS leaderPhone, " +
             "(SELECT string_agg(rel.rel_id, ',' ORDER BY rel.nature_order) " +
             "   FROM " + T_MEMBER_REL + " rel WHERE rel.biz_id = s.id) AS memberIdsRaw, " +
             "(SELECT string_agg(COALESCE(ru.name, rel.rel_id), '、' ORDER BY rel.nature_order) " +

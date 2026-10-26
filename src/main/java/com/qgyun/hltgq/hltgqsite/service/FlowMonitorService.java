@@ -28,13 +28,14 @@ public interface FlowMonitorService {
                                       LocalDateTime startTime, LocalDateTime endTime);
 
     /**
-     * 流量趋势图表（小时级，默认近 7 天）
+     * 流量趋势图表（默认近 7 天）
      *
-     * @param stcd      站点编号（必填）
-     * @param startTime 起始时间（可选，默认 7 天前整点）
-     * @param endTime   截止时间（可选，默认当前整点）
+     * @param stcd        站点编号（必填）
+     * @param startTime   起始时间（可选，默认 7 天前）
+     * @param endTime     截止时间（可选，默认当前时间）
+     * @param granularity 统计粒度：hour（每小时平均、整点补齐）/ minute（按实际采集时刻逐条出点）
      */
-    FlowTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime);
+    FlowTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime, String granularity);
 
     /**
      * 流量历史数据（分页，按监测时间倒序）

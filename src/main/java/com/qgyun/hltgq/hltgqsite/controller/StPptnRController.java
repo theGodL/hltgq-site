@@ -172,19 +172,25 @@ public class StPptnRController {
     }
 
     /**
-     * 灌区雨量变化图表：单站点小时级增量+累计雨量
+     * 灌区雨量变化图表：单站点增量+累计雨量
      * stcd 必填；startTime/endTime 非必填，默认近 7 天
-     * 小时序列起点对齐查询起始日当天 8:00（早8点开始，而非0点）
+     * 默认小时级（序列起点对齐查询起始日当天 8:00，早8点开始而非0点）；
+     * granularity=minute 时按实际采集时刻逐条出点（分钟级精度，x 轴为真实时间）
      */
     @GetMapping("/gq-rainfall-chart")
     public GqRainfallChartVO gqRainfallChart(
             @RequestParam String stcd,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
-        LocalDateTime now = LocalDateTime.now().withMinute(0).withSecond(0).withNano(0);
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "hour") String granularity) {
+        // 默认近 7 天：小时级截止到整点，分钟级截止到当前分钟
+        LocalDateTime now = LocalDateTime.now().withSecond(0).withNano(0);
+        if (!"minute".equalsIgnoreCase(granularity)) {
+            now = now.withMinute(0);
+        }
         if (endTime == null) endTime = now;
         if (startTime == null) startTime = now.minusDays(7);
-        return stPptnRService.gqRainfallChart(stcd, startTime, endTime);
+        return stPptnRService.gqRainfallChart(stcd, startTime, endTime, granularity);
     }
 
     /**

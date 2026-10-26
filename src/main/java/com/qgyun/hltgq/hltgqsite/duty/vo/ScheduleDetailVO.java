@@ -42,6 +42,9 @@ public class ScheduleDetailVO {
     /** 带班领导姓名（对外） */
     private String leaderName;
 
+    /** 带班领导联系电话（人员档案 mobile，对外；未登记为 null） */
+    private String leaderPhone;
+
     /** 值班人员用户 id 数组（对外） */
     private List<String> memberIds;
 

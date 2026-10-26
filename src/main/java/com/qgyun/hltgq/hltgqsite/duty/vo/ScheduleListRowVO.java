@@ -47,6 +47,9 @@ public class ScheduleListRowVO {
     /** 带班领导 id（alidpq，对外） */
     private String leaderId;
 
+    /** 带班领导联系电话（人员档案 mobile，对外；未登记为 null） */
+    private String leaderPhone;
+
     /** 值班人员姓名（顿号连接，对外） */
     private String members;
 

@@ -9,8 +9,9 @@
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#fff;color:#333;font-size:14px;-webkit-font-smoothing:antialiased}
 .page-wrap{padding:20px 20px 48px}
 
-/* 右上角操作区(仅「新增」) */
-.page-head{display:flex;justify-content:flex-end;align-items:center;margin-bottom:16px}
+/* 页头:左侧视图切换,右侧「导入/新增」 */
+.page-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap}
+.head-actions{display:flex;align-items:center;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border:1px solid transparent;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .2s}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
@@ -136,36 +137,141 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .pg-jump{display:flex;align-items:center;gap:6px;font-size:13px;color:#333}
 .pg-jump input{width:52px;height:32px;border:1px solid #d9d9d9;border-radius:6px;text-align:center;font-size:13px;color:#333;background:#fff;outline:none;padding:0 8px;font-family:inherit}
 .pg-jump input:focus{border-color:#1677ff}
+
+/* 视图切换分段控件 */
+.seg{display:inline-flex;padding:2px;border:1px solid #d9d9d9;border-radius:6px;background:#fafafa}
+.seg-btn{height:30px;padding:0 14px;border:0;border-radius:4px;background:transparent;color:#595959;font-size:14px;font-family:inherit;cursor:pointer;transition:all .2s}
+.seg-btn:hover{color:#1677ff}
+.seg-btn.active{background:#fff;color:#1677ff;font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+/* 日历视图 */
+.cal-view{border:1px solid #f0f0f0;border-radius:8px;overflow:hidden}
+.cal-view-hd{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #f0f0f0;flex-wrap:wrap;gap:8px}
+.cal-view-title{display:flex;align-items:center;gap:6px}
+.cal-arrow{width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#666;font-size:20px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.cal-arrow:hover{background:#f5f5f5;color:#1677ff}
+.cal-ym{min-width:104px;text-align:center;font-size:15px;font-weight:600;color:#333}
+.cal-today-btn2{margin-left:4px;height:28px;padding:0 10px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;color:#595959;font-size:13px;font-family:inherit;cursor:pointer}
+.cal-today-btn2:hover{color:#1677ff;border-color:#1677ff}
+.cal-legend{display:flex;align-items:center;gap:14px;font-size:13px;color:#8c8c8c}
+.cal-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
+.cal-week{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid #f0f0f0;background:#fafafa}
+.cal-week span{height:38px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#8c8c8c}
+.cal-cells{display:grid;grid-template-columns:repeat(7,1fr)}
+.cal-day{min-height:112px;padding:6px 8px;border-right:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;cursor:pointer;transition:background .15s;overflow:hidden}
+.cal-day:nth-child(7n){border-right:0}
+.cal-day:hover{background:#f5faff}
+.cal-day.out{background:#fcfcfc;cursor:default}
+.cal-day.out:hover{background:#fcfcfc}
+.cal-day.today .d-num{background:#1677ff;color:#fff}
+.cal-day-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.d-num{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:50%;font-size:13px;color:#333}
+.cal-day.out .d-num{color:#c8c8c8}
+.d-cnt{font-size:12px;color:#bfbfbf}
+.cal-ev{display:flex;align-items:center;gap:4px;height:19px;font-size:12px;color:#595959;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-ev i{flex-shrink:0;width:6px;height:6px;border-radius:50%}
+.cal-ev.more{color:#1677ff}
+.cal-empty{min-height:112px;border-right:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;background:#fcfcfc}
+.cal-empty:nth-child(7n){border-right:0}
+
+/* 当日值班人员弹窗 */
+.day-overlay{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:20px;overflow:auto}
+.day-overlay.show{display:flex}
+.day-modal{width:880px;max-width:96vw;margin-top:8vh;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 6px 22px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.08);display:flex;flex-direction:column;max-height:80vh}
+.day-hd{position:relative;flex-shrink:0;display:flex;align-items:center;height:56px;padding:0 56px 0 24px;border-bottom:1px solid #f0f0f0}
+.day-hd h3{font-size:16px;font-weight:500;color:#333}
+.day-bd{flex:1;min-height:0;overflow:auto;padding:16px 24px 24px}
+.day-tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px}
+.day-tbl th{background:#fafafa;color:#333;font-weight:600;text-align:left;padding:10px 12px;border:1px solid #f0f0f0;white-space:nowrap}
+.day-tbl td{padding:10px 12px;border:1px solid #f0f0f0;color:#333;line-height:22px;vertical-align:middle;overflow-wrap:break-word}
+.day-ft{flex-shrink:0;display:flex;justify-content:flex-end;padding:12px 24px;border-top:1px solid #f0f0f0}
+.day-empty{padding:36px 0;text-align:center;color:#bfbfbf;font-size:14px}
+
+/* 导入弹窗 */
+.imp-modal{width:660px;max-width:96vw;margin-top:8vh;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 6px 22px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.08);display:flex;flex-direction:column;max-height:80vh}
+.imp-bd{flex:1;min-height:0;overflow:auto;padding:20px 24px 8px}
+.imp-tip{font-size:13px;color:#8c8c8c;line-height:20px;margin-bottom:14px}
+.imp-tip a{color:#1677ff;cursor:pointer;text-decoration:none}
+.imp-tip a:hover{opacity:.85}
+.imp-drop{min-height:150px;border:1px dashed #d0d5dd;border-radius:8px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px 16px;color:#8c8c8c;cursor:pointer;transition:border-color .2s,background .2s}
+.imp-drop:hover,.imp-drop.drag{border-color:#1677ff;background:#f0f7ff;color:#1677ff}
+.imp-name{color:#262626;font-size:14px;font-weight:500}
+.imp-meta{font-size:12px;color:#bfbfbf}
+.imp-result{display:none;margin-top:14px;padding:12px 14px;border:1px solid #f0f0f0;border-radius:8px;background:#fafafa;max-height:220px;overflow:auto}
+.imp-result.show{display:block}
+.imp-sum{font-size:13px;color:#262626;margin-bottom:4px}
+.imp-row{font-size:12px;line-height:20px;color:#595959}
+.imp-row.ok{color:#389e0d}
+.imp-row.fail{color:#cf1322}
+.imp-ft{flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 24px;border-top:1px solid #f0f0f0}
+
+/* 带班领导联系方式(选人后自动带出,只读) */
+#f-leader-phone{background:#fafafa;cursor:default}
+#f-leader-phone:focus{border-color:#d9d9d9;box-shadow:none}
 </style>
 </head>
 <body>
 <div class="page-wrap">
-  <!-- 右上角操作区:仅保留「新增」 -->
+  <!-- 页头:左侧视图切换,右侧「导入/新增」 -->
   <div class="page-head">
-    <button type="button" class="btn btn-primary" id="btn-add">
-      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-        <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-      </svg>新增
-    </button>
+    <div class="seg" id="view-seg" role="tablist" aria-label="视图切换">
+      <button type="button" class="seg-btn active" data-view="calendar">日历视图</button>
+      <button type="button" class="seg-btn" data-view="list">列表视图</button>
+    </div>
+    <div class="head-actions">
+      <button type="button" class="btn btn-default" id="btn-import">
+        <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M7 12.5v-7m0 0L4.2 8.3M7 5.5l2.8 2.8M2 3.8V2.4a.9.9 0 01.9-.9h8.2a.9.9 0 01.9.9v1.4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>导入
+      </button>
+      <button type="button" class="btn btn-primary" id="btn-add">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>新增
+      </button>
+    </div>
   </div>
 
-  <!-- 值班排班列表 -->
-  <table class="tbl">
-    <colgroup>
-      <col style="width:20%"><col style="width:10%"><col style="width:16%">
-      <col style="width:12%"><col style="width:14%"><col style="width:12%"><col style="width:16%">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>值班时间</th><th>班次</th><th>所在单位</th><th>带班领导</th>
-        <th>值班人员</th><th>排班状态</th><th>操作</th>
-      </tr>
-    </thead>
-    <tbody id="duty-tbody"></tbody>
-  </table>
+  <!-- 日历视图(默认):按月展示,点日期看当日值班人员 -->
+  <div class="cal-view" id="cal-view">
+    <div class="cal-view-hd">
+      <div class="cal-view-title">
+        <button type="button" class="cal-arrow" data-cal-nav="-1" aria-label="上个月">‹</button>
+        <span class="cal-ym" id="cal-ym"></span>
+        <button type="button" class="cal-arrow" data-cal-nav="1" aria-label="下个月">›</button>
+        <button type="button" class="cal-today-btn2" id="cal-today">今天</button>
+      </div>
+      <div class="cal-legend">
+        <span><i style="background:#52c41a"></i>白班</span>
+        <span><i style="background:#1677ff"></i>中班</span>
+        <span><i style="background:#fa8c16"></i>夜班</span>
+      </div>
+    </div>
+    <div class="cal-week">
+      <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+    </div>
+    <div class="cal-cells" id="cal-cells"></div>
+  </div>
 
-  <!-- 分页条(本地切片,每页 10 条) -->
-  <div class="pg-bar" id="pg-bar"></div>
+  <!-- 列表视图 -->
+  <div class="list-view" id="list-view" style="display:none">
+    <table class="tbl">
+      <colgroup>
+        <col style="width:20%"><col style="width:10%"><col style="width:16%">
+        <col style="width:12%"><col style="width:14%"><col style="width:12%"><col style="width:16%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>值班时间</th><th>班次</th><th>所在单位</th><th>带班领导</th>
+          <th>值班人员</th><th>排班状态</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="duty-tbody"></tbody>
+    </table>
+
+    <!-- 分页条(本地切片,每页 10 条) -->
+    <div class="pg-bar" id="pg-bar"></div>
+  </div>
 
 </div>
 
@@ -231,6 +337,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
         <div class="sel-dd" id="leader-dd"></div>
       </div>
     </div>
+    <div class="form-item">
+      <label>联系方式</label>
+      <div class="select-wrap">
+        <input type="text" class="sel-input" id="f-leader-phone" placeholder="选择带班领导后自动带出" readonly tabindex="-1">
+        <span class="chev">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6.5 3.5h3l1.6 4-2 1.2a12 12 0 0 0 6.2 6.2l1.2-2 4 1.6v3a2 2 0 0 1-2.2 2A17.5 17.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2Z" stroke="#bfbfbf" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </div>
+    </div>
     <div class="form-item" style="margin-bottom:0">
       <label>值班人员</label>
       <div class="select-wrap">
@@ -270,6 +387,66 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   </div>
 </div>
 
+<!-- 当日值班人员弹窗(点日历日期) -->
+<div class="day-overlay" id="day-overlay">
+  <div class="day-modal" role="dialog" aria-label="当日值班人员">
+    <div class="day-hd">
+      <h3 id="day-title">当日值班人员</h3>
+      <button type="button" class="drawer-x" id="day-close" aria-label="关闭">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="day-bd">
+      <table class="day-tbl">
+        <colgroup>
+          <col style="width:24%"><col style="width:12%"><col style="width:16%"><col style="width:26%"><col style="width:22%">
+        </colgroup>
+        <thead>
+          <tr><th>所在单位</th><th>班次</th><th>带班领导</th><th>值班人员</th><th>联系电话</th></tr>
+        </thead>
+        <tbody id="day-tbody"></tbody>
+      </table>
+      <div class="day-empty" id="day-empty" style="display:none">当日暂无值班安排</div>
+    </div>
+    <div class="day-ft">
+      <button type="button" class="btn btn-default" id="day-close-btn">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导入值班排班弹窗 -->
+<div class="day-overlay" id="imp-overlay">
+  <div class="imp-modal" role="dialog" aria-label="导入值班排班">
+    <div class="day-hd">
+      <h3>导入值班排班</h3>
+      <button type="button" class="drawer-x" id="imp-close" aria-label="关闭">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="imp-bd">
+      <p class="imp-tip">请先<a id="imp-tpl">下载导入模板</a>，按模板填写后上传（.xlsx，单次一个文件，最多 300 行）。</p>
+      <div class="imp-drop" id="imp-drop">
+        <div>点击或拖拽文件到此处</div>
+        <div class="imp-name" id="imp-name"></div>
+        <div class="imp-meta" id="imp-meta">支持 .xlsx</div>
+      </div>
+      <input type="file" id="imp-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
+      <div class="imp-result" id="imp-result">
+        <div class="imp-sum" id="imp-sum"></div>
+        <div id="imp-rows"></div>
+      </div>
+    </div>
+    <div class="imp-ft">
+      <button type="button" class="btn btn-default" id="imp-reset">重置</button>
+      <button type="button" class="btn btn-primary" id="imp-submit">导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- 轻提示 -->
 <div class="toast" id="toast"></div>
 
@@ -280,10 +457,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   /* ===================== 接口区 =====================
    *   接口文档 v1.0《值班交接班接口.md》:
    *   下拉选项       → GET    /duty/options
+   *   排班日历       → GET    /duty/schedule/calendar?month=YYYY-MM
    *   排班列表       → GET    /duty/schedule/list
    *   排班详情       → GET    /duty/schedule/detail
    *   保存(新增/编辑) → POST   /duty/schedule/save
    *   删除           → DELETE /duty/schedule/{id}
+   *   导入模板       → GET    /duty/schedule/import-template
+   *   导入排班       → POST   /duty/schedule/import
    * ================================================= */
 
   var API_BASE = '/hltgq-site/duty';
@@ -291,6 +471,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   var LIST_DATA = [];                                // 排班列表当前数据(一次拉取,本地分页)
   var PAGE = { page: 1, size: 10 };                  // 分页状态(当前页/每页条数)
   var memberIdMap = {};                              // 值班人员姓名 → 用户 id
+  var VIEW = 'calendar';                             // 当前视图:calendar(默认) / list
+  var CAL = { month: null, data: {} };               // 日历当前月 yyyy-MM 与按日期分组数据
   var redirected = false;
 
   /** 通用请求:同域自动带 Cookie;401 按 redirectUrl 跳登录;非 2xx 抛出 message */
@@ -344,6 +526,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     return request(API_BASE + '/schedule/save', { method: 'POST', body: payload });
   }
 
+  /** 日历数据(按月一次拉取):records 按日期分组,供月历格子与当日弹窗使用 */
+  function loadCalendar(month) {
+    var q = month ? ('?month=' + encodeURIComponent(month)) : '';
+    return request(API_BASE + '/schedule/calendar' + q).then(function (d) {
+      CAL.month = (d && d.month) || month || '';
+      CAL.data = {};
+      ((d && d.records) || []).forEach(function (row) {
+        var key = row.date || '';
+        if (!key) return;
+        (CAL.data[key] = CAL.data[key] || []).push(row);
+      });
+      renderCalendar();
+    });
+  }
+
+  /** 刷新当前视图(保存/删除/导入后统一入口) */
+  function refreshView() {
+    if (VIEW === 'calendar') loadCalendar(CAL.month).catch(function (err) { toast(err.message); });
+    else loadList().catch(function (err) { toast(err.message); });
+  }
+
   /** 删除排班 */
   function deleteDuty(id) {
     return request(API_BASE + '/schedule/' + encodeURIComponent(id), { method: 'DELETE' });
@@ -382,6 +585,107 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     }
     return null;
   }
+
+  /* ===== 日历视图 ===== */
+
+  var WEEK_CN = ['日', '一', '二', '三', '四', '五', '六'];
+  var SHIFT_DOTS = { '#1#': '#52c41a', '#jhyu#': '#1677ff', '#zsfh#': '#fa8c16' };
+  var dayOverlay = $('day-overlay');
+
+  /** 渲染月历:周一为一周起点,每天显示前 3 条排班摘要与总班次数 */
+  function renderCalendar() {
+    if (!CAL.month) return;
+    var y = +CAL.month.slice(0, 4);
+    var m = +CAL.month.slice(5, 7);
+    $('cal-ym').textContent = y + '年' + m + '月';
+    var startW = (new Date(y, m - 1, 1).getDay() + 6) % 7;  // 周一=0
+    var days = new Date(y, m, 0).getDate();
+    var prevDays = new Date(y, m - 1, 0).getDate();
+    var today = todayStr();
+    var html = '';
+    for (var i = startW - 1; i >= 0; i--) {
+      html += '<div class="cal-empty"><div class="cal-day-hd"><span class="d-num">' + (prevDays - i) + '</span></div></div>';
+    }
+    for (var d = 1; d <= days; d++) {
+      var ds = CAL.month + '-' + pad2(d);
+      var list = CAL.data[ds] || [];
+      html += '<div class="cal-day' + (ds === today ? ' today' : '') + '" data-date="' + ds + '">'
+        + '<div class="cal-day-hd"><span class="d-num">' + d + '</span>'
+        + (list.length ? '<span class="d-cnt">' + list.length + ' 班</span>' : '')
+        + '</div>'
+        + list.slice(0, 3).map(function (row) {
+            return '<div class="cal-ev"><i style="background:' + (SHIFT_DOTS[row.shiftCode] || '#bfbfbf') + '"></i>'
+              + esc(row.shift || '') + ' · ' + esc(row.org || '-') + '</div>';
+          }).join('')
+        + (list.length > 3 ? '<div class="cal-ev more">+' + (list.length - 3) + ' 条</div>' : '')
+        + '</div>';
+    }
+    var tail = (7 - (startW + days) % 7) % 7;  // 补齐整周
+    for (var t = 1; t <= tail; t++) {
+      html += '<div class="cal-empty"><div class="cal-day-hd"><span class="d-num">' + t + '</span></div></div>';
+    }
+    $('cal-cells').innerHTML = html;
+  }
+
+  /** 切换月份(±1) */
+  function shiftMonth(delta) {
+    var y = +CAL.month.slice(0, 4);
+    var m = +CAL.month.slice(5, 7) + delta;
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    loadCalendar(y + '-' + pad2(m)).catch(function (err) { toast(err.message); });
+  }
+
+  /** 当日值班人员弹窗:单位/班次/带班领导/值班人员/联系电话 */
+  function openDayModal(ds) {
+    var list = CAL.data[ds] || [];
+    var wd = WEEK_CN[new Date(ds + 'T00:00:00').getDay()];
+    $('day-title').textContent = ds + '（周' + wd + '）值班人员';
+    document.querySelector('.day-tbl').style.display = list.length ? '' : 'none';
+    $('day-empty').style.display = list.length ? 'none' : 'block';
+    $('day-tbody').innerHTML = list.map(function (row) {
+      return '<tr>'
+        + '<td>' + esc(row.org || '-') + '</td>'
+        + '<td>' + esc(row.shift || '-') + '</td>'
+        + '<td>' + esc(row.leader || '-') + '</td>'
+        + '<td>' + esc(row.members || '-') + '</td>'
+        + '<td>' + esc(row.leaderPhone || '-') + '</td>'
+        + '</tr>';
+    }).join('');
+    dayOverlay.classList.add('show');
+  }
+
+  function closeDayModal() { dayOverlay.classList.remove('show'); }
+
+  $('cal-cells').addEventListener('click', function (e) {
+    var cell = e.target.closest('.cal-day');
+    if (cell) openDayModal(cell.dataset.date);
+  });
+  document.querySelector('.cal-view-title').addEventListener('click', function (e) {
+    var nav = e.target.closest('[data-cal-nav]');
+    if (nav) { shiftMonth(+nav.dataset.calNav); return; }
+    if (e.target.closest('#cal-today')) loadCalendar().catch(function (err) { toast(err.message); });
+  });
+  $('day-close').addEventListener('click', closeDayModal);
+  $('day-close-btn').addEventListener('click', closeDayModal);
+  dayOverlay.addEventListener('click', function (e) { if (e.target === dayOverlay) closeDayModal(); });
+
+  /* ===== 视图切换(日历默认) ===== */
+  function switchView(view) {
+    VIEW = view;
+    Array.prototype.forEach.call(document.querySelectorAll('#view-seg .seg-btn'), function (b) {
+      b.classList.toggle('active', b.dataset.view === view);
+    });
+    $('cal-view').style.display = view === 'calendar' ? '' : 'none';
+    $('list-view').style.display = view === 'list' ? '' : 'none';
+    refreshView();
+  }
+
+  $('view-seg').addEventListener('click', function (e) {
+    var btn = e.target.closest('.seg-btn');
+    if (!btn || btn.dataset.view === VIEW) return;
+    switchView(btn.dataset.view);
+  });
 
   /* ===== 列表渲染 ===== */
 
@@ -480,8 +784,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     });
   }
 
-  /** 可搜索单选(带班领导/所在单位):点击展开全量(当前项高亮),输入关键字过滤,选中回填并记录 id */
-  function bindSearchSelect(inputId, ddId, optionsFn, emptyText) {
+  /** 可搜索单选(带班领导/所在单位):点击展开全量(当前项高亮),输入关键字过滤,选中回填并记录 id;onPick 供选中/清空时联动 */
+  function bindSearchSelect(inputId, ddId, optionsFn, emptyText, onPick) {
     var input = $(inputId);
     var dd = $(ddId);
     function renderDd(kw) {
@@ -501,6 +805,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     input.addEventListener('input', function () {
       if (drawerState.mode === 'view') return;
       input.dataset.value = ''; // 手动编辑后原选中失效,需重新选择
+      if (onPick) onPick('');   // 联动项随之清空(如带班领导联系方式)
       renderDd(input.value.trim());
       if (openDd !== dd) openDdPanel(dd);
     });
@@ -510,16 +815,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       input.value = opt.textContent;
       input.dataset.value = opt.dataset.value || '';
       closeDd();
+      if (onPick) onPick(input.dataset.value);
     });
+  }
+
+  /** 带班领导手机号(人员档案):id → mobile;未登记返回空串 */
+  function leaderPhoneOf(id) {
+    if (!id) return '';
+    for (var i = 0; i < OPTIONS.users.length; i++) {
+      if (String(OPTIONS.users[i].id) === String(id)) return OPTIONS.users[i].mobile || '';
+    }
+    return '';
+  }
+
+  /** 联系方式回显(选人后自动带出,只读;清空领导时同步清空) */
+  function setLeaderPhone(id) {
+    $('f-leader-phone').value = leaderPhoneOf(id);
   }
 
   // 所在单位:数据较多,支持输入关键字过滤(空态文案"无匹配单位")
   bindSearchSelect('f-unit', 'unit-dd', function () {
     return OPTIONS.orgs.map(function (o) { return { value: o.id, label: o.name }; });
   }, '无匹配单位');
+  // 带班领导:选中后自动带出人员档案手机号
   bindSearchSelect('f-leader', 'leader-dd', function () {
     return OPTIONS.users.map(function (u) { return { value: u.id, label: u.name }; });
-  });
+  }, '无匹配人员', setLeaderPhone);
   // 班次默认时段兜底:接口字典未返回 defaultStart/defaultEnd 时按班次名匹配
   var SHIFT_TIME_FALLBACK = {
     '白班': ['08:00', '16:00'],
@@ -811,6 +1132,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       $('f-unit').dataset.value = d.orgId || '';
       setField('f-leader', d.leaderName);
       $('f-leader').dataset.value = d.leaderId || '';
+      // 联系方式优先取详情返回值(与档案同源),缺失时回落下拉数据
+      $('f-leader-phone').value = d.leaderPhone || leaderPhoneOf(d.leaderId);
       memberSel = (d.memberNames || []).slice();
       (d.memberNames || []).forEach(function (n, i) {
         if (d.memberIds && d.memberIds[i]) memberIdMap[n] = d.memberIds[i];
@@ -824,6 +1147,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       $('f-unit').dataset.value = '';
       setField('f-leader', '');
       $('f-leader').dataset.value = '';
+      setField('f-leader-phone', '');
       memberSel = [];
     }
     renderMemberBox();
@@ -921,7 +1245,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     saveDuty(payload).then(function () {
       btn.disabled = false;
       closeDrawer();
-      loadList().catch(function (err) { toast(err.message); });
+      refreshView();
       toast(isEdit ? '保存成功' : '新增成功');
     }).catch(function (err) {
       btn.disabled = false;
@@ -948,7 +1272,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       btn.disabled = false;
       confirmOverlay.classList.remove('show');
       pendingDeleteId = null;
-      loadList().catch(function (err) { toast(err.message); });
+      refreshView();
       toast('删除成功');
     }).catch(function (err) {
       btn.disabled = false;
@@ -1039,9 +1363,138 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     }
   });
 
-  /* ===== 初始化:加载下拉选项 / 排班列表 ===== */
+  /* ===== 导入(模板下载 + 上传逐行结果) ===== */
+  var impOverlay = $('imp-overlay');
+  var impFile = null;
+
+  function openImport() {
+    impClear();
+    impOverlay.classList.add('show');
+  }
+
+  function closeImport() { impOverlay.classList.remove('show'); }
+
+  /** 清空已选文件(保留导入结果) */
+  function impResetFile() {
+    impFile = null;
+    $('imp-file').value = '';
+    $('imp-name').textContent = '';
+    $('imp-meta').textContent = '支持 .xlsx';
+  }
+
+  function impHideResult() {
+    $('imp-result').classList.remove('show');
+    $('imp-sum').textContent = '';
+    $('imp-rows').innerHTML = '';
+  }
+
+  function impClear() {
+    impResetFile();
+    impHideResult();
+  }
+
+  function impSetFile(file) {
+    if (!file) return;
+    if (!/\.xlsx$/i.test(file.name)) { toast('请上传 .xlsx 文件'); return; }
+    impFile = file;
+    $('imp-name').textContent = file.name;
+    $('imp-meta').textContent = (file.size / 1024).toFixed(1) + ' KB';
+    impHideResult();
+  }
+
+  function impShowResult(data) {
+    var total = Number(data && data.total) || 0;
+    var success = Number(data && data.success) || 0;
+    var failed = Number(data && data.failed) || 0;
+    var rows = (data && data.rows) || [];
+    $('imp-sum').textContent = '共 ' + total + ' 行，成功 ' + success + '，失败 ' + failed;
+    $('imp-rows').innerHTML = rows.map(function (r) {
+      var extra = r.ok && r.dutyDate ? '（' + r.dutyDate + ' ' + (r.shift || '') + '）' : '';
+      var msg = r.message ? ' — ' + r.message : (r.ok ? ' — 成功' : '');
+      return '<div class="imp-row ' + (r.ok ? 'ok' : 'fail') + '">第 ' + r.row + ' 行' + esc(extra) + esc(msg) + '</div>';
+    }).join('');
+    $('imp-result').classList.add('show');
+  }
+
+  /** 模板下载(从 Content-Disposition 取文件名,与站点导入同口径) */
+  function downloadDutyTemplate() {
+    return fetch(API_BASE + '/schedule/import-template', { credentials: 'include' }).then(function (res) {
+      return res.blob().then(function (blob) {
+        if (!res.ok) {
+          return blob.text().then(function (text) {
+            var msg = text;
+            try { var j = JSON.parse(text); msg = (j && j.message) || text; } catch (e) { /* 非 JSON 响应 */ }
+            throw new Error(msg || '模板下载失败');
+          });
+        }
+        var name = '值班排班导入模板.xlsx';
+        var dispo = res.headers.get('Content-Disposition') || '';
+        var star = dispo.match(/filename\*=UTF-8''([^;]+)/i);
+        if (star) { try { name = decodeURIComponent(star[1]); } catch (e) { name = star[1]; } }
+        else {
+          var plain = dispo.match(/filename="?([^";]+)"?/i);
+          if (plain) name = plain[1];
+        }
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+    });
+  }
+
+  /** 上传导入:逐行结果由后端返回(整体性错误走非 2xx message) */
+  function submitImport() {
+    if (!impFile) { toast('请先选择文件'); return; }
+    var btn = $('imp-submit');
+    btn.disabled = true;
+    var fd = new FormData();
+    fd.append('file', impFile);
+    fetch(API_BASE + '/schedule/import', { method: 'POST', credentials: 'include', body: fd })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = text ? JSON.parse(text) : null; } catch (e) { /* 非 JSON 响应 */ }
+          if (!res.ok) throw new Error((json && json.message) || text || ('导入失败(' + res.status + ')'));
+          return json || {};
+        });
+      })
+      .then(function (data) {
+        impShowResult(data);
+        impResetFile();   // 保留逐行结果,清空已选文件
+        toast('成功 ' + (Number(data.success) || 0) + ' / 失败 ' + (Number(data.failed) || 0));
+        refreshView();
+      })
+      .catch(function (err) { toast((err && err.message) || '导入失败'); })
+      .then(function () { btn.disabled = false; });
+  }
+
+  $('btn-import').addEventListener('click', openImport);
+  $('imp-close').addEventListener('click', closeImport);
+  $('imp-overlay').addEventListener('click', function (e) { if (e.target === impOverlay) closeImport(); });
+  $('imp-reset').addEventListener('click', impClear);
+  $('imp-submit').addEventListener('click', submitImport);
+  $('imp-tpl').addEventListener('click', function (e) {
+    e.preventDefault();
+    downloadDutyTemplate().catch(function (err) { toast((err && err.message) || '模板下载失败'); });
+  });
+  $('imp-drop').addEventListener('click', function () { $('imp-file').click(); });
+  $('imp-drop').addEventListener('dragover', function (e) { e.preventDefault(); this.classList.add('drag'); });
+  $('imp-drop').addEventListener('dragleave', function () { this.classList.remove('drag'); });
+  $('imp-drop').addEventListener('drop', function (e) {
+    e.preventDefault();
+    this.classList.remove('drag');
+    impSetFile(e.dataTransfer.files && e.dataTransfer.files[0]);
+  });
+  $('imp-file').addEventListener('change', function () { impSetFile(this.files && this.files[0]); });
+
+  /* ===== 初始化:加载下拉选项 / 日历(默认视图) ===== */
   loadOptions().catch(function (err) { toast(err.message); });
-  loadList().catch(function (err) { toast(err.message); });
+  loadCalendar().catch(function (err) { toast(err.message); });
 })();
 </script>
 </body>

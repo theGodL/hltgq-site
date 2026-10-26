@@ -6,14 +6,12 @@ import java.util.List;
 
 /**
  * 配水调度提交入参（/water-decision）。
- * <p>需水方案 + 配置方案两个下拉（必传）：
- * source=所选配置方案 mode，canal_eff=所选需水方案 canal_eff，调 /decision(tens=null 全 18 旬, save_excel=true)。
+ * <p>2026-10-26 定稿：仅需水资源配置方案一个下拉（必传）；
+ * 需水方案不再传，后端沿配置方案归档的 demand_record_id 链式追溯 canal_eff（取不到兜底 0.589）。
+ * source=所选配置方案 mode，调 /decision(tens=null 全 18 旬, save_excel=true)。
  */
 @Data
 public class DecisionSubmitRequest {
-
-    /** 需水预测方案ID（必传） */
-    private String demandRecordId;
 
     /** 水资源配置方案ID（必传） */
     private String allocateRecordId;

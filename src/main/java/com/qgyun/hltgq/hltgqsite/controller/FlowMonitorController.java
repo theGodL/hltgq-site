@@ -53,18 +53,21 @@ public class FlowMonitorController {
 
     /**
      * 流量趋势图表
-     * <p>小时级流量曲线，默认近七天数据，支持根据日期区间查询。
+     * <p>默认小时级流量曲线（每小时平均，整点补齐），默认近七天数据，支持根据日期区间查询；
+     * granularity=minute 时按实际采集时刻逐条出点（分钟级精度，x 轴为真实时间）。
      *
-     * @param stcd      站点编号（必填）
-     * @param startTime 起始时间，格式 yyyy-MM-dd HH:mm:ss，可选（默认 7 天前整点）
-     * @param endTime   截止时间，格式 yyyy-MM-dd HH:mm:ss，可选（默认当前整点）
+     * @param stcd        站点编号（必填）
+     * @param startTime   起始时间，格式 yyyy-MM-dd HH:mm:ss，可选（默认 7 天前整点）
+     * @param endTime     截止时间，格式 yyyy-MM-dd HH:mm:ss，可选（默认当前时间）
+     * @param granularity 统计粒度：hour（默认）/ minute（按实际采集时刻）
      */
     @GetMapping("/trend")
     public FlowTrendVO trend(
             @RequestParam String stcd,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
-        return flowMonitorService.trend(stcd, startTime, endTime);
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "hour") String granularity) {
+        return flowMonitorService.trend(stcd, startTime, endTime, granularity);
     }
 
     /**

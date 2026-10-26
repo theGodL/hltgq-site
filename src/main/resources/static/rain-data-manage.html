@@ -225,6 +225,8 @@ td.empty:hover{background:transparent}
 .f-label{display:block;font-size:14px;font-weight:400;color:var(--el-text-color-primary);margin-bottom:8px}
 .f-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
 .f-hint{margin-top:6px;font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
+/* 只读展示（设备型号） */
+.readonly-box{min-height:var(--el-control-height);border:1px solid var(--el-border-color-light);border-radius:var(--el-radius-control);background:var(--el-fill-color-light);padding:0 12px;display:flex;align-items:center;font-size:14px;color:var(--el-text-color-regular);line-height:20px}
 .f-err{display:none;margin-top:4px;font-size:12px;color:var(--el-color-danger);align-items:center;gap:4px;line-height:16px}
 .f-err.show{display:flex}
 .num-wrap{position:relative}
@@ -410,6 +412,7 @@ td.empty:hover{background:transparent}
     <div class="f-item">
       <label class="f-label"><i class="req">*</i>设备</label>
       <div class="sel" id="sel-device"></div>
+      <div class="readonly-box" id="sel-device-model" style="margin-top:8px">选择设备后自动带出</div>
       <div class="f-hint" id="device-hint">站点与设备为匹配键，锁定不可改；如需更换设备，请先停用或删除旧配置。</div>
       <div class="f-err" id="err-device"></div>
     </div>
@@ -1286,6 +1289,8 @@ window.DM = (function () {
     selDevice.setOptions([{ value: row.device, label: row.deviceName || row.device, sub: row.deviceCode || '' }])
       .setValue(row.device, joinName(row.deviceName || row.device, row.deviceCode))
       .setDisabled(true);
+    // 设备型号只读展示（列表行已左联设备表带出）
+    $('sel-device-model').textContent = row.deviceModel || '该设备未维护型号';
     $('device-hint').textContent = '站点与设备为匹配键，锁定不可改；如需更换设备，请先停用或删除旧配置。';
     $('in-offset').value = (row.offsetValue === null || row.offsetValue === undefined || row.offsetValue === '')
       ? '' : String(row.offsetValue);
@@ -1464,6 +1469,7 @@ window.DM = (function () {
       selDevice.setValue('');
       selDevice.setError(false);
       selDevice.setOptions([]);
+      $('sel-device-model').textContent = '选择设备后自动带出';
       if (!id) {
         selDevice.setPlaceholder('请先选择站点').setEmptyText('请先选择站点');
         return;

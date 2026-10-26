@@ -163,6 +163,8 @@ textarea.field{height:auto;min-height:96px;padding:8px 12px;line-height:22px;res
           <label class="f-label"><i class="req">*</i>巡检对象</label>
           <div class="sel" id="f-device"></div>
           <div class="f-err" id="f-device-err"></div>
+          <label class="f-label" style="margin-top:16px">设备型号</label>
+          <div class="readonly-box" id="f-device-model">选择设备后自动带出</div>
         </div>
         <div class="f-item">
           <label class="f-label">巡检人员</label>
@@ -344,6 +346,10 @@ function createSelect(el) {
       const hit = st.options.filter(o => o.value === st.value)[0];
       return hit ? hit.label : '';
     },
+    getModel() {
+      const hit = st.options.filter(o => o.value === st.value)[0];
+      return hit ? (hit.model || '') : '';
+    },
     setOptions(options) { st.options = options || []; sync(); render(); return this; },
     setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
     setPlaceholder(t) { st.placeholder = t; sync(); return this; },
@@ -412,6 +418,7 @@ async function loadSites(scheduleId, preset) {
   markErr('f-site-err', false);
   S.deviceSeq++;
   UI.device.setValue('').setOptions([]).setDisabled(true).setPlaceholder('请先选择站点');
+  syncDeviceModel();
   if (!scheduleId) {
     UI.site.setOptions([]).setDisabled(true).setPlaceholder('请先选择计划');
     return;
@@ -449,11 +456,23 @@ async function loadSites(scheduleId, preset) {
   }
 }
 
+/**
+ * 设备型号只读展示：随所选巡检对象带出（设备表 evkmpl）。
+ * 未选设备时提示待选；设备已选但未维护型号时提示未维护。
+ */
+function syncDeviceModel() {
+  const box = $('f-device-model');
+  if (!box) return;
+  const model = UI.device.getModel();
+  box.textContent = model || (UI.device.getValue() ? '该设备未维护型号' : '选择设备后自动带出');
+}
+
 /** 巡检对象候选（必填，按站点；preset 用于编辑回填） */
 async function loadDevices(siteId, presetId, presetName) {
   const seq = ++S.deviceSeq;
   UI.device.setValue('').setError(false);
   markErr('f-device-err', false);
+  syncDeviceModel();
   if (!siteId) {
     UI.device.setOptions([]).setDisabled(true).setPlaceholder('请先选择站点');
     return;
@@ -463,13 +482,15 @@ async function loadDevices(siteId, presetId, presetName) {
     const list = await api('/patrol-schedule/devices?siteId=' + encodeURIComponent(siteId));
     if (seq !== S.deviceSeq) return;
     UI.device.setOptions((Array.isArray(list) ? list : []).map(d => ({
-      value: d.value, label: d.label || d.value, sub: d.sub || ''
+      value: d.value, label: d.label || d.value, sub: d.sub || '', model: d.model || ''
     })));
     UI.device.setPlaceholder('请选择巡检对象');
     if (presetId) UI.device.setValue(presetId, presetName || '');
+    syncDeviceModel();
   } catch (e) {
     if (seq !== S.deviceSeq) return;
     UI.device.setOptions([]).setPlaceholder('巡检对象加载失败');
+    syncDeviceModel();
     showToast(e.message || '巡检对象加载失败', true);
   } finally {
     if (seq === S.deviceSeq) UI.device.setLoading(false);
@@ -670,6 +691,7 @@ async function boot() {
   UI.plan = createSelect($('f-plan')).setPlaceholder('请选择计划').setSearchable(true);
   UI.site = createSelect($('f-site')).setPlaceholder('请先选择计划').setSearchable(true).setDisabled(true);
   UI.device = createSelect($('f-device')).setPlaceholder('请先选择站点').setSearchable(true).setDisabled(true);
+  UI.device.onChange(() => { markErr('f-device-err', false); UI.device.setError(false); syncDeviceModel(); });
   UI.user = createSelect($('f-user')).setPlaceholder('默认当前登录人').setSearchable(true);
   UI.result = createSelect($('f-result')).setPlaceholder('请选择巡检结果');
 

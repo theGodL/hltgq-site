@@ -24,14 +24,15 @@ public interface WaterQualityService {
     List<WaterQualityVO> monitoring(List<String> stcds, LocalDate startDate, LocalDate endDate);
 
     /**
-     * 水质趋势：2 小时级七项指标 + 水温曲线（COD/高锰酸盐指数/BOD、氨氮/总氮/总磷、溶解氧三图共用），
-     * 桶起点对齐偶数小时 00:00/02:00/...，跨天连续；附该站水质阈值行供预警线。
+     * 水质趋势：七项指标 + 水温曲线（COD/高锰酸盐指数/BOD、氨氮/总氮/总磷、溶解氧四图共用），
+     * 附该站水质阈值行供预警线。
      *
-     * @param stcd      站点编号或 site UUID（必填）
-     * @param startTime 起始时间（可选，默认 24 小时前，对齐偶数小时）
-     * @param endTime   截止时间（可选，默认当前时间，对齐偶数小时）
+     * @param stcd        站点编号或 site UUID（必填）
+     * @param startTime   起始时间（可选，默认 24 小时前）
+     * @param endTime     截止时间（可选，默认当前时间）
+     * @param granularity 统计粒度：hour（默认，2 小时桶对齐偶数小时）/ minute（按实际采集时刻逐条出点）
      */
-    WaterQualityTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime);
+    WaterQualityTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime, String granularity);
 
     /**
      * 历史数据分页（按监测时间倒序）

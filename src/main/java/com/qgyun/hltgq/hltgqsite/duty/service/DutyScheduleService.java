@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -99,6 +100,38 @@ public class DutyScheduleService {
             }
         }
         return DutySupport.pageResult(total, safePage, safeSize, records);
+    }
+
+    /**
+     * 排班日历（值班管理日历视图）：按月返回该月每天的全部排班（不分页、不限状态），
+     * 前端按 date 分日渲染；month 为空取当月。
+     *
+     * @param month 月份 yyyy-MM，可选
+     * @return month / start / end（月末，含）/ records（结构同列表行，含带班领导手机号）
+     */
+    public Map<String, Object> calendar(String month) {
+        String raw = DutySupport.trim(month);
+        YearMonth ym;
+        if (raw == null) {
+            ym = YearMonth.now();
+        } else {
+            try {
+                ym = YearMonth.parse(raw);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("月份格式应为 yyyy-MM：" + raw);
+            }
+        }
+        List<ScheduleListRowVO> records = mapper.selectScheduleRange(
+                ym.atDay(1).toString(), ym.plusMonths(1).atDay(1).toString());
+        for (ScheduleListRowVO row : records) {
+            fillListRow(row);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("month", ym.toString());
+        out.put("start", ym.atDay(1).toString());
+        out.put("end", ym.atEndOfMonth().toString());
+        out.put("records", records);
+        return out;
     }
 
     /** 排班详情（编辑/查看回显；含成员数组与读时纠偏状态）。 */

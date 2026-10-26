@@ -43,6 +43,10 @@ public class LossRecord extends BaseRecordEntity {
     @TableField("\"retrain\"")
     private String retrain;
 
+    /** 年渗漏量(万方)：默认 156（/loss mode=long 入参 annual_leakage_wan_m3） */
+    @TableField("\"annual_leakage_wan_m3\"")
+    private Double annualLeakageWanM3;
+
     /** 降雨数组归档 JSON（短期模式） */
     @TableField("\"rainfall_json\"")
     private String rainfallJson;
@@ -51,11 +55,19 @@ public class LossRecord extends BaseRecordEntity {
     @TableField("\"request_json\"")
     private String requestJson;
 
-    /** 总损失水量(万方)：短期 summary.总蒸发损失_万方 / 中长期 summary.总蒸发量_万方 */
+    /** 总损失水量(万方)：总蒸发量 + 总渗漏损失（summary.总蒸发量_万方 + 总渗漏损失_万方） */
     @TableField("\"total_loss\"")
     private Double totalLoss;
 
-    /** 总来水量(万方)：短期 summary.总入库水量_万方 / 中长期 summary.总预测来水量_万方 */
+    /** 总蒸发量(万方)（summary.总蒸发量_万方） */
+    @TableField("\"total_evaporation\"")
+    private Double totalEvaporation;
+
+    /** 总渗漏损失(万方)（summary.总渗漏损失_万方） */
+    @TableField("\"total_leakage\"")
+    private Double totalLeakage;
+
+    /** 总来水量(万方)：summary.总预测来水量_万方 / 总入库水量_万方 */
     @TableField("\"total_inflow\"")
     private Double totalInflow;
 }

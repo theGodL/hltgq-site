@@ -26,11 +26,15 @@ public class DemandBranchDetail extends BaseWaterEntity {
     @TableField("\"sub_district\"")
     private String subDistrict;
 
+    /** 行政区（支渠明细[].行政区；模型响应无此列时为 null，行政区汇总由后端按此列透视） */
+    @TableField("\"county\"")
+    private String county;
+
     /** 支渠名称（支渠明细[].支渠） */
     @TableField("\"branch_name\"")
     private String branchName;
 
-    /** 灌区面积(亩)（支渠明细[].灌区面积） */
+    /** 灌区面积(万亩，模型原始值)（支渠明细[].灌区面积） */
     @TableField("\"area\"")
     private Double area;
 

@@ -106,8 +106,8 @@ public class DroughtDecisionService {
         vo.setStartDate(startDate.format(DAY_FMT));
         vo.setEndDate(endDate.format(DAY_FMT));
 
-        // 1. 实测墒情：完整小时序列（无数据小时为 null，前端断线展示）
-        SoilMoistureTrendVO trend = soilMoistureService.trend(stcd, from, to);
+        // 1. 实测墒情：完整小时序列（无数据小时为 null，前端断线展示）；抗旱决策保持小时粒度不变
+        SoilMoistureTrendVO trend = soilMoistureService.trend(stcd, from, to, "hour");
         vo.setStnm(trend.getStnm());
         DroughtDecisionVO.Observed observed = new DroughtDecisionVO.Observed();
         List<DroughtDecisionVO.ObsPoint> obsPoints = new ArrayList<>();

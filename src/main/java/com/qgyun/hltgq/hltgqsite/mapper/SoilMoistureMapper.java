@@ -158,6 +158,35 @@ public interface SoilMoistureMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
+     * 分钟级墒情趋势明细：按实际采集时刻逐条输出，不做小时平均
+     * <p>-999（设备不存在）转 null；-9991（设备异常）保留透传，前端图表按异常断线。
+     *
+     * @param stcd      站点编号或 site UUID（必填）
+     * @param startTime 起始时间（含，必填）
+     * @param endTime   截止时间（含，必填）
+     */
+    @Select("<script>" +
+            "SELECT n.tm, " +
+            "CASE WHEN n.mten = -999 THEN NULL ELSE TRUNC(n.mten, 2) END AS mten, " +
+            "CASE WHEN n.mtwenty = -999 THEN NULL ELSE TRUNC(n.mtwenty, 2) END AS mtwenty, " +
+            "CASE WHEN n.mthirty = -999 THEN NULL ELSE TRUNC(n.mthirty, 2) END AS mthirty, " +
+            "CASE WHEN n.mforty = -999 THEN NULL ELSE TRUNC(n.mforty, 2) END AS mforty, " +
+            "CASE WHEN n.mfifty = -999 THEN NULL ELSE TRUNC(n.mfifty, 2) END AS mfifty, " +
+            "CASE WHEN n.msixty = -999 THEN NULL ELSE TRUNC(n.msixty, 2) END AS msixty, " +
+            "CASE WHEN n.meighty = -999 THEN NULL ELSE TRUNC(n.meighty, 2) END AS meighty, " +
+            "CASE WHEN n.mhundred = -999 THEN NULL ELSE TRUNC(n.mhundred, 2) END AS mhundred " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_water_soil_data n " +
+            "WHERE (n.stcd = #{stcd} OR n.site = #{stcd}) " +
+            "AND n.tm &gt;= #{startTime} " +
+            "AND n.tm &lt;= #{endTime} " +
+            "ORDER BY n.tm" +
+            "</script>")
+    List<Map<String, Object>> selectTrendDetail(
+            @Param("stcd") String stcd,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
+
+    /**
      * 历史墒情数据分页查询（按监测时间倒序）
      * <p>-999（设备不存在）转 null 返回；-9991（设备异常）保留透传由前端展示 '--'。
      *

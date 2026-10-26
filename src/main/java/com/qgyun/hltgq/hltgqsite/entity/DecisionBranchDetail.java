@@ -34,7 +34,11 @@ public class DecisionBranchDetail extends BaseWaterEntity {
     @TableField("\"branch_name\"")
     private String branchName;
 
-    /** 灌区面积(亩)（支渠明细.<旬>[].灌区面积） */
+    /** 行政区（支渠明细.<旬>[].行政区，手册 4.7 支渠明细行含该列） */
+    @TableField("\"county\"")
+    private String county;
+
+    /** 灌区面积(万亩，模型原始值)（支渠明细.<旬>[].灌区面积） */
     @TableField("\"area\"")
     private Double area;
 
@@ -53,6 +57,18 @@ public class DecisionBranchDetail extends BaseWaterEntity {
     /** 建议供水量(万方)（支渠明细.<旬>[].建议供水量） */
     @TableField("\"suggested_supply\"")
     private Double suggestedSupply;
+
+    /** 缺水量(万方)（支渠明细.<旬>[].缺水量） */
+    @TableField("\"deficit\"")
+    private Double deficit;
+
+    /** 塘坝补水量(万方)（支渠明细.<旬>[].塘坝补水量） */
+    @TableField("\"pond_supplement\"")
+    private Double pondSupplement;
+
+    /** 补水后总供水量(万方)（支渠明细.<旬>[].补水后总供水量） */
+    @TableField("\"supply_after_pond\"")
+    private Double supplyAfterPond;
 
     /** 是否满足：#1#=是，#2#=否 */
     @TableField("\"is_satisfied\"")

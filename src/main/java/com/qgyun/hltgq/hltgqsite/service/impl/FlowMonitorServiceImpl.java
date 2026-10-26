@@ -196,7 +196,11 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
     }
 
     @Override
-    public FlowTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+    public FlowTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime, String granularity) {
+        // 分钟级：按实际采集时刻逐条出点（图表 x 轴为真实时间）
+        if ("minute".equalsIgnoreCase(granularity)) {
+            return trendByMinute(stcd, startTime, endTime);
+        }
         // 1. 默认时间范围：近 7 天
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.HOURS);
         if (endTime == null) {
@@ -282,6 +286,49 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
         vo.setStartTime(startTime);
         vo.setEndTime(endTime);
         vo.setHours(hours);
+        return vo;
+    }
+
+    /**
+     * 分钟级趋势：按实际采集时刻逐条输出原始记录，不做小时平均，也不补齐整点。
+     * <p>设备异常（-9991）/设备不存在（-999）的流量置空，曲线在该时刻断线。
+     */
+    private FlowTrendVO trendByMinute(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+        if (endTime == null) {
+            endTime = LocalDateTime.now();
+        }
+        if (startTime == null) {
+            startTime = endTime.minusDays(7);
+        }
+
+        String stnm = stcd;
+        List<FlowMonitoringVO> stationInfo = waterFlowMapper.selectLatestPerStation(
+                Collections.singletonList(stcd), null, null, null);
+        if (!stationInfo.isEmpty()) {
+            stnm = stationInfo.get(0).getStnm();
+        }
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        List<FlowTrendVO.HourPoint> points = new ArrayList<>();
+        for (Map<String, Object> row : waterFlowMapper.selectRawByStcd(stcd, startTime, endTime)) {
+            LocalDateTime tm = toLocalDateTime(row.get("tm"));
+            if (tm == null) continue;
+            BigDecimal q = ValueConvertUtils.decimal(row.get("q"));
+            if (q != null && (DeviceValueUtils.isError(q) || DeviceValueUtils.isMissing(q))) {
+                q = null;
+            }
+            FlowTrendVO.HourPoint point = new FlowTrendVO.HourPoint();
+            point.setHour(tm.format(fmt));
+            point.setFlow(q);
+            points.add(point);
+        }
+
+        FlowTrendVO vo = new FlowTrendVO();
+        vo.setStcd(stcd);
+        vo.setStnm(stnm);
+        vo.setStartTime(startTime);
+        vo.setEndTime(endTime);
+        vo.setHours(points);
         return vo;
     }
 

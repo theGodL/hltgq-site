@@ -28,8 +28,8 @@ import java.util.Set;
 
 /**
  * 水量损失预测接口（/water-forecast/loss）。
- * <p>入参：mode(long，短期已下线) + 参数来源方案ID（中长期方案），
- * 参数从所选历史方案 request_json 提取复现。
+ * <p>2026-10-26 定稿：入参年渗漏量（annualLeakageWanM3，默认 156）+ 情景（scenario，可选）；
+ * mode 恒 long（短期已下线），不再从历史方案复现参数。
  */
 @RestController
 @RequestMapping("/water-forecast/loss")

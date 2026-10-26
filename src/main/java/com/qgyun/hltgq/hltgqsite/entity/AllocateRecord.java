@@ -13,7 +13,7 @@ import lombok.EqualsAndHashCode;
 @TableName("\"qixiao-apaas\".\"t_auto_hltgq_water_allocate_record\"")
 public class AllocateRecord extends BaseRecordEntity {
 
-    /** 模式：auto / manual */
+    /** 模式：恒 auto（2026-10-26 定稿，manual 已下线；历史 manual 方案保留原值） */
     @TableField("\"mode\"")
     private String mode;
 
@@ -29,29 +29,37 @@ public class AllocateRecord extends BaseRecordEntity {
     @TableField("\"canal_eff\"")
     private Double canalEff;
 
-    /** 塘坝档位（auto 模式）：50% / 75% / 90% / 多年平均 */
+    /** 塘坝可供水量情景：50% / 75% / 90% / 多年平均（2026-10-26 字段名定稿 pondScenario） */
     @TableField("\"pond_option\"")
-    private String pondOption;
+    private String pondScenario;
 
-    /** 初始库水位(m) */
+    /** 初始库水位(m)（2026-10-26 字段名定稿 initialLevel） */
     @TableField("\"start_level\"")
-    private Double startLevel;
+    private Double initialLevel;
 
     /** 汛限水位(m) */
     @TableField("\"flood_limit_level\"")
     private Double floodLimitLevel;
 
-    /** 最大水位(m) */
+    /** 溢洪道开启水位(m)（2026-10-26 字段名定稿 spillwayOpenLevel） */
     @TableField("\"max_level\"")
-    private Double maxLevel;
+    private Double spillwayOpenLevel;
 
     /** 请求体归档 JSON */
     @TableField("\"request_json\"")
     private String requestJson;
 
+    /** V3 两视图原始响应快照 JSON（灌区水资源配置/水库逐旬清单/水库月汇总/水库年汇总/diagnostics/口径变更），详情按此组装 irrigation/reservoir */
+    @TableField("\"views_json\"")
+    private String viewsJson;
+
     /** 关联需水方案ID（auto 模式内部 /demand 产生的方案ID） */
     @TableField("\"demand_record_id\"")
     private String demandRecordId;
+
+    /** 关联水量损失方案ID（可选；年渗漏量 annual_leakage_wan_m3 提取进 /allocate） */
+    @TableField("\"loss_record_id\"")
+    private String lossRecordId;
 
     /** 总来水(万方)：SUM(tenday.bp_inflow) */
     @TableField("\"total_inflow\"")

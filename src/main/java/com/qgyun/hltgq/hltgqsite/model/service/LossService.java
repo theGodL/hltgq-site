@@ -1,19 +1,15 @@
 package com.qgyun.hltgq.hltgqsite.model.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qgyun.hltgq.hltgqsite.entity.LossDetail;
 import com.qgyun.hltgq.hltgqsite.entity.LossRecord;
-import com.qgyun.hltgq.hltgqsite.entity.LongPredictRecord;
 import com.qgyun.hltgq.hltgqsite.mapper.LossDetailMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.LossRecordMapper;
-import com.qgyun.hltgq.hltgqsite.mapper.LongPredictRecordMapper;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelClient;
 import com.qgyun.hltgq.hltgqsite.model.task.ModelTaskExecutor;
 import com.qgyun.hltgq.hltgqsite.model.util.BoolTextUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.TenDayDateUtils;
-import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 import com.qgyun.hltgq.hltgqsite.model.vo.LossSubmitRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,22 +26,28 @@ import java.util.Map;
 
 import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.doubleOfAny;
 import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.parseDateTime;
+import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.round2;
 import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.textOfAny;
 
 /**
  * 水量损失预测服务（中长期，/loss mode=long）。
- * <p>2026-09 会议定稿：短期损失（mode=short）已整体剔除，仅保留中长期来水对应的旬蒸发损失。
- * <p>参数从所选中长期方案 request_json 提取复现 → 调 /loss(mode=long) →
- * 主表 summary 兼容映射 + 明细（Date/Evaporation_万方/Predicted_W）→ completed。
+ * <p>2026-10-26 会议定稿：参数来源方案链路（sourceRecordId）删除，不再从历史方案复现参数；
+ * 入参 年渗漏量（annualLeakageWanM3，默认 156）+ 情景（scenario，丰/平/枯/推荐值，可选），
+ * 调 /loss(mode=long, annual_leakage_wan_m3, scenario)。
+ * <p>响应 V3 口径：summary 总蒸发量/总渗漏损失分离（total_loss=两者之和），
+ * 明细 data[] 蒸发/渗漏分列（evaporation_volume/leakage_volume），predict_volume 恒 null。
+ * <p>事务边界：模型调用（/loss）在事务外，明细写入 + 汇总回写包在事务内，失败整体回滚。
  */
 @Service
 public class LossService {
 
     private static final Logger log = LoggerFactory.getLogger(LossService.class);
 
+    /** 年渗漏量默认值(万方)：模型契约 annual_leakage_wan_m3 默认 156 */
+    private static final double DEFAULT_ANNUAL_LEAKAGE = 156.0;
+
     private final LossRecordMapper recordMapper;
     private final LossDetailMapper detailMapper;
-    private final LongPredictRecordMapper longRecordMapper;
     private final ModelClient modelClient;
     private final ModelTaskExecutor taskExecutor;
     private final TransactionTemplate transactionTemplate;
@@ -55,7 +57,6 @@ public class LossService {
 
     public LossService(LossRecordMapper recordMapper,
                        LossDetailMapper detailMapper,
-                       LongPredictRecordMapper longRecordMapper,
                        ModelClient modelClient,
                        ModelTaskExecutor taskExecutor,
                        TransactionTemplate transactionTemplate,
@@ -64,7 +65,6 @@ public class LossService {
                        @Value("${hltgq.created-by}") String createdBy) {
         this.recordMapper = recordMapper;
         this.detailMapper = detailMapper;
-        this.longRecordMapper = longRecordMapper;
         this.modelClient = modelClient;
         this.taskExecutor = taskExecutor;
         this.transactionTemplate = transactionTemplate;
@@ -73,50 +73,42 @@ public class LossService {
         this.createdBy = createdBy;
     }
 
-    /** 中长期模式白名单（与 /loss mode=long 契约一致） */
-    private static final String[] LONG_PARAM_KEYS = {
-            "scenario", "use_historical", "historical_year", "retrain"
-    };
-
     /**
      * 提交水量损失预测（秒回 recordId），异步执行模型计算。
      * <p>仅支持 mode=long（短期损失已按会议口径剔除）。
      */
     public String submit(LossSubmitRequest req) {
-        if (req == null || req.getMode() == null || req.getMode().trim().isEmpty()) {
-            throw new IllegalArgumentException("模式不能为空（long）");
+        if (req == null) {
+            throw new IllegalArgumentException("请求体不能为空");
         }
-        String mode = req.getMode().trim();
+        String mode = req.getMode() == null || req.getMode().trim().isEmpty()
+                ? "long" : req.getMode().trim();
         if (!"long".equals(mode)) {
             throw new IllegalArgumentException("水量损失预测仅支持中长期模式（short 已下线）");
         }
-        if (req.getSourceRecordId() == null || req.getSourceRecordId().trim().isEmpty()) {
-            throw new IllegalArgumentException("参数来源方案ID不能为空");
+        String scenario = normalizeScenario(req.getScenario());
+        double annualLeakage = req.getAnnualLeakageWanM3() == null
+                ? DEFAULT_ANNUAL_LEAKAGE : req.getAnnualLeakageWanM3();
+        if (annualLeakage < 0) {
+            throw new IllegalArgumentException("年渗漏量不能为负数，当前值：" + annualLeakage);
         }
 
-        // 从所选中长期方案 request_json 提取参数复现（白名单过滤）
-        SourceScheme source = loadSource(req.getSourceRecordId().trim());
-        Map<String, Object> params = parseParams(source.requestJson);
+        // 组装模型请求体（V3 契约：mode / annual_leakage_wan_m3 / scenario）
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("mode", mode);
-        for (String key : LONG_PARAM_KEYS) {
-            Object value = params.get(key);
-            if (value != null) {
-                body.put(key, value);
-            }
+        body.put("annual_leakage_wan_m3", annualLeakage);
+        if (scenario != null) {
+            body.put("scenario", scenario);
         }
 
         // 写主表（参数留存 + 请求归档，calculating）
         LossRecord record = new LossRecord();
-        record.setSchemeName(buildSchemeName(req, source.schemeName));
+        record.setSchemeName(buildSchemeName(req));
         record.setStatus(ModelRecordCommonService.STATUS_CALCULATING);
         record.setDelFlag(BoolTextUtils.FALSE);
         record.setMode(mode);
-        record.setScenario(asText(body.get("scenario")));
-        record.setUseHistorical(BoolTextUtils.boolToText(Boolean.TRUE.equals(body.get("use_historical"))));
-        Double historicalYear = asDouble(body.get("historical_year"));
-        record.setHistoricalYear(historicalYear);
-        record.setRetrain(BoolTextUtils.boolToText(Boolean.TRUE.equals(body.get("retrain"))));
+        record.setScenario(scenario);
+        record.setAnnualLeakageWanM3(annualLeakage);
         record.setCorpCode(corpCode);
         record.setCreatedAt(LocalDateTime.now());
         record.setCreatedBy(ModelRecordCommonService.operatorId(createdBy));
@@ -130,96 +122,66 @@ public class LossService {
         recordMapper.insert(record);
 
         String recordId = record.getId();
-        Integer year = historicalYear == null ? LocalDate.now().getYear() : historicalYear.intValue();
-        taskExecutor.submit(() -> execute(recordId, body, year));
-        log.info("水量损失预测任务已提交：recordId={}, mode=long, source={}",
-                recordId, req.getSourceRecordId());
+        taskExecutor.submit(() -> execute(recordId, body));
+        log.info("水量损失预测任务已提交：recordId={}, mode=long, scenario={}, annualLeakage={}",
+                recordId, scenario, annualLeakage);
         return recordId;
     }
 
-    private SourceScheme loadSource(String sourceRecordId) {
-        QueryWrapper<LongPredictRecord> wrapper = new QueryWrapper<>();
-        wrapper.eq("\"id\"", sourceRecordId).eq("\"del_flag\"", BoolTextUtils.FALSE);
-        LongPredictRecord record = longRecordMapper.selectOne(wrapper);
-        if (record == null) {
-            throw new IllegalArgumentException("中长期来水方案不存在或已删除：" + sourceRecordId);
-        }
-        return new SourceScheme(record.getRequestJson(), record.getSchemeName());
-    }
-
-    private Map<String, Object> parseParams(String requestJson) {
-        if (requestJson == null || requestJson.trim().isEmpty()) {
-            throw new IllegalArgumentException("所选方案缺少请求归档(request_json)，无法复现参数");
-        }
-        try {
-            JsonNode node = objectMapper.readTree(requestJson);
-            Map<String, Object> params = new LinkedHashMap<>();
-            node.fields().forEachRemaining(entry -> params.put(entry.getKey(), toPlain(entry.getValue())));
-            return params;
-        } catch (Exception e) {
-            throw new IllegalArgumentException("所选方案请求归档解析失败: " + e.getMessage());
-        }
-    }
-
-    /** JsonNode → 普通 Java 对象（Map/List/标量/null） */
-    private Object toPlain(JsonNode node) {
-        if (node == null || node.isNull()) {
+    /** 情景白名单：丰/平/枯/推荐值；null/空 → null（模型默认），其他值拒绝 */
+    private String normalizeScenario(String scenario) {
+        if (scenario == null || scenario.trim().isEmpty()) {
             return null;
         }
-        if (node.isTextual()) {
-            return node.asText();
+        String value = scenario.trim();
+        if (!"丰".equals(value) && !"平".equals(value) && !"枯".equals(value) && !"推荐值".equals(value)) {
+            throw new IllegalArgumentException("情景必须是 丰 / 平 / 枯 / 推荐值 之一，当前值：" + value);
         }
-        if (node.isNumber()) {
-            return node.asDouble();
-        }
-        if (node.isBoolean()) {
-            return node.asBoolean();
-        }
-        if (node.isArray()) {
-            java.util.List<Object> list = new java.util.ArrayList<>();
-            node.forEach(child -> list.add(toPlain(child)));
-            return list;
-        }
-        Map<String, Object> map = new LinkedHashMap<>();
-        node.fields().forEachRemaining(entry -> map.put(entry.getKey(), toPlain(entry.getValue())));
-        return map;
+        return value;
     }
 
-    private String buildSchemeName(LossSubmitRequest req, String sourceName) {
+    private String buildSchemeName(LossSubmitRequest req) {
         if (req.getSchemeName() != null && !req.getSchemeName().trim().isEmpty()) {
             return req.getSchemeName().trim();
         }
-        return "损失预测_中长期"
-                + (sourceName == null || sourceName.trim().isEmpty() ? "" : "_" + sourceName.trim());
+        return "损失预测_自动";
     }
 
     /**
-     * 异步任务：调模型 → 事务内写明细+回写 summary → 更新状态。
+     * 异步任务：调模型 → 事务内写明细（蒸发/渗漏分列）+ 回写 summary → 更新状态。
      * <p>事务边界：模型调用在事务外，明细写入 + 汇总回写包在事务内，失败整体回滚。
      */
-    private void execute(String recordId, Map<String, Object> body, Integer year) {
+    private void execute(String recordId, Map<String, Object> body) {
         try {
             JsonNode response = modelClient.postJson(ModelClient.PATH_LOSS, body);
 
-            // 1. summary 兼容映射（中长期字段名）
+            // 1. summary V3 口径：蒸发/渗漏分离
             JsonNode summary = response.path("summary");
             LossRecord record = new LossRecord();
             record.setId(recordId);
-            record.setTotalLoss(doubleOfAny(summary, "总蒸发量_万方", "总蒸发损失_万方"));
+            Double totalEvaporation = doubleOfAny(summary, "总蒸发量_万方", "总蒸发损失_万方");
+            Double totalLeakage = doubleOfAny(summary, "总渗漏损失_万方", "总渗漏量_万方");
+            record.setTotalEvaporation(totalEvaporation);
+            record.setTotalLeakage(totalLeakage);
+            record.setTotalLoss(round2(sumOrNull(totalEvaporation, totalLeakage)));
             record.setTotalInflow(doubleOfAny(summary, "总预测来水量_万方", "总入库水量_万方"));
 
-            // 2. 事务内：写明细（Date/Evaporation_万方/Predicted_W）+ 回写主表 completed
+            // 2. 事务内：写明细（data[] 蒸发/渗漏分列）+ 回写主表 completed
             transactionTemplate.execute(new TransactionCallbackWithoutResult() {
                 @Override
                 protected void doInTransactionWithoutResult(TransactionStatus status) {
                     LocalDateTime now = LocalDateTime.now();
+                    int year = LocalDate.now().getYear();
                     for (JsonNode item : response.path("data")) {
                         LossDetail detail = new LossDetail();
                         detail.setRecordId(recordId);
                         // 日期或旬标签+年份 → 旬首日期
                         detail.setDataDate(resolveDataDate(textOfAny(item, "日期", "Date"), year));
-                        detail.setPredictVolume(doubleOfAny(item, "Predicted_W", "预测水量_万方"));
-                        detail.setLossVolume(doubleOfAny(item, "Evaporation_万方", "损失水量_万方", "蒸发损失_万方"));
+                        Double evaporation = doubleOfAny(item, "蒸发损失_万方", "蒸发量_万方");
+                        Double leakage = doubleOfAny(item, "渗漏损失_万方", "渗漏量_万方");
+                        detail.setEvaporationVolume(evaporation);
+                        detail.setLeakageVolume(leakage);
+                        detail.setLossVolume(round2(sumOrNull(evaporation, leakage)));
                         detail.setCorpCode(corpCode);
                         detail.setCreatedAt(now);
                         detail.setCreatedBy(createdBy);
@@ -236,6 +198,14 @@ public class LossService {
         } catch (Exception e) {
             markFailed(recordId, e);
         }
+    }
+
+    /** 两数相加；任一为 null 返回另一个，均 null 返回 null */
+    private static Double sumOrNull(Double a, Double b) {
+        if (a == null && b == null) {
+            return null;
+        }
+        return (a == null ? 0 : a) + (b == null ? 0 : b);
     }
 
     /** 具体日期直接解析；日期或旬标签 + 年份 → 旬首日期 */
@@ -264,35 +234,5 @@ public class LossService {
         record.setUpdatedAt(LocalDateTime.now());
         recordMapper.updateById(record);
         log.error("水量损失预测失败：recordId={}, error={}", recordId, errorMsg);
-    }
-
-    /** Map 取值：null 安全转 String（委托 ValueConvertUtils） */
-    private static String asText(Object value) {
-        return ValueConvertUtils.str(value);
-    }
-
-    private static Double asDouble(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number) {
-            return ((Number) value).doubleValue();
-        }
-        try {
-            return Double.parseDouble(String.valueOf(value));
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    /** 参数来源方案（request_json + 方案名） */
-    private static class SourceScheme {
-        final String requestJson;
-        final String schemeName;
-
-        SourceScheme(String requestJson, String schemeName) {
-            this.requestJson = requestJson;
-            this.schemeName = schemeName;
-        }
     }
 }

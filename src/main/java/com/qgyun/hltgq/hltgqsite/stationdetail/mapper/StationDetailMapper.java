@@ -458,7 +458,7 @@ public interface StationDetailMapper {
      * <p>siteId 为站点档案 id（孤儿归属时 siteName 为 null，前端按「未知站点」展示）。
      */
     @Select("<script>" +
-            "SELECT d.id, d.name, d.code, d.type AS typeCodes, d.site AS siteId, s.zzkaec AS siteName " +
+            "SELECT d.id, d.name, d.code, d.evkmpl AS model, d.type AS typeCodes, d.site AS siteId, s.zzkaec AS siteName " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON d.site = s.id " +
             "WHERE TRIM(d.type) = '#5#' AND COALESCE(d.site, '') &lt;> #{siteId} " +

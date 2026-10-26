@@ -16,4 +16,7 @@ public class PatrolOptionVO {
 
     /** 右侧辅助文字（站点编号 / 设备编号 / 用户登录名） */
     private String sub;
+
+    /** 设备型号（仅设备候选用，取设备表 evkmpl；未维护为 null） */
+    private String model;
 }

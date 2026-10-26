@@ -26,7 +26,7 @@ public interface RainAdjustMapper extends BaseMapper<RainAdjust> {
             "SELECT r.id, r.site, r.device, r.stcd, r.offset_value, r.enabled, r.remark, " +
             "r.created_at, r.created_by, r.updated_at, r.updated_by, " +
             "COALESCE(s.zzkaec, r.site) AS site_name, s.iofhpi AS site_code, " +
-            "COALESCE(d.name, r.device) AS device_name, d.code AS device_code " +
+            "COALESCE(d.name, r.device) AS device_name, d.code AS device_code, d.evkmpl AS device_model " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_water_rain_adjust r " +
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON s.id = r.site " +
             "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_water_device d ON d.id = r.device " +
@@ -55,7 +55,8 @@ public interface RainAdjustMapper extends BaseMapper<RainAdjust> {
             @Result(column = "site_name", property = "siteName"),
             @Result(column = "site_code", property = "siteCode"),
             @Result(column = "device_name", property = "deviceName"),
-            @Result(column = "device_code", property = "deviceCode")
+            @Result(column = "device_code", property = "deviceCode"),
+            @Result(column = "device_model", property = "deviceModel")
     })
     IPage<RainAdjustVO> selectPageWithNames(IPage<RainAdjustVO> page,
                                             @Param("siteId") String siteId,

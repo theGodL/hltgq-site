@@ -45,21 +45,24 @@ public class WaterQualityController {
     }
 
     /**
-     * 水质历史趋势（2 小时级七项指标 + 水温 + 预警阈值，三张图共用）
+     * 水质历史趋势（七项指标 + 水温 + 预警阈值，四张图共用）
      * <p>有机污染指标用 codcr/codmn/bod5，营养盐占比用 nh3n/tn/tp（阈值换算），溶解氧用 dox；
      * 水温 wt 取自水温表 pcp_info（时间列 spt 与 nmisp_info.tm 同组对齐）。
-     * x 轴小时 00:00/02:00/... 对齐偶数小时跨天连续；支持日期区间查询。
+     * 默认 2 小时级（x 轴 00:00/02:00/... 对齐偶数小时跨天连续）；
+     * granularity=minute 时按实际采集时刻逐条出点（分钟级精度，x 轴为真实时间）。
      *
-     * @param stcd      站点编号或 site UUID（必填）
-     * @param startTime 起始时间，格式 yyyy-MM-dd HH:mm:ss（可选，默认 24 小时前对齐偶数小时）
-     * @param endTime   截止时间，格式 yyyy-MM-dd HH:mm:ss（可选，默认当前对齐偶数小时）
+     * @param stcd        站点编号或 site UUID（必填）
+     * @param startTime   起始时间，格式 yyyy-MM-dd HH:mm:ss（可选，默认 24 小时前）
+     * @param endTime     截止时间，格式 yyyy-MM-dd HH:mm:ss（可选，默认当前时间）
+     * @param granularity 统计粒度：hour（默认，2 小时桶）/ minute（按实际采集时刻）
      */
     @GetMapping("/trend")
     public WaterQualityTrendVO trend(
             @RequestParam String stcd,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
-        return waterQualityService.trend(stcd, startTime, endTime);
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "hour") String granularity) {
+        return waterQualityService.trend(stcd, startTime, endTime, granularity);
     }
 
     /**

@@ -25,13 +25,14 @@ public interface SoilMoistureService {
     List<SoilMoistureVO> monitoring(List<String> stcds, String canalId, LocalDate date);
 
     /**
-     * 墒情趋势：小时级含水量曲线（8 个深度各一条线）
+     * 墒情趋势：含水量曲线（8 个深度各一条线）
      *
-     * @param stcd      站点编号或 site UUID（必填）
-     * @param startTime 起始时间（可选，默认 7 天前整点）
-     * @param endTime   截止时间（可选，默认当前整点）
+     * @param stcd        站点编号或 site UUID（必填）
+     * @param startTime   起始时间（可选，默认 7 天前）
+     * @param endTime     截止时间（可选，默认当前时间）
+     * @param granularity 统计粒度：hour（每小时平均、整点补齐）/ minute（按实际采集时刻逐条出点）
      */
-    SoilMoistureTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime);
+    SoilMoistureTrendVO trend(String stcd, LocalDateTime startTime, LocalDateTime endTime, String granularity);
 
     /**
      * 历史数据分页（按监测时间倒序）
