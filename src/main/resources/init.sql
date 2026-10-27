@@ -192,7 +192,8 @@ ALTER TABLE t_auto_hltgq_water_moisture_record ADD COLUMN IF NOT EXISTS drought_
 
 -- ========== H5 消息中心（2026-09 新增） ==========
 -- 消息接收表：summary/page 接口被调用时按接收规则为当前登录人同步补建未读记录（幂等），
--- 阅读后 UPDATE 为已读；一人对一条消息仅一条记录（同步 INSERT 带 NOT EXISTS，不依赖唯一约束）
+-- 阅读后 UPDATE 为已读；一人对一条消息仅一条记录（同步 INSERT 先 NOT EXISTS 判重，
+-- 并发请求由 id 主键 ON CONFLICT DO NOTHING 兜底，不依赖 uk_message_receive 是否存在）
 CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_receive (
     id           VARCHAR(64) PRIMARY KEY,
     user_id      VARCHAR(64) NOT NULL,     -- 收信人主键（t_apaas_uc_user.id）

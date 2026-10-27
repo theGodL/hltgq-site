@@ -7,10 +7,10 @@ import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
+import com.qgyun.hltgq.hltgqsite.model.vo.FileDownloadVO;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolIssueMapper;
 import com.qgyun.hltgq.hltgqsite.workorder.mapper.WorkOrderMapper;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAssignRequest;
-import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAttachmentDownloadVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAttachmentVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderCreateVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderDetailVO;
@@ -446,7 +446,7 @@ public class WorkOrderService {
     }
 
     /** 下载附件：路径穿越校验 + 文件读取（缺失提示已被清理）。 */
-    public WorkOrderAttachmentDownloadVO downloadAttachment(String id) {
+    public FileDownloadVO downloadAttachment(String id) {
         WorkOrderAttachmentVO att = mapper.selectAttachmentById(
                 CheckUtils.requireText(id, "附件 id 不能为空"));
         if (att == null) {
@@ -454,7 +454,7 @@ public class WorkOrderService {
         }
         byte[] bytes = LocalFileStorageUtils.readBytes(fileDirPath(),
                 CheckUtils.requireText(att.getFilePath(), "附件路径缺失"));
-        WorkOrderAttachmentDownloadVO vo = new WorkOrderAttachmentDownloadVO();
+        FileDownloadVO vo = new FileDownloadVO();
         vo.setContent(bytes);
         vo.setFileName(att.getFileName());
         vo.setFileExt(att.getFileExt());

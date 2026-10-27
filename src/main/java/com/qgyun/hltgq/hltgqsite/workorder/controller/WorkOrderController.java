@@ -4,9 +4,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.MediaTypeUtils;
+import com.qgyun.hltgq.hltgqsite.model.vo.FileDownloadVO;
 import com.qgyun.hltgq.hltgqsite.workorder.service.WorkOrderService;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAssignRequest;
-import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAttachmentDownloadVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAttachmentVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderCreateVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderDetailVO;
@@ -171,7 +171,7 @@ public class WorkOrderController {
     /** 处理结果图片预览（inline 直出图片，供 <img> 直连或 fetch+blob；缩略图/大图共用） */
     @GetMapping("/attachment/preview")
     public ResponseEntity<byte[]> previewAttachment(@RequestParam String id) {
-        WorkOrderAttachmentDownloadVO file = workOrderService.downloadAttachment(id);
+        FileDownloadVO file = workOrderService.downloadAttachment(id);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePrivate())
                 .contentType(MediaTypeUtils.of(file.getFileExt()))
@@ -181,7 +181,7 @@ public class WorkOrderController {
     /** 处理结果附件下载（Content-Disposition 带原始文件名，前端 fetch + blob 使用） */
     @GetMapping("/attachment/download")
     public ResponseEntity<byte[]> downloadAttachment(@RequestParam String id) {
-        WorkOrderAttachmentDownloadVO file = workOrderService.downloadAttachment(id);
+        FileDownloadVO file = workOrderService.downloadAttachment(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, DownloadHeaderUtils.attachment(file.getFileName()))
                 .contentType(MediaTypeUtils.of(file.getFileExt()))

@@ -5,7 +5,8 @@ import lombok.Data;
 /**
  * 本地文件下载载体（Service → Controller 统一传递：字节内容 + 原始文件名 + 扩展名）。
  * <p>响应头由 DownloadHeaderUtils 生成（Content-Disposition 用 fileName，Content-Type 按 fileExt）。
- * <p>watersaving（原 SavingDownloadVO）、inventorystocktake（原 StocktakeDownloadVO）
+ * <p>watersaving（原 SavingDownloadVO）、inventorystocktake（原 StocktakeDownloadVO）、
+ * waterusage（原 WaterPlanDownloadVO）、workorder（原 WorkOrderAttachmentDownloadVO）
  * 均已收敛为本类。
  */
 @Data

@@ -3,6 +3,7 @@ package com.qgyun.hltgq.hltgqsite.waterusage.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
+import com.qgyun.hltgq.hltgqsite.model.vo.FileDownloadVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageDict;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageRules;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport;
@@ -17,7 +18,6 @@ import com.qgyun.hltgq.hltgqsite.waterusage.vo.QuotaOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.UserOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDemandVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanAttachmentVO;
-import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanDownloadVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanItemVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanSaveVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanVO;
@@ -694,7 +694,7 @@ public class WaterPlanService {
     }
 
     /** 下载附件：路径穿越校验 + 文件读取（缺失提示已被清理）。 */
-    public WaterPlanDownloadVO downloadAttachment(String id) {
+    public FileDownloadVO downloadAttachment(String id) {
         WaterPlanAttachmentVO att = planMapper.selectPlanAttachmentById(
                 WaterUsageSupport.requireText(id, "附件 id 不能为空"));
         if (att == null) {
@@ -702,7 +702,7 @@ public class WaterPlanService {
         }
         byte[] bytes = LocalFileStorageUtils.readBytes(fileDirPath(),
                 WaterUsageSupport.requireText(att.getFilePath(), "附件路径缺失"));
-        WaterPlanDownloadVO vo = new WaterPlanDownloadVO();
+        FileDownloadVO vo = new FileDownloadVO();
         vo.setContent(bytes);
         vo.setFileName(att.getFileName());
         vo.setFileExt(att.getFileExt());

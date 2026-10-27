@@ -2,12 +2,12 @@ package com.qgyun.hltgq.hltgqsite.waterusage.controller;
 
 import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.MediaTypeUtils;
+import com.qgyun.hltgq.hltgqsite.model.vo.FileDownloadVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport;
 import com.qgyun.hltgq.hltgqsite.waterusage.service.WaterPlanService;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.QuotaOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.UserOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanAttachmentVO;
-import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanDownloadVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanSaveVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanVO;
 import org.slf4j.Logger;
@@ -168,7 +168,7 @@ public class WaterPlanController {
     /** 附件下载（Content-Disposition 带原始文件名，前端 fetch + blob 使用） */
     @GetMapping("/attachment/download")
     public ResponseEntity<byte[]> downloadAttachment(@RequestParam String id) {
-        WaterPlanDownloadVO file = planService.downloadAttachment(id);
+        FileDownloadVO file = planService.downloadAttachment(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, DownloadHeaderUtils.attachment(file.getFileName()))
                 .contentType(MediaTypeUtils.of(file.getFileExt()))

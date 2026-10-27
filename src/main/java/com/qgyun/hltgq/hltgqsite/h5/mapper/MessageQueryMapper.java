@@ -13,7 +13,8 @@ import java.util.Map;
  * <p>三类消息均以接收表为驱动（只回当前登录人的接收记录），JOIN 业务表取展示字段：
  * 业务表行被删时接收记录自然消失（JOIN 不产出孤儿行），与列表/未读数口径一致。
  * <p>同步模型（无定时任务）：summary/page 被调用时按规则补建当前登录人可见消息的接收记录
- * （NOT EXISTS 幂等、绝不重复）；未读=接收记录 is_read=#1#，阅读后 UPDATE 为 #2#。
+ * （NOT EXISTS 先挡已提交记录；并发 summary/page 仍可能同时通过判重，故所有同步 INSERT 追加
+ * ON CONFLICT DO NOTHING 兜底，重复键静默跳过）；未读=接收记录 is_read=#1#，阅读后 UPDATE 为 #2#。
  * <p>维度编码解析口径（corp_code 一律限定 hltgq）：部门/岗位/角色取 code、人员取 login_name；
  * 角色仅直接指派（field_id='USER'），与 RoleMapper 系统管理员判定一致，黑名单关联不参与。
  * <p>列别名与 VO 属性同名（map-underscore-to-camel-case=false 下依赖同名自动映射）；
@@ -133,7 +134,8 @@ public interface MessageQueryMapper {
             "AND NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "  WHERE r.user_id = #{userId} AND r.message_type = '#1#' AND r.message_id = a.id" +
-            ")" +
+            ") " +
+            "ON CONFLICT DO NOTHING" +
             "</script>")
     int syncAlertReceives(@Param("userId") String userId, @Param("siteIds") List<String> siteIds);
 
@@ -145,7 +147,8 @@ public interface MessageQueryMapper {
             "WHERE NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "  WHERE r.user_id = #{userId} AND r.message_type = '#2#' AND r.message_id = c.id" +
-            ")")
+            ") " +
+            "ON CONFLICT DO NOTHING")
     int syncComplaintReceives(@Param("userId") String userId);
 
     /** 按需同步意见征集接收记录（全量无状态过滤），NOT EXISTS 幂等 */
@@ -156,7 +159,8 @@ public interface MessageQueryMapper {
             "WHERE NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "  WHERE r.user_id = #{userId} AND r.message_type = '#3#' AND r.message_id = s.id" +
-            ")")
+            ") " +
+            "ON CONFLICT DO NOTHING")
     int syncSuggestionReceives(@Param("userId") String userId);
 
     /** 值班提醒总数（接收表 JOIN 值班排班表，带班领导定向） */
@@ -205,7 +209,8 @@ public interface MessageQueryMapper {
             "AND NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
-            ")")
+            ") " +
+            "ON CONFLICT DO NOTHING")
     int syncDutyReceives(@Param("userId") String userId, @Param("since") String since);
 
     /**
@@ -230,7 +235,8 @@ public interface MessageQueryMapper {
             "AND NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
-            ")" +
+            ") " +
+            "ON CONFLICT DO NOTHING" +
             "</script>")
     int syncDutyStaffReceives(@Param("userId") String userId,
                               @Param("userName") String userName,
@@ -260,7 +266,8 @@ public interface MessageQueryMapper {
             "AND NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
-            ")")
+            ") " +
+            "ON CONFLICT DO NOTHING")
     int syncDutyStaffRelReceives(@Param("userId") String userId, @Param("since") String since);
 
     /**
@@ -280,7 +287,8 @@ public interface MessageQueryMapper {
             "AND NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "  WHERE r.user_id = #{userId} AND r.message_type = '#4#' AND r.message_id = s.id" +
-            ")")
+            ") " +
+            "ON CONFLICT DO NOTHING")
     int syncDutyRuleReceives(@Param("userId") String userId, @Param("since") String since);
 
     /**
@@ -358,7 +366,8 @@ public interface MessageQueryMapper {
             "WHERE NOT EXISTS (" +
             "SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "WHERE r.id = CONCAT(#{userId}, '_', x.message_id)" +
-            ")")
+            ") " +
+            "ON CONFLICT DO NOTHING")
     int syncModelCalcReceives(@Param("userId") String userId);
 
     /**
@@ -403,7 +412,8 @@ public interface MessageQueryMapper {
             "WHERE NOT EXISTS (" +
             "SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
             "WHERE r.id = CONCAT(#{userId}, '_', x.message_id)" +
-            ")")
+            ") " +
+            "ON CONFLICT DO NOTHING")
     int syncModelCalcRuleReceives(@Param("userId") String userId, @Param("since") String since);
 
     /** 模型计算消息第二段反查：短期预报方案详情（主键 IN，每模块独立查询） */
