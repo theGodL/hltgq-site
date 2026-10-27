@@ -208,6 +208,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 /* 查看详情弹窗 */
 #view-overlay .modal,#mid-view-overlay .modal,#demand-view-overlay .modal,#loss-view-overlay .modal{width:1100px;height:min(860px,92vh);max-width:96vw}
+#crop-overlay .modal{width:960px;height:min(800px,92vh);max-width:96vw}
 .view-bd{padding:16px 20px 20px;overflow-y:auto;flex:1;min-height:0;background:#f7f8fa}
 .view-bd .stats-row{margin-bottom:12px}
 .view-bd .stat-card{background:#fff}
@@ -409,6 +410,7 @@ tbody tr:hover td{background:#fafafa}
               <label class="radio-item"><input type="radio" name="typical-year" value="wet"> 丰水年</label>
               <label class="radio-item"><input type="radio" name="typical-year" value="normal" checked> 平水年</label>
               <label class="radio-item"><input type="radio" name="typical-year" value="dry"> 枯水年</label>
+              <label class="radio-item"><input type="radio" name="typical-year" value="recommend"> 推荐值</label>
             </div>
           </div>
 
@@ -502,16 +504,6 @@ tbody tr:hover td{background:#fafafa}
       <div class="left-panel">
         <div class="left-scroll">
           <div class="form-item">
-            <label class="form-label">中长期来水预报模型计算结果（可选）</label>
-            <div class="select-wrap">
-              <select class="field" id="demand-model">
-                <option value="">不关联</option>
-              </select>
-              <span class="select-arrow"></span>
-            </div>
-          </div>
-
-          <div class="form-item">
             <label class="form-label">灌溉保证率</label>
             <div class="radio-group">
               <label class="radio-item"><input type="radio" name="irrig-rate" value="90" checked> 90%</label>
@@ -522,21 +514,14 @@ tbody tr:hover td{background:#fafafa}
           </div>
 
           <div class="form-item">
-            <label class="form-label">默认综合水利用系数</label>
-            <div class="coeff-val">0.589</div>
+            <label class="form-label">综合水利用系数</label>
+            <input type="number" class="field" id="demand-canal-eff" value="0.589" min="0" max="1" step="0.001" placeholder="0～1">
           </div>
 
           <div class="form-item">
-            <div class="upload-hd">
-              <label class="form-label" style="margin:0">需水基础数据收集表</label>
-              <button type="button" class="link" id="demand-tpl-btn">下载模板</button>
-            </div>
-            <input type="file" id="demand-file" accept=".xlsx,.xls,.csv" hidden>
-            <button type="button" class="upload-btn" id="demand-upload-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              上传附件
-            </button>
-            <div class="upload-name" id="demand-file-name"></div>
+            <label class="form-label">支渠作物设置</label>
+            <button type="button" class="btn btn-default btn-block" id="crop-setting-btn">查看 / 修改作物种类</button>
+            <div class="form-hint" id="crop-setting-hint" style="margin-top:8px">默认读取模型需水表 82 行</div>
           </div>
         </div>
         <div class="left-actions">
@@ -598,6 +583,7 @@ tbody tr:hover td{background:#fafafa}
                   <div class="sub-tab active" data-tab="canal">支渠明细</div>
                   <div class="sub-tab" data-tab="district">分灌区明细</div>
                   <div class="sub-tab" data-tab="area">片区明细</div>
+                  <div class="sub-tab" data-tab="county">行政区明细</div>
                   <div class="sub-tab" data-tab="total">总计</div>
                 </div>
                 <div class="detail-tools">
@@ -630,11 +616,8 @@ tbody tr:hover td{background:#fafafa}
       <div class="left-panel">
         <div class="left-scroll">
           <div class="form-item">
-            <label class="form-label"><span class="req">*</span>中长期来水方案</label>
-            <div class="select-wrap">
-              <select class="field" id="loss-scheme"></select>
-              <span class="select-arrow"></span>
-            </div>
+            <label class="form-label">全年渗漏总水量（万m³）</label>
+            <input type="number" class="field" id="loss-annual-leakage" value="156" min="0" step="0.01" placeholder="0">
           </div>
         </div>
         <div class="left-actions">
@@ -666,8 +649,9 @@ tbody tr:hover td{background:#fafafa}
           </div>
 
           <div id="loss-result-content" style="display:none">
+            <div class="stats-row cols-3" id="loss-stats"></div>
             <div class="chart-card">
-              <div class="chart-title">损失水量</div>
+              <div class="chart-title">蒸发与渗漏损失</div>
               <div class="chart-unit">单位：万方</div>
               <div class="chart-box" id="chart-loss" style="height:300px"></div>
             </div>
@@ -688,7 +672,8 @@ tbody tr:hover td{background:#fafafa}
                   <thead>
                     <tr>
                       <th>日期</th>
-                      <th>预报水量(万方)</th>
+                      <th>蒸发水量(万方)</th>
+                      <th>渗漏水量(万方)</th>
                       <th>损失水量(万方)</th>
                     </tr>
                   </thead>
@@ -920,6 +905,39 @@ tbody tr:hover td{background:#fafafa}
   </div>
 </div>
 
+<!-- 支渠作物设置弹窗（需水） -->
+<div class="overlay" id="crop-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span>支渠作物设置</span>
+      <button class="modal-close" data-close="crop-overlay">×</button>
+    </div>
+    <div class="modal-bd">
+      <div class="form-hint">默认需水表 82 行；修改后的作物种类随本次计算提交模型，未修改时使用模型默认值。</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>片区</th>
+              <th>分灌区</th>
+              <th>支渠</th>
+              <th>行政区</th>
+              <th>灌区面积(万亩)</th>
+              <th>种植作物种类</th>
+            </tr>
+          </thead>
+          <tbody id="crop-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-default" id="crop-reset-btn">恢复默认</button>
+      <button class="btn btn-default" data-close="crop-overlay">取消</button>
+      <button class="btn btn-primary" id="crop-save-btn">应用</button>
+    </div>
+  </div>
+</div>
+
 <!-- 查看详情弹窗（需水） -->
 <div class="overlay" id="demand-view-overlay">
   <div class="modal">
@@ -956,7 +974,7 @@ tbody tr:hover td{background:#fafafa}
     </div>
     <div class="modal-bd view-bd">
       <div class="chart-card">
-        <div class="chart-title">损失水量</div>
+        <div class="chart-title">蒸发与渗漏损失</div>
         <div class="chart-unit">单位：万方</div>
         <div class="chart-box" id="loss-view-chart" style="height:300px"></div>
       </div>
@@ -972,7 +990,8 @@ tbody tr:hover td{background:#fafafa}
             <thead>
               <tr>
                 <th>日期</th>
-                <th>预报水量(万方)</th>
+                <th>蒸发水量(万方)</th>
+                <th>渗漏水量(万方)</th>
                 <th>损失水量(万方)</th>
               </tr>
             </thead>
@@ -1016,8 +1035,14 @@ tbody tr:hover td{background:#fafafa}
   let demandPeriods = [];
   let lossRowsCache = [];
   let lossChartCats = [];
-  let lossChartData = [];
+  let lossChartEvap = [];
+  let lossChartLeak = [];
   let demandTopoMap = {};
+  let demandCropBase = null;
+  let demandCropRows = [];
+  let demandCropDraft = [];
+  let demandCropDirty = false;
+  let demandCropLoading = null;
 
   let historyList = [];
   let historyType = 'short';
@@ -1028,8 +1053,6 @@ tbody tr:hover td{background:#fafafa}
   let charts = {};
   let demandTab = 'canal';
   let demandFilter = '';
-  let demandFile = null;
-  let demandUploaded = false;
   let demandHasResult = false;
   let demandPage = 1;
   const DEMAND_PAGE_SIZE = 10;
@@ -1935,7 +1958,7 @@ tbody tr:hover td{background:#fafafa}
       body.historicalYear = Number($('hist-year').value);
     } else {
       body.useHistorical = false;
-      body.scenario = mode === 'wet' ? '丰' : mode === 'dry' ? '枯' : '平';
+      body.scenario = mode === 'wet' ? '丰' : mode === 'dry' ? '枯' : mode === 'recommend' ? '推荐值' : '平';
     }
 
     const btn = $('mid-calc-btn');
@@ -1985,6 +2008,7 @@ tbody tr:hover td{background:#fafafa}
           canal: b.branchName || '—',
           size: b.area != null ? b.area : 0,
           crop: b.cropTypes || '—',
+          county: b.county || '',
           v: demandPeriods.map(() => 0)
         };
       }
@@ -2128,8 +2152,8 @@ tbody tr:hover td{background:#fafafa}
 
   function renderDemandStats(containerId) {
     const rec = (demandDetail && demandDetail.record) || {};
-    // 会议定稿：灌溉面积固定展示 105.83 万亩
-    const areaWan = 105.83;
+    // 灌溉面积取接口返回（万亩）
+    const areaWan = rec.irrigatedArea != null ? Number(rec.irrigatedArea) : 105.83;
     const peak = formatTendayPeriod(rec.peakTenday || '—', resolveDemandYear(rec));
     $(containerId).innerHTML = [
       { label: '全灌区总需水', value: numOrDash(rec.totalDemand, 2), unit: '万m³' },
@@ -2184,6 +2208,26 @@ tbody tr:hover td{background:#fafafa}
       });
       return Object.values(map);
     }
+    if (demandTab === 'county') {
+      const summaries = ((demandDetail && demandDetail.areaSummaries) || []).filter(s => s.summaryType === '行政区');
+      if (summaries.length) {
+        const map = {};
+        summaries.forEach(s => {
+          if (!map[s.areaName]) map[s.areaName] = { area: s.areaName, district: '—', canal: '—', size: 0, crop: '—', v: zeroV() };
+          const idx = demandPeriods.indexOf(s.tendayLabel);
+          if (idx >= 0) map[s.areaName].v[idx] += Number(s.demandVolume) || 0;
+        });
+        return Object.values(map);
+      }
+      const map = {};
+      rows.forEach(r => {
+        const county = r.county || '行政区未标注';
+        if (!map[county]) map[county] = { area: county, district: '—', canal: '—', size: 0, crop: '—', v: zeroV() };
+        map[county].size += r.size;
+        map[county].v = map[county].v.map((x, i) => x + (r.v[i] || 0));
+      });
+      return Object.values(map);
+    }
     const total = { area: '合计', district: '—', canal: '—', size: 0, crop: '—', v: zeroV() };
     rows.forEach(r => {
       total.size += r.size;
@@ -2202,10 +2246,10 @@ tbody tr:hover td{background:#fafafa}
 
   function demandColumns() {
     const periods = demandPeriods.length ? demandPeriods : DEMAND_PERIODS_DEFAULT;
-    const cols = [{ key: 'area', label: '片区' }];
+    const cols = [{ key: 'area', label: demandTab === 'county' ? '行政区' : '片区' }];
     if (demandTab === 'canal' || demandTab === 'district') cols.push({ key: 'district', label: '分灌区' });
     if (demandTab === 'canal') cols.push({ key: 'canal', label: '支渠' });
-    cols.push({ key: 'size', label: '灌区面积' });
+    if (demandTab !== 'county') cols.push({ key: 'size', label: '灌区面积' });
     if (demandTab === 'canal') cols.push({ key: 'crop', label: '种植作物种类' });
     periods.forEach((label, i) => cols.push({ key: 'v' + i, label, periodIndex: i }));
     return cols;
@@ -2436,22 +2480,103 @@ tbody tr:hover td{background:#fafafa}
     });
   }
 
+  /* ========== 需水：支渠作物设置（crop-config） ========== */
+  const CROP_TYPES = ['早稻', '中稻', '晚稻'];
 
-  $('demand-upload-btn').addEventListener('click', () => $('demand-file').click());
-  $('demand-file').addEventListener('change', e => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    demandFile = f;
-    demandUploaded = true;
-    $('demand-file-name').textContent = '已上传：' + f.name;
-    toast('附件已上传');
-  });
-  $('demand-tpl-btn').addEventListener('click', async () => {
-    try {
-      await API.demand.template('需水基础数据收集表模板.xlsx');
-    } catch (err) {
-      toast(err.message || '模板下载失败');
+  function normalizeCropRow(row) {
+    return {
+      district: row.district || '',
+      subDistrict: row.subDistrict || '',
+      branchName: row.branchName || '',
+      county: row.county || '',
+      area: row.area == null ? null : Number(row.area),
+      cropType: CROP_TYPES.indexOf(row.cropType) >= 0 ? row.cropType : '中稻'
+    };
+  }
+
+  function loadDemandCropConfig(force) {
+    if (demandCropBase && !force) return Promise.resolve(demandCropBase);
+    if (demandCropLoading) return demandCropLoading;
+    demandCropLoading = API.demand.cropConfig().then(list => {
+      const rows = Array.isArray(list) ? list : ((list && list.rows) || []);
+      demandCropBase = rows.map(normalizeCropRow);
+      return demandCropBase;
+    }).finally(() => { demandCropLoading = null; });
+    return demandCropLoading;
+  }
+
+  function renderCropTable() {
+    const tbody = $('crop-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = demandCropDraft.map((r, i) =>
+      '<tr>' +
+        `<td>${r.district || '—'}</td>` +
+        `<td>${r.subDistrict || '—'}</td>` +
+        `<td>${r.branchName || '—'}</td>` +
+        `<td>${r.county || '—'}</td>` +
+        `<td>${r.area == null ? '—' : r.area}</td>` +
+        `<td><select class="field" data-crop-idx="${i}" style="width:110px;height:30px">` +
+          CROP_TYPES.map(t => `<option value="${t}"${t === r.cropType ? ' selected' : ''}>${t}</option>`).join('') +
+        '</select></td>' +
+      '</tr>'
+    ).join('') || '<tr><td colspan="6" style="text-align:center;color:#bbb;padding:32px">暂无配置</td></tr>';
+  }
+
+  function cropChangedCount(rows) {
+    const list = rows || demandCropRows;
+    if (!demandCropBase) return 0;
+    return list.filter((r, i) => demandCropBase[i] && r.cropType !== demandCropBase[i].cropType).length;
+  }
+
+  function updateCropHint() {
+    const el = $('crop-setting-hint');
+    if (!el) return;
+    if (!demandCropBase) {
+      el.textContent = '默认读取模型需水表 82 行';
+      return;
     }
+    const n = cropChangedCount();
+    el.textContent = n ? `已修改 ${n} 条，将随下次计算提交` : `默认需水表 ${demandCropBase.length} 行，未修改`;
+  }
+
+  async function openCropOverlay() {
+    try {
+      await loadDemandCropConfig(false);
+      demandCropDraft = (demandCropDirty && demandCropRows.length ? demandCropRows : demandCropBase).map(r => ({ ...r }));
+      renderCropTable();
+      updateCropHint();
+      $('crop-overlay').classList.add('show');
+    } catch (err) {
+      toast(API.friendlyError(err, '作物配置加载失败'));
+    }
+  }
+
+  $('crop-setting-btn').addEventListener('click', openCropOverlay);
+
+  $('crop-tbody').addEventListener('change', e => {
+    const sel = e.target.closest('[data-crop-idx]');
+    if (!sel) return;
+    const row = demandCropDraft[+sel.dataset.cropIdx];
+    if (row) row.cropType = sel.value;
+  });
+
+  $('crop-reset-btn').addEventListener('click', () => {
+    if (!demandCropBase) return;
+    demandCropRows = demandCropBase.map(r => ({ ...r }));
+    demandCropDraft = demandCropBase.map(r => ({ ...r }));
+    demandCropDirty = false;
+    renderCropTable();
+    updateCropHint();
+    toast('已恢复模型默认作物');
+  });
+
+  $('crop-save-btn').addEventListener('click', () => {
+    const n = cropChangedCount(demandCropDraft);
+    demandCropRows = demandCropDraft.map(r => ({ ...r }));
+    demandCropDirty = n > 0;
+    updateCropHint();
+    $('crop-overlay').classList.remove('show');
+    toast(n ? `已应用 ${n} 条作物修改` : '已恢复模型默认作物');
   });
 
   function getDemandGuaranteeRate() {
@@ -2461,23 +2586,28 @@ tbody tr:hover td{background:#fafafa}
 
   $('demand-calc-btn').addEventListener('click', async () => {
     const guaranteeRate = getDemandGuaranteeRate();
-    const canalEff = 0.589;
+    const rawEff = $('demand-canal-eff').value;
+    const canalEff = Number(rawEff);
+    if (rawEff === '' || Number.isNaN(canalEff) || canalEff < 0 || canalEff > 1) {
+      return toast('综合水利用系数需在 0～1 之间');
+    }
     const btn = $('demand-calc-btn');
     btn.classList.add('is-loading');
     API.showLoading('需水模型计算中，请稍候…');
     try {
-      let recordId;
-      if (demandUploaded && demandFile) {
-        const fd = new FormData();
-        fd.append('file', demandFile);
-        fd.append('guaranteeRate', guaranteeRate);
-        fd.append('canalEff', String(canalEff));
-        const res = await API.demand.upload(fd);
-        recordId = res.recordId;
-      } else {
-        const res = await API.demand.submit({ guaranteeRate, canalEff });
-        recordId = res.recordId;
+      const payload = { guaranteeRate, canalEff };
+      if (demandCropDirty && demandCropRows.length) {
+        payload.tableRows = demandCropRows.map(r => ({
+          '片区': r.district,
+          '分灌区': r.subDistrict,
+          '支渠': r.branchName,
+          '行政区': r.county,
+          '灌区面积': r.area,
+          '种植作物种类': r.cropType
+        }));
       }
+      const res = await API.demand.submit(payload);
+      const recordId = res.recordId;
       demandCurrentId = recordId;
       await API.demand.wait(recordId);
       const detail = await API.demand.detail(recordId);
@@ -2521,7 +2651,17 @@ tbody tr:hover td{background:#fafafa}
     demandFilter = e.target.value;
     renderDemandTable('demand-view-tbody', { noPager: true });
   });
-  $('demand-export').addEventListener('click', () => {
+  $('demand-export').addEventListener('click', async () => {
+    const q = demandFilter.trim();
+    // 无筛选走后端全量（支渠明细 + 分区汇总两 Sheet）；有筛选导出当前视图筛选结果
+    if (!q && demandCurrentId) {
+      try {
+        await API.demand.downloadExcel(demandCurrentId);
+      } catch (e) {
+        toast(API.friendlyError(e, '导出失败'));
+      }
+      return;
+    }
     const rows = filteredDemandRows();
     if (!rows.length) return toast('暂无数据可导出');
     const cols = demandColumns();
@@ -2569,17 +2709,7 @@ tbody tr:hover td{background:#fafafa}
     }
   });
 
-  /* ========== 水量损失预报（仅 long） ========== */
-  async function syncLossScheme() {
-    const sel = $('loss-scheme');
-    try {
-      const list = await API.long.list();
-      API.fillSelect(sel, list || [], { onlyCompleted: true, placeholder: '请选择中长期来水方案' });
-    } catch (err) {
-      sel.innerHTML = '<option value="">方案加载失败</option>';
-      toast(err.message || '方案列表加载失败');
-    }
-  }
+  /* ========== 水量损失预报（独立，无上游） ========== */
   function applyLossDetail(detail) {
     lossDetail = detail || null;
     const rec = (detail && detail.record) || {};
@@ -2589,26 +2719,30 @@ tbody tr:hover td{background:#fafafa}
     const details = (detail && (detail.details || detail.tendays)) || [];
     lossRowsCache = details.map(d => ({
       date: API.fmtIsoDate(d.dataDate || d.predictDate || d.tendayLabel),
-      predict: d.predictVolume == null ? '—' : numOrDash(d.predictVolume, 2),
+      evap: numOrDash(d.evaporationVolume, 2),
+      leak: numOrDash(d.leakageVolume, 2),
       loss: numOrDash(d.lossVolume, 2),
+      evapRaw: d.evaporationVolume,
+      leakRaw: d.leakageVolume,
       lossRaw: d.lossVolume
     }));
     lossChartCats = details.map((d, i) =>
       d.tendayLabel || LOSS_DECADE_LABELS[i] || API.fmtIsoDate(d.dataDate || d.predictDate)
     );
-    lossChartData = details.map(d => d.lossVolume);
+    lossChartEvap = details.map(d => d.evaporationVolume == null ? null : Number(d.evaporationVolume));
+    lossChartLeak = details.map(d => d.leakageVolume == null ? null : Number(d.leakageVolume));
   }
   function lossRows() {
     const rows = lossRowsCache;
     const q = lossFilter.trim();
     if (!q) return rows.slice();
-    return rows.filter(r => [r.date, r.predict, r.loss].some(v => String(v).includes(q)));
+    return rows.filter(r => [r.date, r.evap, r.leak, r.loss].some(v => String(v).includes(q)));
   }
-  function lossLineOption(categories, data, rotate) {
+  function lossLineOption(categories, evap, leak, rotate) {
     return {
-      color: ['#1677ff'],
+      color: ['#1677ff', '#faad14'],
       tooltip: { trigger: 'axis' },
-      legend: { top: 4, data: ['损失水量'] },
+      legend: { top: 4, data: ['蒸发水量', '渗漏水量'] },
       grid: { left: 16, right: 24, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
       dataZoom: buildChartDataZoom(),
       xAxis: {
@@ -2618,19 +2752,30 @@ tbody tr:hover td{background:#fafafa}
         axisLabel: { rotate: rotate || 0, fontSize: 10, color: '#999', interval: 0 },
         axisLine: { lineStyle: { color: '#e8e8e8' } }
       },
-      yAxis: {
-        type: 'value', min: 0,
-        axisLabel: { color: '#999' },
-        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
-      },
+      yAxis: [
+        {
+          type: 'value', name: '蒸发(万方)', min: 0,
+          nameLocation: 'end', nameGap: 12,
+          nameTextStyle: { color: '#999', fontSize: 11, align: 'left' },
+          axisLabel: { color: '#999' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', name: '渗漏(万方)', min: 0,
+          nameLocation: 'end', nameGap: 12,
+          nameTextStyle: { color: '#999', fontSize: 11, align: 'right' },
+          axisLabel: { color: '#999' },
+          splitLine: { show: false }
+        }
+      ],
       series: [{
-        name: '损失水量',
+        name: '蒸发水量',
         type: 'line',
         smooth: true,
         symbol: 'circle',
         symbolSize: 7,
         itemStyle: { color: '#1677ff', borderColor: '#fff', borderWidth: 1 },
-        data,
+        data: evap,
         areaStyle: {
           color: {
             type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
@@ -2640,13 +2785,22 @@ tbody tr:hover td{background:#fafafa}
             ]
           }
         }
+      }, {
+        name: '渗漏水量',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 7,
+        itemStyle: { color: '#faad14', borderColor: '#fff', borderWidth: 1 },
+        data: leak
       }]
     };
   }
   function renderLossChart(chartId) {
     const el = $(chartId || 'chart-loss');
     if (!el || !window.echarts) return;
-    const option = lossLineOption(lossChartCats, lossChartData, 40);
+    const option = lossLineOption(lossChartCats, lossChartEvap, lossChartLeak, 40);
     const key = chartId === 'loss-view-chart' ? 'lossView' : 'lossMain';
     const chart = ensureChart(key, el);
     if (!chart) return;
@@ -2672,14 +2826,27 @@ tbody tr:hover td{background:#fafafa}
       if (btns) btns.innerHTML = API.pagerHtml(lossPage, pages);
     }
     tbody.innerHTML = pageRows.map(r =>
-      `<tr><td>${r.date}</td><td>${r.predict}</td><td>${r.loss}</td></tr>`
-    ).join('') || `<tr><td colspan="3" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+      `<tr><td>${r.date}</td><td>${r.evap}</td><td>${r.leak}</td><td>${r.loss}</td></tr>`
+    ).join('') || `<tr><td colspan="4" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+  }
+  function renderLossStats() {
+    const rec = (lossDetail && lossDetail.record) || {};
+    const el = $('loss-stats');
+    if (!el) return;
+    el.innerHTML = [
+      { label: '总损失', value: numOrDash(rec.totalLoss, 2), unit: '万m³' },
+      { label: '总蒸发', value: numOrDash(rec.totalEvaporation, 2), unit: '万m³' },
+      { label: '总渗漏', value: numOrDash(rec.totalLeakage, 2), unit: '万m³' }
+    ].map(it =>
+      `<div class="stat-card"><div class="label">${it.label}</div><div class="value">${it.value}<span class="unit">${it.unit}</span></div></div>`
+    ).join('');
   }
   function showLossResult() {
     revealResultHd('loss-result-hd');
     $('loss-result-empty').style.display = 'none';
     $('loss-result-content').style.display = 'block';
     lossPage = 1;
+    renderLossStats();
     renderLossChart('chart-loss');
     renderLossTable('loss-tbody');
     setTimeout(() => charts.lossMain && charts.lossMain.resize(), 50);
@@ -2694,13 +2861,16 @@ tbody tr:hover td{background:#fafafa}
   }
 
   $('loss-calc-btn').addEventListener('click', async () => {
-    const sourceRecordId = $('loss-scheme').value;
-    if (!sourceRecordId) return toast('请选择中长期来水方案');
+    const rawLeakage = $('loss-annual-leakage').value;
+    const annualLeakageWanM3 = Number(rawLeakage);
+    if (rawLeakage === '' || Number.isNaN(annualLeakageWanM3) || annualLeakageWanM3 < 0) {
+      return toast('全年渗漏总水量需为非负数');
+    }
     const btn = $('loss-calc-btn');
     btn.classList.add('is-loading');
     API.showLoading('水量损失模型计算中，请稍候…');
     try {
-      const { recordId } = await API.loss.submit({ mode: 'long', sourceRecordId });
+      const { recordId } = await API.loss.submit({ annualLeakageWanM3 });
       lossCurrentId = recordId;
       await API.loss.wait(recordId);
       const detail = await API.loss.detail(recordId);
@@ -2731,8 +2901,8 @@ tbody tr:hover td{background:#fafafa}
   $('loss-export').addEventListener('click', () => {
     const rows = lossRows();
     if (!rows.length) return toast('暂无数据可导出');
-    const header = ['日期', '预报水量(万方)', '损失水量(万方)'];
-    const data = rows.map(r => [r.date, r.predict, r.loss]);
+    const header = ['日期', '蒸发水量(万方)', '渗漏水量(万方)', '损失水量(万方)'];
+    const data = rows.map(r => [r.date, r.evap, r.leak, r.loss]);
     if (window.XLSX) {
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
       ws['!cols'] = MonitorExport.fitCols(header);
@@ -3194,6 +3364,7 @@ tbody tr:hover td{background:#fafafa}
           applyLossDetail(detail);
           activatePanel('loss');
           showLossResult();
+          openLossView();
           if (!lossRowsCache.length) toast('该方案暂无明细数据');
         } else if (item.type === 'moisture') {
           moistureCurrentId = item.id;
@@ -3364,12 +3535,7 @@ tbody tr:hover td{background:#fafafa}
   fillDemandTendaySelects(false);
   renderHistory();
   renderDemandTable('demand-tbody');
-  syncLossScheme();
   API.probeHealth();
-  // 可选：填充需水侧中长期方案下拉
-  API.long.list().then(list => {
-    API.fillSelect($('demand-model'), list || [], { onlyCompleted: true, placeholder: '不关联' });
-  }).catch(() => {});
 })();
 </script>
 <script src="./lib/date-placeholder.js"></script>

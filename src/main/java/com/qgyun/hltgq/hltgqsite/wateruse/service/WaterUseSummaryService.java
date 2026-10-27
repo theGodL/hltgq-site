@@ -6,7 +6,7 @@ import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.wateruse.config.WaterUseCoeffStations;
 import com.qgyun.hltgq.hltgqsite.wateruse.config.WaterUseSeasonConfig;
 import com.qgyun.hltgq.hltgqsite.wateruse.mapper.WaterUseSummaryMapper;
-import com.qgyun.hltgq.hltgqsite.wateruse.vo.WaterUseCollectionRecordVO;
+import com.qgyun.hltgq.hltgqsite.wateruse.vo.WaterBillFeeRecordVO;
 import com.qgyun.hltgq.hltgqsite.wateruse.vo.WaterUseFeeCollectionVO;
 import com.qgyun.hltgq.hltgqsite.wateruse.vo.WaterUseFeeRecordVO;
 import com.qgyun.hltgq.hltgqsite.wateruse.vo.WaterUseReportRowVO;
@@ -46,8 +46,10 @@ import com.qgyun.hltgq.hltgqsite.model.util.DeviceValueUtils;
  *       （同桶窗口 ttf 区间累计，3 位小数；渠首缺失/为 0 或四干渠全部无数据时为 null）</li>
  * </ul>
  *
- * <p>征收/收缴统计（另一入口 {@link #feeCollection}）：同一张水费表单，区域经用水户外键关联用水户表取名称，
- * 应收 hsfvdh / 已收 vdhlhm 表单按「元」录入 → 出参「万元」（按展示精度 2 位截断），收缴率 1 位截断。
+ * <p>征收/收缴统计（另一入口 {@link #feeCollection}）：自 2026-10-27 起改取<b>新版水费账单</b>
+ * t_auto_hltgq_water_bill（调度方案出账与手工台账出账统一沉淀），不再读水费表单；
+ * 区域取用水户名称（业务口径：一县即一个用水户，户名即行政区名），应收 amount / 已收 paid 按「元」入库
+ * → 出参「万元」（按展示精度 2 位截断），收费率 1 位截断，另出年度合计四卡片（应缴/已收/收费率/欠收）。
  *
  * <p>统计桶：月 / 灌季（{@link WaterUseSeasonConfig}）/ 年；桶内无记录为 null（不补 0）。
  * 单个区间取数逐站日志化（{@code [用水总结]} 前缀），联调可核对。
@@ -139,83 +141,101 @@ public class WaterUseSummaryService {
     }
 
     /**
-     * 征收/收缴统计：一次返回「各区域征收情况」（x 轴 = 区域）与「月度收缴趋势」（x 轴 = 当年 12 个月）两段数据，
-     * 供两张柱状折线组合图共用（柱 = 应收/已收水费(万元)，折线 = 收缴率(%)）。
+     * 征收/收缴统计：一次返回大屏「用水缴费」Tab 所需的三段数据——
+     * 顶部四卡片（应缴 / 已收 / 收费率 / 欠收）+「各区域征收情况」+「月度收缴趋势」。
      *
+     * <p>数据源（2026-10-27 变更）：新版水费账单 t_auto_hltgq_water_bill
+     * （调度方案出账与手工台账出账统一沉淀），不再读旧水费计算表单。
      * <p>口径：
      * <ul>
-     *   <li>区间 = 统计年整年（按锚点落点判定），归桶锚点同 {@link #report}：统计周期区间终点（缺失回退起点）</li>
-     *   <li>区域 = 用水户名称（水费表 xqaoxx → 用水户表 iiatzj）；无区域的记录不计入区域图、仍计入月度趋势</li>
-     *   <li>应收/已收 = hsfvdh / vdhlhm 桶内求和（表单按元录入 → 出参万元，按展示精度 2 位截断）；桶内该指标全部未填 → null（不补 0）</li>
-     *   <li>收缴率 = 已收合计 ÷ 应收合计 × 100（1 位截断）；任一侧缺失或应收 ≤ 0 为 null</li>
-     *   <li>月度 1~12 月固定出桶（无数据月份字段为 null）；区域按应收水费降序出参</li>
+     *   <li>区间 = 统计年整年，按账期终点 period_end 落点判定（月/季/年账单统一按账期止落月，
+     *       与旧表单「统计周期区间终点归桶」一致）</li>
+     *   <li>区域 = 用水户名称（业务口径：一县即一个用水户，户名即行政区名）；
+     *       无区域的账单不计入区域图、仍计入月度趋势</li>
+     *   <li>应缴/已收 = amount / paid 桶内求和（库内元 → 出参万元，按展示精度 2 位截断）；桶内无账单 → null（不补 0）</li>
+     *   <li>收费率 = 已收合计 ÷ 应缴合计 × 100（1 位截断）；应缴缺失或 ≤ 0 为 null</li>
+     *   <li>欠收 = 应缴 − 已收（万元，2 位截断）；任一侧缺失为 null</li>
+     *   <li>月度 1~12 月固定出桶（无账单月份字段为 null）；区域按应缴水费降序出参</li>
      * </ul>
      *
      * @param year 统计年份（缺省 = 当年；超出 2000 ~ 2100 返回 400）
-     * @return 区域段 + 月度段（同一次取数聚合而来，口径一致）
+     * @return 四卡片合计 + 区域段 + 月度段（同一次取数聚合而来，口径一致）
      */
     public WaterUseFeeCollectionVO feeCollection(Integer year) {
         int targetYear = (year == null) ? LocalDate.now().getYear() : year;
         if (targetYear < MIN_YEAR || targetYear > MAX_YEAR) {
             throw new IllegalArgumentException("year 取值范围 " + MIN_YEAR + " ~ " + MAX_YEAR + "（缺省=当年）");
         }
-        LocalDateTime startTime = LocalDate.of(targetYear, 1, 1).atStartOfDay();
-        LocalDateTime endTime = LocalDate.of(targetYear, 12, 31).atTime(23, 59, 59);
+        LocalDate startDate = LocalDate.of(targetYear, 1, 1);
+        LocalDate endDate = LocalDate.of(targetYear, 12, 31);
 
-        List<WaterUseCollectionRecordVO> records =
-                waterUseSummaryMapper.selectCollectionRecords(startTime, endTime);
+        List<WaterBillFeeRecordVO> records =
+                waterUseSummaryMapper.selectBillCollectionRecords(startDate, endDate);
 
         Map<String, FeeSum> regionSums = new LinkedHashMap<>();
         FeeSum[] monthSums = new FeeSum[MONTHS_OF_YEAR];
         FeeSum yearSum = new FeeSum();
         int noRegion = 0;
         int sampleLogged = 0;
-        for (WaterUseCollectionRecordVO record : records) {
+        for (WaterBillFeeRecordVO record : records) {
             if (sampleLogged < FEE_SAMPLE_LOGS) {
-                log.info("[用水总结] 征收记录样例 编号={} 区域={} 归桶锚点={} 应收水费(表单原值·元)={} 已收水费(表单原值·元)={}",
-                        record.getFeeNo(), record.getRegionName(), record.getAnchorTime(),
+                log.info("[用水总结] 征收账单样例 编号={} 区域={} 账期终点={} 应缴(原值·元)={} 已收(原值·元)={}",
+                        record.getBillNo(), record.getUserName(), record.getAnchorTime(),
                         record.getReceivableRaw(), record.getReceivedRaw());
                 sampleLogged++;
             }
-            yearSum.accumulate(record);
-            String region = record.getRegionName();
+            yearSum.accumulate(record.getReceivableRaw(), record.getReceivedRaw());
+            String region = record.getUserName();
             if (region == null || region.trim().isEmpty()) {
-                // 无区域记录：区域图无法归属（用水户未填/已删/名称为空），月度趋势不受影响（仍累计）
+                // 无区域账单：区域图无法归属（用水户未挂接/已删/名称为空），月度趋势不受影响（仍累计）
                 noRegion++;
             } else {
-                regionSums.computeIfAbsent(region.trim(), key -> new FeeSum()).accumulate(record);
+                regionSums.computeIfAbsent(region.trim(), key -> new FeeSum())
+                        .accumulate(record.getReceivableRaw(), record.getReceivedRaw());
             }
             if (record.getAnchorTime() != null) {
                 int index = record.getAnchorTime().getMonthValue() - 1;
                 if (monthSums[index] == null) {
                     monthSums[index] = new FeeSum();
                 }
-                monthSums[index].accumulate(record);
+                monthSums[index].accumulate(record.getReceivableRaw(), record.getReceivedRaw());
             }
         }
 
         WaterUseFeeCollectionVO result = new WaterUseFeeCollectionVO();
         result.setYear(targetYear);
+        result.setTotal(buildTotalItem(yearSum));
         result.setRegions(buildRegionItems(regionSums));
         result.setMonths(buildMonthItems(targetYear, monthSums));
 
-        log.info("[用水总结] 征收统计 year={} 记录={} 条 区域={} 个 无区域记录={} 条 年度合计 应收(万元)={} 已收(万元)={} "
-                        + "收缴率(%)={} 表单原值合计 应收={} 已收={}（元，未截断，便于与库中 SUM(hsfvdh) / SUM(vdhlhm) 直接对账）",
+        log.info("[用水总结] 征收统计 year={} 账单={} 条 区域={} 个 无区域账单={} 条 年度合计 应缴(万元)={} 已收(万元)={} "
+                        + "收费率(%)={} 欠收(万元)={}（账单原值合计 应缴={} 已收={} 元，未截断，便于与库中 SUM(amount) / SUM(paid) 对账）",
                 targetYear, records.size(), regionSums.size(), noRegion,
-                receivableOf(yearSum), receivedOf(yearSum), collectionRateOf(yearSum),
+                result.getTotal().getReceivable(), result.getTotal().getReceived(),
+                result.getTotal().getCollectionRate(), result.getTotal().getArrears(),
                 yearSum.receivableRaw, yearSum.receivedRaw);
         if (noRegion > 0) {
-            log.warn("[用水总结] 征收统计 year={} 有 {} 条记录无区域（用水户未填/已删/名称为空），未计入区域图",
+            log.warn("[用水总结] 征收统计 year={} 有 {} 条账单无区域（用水户未挂接/已删/名称为空），未计入区域图",
                     targetYear, noRegion);
         }
         for (WaterUseFeeCollectionVO.RegionItem item : result.getRegions()) {
-            log.info("[用水总结] 征收统计 year={} 区域={} 应收(万元)={} 已收(万元)={} 收缴率(%)={}",
+            log.info("[用水总结] 征收统计 year={} 区域={} 应缴(万元)={} 已收(万元)={} 收费率(%)={}",
                     targetYear, item.getRegion(), item.getReceivable(), item.getReceived(),
                     item.getCollectionRate());
         }
         log.info("[用水总结] 征收统计 year={} 月度出桶={} 个月：{}",
                 targetYear, result.getMonths().size(), joinMonths(result.getMonths()));
         return result;
+    }
+
+    /** 四卡片合计出数：应缴 / 已收 / 收费率 / 欠收（当年无账单时四个字段均为 null） */
+    private WaterUseFeeCollectionVO.TotalItem buildTotalItem(FeeSum sum) {
+        WaterUseFeeCollectionVO.TotalItem item = new WaterUseFeeCollectionVO.TotalItem();
+        item.setReceivable(receivableOf(sum));
+        item.setReceived(receivedOf(sum));
+        item.setCollectionRate(collectionRateOf(sum));
+        item.setArrears(arrearsOf(sum));
+        return item;
     }
 
     /** 区域段出数：按应收水费降序（柱图从左到右递减），应收缺失排末位、同值按区域名升序保证顺序稳定 */
@@ -261,17 +281,17 @@ public class WaterUseSummaryService {
         return items;
     }
 
-    /** 应收水费(万元)：表单按元录入 → 换算为万元并按展示精度 2 位截断；无记录或该桶应收全部未填为 null（不补 0） */
+    /** 应收水费(万元)：账单 amount（元）→ 换算为万元并按展示精度 2 位截断；该桶无账单为 null（不补 0） */
     private BigDecimal receivableOf(FeeSum sum) {
         return sum == null ? null : yuanToWan(sum.receivableRaw);
     }
 
-    /** 已收水费(万元)：表单按元录入 → 换算为万元并按展示精度 2 位截断；无记录或该桶已收全部未填为 null（不补 0） */
+    /** 已收水费(万元)：账单 paid（元）→ 换算为万元并按展示精度 2 位截断；该桶无账单为 null（不补 0） */
     private BigDecimal receivedOf(FeeSum sum) {
         return sum == null ? null : yuanToWan(sum.receivedRaw);
     }
 
-    /** 表单金额（元）→ 出参金额（万元，2 位截断）：null 安全，不把「未填」当 0 */
+    /** 账单金额（元）→ 出参金额（万元，2 位截断）：null 安全，不把「无账单」当 0 */
     private BigDecimal yuanToWan(BigDecimal yuan) {
         return yuan == null ? null
                 : yuan.movePointLeft(FEE_YUAN_TO_WAN_SHIFT).setScale(WAN_SCALE, RoundingMode.DOWN);
@@ -285,6 +305,14 @@ public class WaterUseSummaryService {
         }
         // 先乘后除：避免中间除法的截断误差进入百分比
         return sum.receivedRaw.multiply(HUNDRED).divide(sum.receivableRaw, RATE_SCALE, RoundingMode.DOWN);
+    }
+
+    /** 欠收金额(万元) = 应缴 − 已收（2 位截断）；任一侧缺失为 null（不把「无账单」当 0 欠收） */
+    private BigDecimal arrearsOf(FeeSum sum) {
+        if (sum == null || sum.receivableRaw == null || sum.receivedRaw == null) {
+            return null;
+        }
+        return yuanToWan(sum.receivableRaw.subtract(sum.receivedRaw));
     }
 
     /** 月度段联调日志串：2026-01=应收/已收/收缴率（无数据用「无」），便于与前端图表逐月核对 */
@@ -482,24 +510,22 @@ public class WaterUseSummaryService {
         }
     }
 
-    /** 金额累加器（内部使用：始终按表单原值求和，仅在出参时换算为万元并按展示精度截断，避免逐条截断的误差累加） */
+    /** 金额累加器（内部使用：始终按库内原值求和，仅在出参时换算为万元并按展示精度截断，避免逐条截断的误差累加） */
     private static class FeeSum {
 
-        /** 应收水费求和 hsfvdh（表单原值·元；全部未填时保持 null） */
+        /** 应缴金额求和 amount（库内原值·元；无账单时保持 null） */
         private BigDecimal receivableRaw;
 
-        /** 已收水费求和 vdhlhm（表单原值·元；全部未填时保持 null） */
+        /** 已收金额求和 paid（库内原值·元；无账单时保持 null） */
         private BigDecimal receivedRaw;
 
-        /** 累加一条记录：字段为空时不参与求和（不把未填当 0，保证「未填」与「已收 0」可区分） */
-        private void accumulate(WaterUseCollectionRecordVO record) {
-            if (record.getReceivableRaw() != null) {
-                receivableRaw = (receivableRaw == null ? BigDecimal.ZERO : receivableRaw)
-                        .add(record.getReceivableRaw());
+        /** 累加一条账单：字段为空时不参与求和（不把未填当 0，保证「未填」与「已收 0」可区分） */
+        private void accumulate(BigDecimal receivable, BigDecimal received) {
+            if (receivable != null) {
+                receivableRaw = (receivableRaw == null ? BigDecimal.ZERO : receivableRaw).add(receivable);
             }
-            if (record.getReceivedRaw() != null) {
-                receivedRaw = (receivedRaw == null ? BigDecimal.ZERO : receivedRaw)
-                        .add(record.getReceivedRaw());
+            if (received != null) {
+                receivedRaw = (receivedRaw == null ? BigDecimal.ZERO : receivedRaw).add(received);
             }
         }
     }

@@ -7,60 +7,41 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * H5 水资源概览查询（配水方案 / 用水计划 / 需水明细面积）。
- * <p>需水方案侧（实际供水量/需水量）复用 {@code IrrigationWaterService} 口径；
- * 本 Mapper 负责三块直查：配水方案供水来源聚合、年度用水计划四县分配量、
- * 需水方案支渠面积按片区求和（供各区域灌溉详情）。
- * <p>配水方案口径：status='completed'（纯值）且 del_flag='#2#'（未删除），
- * 创建时间落在查询年度区间内，按创建时间倒序取最新。
- * <p>用水计划口径：年度计划（plsuub='#1#'）且已确认（byihlu='#ikok#'），
- * year 列兼容数字与时间戳两种形态（::text LIKE 年份前缀）。
+ * H5 水资源概览查询（用水户年度计划 / 用水申请 / 需水方案支渠面积）。
+ * <p>分配方案及执行改为用水户口径（业主 2026-10-27 变更：一县即一个用水户）：
+ * 分配水量取该户当年有效年度计划明细，执行进度由户级闸口计量，需水取该户当年用水申请。
+ * <p>灌溉配水侧的「供水」仍复用 {@code IrrigationWaterService} 四县站点流量口径，本 Mapper 不参与。
+ * <p>年度计划口径：type=年度（#1#）且状态已生效（#2#）或已归档（#3#），周期起始年 = 统计年。
+ * <p>用水申请口径：状态待审核（#1#）+ 已通过（#2#），已驳回不计。
  */
 public interface H5WaterResourceMapper {
 
-    /** 年度区间内最新已完成配水方案 id（无方案返回 null） */
-    @Select("SELECT p.id FROM \"qixiao-apaas\".\"t_auto_hltgq_water_allocate_record\" p " +
-            "WHERE p.corp_code = 'hltgq' AND p.status = 'completed' AND p.del_flag = '#2#' " +
-            "AND p.created_at >= #{startDate} AND p.created_at < #{endDate} " +
-            "ORDER BY p.created_at DESC LIMIT 1")
-    String selectLatestAllocateId(@Param("startDate") String startDate, @Param("endDate") String endDate);
+    String T_PLAN = "\"qixiao-apaas\".\"t_auto_hltgq_water_plan\"";
+    String T_ITEM = "\"qixiao-apaas\".\"t_auto_hltgq_water_plan_item\"";
+    String T_DEMAND = "\"qixiao-apaas\".\"t_auto_hltgq_water_demand\"";
 
     /**
-     * 方案供水来源求和（万方）：塘坝 / 水厂 / 花凉亭水库灌溉。
-     * <p>无明细行时 SUM 为 NULL，COALESCE 归 0（Map key：pond / waterworks / reservoir）。
-     * <p>值类型取决于 JDBC 驱动（PG numeric 可能映射为 Double/BigDecimal），
-     * 由 Service 用 asBigDecimal 统一转换，勿在此声明 BigDecimal。
+     * 当年有效年度计划按用水户取计划水量（m³）。
+     * <p>同一户当年可能落在多份有效计划上（先归档再新编），取创建时间最新的一条；
+     * 计划明细「同一计划同一户唯一」由 uk_water_plan_item_user 保证，故 DISTINCT ON 结果唯一。
+     * <p>返回行（key 全小写）：userid 用水户 ID、planwater 计划水量（m³）。
      */
-    @Select("SELECT COALESCE(SUM(t.pond_supply), 0) AS pond, " +
-            "COALESCE(SUM(t.waterworks_supply), 0) AS waterworks, " +
-            "COALESCE(SUM(t.reservoir_irrigation), 0) AS reservoir " +
-            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_allocate_tenday\" t " +
-            "WHERE t.record_id = #{recordId}")
-    Map<String, Object> selectSupplySourceSums(@Param("recordId") String recordId);
+    @Select("SELECT DISTINCT ON (i.water_user_id) i.water_user_id AS userid, i.plan_water AS planwater " +
+            "FROM " + T_ITEM + " i JOIN " + T_PLAN + " p ON p.id = i.plan_id " +
+            "WHERE p.corp_code = 'hltgq' AND p.plan_type = '#1#' AND p.status IN ('#2#', '#3#') " +
+            "AND EXTRACT(YEAR FROM p.period_start) = #{year} " +
+            "ORDER BY i.water_user_id, p.created_at DESC NULLS LAST")
+    List<Map<String, Object>> selectAnnualPlanWaterByUser(@Param("year") int year);
 
     /**
-     * 年度已确认用水计划四县分配量（万m³）。
-     * <p>取当年最新一条（created_at 倒序）；Map key：susong / huaining / wangjiang / taihu / total。
-     * <p>无年度已确认计划返回 null。值类型同 selectSupplySourceSums，由 Service 统一转换。
+     * 当年用水申请按用水户合计（m³，待审核 + 已通过，已驳回不计）。
+     * <p>年份口径：period_year 优先；存量数据该列为空时回退用水时段起始日 start_date 的年份。
+     * <p>返回行（key 全小写）：userid 用水户 ID、amount 申请水量合计（m³）。
      */
-    @Select("SELECT onwxkk AS susong, yqcpol AS huaining, hbkznj AS wangjiang, sdfuaf AS taihu, ewkocb AS total " +
-            "FROM \"qixiao-apaas\".\"t_auto_hltgq_yn8cm_hjwwcb\" " +
-            "WHERE corp_code = 'hltgq' AND plsuub = '#1#' AND byihlu = '#ikok#' " +
-            "AND \"year\"::text LIKE CONCAT(#{year}, '%') " +
-            "ORDER BY created_at DESC LIMIT 1")
-    Map<String, Object> selectAnnualWaterPlan(@Param("year") int year);
-
-    /**
-     * 需水方案支渠面积按片区求和（亩）：支渠名去重后按片区（district）分组。
-     * <p>明细表每支渠纵向展开 18 旬，DISTINCT ON (branch_name) 取每支渠一条后求和，
-     * 与方案主表 irrigatedArea「支渠面积按支渠名去重求和」同口径。
-     * <p>返回行：district（片区名，如 总干渠/南干渠/太宿干渠）、area（亩）。
-     */
-    @Select("SELECT x.district, SUM(x.area) AS area FROM ( " +
-            "SELECT DISTINCT ON (d.branch_name) d.district, d.area " +
-            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_demand_branch_detail\" d " +
-            "WHERE d.record_id = #{recordId} " +
-            "ORDER BY d.branch_name, d.sort_order) x " +
-            "GROUP BY x.district")
-    List<Map<String, Object>> selectBranchAreaByDistrict(@Param("recordId") String recordId);
+    @Select("SELECT d.water_user_id AS userid, SUM(d.amount) AS amount " +
+            "FROM " + T_DEMAND + " d " +
+            "WHERE d.corp_code = 'hltgq' AND d.status IN ('#1#', '#2#') " +
+            "AND COALESCE(d.period_year, EXTRACT(YEAR FROM d.start_date)) = #{year} " +
+            "GROUP BY d.water_user_id")
+    List<Map<String, Object>> selectDemandByUser(@Param("year") int year);
 }

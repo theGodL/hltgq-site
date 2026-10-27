@@ -56,6 +56,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .history-btn{color:#1677ff;border-color:#91caff;background:#fff}
 .history-btn:hover{background:#e6f4ff;border-color:#1677ff;color:#1677ff}
 .stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.sub-tabs{display:flex;gap:4px;border-bottom:1px solid #f0f0f0;margin-bottom:12px;flex-wrap:wrap}
+.sub-tab{padding:8px 12px;border:0;background:none;font-size:13px;color:#666;cursor:pointer;border-bottom:2px solid transparent}
+.sub-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
 .stat-card{background:#fafafa;border:1px solid #f0f0f0;border-radius:8px;padding:16px 20px}
 .stat-card .label{color:#999;font-size:13px;margin-bottom:8px}
 .stat-card .value{font-size:24px;font-weight:700;color:#1f1f1f;line-height:1.2}
@@ -76,6 +79,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .detail-tools{display:flex;align-items:center;gap:8px}
 .detail-tools .field{width:180px;height:32px}
 .tbl-wrap{overflow-x:auto}
+
 table{width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e8e8e8}
 thead tr{background:#fafafa}
 th{padding:10px 12px;text-align:center;color:#000000d9;font-weight:500;border:1px solid #e8e8e8;white-space:nowrap}
@@ -114,6 +118,8 @@ tbody tr:hover td{background:#fafafa}
 .modal-close{background:none;border:none;cursor:pointer;color:#8c8c8c;font-size:18px;line-height:1;width:28px;height:28px;border-radius:4px}
 .modal-close:hover{color:#262626;background:#f5f5f5}
 .modal-bd{padding:20px;overflow-y:auto;flex:1;min-height:0}
+#table-overlay .modal{width:900px;max-width:96vw;height:min(760px,90vh)}
+.table-sub-title{font-size:13px;font-weight:600;color:#333;margin-bottom:8px}
 .modal-ft{padding:12px 20px;border-top:1px solid #f0f0f0;display:flex;justify-content:flex-end;gap:8px;flex-shrink:0}
 #view-overlay .modal{width:1100px;height:min(860px,92vh);max-width:96vw}
 .view-bd{padding:16px 20px 20px;overflow-y:auto;flex:1;min-height:0;background:#f7f8fa}
@@ -150,15 +156,6 @@ tbody tr:hover td{background:#fafafa}
     <div class="left-panel">
       <div class="left-scroll">
         <div class="form-item">
-          <label class="form-label"><span class="req">*</span>需水预测模型方案</label>
-          <div class="select-wrap">
-            <select class="field" id="demand-scheme">
-              <option value="">请选择需水预测模型方案</option>
-            </select>
-            <span class="select-arrow"></span>
-          </div>
-        </div>
-        <div class="form-item">
           <label class="form-label"><span class="req">*</span>水资源配置模型方案</label>
           <div class="select-wrap">
             <select class="field" id="config-scheme">
@@ -166,6 +163,14 @@ tbody tr:hover td{background:#fafafa}
             </select>
             <span class="select-arrow"></span>
           </div>
+        </div>
+        <div class="form-item">
+          <label class="form-label">灌区面积分配表</label>
+          <button type="button" class="btn btn-default btn-block" id="area-table-btn">查看面积分配（只读）</button>
+        </div>
+        <div class="form-item">
+          <label class="form-label">支渠限制流量表</label>
+          <button type="button" class="btn btn-default btn-block" id="flow-limit-btn">查看限制流量（只读）</button>
         </div>
       </div>
       <div class="left-actions">
@@ -216,7 +221,7 @@ tbody tr:hover td{background:#fafafa}
 
         <div class="detail-card" id="detail-card">
           <div class="detail-hd">
-            <h4>配水调度详细结果</h4>
+            <h4 id="detail-title">支渠明细</h4>
             <div class="detail-tools">
               <input type="text" class="field" id="filter" placeholder="筛选当前结果">
               <button class="btn btn-default" id="export-btn">
@@ -225,13 +230,21 @@ tbody tr:hover td{background:#fafafa}
               </button>
             </div>
           </div>
+          <div class="sub-tabs" id="dec-tabs">
+            <button type="button" class="sub-tab active" data-key="branch">支渠明细</button>
+            <button type="button" class="sub-tab" data-key="scale">缩放系数</button>
+            <button type="button" class="sub-tab" data-key="adminMonth">行政区月汇总</button>
+            <button type="button" class="sub-tab" data-key="adminYear">行政区年汇总</button>
+            <button type="button" class="sub-tab" data-key="supplyAlloc">供水分配汇总</button>
+            <button type="button" class="sub-tab" data-key="extra:分灌区汇总">分灌区汇总</button>
+            <button type="button" class="sub-tab" data-key="extra:片区汇总">片区汇总</button>
+            <button type="button" class="sub-tab" data-key="extra:总计_全部旬">总计_全部旬</button>
+            <button type="button" class="sub-tab" data-key="extra:月汇总_5至10月">月汇总(5-10月)</button>
+          </div>
           <div class="tbl-wrap">
             <table>
               <thead>
-                <tr>
-                  <th>旬</th><th>片区</th><th>分灌区</th><th>支渠</th><th>灌区面积</th><th>种植作物种类</th>
-                  <th>需水量</th><th>净需水量</th><th>建议供水量</th><th>是否满足</th>
-                </tr>
+                <tr id="dec-thead-row"></tr>
               </thead>
               <tbody id="tbody"></tbody>
             </table>
@@ -275,43 +288,27 @@ tbody tr:hover td{background:#fafafa}
       </div>
       <div class="detail-card">
         <div class="detail-hd">
-          <h4>缩放系数表</h4>
-        </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>旬</th>
-                <th>缩放系数</th>
-              </tr>
-            </thead>
-            <tbody id="view-scale-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="detail-card">
-        <div class="detail-hd">
-          <h4>配水调度详细结果</h4>
+          <h4 id="view-detail-title">支渠明细</h4>
           <div class="detail-tools">
             <input type="text" class="field" id="view-filter" placeholder="筛选当前结果">
             <button class="btn btn-default" id="view-export-btn" type="button">下载 Excel</button>
           </div>
         </div>
+        <div class="sub-tabs" id="view-dec-tabs">
+          <button type="button" class="sub-tab active" data-key="branch">支渠明细</button>
+          <button type="button" class="sub-tab" data-key="scale">缩放系数</button>
+          <button type="button" class="sub-tab" data-key="adminMonth">行政区月汇总</button>
+          <button type="button" class="sub-tab" data-key="adminYear">行政区年汇总</button>
+          <button type="button" class="sub-tab" data-key="supplyAlloc">供水分配汇总</button>
+          <button type="button" class="sub-tab" data-key="extra:分灌区汇总">分灌区汇总</button>
+          <button type="button" class="sub-tab" data-key="extra:片区汇总">片区汇总</button>
+          <button type="button" class="sub-tab" data-key="extra:总计_全部旬">总计_全部旬</button>
+          <button type="button" class="sub-tab" data-key="extra:月汇总_5至10月">月汇总(5-10月)</button>
+        </div>
         <div class="tbl-wrap">
           <table>
             <thead>
-              <tr>
-                <th>旬</th>
-                <th>片区</th>
-                <th>分灌区</th>
-                <th>支渠</th>
-                <th>灌区面积</th>
-                <th>种植作物种类</th>
-                <th>需水量</th>
-                <th>净需水量</th>
-                <th>建议供水量</th>
-                <th>是否满足</th>
-              </tr>
+              <tr id="view-thead-row"></tr>
             </thead>
             <tbody id="view-tbody"></tbody>
           </table>
@@ -322,6 +319,16 @@ tbody tr:hover td{background:#fafafa}
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="table-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span id="table-overlay-title">只读表</span>
+      <button class="modal-close" type="button" id="table-overlay-close">×</button>
+    </div>
+    <div class="modal-bd" id="table-overlay-body"></div>
   </div>
 </div>
 
@@ -366,11 +373,22 @@ tbody tr:hover td{background:#fafafa}
   let page = 1;
   const PAGE_SIZE = 10;
   let filter = '';
+  let scaleRows = [];
+  let adminMonthRows = [];
+  let adminYearRows = [];
+  let supplyAllocRows = [];
+  let extraTables = [];
+  let tableKey = 'branch';
 
   let viewDetail = null;
   let viewRecordId = null;
   let viewBranchRows = [];
   let viewScaleRows = [];
+  let viewAdminMonthRows = [];
+  let viewAdminYearRows = [];
+  let viewSupplyAllocRows = [];
+  let viewExtraTables = [];
+  let viewTableKey = 'branch';
   let viewPage = 1;
   let viewFilter = '';
   const VIEW_PAGE_SIZE = 10;
@@ -399,14 +417,193 @@ tbody tr:hover td{background:#fafafa}
         district: d.district || '—',
         subDistrict: d.subDistrict || '—',
         branchName: d.branchName || '—',
+        county: d.county || '—',
         area: d.area,
         cropTypes: d.cropTypes || '—',
         demandVolume: d.demandVolume,
         netDemand: d.netDemand,
         suggestedSupply: d.suggestedSupply,
+        deficit: d.deficit,
+        pondSupplement: d.pondSupplement,
+        supplyAfterPond: d.supplyAfterPond,
         isSatisfied: d.isSatisfied,
         sortOrder: d.sortOrder || 0
       }));
+  }
+
+  function mapAdminMonthRows(list) {
+    return (list || []).slice().sort(function (a, b) {
+      return (a.year || 0) - (b.year || 0) || (a.month || 0) - (b.month || 0) || String(a.district || '').localeCompare(String(b.district || ''));
+    }).map(function (r) {
+      return {
+        year: r.year,
+        month: r.month,
+        district: r.district || '—',
+        gravitySupply: r.gravitySupply,
+        liftSupply: r.liftSupply
+      };
+    });
+  }
+
+  function mapAdminYearRows(list) {
+    return (list || []).slice().sort(function (a, b) {
+      return (a.year || 0) - (b.year || 0) || String(a.district || '').localeCompare(String(b.district || ''));
+    }).map(function (r) {
+      return {
+        year: r.year,
+        district: r.district || '—',
+        gravitySupply: r.gravitySupply,
+        liftSupply: r.liftSupply
+      };
+    });
+  }
+
+  function mapSupplyAllocRows(list) {
+    return (list || []).slice().sort(function (a, b) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    }).map(function (r) {
+      return {
+        tendayLabel: r.tendayLabel || '—',
+        demandVolume: r.demandVolume,
+        suggestedSupply: r.suggestedSupply,
+        pondSupplement: r.pondSupplement,
+        isSatisfied: r.isSatisfied,
+        sortOrder: r.sortOrder || 0
+      };
+    });
+  }
+
+  function extraRowsOf(key, tables) {
+    return (tables || extraTables).filter(function (t) { return t.tableKey === key; }).sort(function (a, b) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    });
+  }
+
+  function extraCell(key, v) {
+    if (v == null || v === '') return '—';
+    if (typeof v === 'number') return API.fmtNum(v, 2);
+    if (key.indexOf('是否') >= 0) {
+      if (v === '是' || v === '#1#') return '满足';
+      if (v === '否' || v === '#2#') return '不满足';
+    }
+    return String(v);
+  }
+
+  function extraTableDef(key, tables) {
+    const list = extraRowsOf(key, tables);
+    const cols = [];
+    list.forEach(function (t) {
+      const obj = t.rowJson || {};
+      Object.keys(obj).forEach(function (k) {
+        if (cols.indexOf(k) < 0) cols.push(k);
+      });
+    });
+    const rowLabel = key === '月汇总_5至10月' ? '月份'
+      : key === '总计_全部旬' ? '总计'
+      : key === '分灌区汇总' ? '分灌区'
+      : key === '片区汇总' ? '片区' : '行';
+    const rows = list.map(function (t) {
+      return Object.assign({ __row: t.rowKey || '—' }, t.rowJson || {});
+    });
+    return {
+      title: key,
+      headers: [rowLabel].concat(cols),
+      rows: rows,
+      htmlCells: function (r) {
+        return [r.__row].concat(cols.map(function (k) { return extraCell(k, r[k]); }));
+      },
+      textCells: function (r) {
+        return [r.__row].concat(cols.map(function (k) { return r[k] == null ? '' : r[k]; }));
+      }
+    };
+  }
+
+  function tableDef(ctx) {
+    const c = ctx || {
+      key: tableKey,
+      branchRows: branchRows,
+      scaleRows: scaleRows,
+      adminMonthRows: adminMonthRows,
+      adminYearRows: adminYearRows,
+      supplyAllocRows: supplyAllocRows,
+      extraTables: extraTables
+    };
+    const key = c.key;
+    if (key === 'scale') {
+      return {
+        title: '缩放系数',
+        headers: ['旬', '缩放系数'],
+        rows: c.scaleRows,
+        htmlCells: function (r) { return [r.tendayLabel, API.fmtNum(r.scaleFactor, 4)]; },
+        textCells: function (r) { return [r.tendayLabel, r.scaleFactor]; }
+      };
+    }
+    if (key === 'adminMonth') {
+      return {
+        title: '行政区月汇总',
+        headers: ['年份', '月份', '行政区', '自流建议供水量(万方)', '提灌建议供水量(万方)'],
+        rows: c.adminMonthRows,
+        htmlCells: function (r) {
+          return [r.year == null ? '—' : r.year, r.month == null ? '—' : r.month, r.district, API.fmtNum(r.gravitySupply), API.fmtNum(r.liftSupply)];
+        },
+        textCells: function (r) { return [r.year, r.month, r.district, r.gravitySupply, r.liftSupply]; }
+      };
+    }
+    if (key === 'adminYear') {
+      return {
+        title: '行政区年汇总',
+        headers: ['年份', '行政区', '自流建议供水量(万方)', '提灌建议供水量(万方)'],
+        rows: c.adminYearRows,
+        htmlCells: function (r) {
+          return [r.year == null ? '—' : r.year, r.district, API.fmtNum(r.gravitySupply), API.fmtNum(r.liftSupply)];
+        },
+        textCells: function (r) { return [r.year, r.district, r.gravitySupply, r.liftSupply]; }
+      };
+    }
+    if (key === 'supplyAlloc') {
+      return {
+        title: '供水分配汇总',
+        headers: ['旬', '需水量(万方)', '建议供水量(万方)', '塘坝补水量(万方)', '是否满足'],
+        rows: c.supplyAllocRows,
+        htmlCells: function (r) {
+          return [r.tendayLabel, API.fmtNum(r.demandVolume), API.fmtNum(r.suggestedSupply), API.fmtNum(r.pondSupplement), r.isSatisfied == null ? '—' : (API.isYes(r.isSatisfied) ? '满足' : '不满足')];
+        },
+        textCells: function (r) {
+          return [r.tendayLabel, r.demandVolume, r.suggestedSupply, r.pondSupplement, r.isSatisfied == null ? '' : (API.isYes(r.isSatisfied) ? '满足' : '不满足')];
+        }
+      };
+    }
+    if (key.indexOf('extra:') === 0) {
+      return extraTableDef(key.slice(6), c.extraTables);
+    }
+    return {
+      title: '支渠明细',
+      headers: ['旬', '片区', '分灌区', '支渠', '行政区', '灌区面积', '种植作物种类', '需水量', '净需水量', '建议供水量', '缺水量', '塘坝补水量', '是否满足'],
+      rows: c.branchRows,
+      htmlCells: function (r) {
+        return [r.tendayLabel, r.district, r.subDistrict, r.branchName, r.county, API.fmtNum(r.area), r.cropTypes, API.fmtNum(r.demandVolume), API.fmtNum(r.netDemand), API.fmtNum(r.suggestedSupply), API.fmtNum(r.deficit), API.fmtNum(r.pondSupplement), statusHtml(r.isSatisfied)];
+      },
+      textCells: function (r) {
+        return [r.tendayLabel, r.district, r.subDistrict, r.branchName, r.county, r.area, r.cropTypes, r.demandVolume, r.netDemand, r.suggestedSupply, r.deficit, r.pondSupplement, API.isYes(r.isSatisfied) ? '满足' : '不满足'];
+      }
+    };
+  }
+
+  function filteredTableRows(def, q) {
+    const kw = (q == null ? filter : q).trim();
+    const rows = def.rows.slice();
+    if (!kw) return rows;
+    return rows.filter(function (r) {
+      const values = Object.values(r).map(function (v) { return v == null ? '' : String(v); });
+      if (r.isSatisfied != null) values.push(API.isYes(r.isSatisfied) ? '满足' : '不满足');
+      return values.some(function (v) { return v.includes(kw); });
+    });
+  }
+
+  function syncDecTabs() {
+    document.querySelectorAll('#dec-tabs .sub-tab').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.key === tableKey);
+    });
   }
 
   const DEFAULT_TENDAY_LABELS = [];
@@ -514,28 +711,19 @@ tbody tr:hover td{background:#fafafa}
     currentSchemeName = rec.schemeName || currentSchemeName || '';
     updateResultTitle(currentSchemeName || '配水调度预测计算结果');
     branchRows = mapBranchRows(detail && detail.branchDetails);
+    scaleRows = mapScaleRows(detail && detail.scaleFactors);
+    adminMonthRows = mapAdminMonthRows(detail && detail.adminMonthSummary);
+    adminYearRows = mapAdminYearRows(detail && detail.adminYearSummary);
+    supplyAllocRows = mapSupplyAllocRows(detail && detail.supplyAlloc);
+    extraTables = (detail && detail.extraTables) || [];
+    tableKey = 'branch';
     hasResult = true;
     page = 1;
     fillDispatchTendayControls(false);
+    syncDecTabs();
     renderStats();
     renderTable();
     renderTopoTags();
-  }
-
-  function filteredRows() {
-    if (!hasResult) return [];
-    const q = filter.trim();
-    if (!q) return branchRows.slice();
-    return branchRows.filter(r =>
-      [
-        r.tendayLabel,
-        r.district,
-        r.subDistrict,
-        r.branchName,
-        r.cropTypes,
-        API.isYes(r.isSatisfied) ? '满足' : '不满足'
-      ].some(v => String(v).includes(q))
-    );
   }
 
   function renderStats() {
@@ -554,18 +742,19 @@ tbody tr:hover td{background:#fafafa}
   }
 
   function renderTable() {
-    const rows = filteredRows();
+    const def = tableDef();
+    if ($('detail-title')) $('detail-title').textContent = def.title;
+    if ($('dec-thead-row')) {
+      $('dec-thead-row').innerHTML = def.headers.map(h => '<th>' + h + '</th>').join('');
+    }
+    const rows = filteredTableRows(def);
     const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE) || 1);
     if (page > pages) page = pages;
     const start = (page - 1) * PAGE_SIZE;
     const pageRows = rows.slice(start, start + PAGE_SIZE);
-    const tbody = $('tbody');
-    tbody.innerHTML = pageRows.map(r => `<tr>
-      <td>${r.tendayLabel}</td><td>${r.district}</td><td>${r.subDistrict}</td><td>${r.branchName}</td>
-      <td>${API.fmtNum(r.area)}</td><td>${r.cropTypes}</td>
-      <td>${API.fmtNum(r.demandVolume)}</td><td>${API.fmtNum(r.netDemand)}</td>
-      <td>${API.fmtNum(r.suggestedSupply)}</td><td>${statusHtml(r.isSatisfied)}</td>
-    </tr>`).join('') || `<tr><td colspan="10" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+    $('tbody').innerHTML = pageRows.map(r =>
+      '<tr>' + def.htmlCells(r).map(c => '<td>' + c + '</td>').join('') + '</tr>'
+    ).join('') || `<tr><td colspan="${def.headers.length}" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
     const from = rows.length ? start + 1 : 0;
     const to = Math.min(start + PAGE_SIZE, rows.length);
     $('pg-info').textContent = `共 ${rows.length} 条` + (rows.length ? `，本页显示 ${from}-${to} 条` : '');
@@ -704,58 +893,61 @@ tbody tr:hover td{background:#fafafa}
     }
   }
 
-  function renderViewScaleTable() {
-    const tbody = $('view-scale-tbody');
-    tbody.innerHTML = viewScaleRows.map(s =>
-      `<tr><td>${s.tendayLabel}</td><td>${API.fmtNum(s.scaleFactor, 4)}</td></tr>`
-    ).join('') || `<tr><td colspan="2" style="text-align:center;color:#bbb;padding:24px">暂无数据</td></tr>`;
+  function viewTableDef() {
+    return tableDef({
+      key: viewTableKey,
+      branchRows: viewBranchRows,
+      scaleRows: viewScaleRows,
+      adminMonthRows: viewAdminMonthRows,
+      adminYearRows: viewAdminYearRows,
+      supplyAllocRows: viewSupplyAllocRows,
+      extraTables: viewExtraTables
+    });
   }
 
-  function filteredViewRows() {
-    const q = viewFilter.trim();
-    if (!q) return viewBranchRows.slice();
-    return viewBranchRows.filter(r =>
-      [
-        r.tendayLabel,
-        r.district,
-        r.subDistrict,
-        r.branchName,
-        r.cropTypes,
-        API.isYes(r.isSatisfied) ? '满足' : '不满足'
-      ].some(v => String(v).includes(q))
-    );
+  function syncViewDecTabs() {
+    document.querySelectorAll('#view-dec-tabs .sub-tab').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.key === viewTableKey);
+    });
   }
 
   function renderViewTable() {
-    const rows = filteredViewRows();
+    const def = viewTableDef();
+    if ($('view-detail-title')) $('view-detail-title').textContent = def.title;
+    if ($('view-thead-row')) {
+      $('view-thead-row').innerHTML = def.headers.map(h => '<th>' + h + '</th>').join('');
+    }
+    const rows = filteredTableRows(def, viewFilter);
     const pages = Math.max(1, Math.ceil(rows.length / VIEW_PAGE_SIZE) || 1);
     if (viewPage > pages) viewPage = pages;
     const start = (viewPage - 1) * VIEW_PAGE_SIZE;
     const pageRows = rows.slice(start, start + VIEW_PAGE_SIZE);
-    $('view-tbody').innerHTML = pageRows.map(r => `<tr>
-      <td>${r.tendayLabel}</td><td>${r.district}</td><td>${r.subDistrict}</td><td>${r.branchName}</td>
-      <td>${API.fmtNum(r.area)}</td><td>${r.cropTypes}</td>
-      <td>${API.fmtNum(r.demandVolume)}</td><td>${API.fmtNum(r.netDemand)}</td>
-      <td>${API.fmtNum(r.suggestedSupply)}</td><td>${statusHtml(r.isSatisfied)}</td>
-    </tr>`).join('') || `<tr><td colspan="10" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+    $('view-tbody').innerHTML = pageRows.map(r =>
+      '<tr>' + def.htmlCells(r).map(c => '<td>' + c + '</td>').join('') + '</tr>'
+    ).join('') || `<tr><td colspan="${def.headers.length}" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
     const from = rows.length ? start + 1 : 0;
     const to = Math.min(start + VIEW_PAGE_SIZE, rows.length);
     $('view-pg-info').textContent = `共 ${rows.length} 条` + (rows.length ? `，本页显示 ${from}-${to} 条` : '');
     $('view-pg-btns').innerHTML = API.pagerHtml(viewPage, pages);
   }
 
-  function openViewDetail(detail) {
+  function openViewDetail(detail, fallbackId) {
     viewDetail = detail;
     const rec = (detail && detail.record) || {};
-    viewRecordId = rec.id || null;
+    viewRecordId = rec.id || fallbackId || null;
     viewBranchRows = mapBranchRows(detail && detail.branchDetails);
     viewScaleRows = mapScaleRows(detail && detail.scaleFactors);
+    viewAdminMonthRows = mapAdminMonthRows(detail && detail.adminMonthSummary);
+    viewAdminYearRows = mapAdminYearRows(detail && detail.adminYearSummary);
+    viewSupplyAllocRows = mapSupplyAllocRows(detail && detail.supplyAlloc);
+    viewExtraTables = (detail && detail.extraTables) || [];
+    viewTableKey = 'branch';
     viewPage = 1;
     viewFilter = '';
     if ($('view-filter')) $('view-filter').value = '';
     $('view-title').textContent = rec.schemeName || '配水调度预测（对应模型）';
     renderViewStats(rec);
-    renderViewScaleTable();
+    syncViewDecTabs();
     renderViewTable();
     $('view-overlay').classList.add('show');
     setTimeout(() => {
@@ -947,15 +1139,13 @@ tbody tr:hover td{background:#fafafa}
   const initTopoPanZoom = { fitToScreen: fitTopo };
 
   $('calc-btn').addEventListener('click', async () => {
-    const demandRecordId = $('demand-scheme').value;
     const allocateRecordId = $('config-scheme').value;
-    if (!demandRecordId) return toast('请选择需水预测模型方案');
     if (!allocateRecordId) return toast('请选择水资源配置模型方案');
     const btn = $('calc-btn');
     btn.classList.add('is-loading');
     API.showLoading('配水调度模型计算中，请稍候…');
     try {
-      const res = await API.decision.submit({ demandRecordId, allocateRecordId });
+      const res = await API.decision.submit({ allocateRecordId });
       const recordId = res.recordId;
       currentRecordId = recordId;
       await API.decision.wait(recordId);
@@ -971,32 +1161,38 @@ tbody tr:hover td{background:#fafafa}
   });
 
   $('filter').addEventListener('input', e => { filter = e.target.value; page = 1; renderTable(); });
+  $('dec-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.sub-tab');
+    if (!btn || !btn.dataset.key) return;
+    tableKey = btn.dataset.key;
+    page = 1;
+    filter = '';
+    if ($('filter')) $('filter').value = '';
+    syncDecTabs();
+    renderTable();
+  });
   $('pg-btns').addEventListener('click', e => {
     const btn = e.target.closest('[data-page]');
     if (!btn || btn.disabled) return;
     page = +btn.dataset.page;
     renderTable();
   });
-  function exportBranchExcel(rows, filename) {
+  function exportTableExcel(def, rows, filename) {
     if (!rows.length) return toast('暂无数据可导出');
     if (!window.XLSX) return toast('导出组件未加载');
-    const header = ['旬','片区','分灌区','支渠','灌区面积','种植作物种类','需水量','净需水量','建议供水量','是否满足'];
-    const data = rows.map(r => [
-      r.tendayLabel, r.district, r.subDistrict, r.branchName,
-      r.area, r.cropTypes, r.demandVolume, r.netDemand, r.suggestedSupply,
-      API.isYes(r.isSatisfied) ? '满足' : '不满足'
-    ]);
-    const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
-    ws['!cols'] = MonitorExport.fitCols(header);
+    const ws = XLSX.utils.aoa_to_sheet([def.headers].concat(rows.map(def.textCells)));
+    ws['!cols'] = MonitorExport.fitCols(def.headers);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '配水调度明细');
-    XLSX.writeFile(wb, filename || '配水调度详细结果.xlsx');
+    XLSX.utils.book_append_sheet(wb, ws, def.title);
+    XLSX.writeFile(wb, filename);
   }
 
   $('export-btn').addEventListener('click', async () => {
-    const rows = filteredRows();
-    // 有筛选时导出当前筛选结果；无筛选且有方案记录时走后端全量下载
-    if (!filter.trim() && currentRecordId) {
+    const def = tableDef();
+    const rows = filteredTableRows(def);
+    const q = filter.trim();
+    // 支渠明细无筛选时走后端全量下载；其余情况导出当前表（筛选结果或全量）
+    if (tableKey === 'branch' && !q && currentRecordId) {
       try {
         await API.decision.downloadExcel(currentRecordId);
       } catch (e) {
@@ -1004,8 +1200,7 @@ tbody tr:hover td{background:#fafafa}
       }
       return;
     }
-    const suffix = filter.trim() ? '_' + filter.trim() : '';
-    exportBranchExcel(rows, '配水调度详细结果' + suffix + '.xlsx');
+    exportTableExcel(def, rows, def.title + (q ? '_' + q : '') + '.xlsx');
   });
 
   $('history-btn').addEventListener('click', async () => {
@@ -1035,6 +1230,16 @@ tbody tr:hover td{background:#fafafa}
     viewPage = 1;
     renderViewTable();
   });
+  $('view-dec-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.sub-tab');
+    if (!btn || !btn.dataset.key) return;
+    viewTableKey = btn.dataset.key;
+    viewPage = 1;
+    viewFilter = '';
+    if ($('view-filter')) $('view-filter').value = '';
+    syncViewDecTabs();
+    renderViewTable();
+  });
   $('view-pg-btns').addEventListener('click', e => {
     const btn = e.target.closest('[data-page]');
     if (!btn || btn.disabled) return;
@@ -1042,10 +1247,11 @@ tbody tr:hover td{background:#fafafa}
     renderViewTable();
   });
   $('view-export-btn').addEventListener('click', async () => {
-    const rows = filteredViewRows();
-    // 有筛选时导出当前筛选结果；无筛选时走后端全量下载
-    if (!viewFilter.trim()) {
-      if (!viewRecordId) return toast('暂无方案可下载');
+    const def = viewTableDef();
+    const rows = filteredTableRows(def, viewFilter);
+    const q = viewFilter.trim();
+    // 支渠明细无筛选走后端全量；其余情况导出当前表（筛选结果或全量）
+    if (viewTableKey === 'branch' && !q && viewRecordId) {
       try {
         await API.decision.downloadExcel(viewRecordId);
       } catch (err) {
@@ -1053,8 +1259,7 @@ tbody tr:hover td{background:#fafafa}
       }
       return;
     }
-    const suffix = '_' + viewFilter.trim();
-    exportBranchExcel(rows, '配水调度详细结果' + suffix + '.xlsx');
+    exportTableExcel(def, rows, def.title + (q ? '_' + q : '') + '.xlsx');
   });
 
   $('hist-list').addEventListener('click', async e => {
@@ -1069,7 +1274,7 @@ tbody tr:hover td{background:#fafafa}
         API.showLoading('加载历史方案中…');
       try {
         const detail = await API.decision.detail(id);
-          openViewDetail(detail);
+          openViewDetail(detail, id);
         } finally {
           API.hideLoading();
         }
@@ -1087,7 +1292,16 @@ tbody tr:hover td{background:#fafafa}
           currentSchemeName = '';
           detailRecord = null;
           branchRows = [];
+          scaleRows = [];
+          adminMonthRows = [];
+          adminYearRows = [];
+          supplyAllocRows = [];
+          extraTables = [];
+          tableKey = 'branch';
+          filter = '';
+          if ($('filter')) $('filter').value = '';
           updateResultTitle('');
+          syncDecTabs();
           renderStats();
           renderTable();
           renderTopoTags();
@@ -1158,16 +1372,66 @@ tbody tr:hover td{background:#fafafa}
     }
   });
 
+  function tableHtml(headers, rows) {
+    return '<div class="tbl-wrap"><table><thead><tr>' +
+      headers.map(h => '<th>' + h + '</th>').join('') +
+      '</tr></thead><tbody>' +
+      (rows.length
+        ? rows.map(r => '<tr>' + r.map(c => '<td>' + (c == null || c === '' ? '—' : c) + '</td>').join('') + '</tr>').join('')
+        : '<tr><td colspan="' + headers.length + '" style="text-align:center;color:#bbb;padding:24px">暂无数据</td></tr>') +
+      '</tbody></table></div>';
+  }
+  function openTableOverlay(title, html) {
+    $('table-overlay-title').textContent = title;
+    $('table-overlay-body').innerHTML = html;
+    $('table-overlay').classList.add('show');
+  }
+  $('area-table-btn').addEventListener('click', async () => {
+    try {
+      API.showLoading('加载面积分配表…');
+      const data = await API.decision.areaTable();
+      const districts = data.districts || [];
+      const counties = data.counties || [];
+      openTableOverlay('灌区面积分配表（只读）',
+        '<div class="table-sub-title">按干渠/片区（万亩）</div>' +
+        tableHtml(['片区', '面积'], districts.map(d => [d.district, API.fmtNum(d.area, 4)])) +
+        '<div class="table-sub-title" style="margin-top:16px">按行政区（万亩）</div>' +
+        tableHtml(['行政区', '自流面积', '提灌面积', '总面积'],
+          counties.map(c => [c.county, API.fmtNum(c.gravityArea, 4), API.fmtNum(c.pumpArea, 4), API.fmtNum(c.totalArea, 4)]))
+      );
+    } catch (e) {
+      toast(API.friendlyError(e, '面积分配表加载失败'));
+    } finally {
+      API.hideLoading();
+    }
+  });
+  $('flow-limit-btn').addEventListener('click', async () => {
+    try {
+      API.showLoading('加载限制流量表…');
+      const data = await API.decision.flowLimitTable();
+      const branches = data.branches || [];
+      const districts = data.districts || [];
+      openTableOverlay('支渠限制流量表（只读）',
+        '<div class="table-sub-title">支渠明细（m³/s）</div>' +
+        tableHtml(['片区', '分灌区', '支渠', '行政区', '限制流量'],
+          branches.map(b => [b.district, b.subDistrict, b.branchName, b.county, b.limitFlow == null ? '—' : API.fmtNum(b.limitFlow, 3)])) +
+        '<div class="table-sub-title" style="margin-top:16px">片区约束流量（m³/s）</div>' +
+        tableHtml(['片区', '限制流量'], districts.map(d => [d.district, API.fmtNum(d.limitFlow, 2)]))
+      );
+    } catch (e) {
+      toast(API.friendlyError(e, '限制流量表加载失败'));
+    } finally {
+      API.hideLoading();
+    }
+  });
+  $('table-overlay-close').addEventListener('click', () => $('table-overlay').classList.remove('show'));
+  $('table-overlay').addEventListener('click', e => {
+    if (e.target === $('table-overlay')) $('table-overlay').classList.remove('show');
+  });
+
   async function initSchemes() {
     try {
-      const [demands, allocs] = await Promise.all([
-        API.demand.list(),
-        API.allocation.list()
-      ]);
-      API.fillSelect($('demand-scheme'), demands, {
-        onlyCompleted: true,
-        placeholder: '请选择需水预测模型方案'
-      });
+      const allocs = await API.allocation.list();
       API.fillSelect($('config-scheme'), allocs, {
         onlyCompleted: true,
         placeholder: '请选择水资源配置模型方案'

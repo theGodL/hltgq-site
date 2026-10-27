@@ -124,10 +124,10 @@ public class H5Controller {
     }
 
     /**
-     * 水资源概览：聚合返回页面四块组件——饼状图（水资源量分布）、列表（分配方案及执行）、
-     * 两卡片（灌溉统计）、四卡片（各区域灌溉详情）。
+     * 水资源概览：聚合返回页面三块组件——列表（水资源分配方案及执行，行 = 用水户）、
+     * 两卡片（灌溉总面积 + 已完成供水）、四卡片（各区域灌溉详情：面积 / 供水 / 总需水）。
      * <p>年度区间（yyyy-MM-dd HH:mm:ss，前端 date.min/date.max 直传）可选，缺省=本年度；
-     * 年份作用于用水计划/需水方案/配水方案选取。
+     * 年份作用于用水户年度计划/用水申请选取。原「水资源量分布」饼图已下线（响应无 distribution）。
      */
     @GetMapping("/water-resource/overview")
     public WaterResourceOverviewVO waterResourceOverview(

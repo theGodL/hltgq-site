@@ -42,6 +42,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .select-wrap{position:relative}
 .select-wrap select.field{appearance:none;-webkit-appearance:none;padding-right:28px;cursor:pointer}
 .select-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #999;pointer-events:none}
+.cfg-group{font-size:13px;font-weight:600;color:#1f1f1f;line-height:18px;margin:2px 0 10px;padding-left:8px;border-left:3px solid #1677ff}
+.cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.cfg-grid .form-item{margin-bottom:0}
+.cfg-grid .form-label{font-size:12px;line-height:18px;margin-bottom:6px}
+.cfg-grid .field{height:32px;padding:0 8px;font-size:13px}
+.cfg-span-2{grid-column:span 2}
+.cfg-grid .field[readonly]{background:#fafafa;color:#888}
 
 .upload-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .upload-hd .link{background:none;border:none;color:#1677ff;cursor:pointer;font-size:13px;padding:0}
@@ -75,6 +82,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .history-btn:hover{background:#e6f4ff;border-color:#1677ff;color:#1677ff}
 
 .stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+.stats-row.cols-4{grid-template-columns:repeat(4,1fr)}
+.sub-tabs{display:flex;gap:4px;border-bottom:1px solid #f0f0f0;margin-bottom:16px;flex-wrap:wrap}
+.sub-tab{padding:8px 14px;border:0;background:none;font-size:13px;color:#666;cursor:pointer;border-bottom:2px solid transparent}
+.sub-tab.active{color:#1677ff;border-bottom-color:#1677ff;font-weight:500}
 .stat-card{background:#fafafa;border:1px solid #f0f0f0;border-radius:8px;padding:16px 18px}
 .stat-card .label{color:#999;font-size:13px;margin-bottom:8px}
 .stat-card .value{font-size:22px;font-weight:700;color:#1f1f1f;line-height:1.2}
@@ -142,6 +153,15 @@ tbody tr:hover td{background:#fafafa}
 .view-bd{padding:16px 20px 20px;overflow-y:auto;flex:1;min-height:0;background:#f7f8fa}
 .view-bd .stats-row{margin-bottom:12px}
 .view-bd .stat-card,.view-bd .chart-card,.view-bd .detail-card{background:#fff}
+.snapshot{margin-bottom:12px;background:#fff;border:1px solid #f0f0f0;border-radius:8px;padding:0 14px}
+.snapshot summary{cursor:pointer;padding:10px 0;font-size:13px;font-weight:600;color:#1f1f1f;outline:none}
+.snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 28px;padding:0 0 12px}
+.snapshot-group{min-width:0}
+.snapshot-group h5{font-size:12px;color:#1677ff;font-weight:600;margin-bottom:4px}
+.snapshot-row{display:flex;gap:10px;justify-content:space-between;font-size:12px;line-height:20px}
+.snapshot-row span{color:#8c8c8c;flex-shrink:0}
+.snapshot-row b{color:#333;font-weight:500;text-align:right;word-break:break-all}
+#view-alloc-tabs{margin-bottom:12px}
 
 .toast{position:fixed;left:50%;top:80px;transform:translateX(-50%);background:rgba(0,0,0,.72);color:#fff;font-size:14px;padding:10px 20px;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000}
 .toast.show{opacity:1}
@@ -171,84 +191,115 @@ tbody tr:hover td{background:#fafafa}
   <div class="main-layout">
     <div class="left-panel">
       <div class="left-scroll">
-        <div class="side-tabs" id="mode-tabs">
-          <div class="side-tab active" data-mode="exist">调用已有结果</div>
-          <div class="side-tab" data-mode="manual">手动输入</div>
-        </div>
-
-        <div id="mode-exist">
-          <div class="form-item">
-            <label class="form-label">中长期来水预报模型方案</label>
-            <div class="select-wrap">
-              <select class="field" id="cfg-mid">
-                <option value="">请选择方案</option>
-              </select>
-              <span class="select-arrow"></span>
-            </div>
-          </div>
-          <div class="form-item">
-            <label class="form-label">需水预测模型方案</label>
-            <div class="select-wrap">
-              <select class="field" id="cfg-demand">
-                <option value="">请选择方案</option>
-              </select>
-              <span class="select-arrow"></span>
-            </div>
-          </div>
-          <div class="form-item">
-            <label class="form-label">水量损失预测</label>
-            <div class="select-wrap">
-              <select class="field" id="cfg-loss">
-                <option value="">请选择方案</option>
-              </select>
-              <span class="select-arrow"></span>
-            </div>
-          </div>
-          <div class="form-item">
-            <label class="form-label">塘坝可供水量档位</label>
-            <div class="radio-group" id="pond-option-group" style="display:flex;flex-direction:column;gap:10px">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="pond-option" value="90%"> 90%</label>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="pond-option" value="75%"> 75%</label>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="pond-option" value="50%"> 50%</label>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="pond-option" value="多年平均" checked> 历史多年平均值</label>
-            </div>
-          </div>
-        </div>
-
-        <div id="mode-manual" style="display:none">
-          <div class="form-item">
-            <div class="upload-hd">
-              <label class="form-label" style="margin:0"><span class="req">*</span>配水基础数据收集表</label>
-              <button type="button" class="link" id="tpl-btn">下载模板</button>
-            </div>
-            <input type="file" id="file-input" accept=".xlsx,.xls,.csv" hidden>
-            <button type="button" class="upload-btn" id="upload-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              上传附件
-            </button>
-            <div class="upload-name" id="file-name"></div>
-          </div>
-        </div>
-
         <div class="form-item">
-          <label class="form-label"><span class="req">*</span>起始水位</label>
-          <div class="form-row">
-            <input type="number" class="field" id="start-level" value="75.0" min="0" step="0.1">
-            <span class="unit">m</span>
+          <label class="form-label"><span class="req">*</span>中长期来水预报方案</label>
+          <div class="select-wrap">
+            <select class="field" id="cfg-mid">
+              <option value="">请选择方案</option>
+            </select>
+            <span class="select-arrow"></span>
           </div>
         </div>
         <div class="form-item">
-          <label class="form-label"><span class="req">*</span>汛限水位</label>
-          <div class="form-row">
-            <input type="number" class="field" id="flood-level" value="80.0" min="0" step="0.1">
-            <span class="unit">m</span>
+          <label class="form-label"><span class="req">*</span>需水预测方案</label>
+          <div class="select-wrap">
+            <select class="field" id="cfg-demand">
+              <option value="">请选择方案</option>
+            </select>
+            <span class="select-arrow"></span>
           </div>
         </div>
         <div class="form-item">
-          <label class="form-label"><span class="req">*</span>模型限制最高水位</label>
-          <div class="form-row">
-            <input type="number" class="field" id="max-level" value="82.8" min="0" step="0.1">
-            <span class="unit">m</span>
+          <label class="form-label">水量损失方案（可选）</label>
+          <div class="select-wrap">
+            <select class="field" id="cfg-loss">
+              <option value="">不关联</option>
+            </select>
+            <span class="select-arrow"></span>
+          </div>
+        </div>
+
+        <div class="cfg-group">水库控制水位</div>
+        <div class="cfg-grid">
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>期初水位(m)</label>
+            <input type="number" class="field" id="cfg-initial-level" value="75" min="74" max="99" step="0.1">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>汛限水位(m)</label>
+            <input type="number" class="field" id="cfg-flood-limit-level" value="80" min="75" max="81" step="0.1">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>防洪目标水位(m)</label>
+            <input type="number" class="field" id="cfg-flood-control-level" value="81" min="0" step="0.1">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>溢洪道开启水位(m)</label>
+            <input type="number" class="field" id="cfg-spillway-level" value="82.8" min="81" max="99" step="0.1">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>死水位(m)</label>
+            <input type="number" class="field" id="cfg-dead-level" value="74" min="0" step="0.1">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>年末目标水位(m)</label>
+            <input type="number" class="field" id="cfg-year-end-level" value="77" min="0" step="0.1">
+          </div>
+          <div class="form-item cfg-span-2">
+            <label class="form-label"><span class="req">*</span>汛期开始日期</label>
+            <input type="text" class="field" id="cfg-flood-start" value="2027-05-01" readonly>
+          </div>
+        </div>
+
+        <div class="cfg-group">发电参数</div>
+        <div class="cfg-grid">
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>发电最小水位(m)</label>
+            <input type="number" class="field" id="cfg-gen-min-level" value="75" min="0" step="0.1">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>发电最大水位(m)</label>
+            <input type="number" class="field" id="cfg-gen-max-level" value="90" min="0" step="0.1">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>基础发电流量(m³/s)</label>
+            <input type="number" class="field" id="cfg-base-gen" value="30" min="0" step="0.1">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>发电额定流量(m³/s)</label>
+            <input type="number" class="field" id="cfg-nameplate-gen" value="120" min="0" step="0.1">
+          </div>
+        </div>
+
+        <div class="cfg-group">灌区供需</div>
+        <div class="cfg-grid">
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>城镇年需水(万m³)</label>
+            <input type="number" class="field" id="cfg-urban-demand" value="3175" min="0" step="0.01">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>农村年需水(万m³)</label>
+            <input type="number" class="field" id="cfg-rural-demand" value="3903" min="0" step="0.01">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>水厂年可供水(万m³)</label>
+            <input type="number" class="field" id="cfg-water-plant" value="6552" min="0" step="0.01">
+          </div>
+          <div class="form-item">
+            <label class="form-label"><span class="req">*</span>城市年供水量(万m³)</label>
+            <input type="number" class="field" id="cfg-city-supply" value="631" min="0" step="0.01">
+          </div>
+          <div class="form-item cfg-span-2">
+            <label class="form-label"><span class="req">*</span>塘坝可供水量情景</label>
+            <div class="select-wrap">
+              <select class="field" id="cfg-pond">
+                <option value="多年平均" selected>历史多年平均值</option>
+                <option value="90%">90%</option>
+                <option value="75%">75%</option>
+                <option value="50%">50%</option>
+              </select>
+              <span class="select-arrow"></span>
+            </div>
           </div>
         </div>
       </div>
@@ -281,56 +332,101 @@ tbody tr:hover td{background:#fafafa}
         </div>
 
         <div id="result-content" style="display:none">
-          <div class="stats-row" id="stats"></div>
-
-          <div class="chart-card">
-            <div class="chart-title">来水需水对比</div>
-            <div class="chart-unit">单位：万方</div>
-            <div class="chart-box" id="chart-compare"></div>
+          <div class="sub-tabs" id="alloc-view-tabs">
+            <button type="button" class="sub-tab active" data-view="irrigation">灌区水资源配置结果</button>
+            <button type="button" class="sub-tab" data-view="reservoir">水库水资源配置结果</button>
           </div>
 
-          <div class="chart-card">
-            <div class="chart-title">月末水位与库容</div>
-            <div class="chart-box" id="chart-level"></div>
-          </div>
-
-          <div class="detail-card">
-            <div class="detail-hd">
-              <h4>水资源配置预测详细结果</h4>
-              <div class="detail-tools">
-                <input type="text" class="field" id="filter" placeholder="筛选当前结果">
-                <button class="btn btn-default" id="export-btn">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  导出
-                </button>
+          <div id="alloc-view-irrigation">
+            <div class="stats-row cols-4" id="irr-stats"></div>
+            <div class="chart-card">
+              <div class="chart-title">灌区逐旬水量过程</div>
+              <div class="chart-unit">单位：万方</div>
+              <div class="chart-box" id="irr-chart-process"></div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-hd">
+                <h4>灌区水资源配置逐旬明细</h4>
+                <div class="detail-tools">
+                  <input type="text" class="field" id="filter" placeholder="筛选当前结果">
+                  <button class="btn btn-default" id="export-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    导出
+                  </button>
+                </div>
+              </div>
+              <div class="tbl-wrap" id="cfg-tbl-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>旬</th>
+                      <th>灌区总需水(万方)</th>
+                      <th>灌区计划供水总量(万方)</th>
+                      <th>花凉亭水库计划补充供水量(万方)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="cfg-tbody"></tbody>
+                </table>
+              </div>
+              <div class="tbl-sticky-x" id="cfg-tbl-x" aria-hidden="true"><div class="tbl-sticky-x-inner"></div></div>
+              <div class="pg-bar">
+                <div class="pg-info" id="pg-info">共 0 条</div>
+                <div class="pg-btns" id="pg-btns"></div>
               </div>
             </div>
-            <div class="tbl-wrap" id="cfg-tbl-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>日期</th>
-                    <th>BP预测来水量(万方)</th>
-                    <th>库面蒸发数据(万方)</th>
-                    <th>灌溉需水</th>
-                    <th>城镇需水</th>
-                    <th>农村生活需水量</th>
-                    <th>河道生态需水总量</th>
-                    <th>总需水量(万方)</th>
-                    <th>总供水量(万方)</th>
-                    <th>缺水量(万方)</th>
-                    <th>弃水量(万方)</th>
-                    <th>月末水位(m)</th>
-                    <th>月末库容(万方)</th>
-                  </tr>
-                </thead>
-                <tbody id="tbody"></tbody>
-              </table>
+          </div>
+
+          <div id="alloc-view-reservoir" style="display:none">
+            <div class="stats-row cols-4" id="res-stats"></div>
+            <div class="chart-card">
+              <div class="chart-title">水库入库与出库过程</div>
+              <div class="chart-unit">单位：万方</div>
+              <div class="chart-box" id="res-chart-flow"></div>
             </div>
-            <div class="tbl-sticky-x" id="cfg-tbl-x" aria-hidden="true"><div class="tbl-sticky-x-inner"></div></div>
-            <div class="pg-bar">
-              <div class="pg-info" id="pg-info">共 0 条</div>
-              <div class="pg-btns" id="pg-btns"></div>
+            <div class="chart-card">
+              <div class="chart-title">旬末水位与库容</div>
+              <div class="chart-box" id="res-chart-level"></div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-hd">
+                <h4>水库逐旬明细</h4>
+                <div class="detail-tools">
+                  <input type="text" class="field" id="res-filter" placeholder="筛选当前结果">
+                  <button class="btn btn-default" id="res-export-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    导出
+                  </button>
+                </div>
+              </div>
+              <div class="tbl-wrap" id="res-tbl-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>旬</th>
+                      <th>入库水量(万方)</th>
+                      <th>计划补充供水量(万方)</th>
+                      <th>总出库(万方)</th>
+                      <th>旬末水位(m)</th>
+                      <th>旬末库容(万方)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="res-tbody"></tbody>
+                </table>
+              </div>
+              <div class="tbl-sticky-x" id="res-tbl-x" aria-hidden="true"><div class="tbl-sticky-x-inner"></div></div>
+              <div class="pg-bar">
+                <div class="pg-info" id="res-pg-info">共 0 条</div>
+                <div class="pg-btns" id="res-pg-btns"></div>
+              </div>
+            </div>
+            <div class="detail-card" style="margin-top:16px">
+              <div class="detail-hd"><h4>水库月汇总</h4></div>
+              <div class="tbl-wrap">
+                <table>
+                  <thead><tr><th>月份</th><th>月末水位(m)</th><th>月末库容(万方)</th></tr></thead>
+                  <tbody id="res-month-tbody"></tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -372,46 +468,89 @@ tbody tr:hover td{background:#fafafa}
       <button class="modal-close" data-close="view-overlay">×</button>
     </div>
     <div class="modal-bd view-bd">
-      <div class="stats-row" id="view-stats"></div>
-      <div class="chart-card">
-        <div class="chart-title">来水需水对比</div>
-        <div class="chart-unit">单位：万方</div>
-        <div class="chart-box" id="view-chart-compare"></div>
+      <details class="snapshot" id="view-snapshot" open>
+        <summary>计算参数快照（16 项）</summary>
+        <div class="snapshot-grid" id="view-params"></div>
+      </details>
+
+      <div class="sub-tabs" id="view-alloc-tabs">
+        <button type="button" class="sub-tab active" data-view="irrigation">灌区水资源配置结果</button>
+        <button type="button" class="sub-tab" data-view="reservoir">水库水资源配置结果</button>
       </div>
-      <div class="chart-card">
-        <div class="chart-title">月末水位与库容</div>
-        <div class="chart-box" id="view-chart-level"></div>
-      </div>
-      <div class="detail-card">
-        <div class="detail-hd">
-          <h4>水资源配置预测详细结果</h4>
-          <div class="detail-tools">
-            <input type="text" class="field" id="view-filter" placeholder="筛选当前结果">
+
+      <div id="view-alloc-irrigation">
+        <div class="stats-row cols-4" id="view-irr-stats"></div>
+        <div class="chart-card">
+          <div class="chart-title">灌区逐旬水量过程</div>
+          <div class="chart-unit">单位：万方</div>
+          <div class="chart-box" id="view-chart-irr" style="height:300px"></div>
+        </div>
+        <div class="detail-card">
+          <div class="detail-hd">
+            <h4>灌区水资源配置逐旬明细</h4>
+            <div class="detail-tools">
+              <input type="text" class="field" id="view-filter" placeholder="筛选当前结果">
+            </div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>旬</th>
+                  <th>灌区总需水(万方)</th>
+                  <th>灌区计划供水总量(万方)</th>
+                  <th>花凉亭水库计划补充供水量(万方)</th>
+                </tr>
+              </thead>
+              <tbody id="view-irr-tbody"></tbody>
+            </table>
           </div>
         </div>
-        <div class="tbl-wrap" id="view-tbl-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>BP预测来水量(万方)</th>
-                <th>库面蒸发数据(万方)</th>
-                <th>灌溉需水</th>
-                <th>城镇需水</th>
-                <th>农村生活需水量</th>
-                <th>河道生态需水总量</th>
-                <th>总需水量(万方)</th>
-                <th>总供水量(万方)</th>
-                <th>缺水量(万方)</th>
-                <th>弃水量(万方)</th>
-                <th>月末水位(m)</th>
-                <th>月末库容(万方)</th>
-              </tr>
-            </thead>
-            <tbody id="view-tbody"></tbody>
-          </table>
+      </div>
+
+      <div id="view-alloc-reservoir" style="display:none">
+        <div class="stats-row cols-4" id="view-res-stats"></div>
+        <div class="chart-card">
+          <div class="chart-title">水库入库与出库过程</div>
+          <div class="chart-unit">单位：万方</div>
+          <div class="chart-box" id="view-chart-res-flow" style="height:300px"></div>
         </div>
-        <div class="tbl-sticky-x" id="view-tbl-x" aria-hidden="true"><div class="tbl-sticky-x-inner"></div></div>
+        <div class="chart-card">
+          <div class="chart-title">旬末水位与库容</div>
+          <div class="chart-box" id="view-chart-res-level" style="height:300px"></div>
+        </div>
+        <div class="detail-card">
+          <div class="detail-hd">
+            <h4>水库逐旬明细</h4>
+            <div class="detail-tools">
+              <input type="text" class="field" id="view-res-filter" placeholder="筛选当前结果">
+            </div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>旬</th>
+                  <th>入库水量(万方)</th>
+                  <th>计划补充供水量(万方)</th>
+                  <th>总出库(万方)</th>
+                  <th>旬末水位(m)</th>
+                  <th>旬末库容(万方)</th>
+                </tr>
+              </thead>
+              <tbody id="view-res-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="detail-card" style="margin-top:16px">
+          <div class="detail-hd"><h4>水库月汇总</h4></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>月份</th><th>月末水位(m)</th><th>月末库容(万方)</th></tr></thead>
+              <tbody id="view-res-month-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -436,8 +575,6 @@ tbody tr:hover td{background:#fafafa}
 
   const PAGE_SIZE = 12;
 
-  let mode = 'exist';
-  let uploadedFile = null;
   let page = 1;
   let filter = '';
   let viewFilter = '';
@@ -448,8 +585,23 @@ tbody tr:hover td{background:#fafafa}
   let currentSchemeName = '';
   let resultSummary = null;
   let resultRows = [];
-  let viewSummary = null;
-  let viewRows = [];
+  let viewIrrSummary = null;
+  let viewIrrRows = [];
+  let viewResSummary = null;
+  let viewResRows = [];
+  let viewResMonths = [];
+  let viewResFilter = '';
+  let viewAllocView = 'irrigation';
+  let upstreamNameMap = {};
+  let allocDetail = null;
+  let allocView = 'irrigation';
+  let irrSummary = null;
+  let irrRows = [];
+  let resSummary = null;
+  let resRows = [];
+  let resMonths = [];
+  let resFilter = '';
+  let resPage = 1;
 
   function updateResultTitle(name) {
     const title = name || '水资源配置预测计算结果';
@@ -496,20 +648,390 @@ tbody tr:hover td{background:#fafafa}
     };
   }
 
+  function mapIrrSummary(detail) {
+    const s = ((detail && detail.irrigation) || {}).annualSummary || {};
+    return {
+      pond: s.pondSupply,
+      demand: s.totalDemand,
+      supply: s.plannedSupplyTotal,
+      supplement: s.reservoirSupplementSupply
+    };
+  }
+
+  function mapIrrRows(detail) {
+    const list = ((detail && detail.irrigation) || {}).process || [];
+    return list.slice().sort(function (a, b) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    }).map(function (p) {
+      return {
+        date: p.tendayLabel || '—',
+        demand: p.totalDemand,
+        supply: p.plannedSupplyTotal,
+        supplement: p.reservoirSupplementSupply
+      };
+    });
+  }
+
+  function mapResSummary(detail) {
+    const s = ((detail && detail.reservoir) || {}).annualSummary || {};
+    return {
+      inflow: s.inflow,
+      supplement: s.supplementSupply,
+      power: s.powerGeneration,
+      leakage: s.leakageLoss,
+      startLevel: s.startLevel,
+      endLevel: s.endLevel,
+      maxLevel: s.maxLevel
+    };
+  }
+
+  function mapResRows(detail) {
+    const list = ((detail && detail.reservoir) || {}).tendayDetails || [];
+    return list.slice().sort(function (a, b) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    }).map(function (p) {
+      return {
+        date: p.tendayLabel || '—',
+        inflow: p.inflow,
+        supplement: p.supplementSupply,
+        outflow: p.totalOutflow,
+        level: p.endWaterLevel,
+        capacity: p.endStorage
+      };
+    });
+  }
+
+  function mapResMonths(detail) {
+    const list = ((detail && detail.reservoir) || {}).monthlySummaries || [];
+    return list.map(function (m) {
+      return {
+        month: m.month || '—',
+        level: m.endWaterLevel,
+        capacity: m.endStorage
+      };
+    });
+  }
+
+  function irrStatsHtml(s) {
+    s = s || {};
+    return [
+      { label: '塘坝可供水量', value: num(s.pond), unit: '万m³' },
+      { label: '灌区总需水量', value: num(s.demand), unit: '万m³' },
+      { label: '灌区计划供水总量', value: num(s.supply), unit: '万m³' },
+      { label: '水库计划补充供水量', value: num(s.supplement), unit: '万m³' }
+    ].map(function (it) {
+      return '<div class="stat-card"><div class="label">' + it.label + '</div><div class="value">' + it.value + '<span class="unit">' + it.unit + '</span></div></div>';
+    }).join('');
+  }
+
+  function renderIrrStats() {
+    $('irr-stats').innerHTML = irrStatsHtml(irrSummary);
+  }
+
+  function resStatsHtml(s) {
+    s = s || {};
+    return [
+      { label: '入库水量', value: num(s.inflow), unit: '万m³' },
+      { label: '计划补充供水量', value: num(s.supplement), unit: '万m³' },
+      { label: '过机发电水量', value: num(s.power), unit: '万m³' },
+      { label: '渗漏损失', value: num(s.leakage), unit: '万m³' },
+      { label: '期初水位', value: num(s.startLevel), unit: 'm' },
+      { label: '期末水位', value: num(s.endLevel), unit: 'm' },
+      { label: '最高水位', value: num(s.maxLevel), unit: 'm' }
+    ].map(function (it) {
+      return '<div class="stat-card"><div class="label">' + it.label + '</div><div class="value">' + it.value + '<span class="unit">' + it.unit + '</span></div></div>';
+    }).join('');
+  }
+
+  function renderResStats() {
+    $('res-stats').innerHTML = resStatsHtml(resSummary);
+  }
+
+  function irrProcessOption(rows) {
+    const list = rows || irrRows;
+    const labels = list.map(function (r) { return r.date; });
+    return {
+      color: ['#5D7EE9', '#73C892', '#F2B84B'],
+      tooltip: { trigger: 'axis' },
+      legend: { top: 4, data: ['灌区总需水', '计划供水总量', '水库补充供水量'] },
+      grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: labels,
+        axisLabel: { color: '#999', fontSize: 10, rotate: labels.length > 18 ? 40 : 0 },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [
+        { name: '灌区总需水', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: list.map(function (r) { return r.demand; }) },
+        { name: '计划供水总量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: list.map(function (r) { return r.supply; }) },
+        { name: '水库补充供水量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: list.map(function (r) { return r.supplement; }) }
+      ]
+    };
+  }
+
+  function resFlowOption(rows) {
+    const list = rows || resRows;
+    const labels = list.map(function (r) { return r.date; });
+    return {
+      color: ['#5D7EE9', '#73C892', '#F2B84B'],
+      tooltip: { trigger: 'axis' },
+      legend: { top: 4, data: ['入库水量', '计划补充供水量', '总出库'] },
+      grid: { left: 16, right: 20, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: labels,
+        axisLabel: { color: '#999', fontSize: 10, rotate: labels.length > 18 ? 40 : 0 },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      series: [
+        { name: '入库水量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: list.map(function (r) { return r.inflow; }) },
+        { name: '计划补充供水量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: list.map(function (r) { return r.supplement; }) },
+        { name: '总出库', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: list.map(function (r) { return r.outflow; }) }
+      ]
+    };
+  }
+
+  function resLevelOption(rows) {
+    const list = rows || resRows;
+    const labels = list.map(function (r) { return r.date; });
+    return {
+      color: ['#5D7EE9', '#73C892'],
+      tooltip: { trigger: 'axis' },
+      legend: { top: 4, data: ['旬末水位', '旬末库容'] },
+      grid: { left: 16, right: 56, top: 40, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+      dataZoom: buildChartDataZoom(),
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: labels,
+        axisLabel: { color: '#999', fontSize: 10, rotate: labels.length > 18 ? 40 : 0 },
+        axisLine: { lineStyle: { color: '#e8e8e8' } }
+      },
+      yAxis: [
+        {
+          type: 'value', name: '水位(m)',
+          nameLocation: 'end', nameGap: 12,
+          nameTextStyle: { color: '#999', fontSize: 11, align: 'left' },
+          axisLabel: { color: '#999' },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        },
+        {
+          type: 'value', name: '库容(万方)',
+          nameLocation: 'end', nameGap: 12,
+          nameTextStyle: { color: '#999', fontSize: 11, align: 'right' },
+          axisLabel: { color: '#999' },
+          splitLine: { show: false }
+        }
+      ],
+      series: [
+        { name: '旬末水位', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7, data: list.map(function (r) { return r.level; }) },
+        { name: '旬末库容', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7, yAxisIndex: 1, data: list.map(function (r) { return r.capacity; }) }
+      ]
+    };
+  }
+
+  function renderIrrTable() {
+    const rows = filteredRows(irrRows, filter);
+    const total = rows.length;
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (page > pages) page = pages;
+    const start = (page - 1) * PAGE_SIZE;
+    const pageRows = rows.slice(start, start + PAGE_SIZE);
+    $('cfg-tbody').innerHTML = pageRows.map(function (r) {
+      return '<tr><td>' + r.date + '</td><td>' + num(r.demand) + '</td><td>' + num(r.supply) + '</td><td>' + num(r.supplement) + '</td></tr>';
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>';
+    const from = total ? start + 1 : 0;
+    const to = Math.min(start + PAGE_SIZE, total);
+    $('pg-info').textContent = '共 ' + total + ' 条' + (total ? '，本页显示 ' + from + '-' + to + ' 条' : '');
+    $('pg-btns').innerHTML = API.pagerHtml(page, pages);
+    requestAnimationFrame(refreshStickyHScrolls);
+  }
+
+  function renderResTable() {
+    const rows = filteredRows(resRows, resFilter);
+    const total = rows.length;
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (resPage > pages) resPage = pages;
+    const start = (resPage - 1) * PAGE_SIZE;
+    const pageRows = rows.slice(start, start + PAGE_SIZE);
+    $('res-tbody').innerHTML = pageRows.map(function (r) {
+      return '<tr><td>' + r.date + '</td><td>' + num(r.inflow) + '</td><td>' + num(r.supplement) + '</td><td>' + num(r.outflow) + '</td><td>' + num(r.level) + '</td><td>' + num(r.capacity) + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>';
+    const from = total ? start + 1 : 0;
+    const to = Math.min(start + PAGE_SIZE, total);
+    $('res-pg-info').textContent = '共 ' + total + ' 条' + (total ? '，本页显示 ' + from + '-' + to + ' 条' : '');
+    $('res-pg-btns').innerHTML = API.pagerHtml(resPage, pages);
+    requestAnimationFrame(refreshStickyHScrolls);
+  }
+
+  function renderResMonths() {
+    $('res-month-tbody').innerHTML = resMonths.map(function (m) {
+      return '<tr><td>' + m.month + '</td><td>' + num(m.level) + '</td><td>' + num(m.capacity) + '</td></tr>';
+    }).join('') || '<tr><td colspan="3" style="text-align:center;color:#bbb;padding:24px">暂无数据</td></tr>';
+  }
+
+  function setAllocView(view) {
+    allocView = view === 'reservoir' ? 'reservoir' : 'irrigation';
+    document.querySelectorAll('#alloc-view-tabs .sub-tab').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.view === allocView);
+    });
+    $('alloc-view-irrigation').style.display = allocView === 'irrigation' ? '' : 'none';
+    $('alloc-view-reservoir').style.display = allocView === 'reservoir' ? '' : 'none';
+    if (allocView === 'irrigation') {
+      ensureChart('irrProcess', $('irr-chart-process')).setOption(irrProcessOption(), true);
+      renderIrrTable();
+    } else {
+      ensureChart('resFlow', $('res-chart-flow')).setOption(resFlowOption(), true);
+      ensureChart('resLevel', $('res-chart-level')).setOption(resLevelOption(), true);
+      renderResTable();
+      renderResMonths();
+    }
+    requestAnimationFrame(function () {
+      Object.values(charts).forEach(function (c) { if (c) c.resize(); });
+      refreshStickyHScrolls();
+    });
+  }
+
+  /* ========== 历史方案：参数快照 + 两视图 ========== */
+  function renderViewSnapshot(rec) {
+    let req = {};
+    const raw = rec && rec.requestJson;
+    if (raw) {
+      try { req = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (e) { req = {}; }
+    }
+    // requestJson 为主；缺失时回退 record 独立列（旧方案兼容）
+    const src = Object.assign({}, rec || {}, req || {});
+    function v(key, digits) {
+      const x = src[key];
+      if (x == null || x === '') return '—';
+      return digits == null ? String(x) : API.fmtNum(x, digits);
+    }
+    function upName(id) {
+      if (!id) return '—';
+      return upstreamNameMap[id] || id;
+    }
+    const groups = [
+      { title: '上游方案', items: [
+        ['中长期来水方案', upName(src.longPredictRecordId)],
+        ['需水预测方案', upName(src.demandRecordId)],
+        ['水量损失方案', upName(src.lossRecordId)]
+      ] },
+      { title: '水库控制水位', items: [
+        ['期初水位(m)', v('initialLevel', 2)],
+        ['汛限水位(m)', v('floodLimitLevel', 2)],
+        ['防洪目标水位(m)', v('floodControlTargetLevel', 2)],
+        ['溢洪道开启(m)', v('spillwayOpenLevel', 2)],
+        ['死水位(m)', v('deadWaterLevel', 2)],
+        ['年末目标水位(m)', v('yearEndTargetLevel', 2)],
+        ['汛期开始日期', src.floodStartDate ? String(src.floodStartDate).slice(0, 10) : '2027-05-01']
+      ] },
+      { title: '发电参数', items: [
+        ['发电最小水位(m)', v('generationMinLevel', 2)],
+        ['发电最大水位(m)', v('generationMaxLevel', 2)],
+        ['基础发电流量(m³/s)', v('baseGenerationM3s', 2)],
+        ['额定发电流量(m³/s)', v('generationNameplateM3s', 2)]
+      ] },
+      { title: '灌区供需', items: [
+        ['城镇年需水(万m³)', v('urbanAnnualDemand', 2)],
+        ['农村年需水(万m³)', v('ruralAnnualDemand', 2)],
+        ['水厂年可供水(万m³)', v('waterPlantAnnualSupply', 2)],
+        ['塘坝可供水量情景', src.pondScenario || '—'],
+        ['城市年供水量(万m³)', v('citySupplyAnnualWanM3', 2)]
+      ] }
+    ];
+    $('view-params').innerHTML = groups.map(function (g) {
+      return '<div class="snapshot-group"><h5>' + g.title + '</h5>' + g.items.map(function (it) {
+        return '<div class="snapshot-row"><span>' + it[0] + '</span><b>' + it[1] + '</b></div>';
+      }).join('') + '</div>';
+    }).join('');
+  }
+
+  function renderViewIrrTable() {
+    const rows = filteredRows(viewIrrRows, viewFilter);
+    $('view-irr-tbody').innerHTML = rows.map(function (r) {
+      return '<tr><td>' + r.date + '</td><td>' + num(r.demand) + '</td><td>' + num(r.supply) + '</td><td>' + num(r.supplement) + '</td></tr>';
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>';
+  }
+
+  function renderViewResTable() {
+    const rows = filteredRows(viewResRows, viewResFilter);
+    $('view-res-tbody').innerHTML = rows.map(function (r) {
+      return '<tr><td>' + r.date + '</td><td>' + num(r.inflow) + '</td><td>' + num(r.supplement) + '</td><td>' + num(r.outflow) + '</td><td>' + num(r.level) + '</td><td>' + num(r.capacity) + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>';
+  }
+
+  function renderViewResMonths() {
+    $('view-res-month-tbody').innerHTML = viewResMonths.map(function (m) {
+      return '<tr><td>' + m.month + '</td><td>' + num(m.level) + '</td><td>' + num(m.capacity) + '</td></tr>';
+    }).join('') || '<tr><td colspan="3" style="text-align:center;color:#bbb;padding:24px">暂无数据</td></tr>';
+  }
+
+  function setViewAllocView(view) {
+    viewAllocView = view === 'reservoir' ? 'reservoir' : 'irrigation';
+    document.querySelectorAll('#view-alloc-tabs .sub-tab').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.view === viewAllocView);
+    });
+    $('view-alloc-irrigation').style.display = viewAllocView === 'irrigation' ? '' : 'none';
+    $('view-alloc-reservoir').style.display = viewAllocView === 'reservoir' ? '' : 'none';
+    $('view-irr-stats').innerHTML = irrStatsHtml(viewIrrSummary);
+    $('view-res-stats').innerHTML = resStatsHtml(viewResSummary);
+    if (viewAllocView === 'irrigation') {
+      ensureChart('viewIrr', $('view-chart-irr')).setOption(irrProcessOption(viewIrrRows), true);
+      renderViewIrrTable();
+    } else {
+      ensureChart('viewResFlow', $('view-chart-res-flow')).setOption(resFlowOption(viewResRows), true);
+      ensureChart('viewResLevel', $('view-chart-res-level')).setOption(resLevelOption(viewResRows), true);
+      renderViewResTable();
+      renderViewResMonths();
+    }
+    requestAnimationFrame(function () {
+      Object.values(charts).forEach(function (c) { if (c) c.resize(); });
+      refreshStickyHScrolls();
+    });
+  }
+
   function applyDetail(detail, target) {
     const rec = (detail && detail.record) || {};
-    const summary = mapSummary(rec);
-    const rows = mapTendays(detail);
     if (target === 'view') {
-      viewSummary = summary;
-      viewRows = rows;
-    } else {
-      resultSummary = summary;
-      resultRows = rows;
-      currentRecordId = rec.id || currentRecordId || null;
-      currentSchemeName = rec.schemeName || currentSchemeName || '';
-      updateResultTitle(currentSchemeName || '水资源配置预测计算结果');
+      viewIrrSummary = mapIrrSummary(detail);
+      viewIrrRows = mapIrrRows(detail);
+      viewResSummary = mapResSummary(detail);
+      viewResRows = mapResRows(detail);
+      viewResMonths = mapResMonths(detail);
+      return;
     }
+    allocDetail = detail;
+    currentRecordId = rec.id || currentRecordId || null;
+    currentSchemeName = rec.schemeName || currentSchemeName || '';
+    updateResultTitle(currentSchemeName || '水资源配置预测计算结果');
+    irrSummary = mapIrrSummary(detail);
+    irrRows = mapIrrRows(detail);
+    resSummary = mapResSummary(detail);
+    resRows = mapResRows(detail);
+    resMonths = mapResMonths(detail);
+    page = 1;
+    filter = '';
+    resPage = 1;
+    resFilter = '';
+    if ($('filter')) $('filter').value = '';
+    if ($('res-filter')) $('res-filter').value = '';
+    renderIrrStats();
+    renderResStats();
+    setAllocView(allocView);
   }
 
   function renderStats(id, summary) {
@@ -711,19 +1233,12 @@ tbody tr:hover td{background:#fafafa}
     stickyLayouts.forEach(function (fn) { if (fn) fn(); });
   }
 
-  stickyLayouts.push(bindStickyHScroll('cfg-tbl-wrap', 'cfg-tbl-x', document.querySelector('.right-scroll')));
   stickyLayouts.push(bindStickyHScroll('view-tbl-wrap', 'view-tbl-x', document.querySelector('#view-overlay .view-bd')));
 
   function showResult() {
     revealResultHd();
     $('result-empty').style.display = 'none';
     $('result-content').style.display = 'block';
-    page = 1;
-    filter = '';
-    $('filter').value = '';
-    renderStats('stats', resultSummary);
-    renderCharts('chart-compare', 'chart-level', resultRows);
-    renderTable('tbody');
     setTimeout(function () { Object.values(charts).forEach(function (c) { if (c) c.resize(); }); }, 50);
   }
 
@@ -768,78 +1283,61 @@ tbody tr:hover td{background:#fafafa}
       ]);
       API.fillSelect($('cfg-mid'), results[0], { onlyCompleted: true });
       API.fillSelect($('cfg-demand'), results[1], { onlyCompleted: true });
-      API.fillSelect($('cfg-loss'), results[2], { onlyCompleted: true });
+      API.fillSelect($('cfg-loss'), results[2], { onlyCompleted: true, placeholder: '不关联' });
+      (results[0] || []).concat(results[1] || [], results[2] || []).forEach(function (r) {
+        if (r && r.id) upstreamNameMap[r.id] = r.schemeName || r.id;
+      });
     } catch (e) {
       toast(e.message || '方案列表加载失败');
     }
   }
 
-  // 左侧 Tab
-  $('mode-tabs').addEventListener('click', function (e) {
-    const tab = e.target.closest('.side-tab');
-    if (!tab) return;
-    document.querySelectorAll('.side-tab').forEach(function (t) { t.classList.toggle('active', t === tab); });
-    mode = tab.dataset.mode;
-    $('mode-exist').style.display = mode === 'exist' ? 'block' : 'none';
-    $('mode-manual').style.display = mode === 'manual' ? 'block' : 'none';
-  });
-
-  $('upload-btn').addEventListener('click', function () { $('file-input').click(); });
-  $('file-input').addEventListener('change', function (e) {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    uploadedFile = f;
-    $('file-name').textContent = '已上传：' + f.name;
-    toast('附件已上传');
-  });
-  $('tpl-btn').addEventListener('click', async function () {
-    try {
-      await API.allocation.template('配水基础数据收集表.xlsx');
-    } catch (e) {
-      toast(e.message || '模板下载失败');
-    }
-  });
-
   $('calc-btn').addEventListener('click', async function () {
-    if (mode === 'exist') {
-      if (!$('cfg-mid').value) return toast('请选择中长期来水预报模型方案');
-      if (!$('cfg-demand').value) return toast('请选择需水预测模型方案');
+    if (!$('cfg-mid').value) return toast('请选择中长期来水预报方案');
+    if (!$('cfg-demand').value) return toast('请选择需水预测方案');
+
+    function readNum(id, label, min, max) {
+      const raw = $(id).value;
+      const v = Number(raw);
+      if (raw === '' || Number.isNaN(v)) throw new Error(label + '不能为空');
+      if (min != null && v < min) throw new Error(label + '不能小于' + min);
+      if (max != null && v > max) throw new Error(label + '不能大于' + max);
+      return v;
     }
-    if (mode === 'manual' && !uploadedFile) return toast('请上传配水基础数据收集表');
-    const start = $('start-level').value;
-    const flood = $('flood-level').value;
-    const max = $('max-level').value;
-    if (start === '' || flood === '' || max === '') return toast('请完善水位参数');
-    if (+flood < +start) return toast('汛限水位不能低于起始水位');
-    if (+max < +flood) return toast('模型限制最高水位不能低于汛限水位');
+
+    let body;
+    try {
+      body = {
+        longPredictRecordId: $('cfg-mid').value,
+        demandRecordId: $('cfg-demand').value,
+        initialLevel: readNum('cfg-initial-level', '期初水位', 74, 99),
+        floodLimitLevel: readNum('cfg-flood-limit-level', '汛限水位', 75, 81),
+        floodControlTargetLevel: readNum('cfg-flood-control-level', '防洪控制目标水位'),
+        spillwayOpenLevel: readNum('cfg-spillway-level', '溢洪道开启水位', 81, 99),
+        deadWaterLevel: readNum('cfg-dead-level', '死水位'),
+        yearEndTargetLevel: readNum('cfg-year-end-level', '年末目标水位'),
+        floodStartDate: $('cfg-flood-start').value || '2027-05-01',
+        generationMinLevel: readNum('cfg-gen-min-level', '发电最小水位'),
+        generationMaxLevel: readNum('cfg-gen-max-level', '发电最大水位'),
+        baseGenerationM3s: readNum('cfg-base-gen', '基础发电流量'),
+        generationNameplateM3s: readNum('cfg-nameplate-gen', '发电额定流量'),
+        urbanAnnualDemand: readNum('cfg-urban-demand', '城镇年需水'),
+        ruralAnnualDemand: readNum('cfg-rural-demand', '农村年需水'),
+        waterPlantAnnualSupply: readNum('cfg-water-plant', '水厂年可供水'),
+        pondScenario: $('cfg-pond').value,
+        citySupplyAnnualWanM3: readNum('cfg-city-supply', '城市年供水量')
+      };
+      const lossId = $('cfg-loss').value;
+      if (lossId) body.lossRecordId = lossId;
+    } catch (err) {
+      return toast(err.message);
+    }
 
     const btn = $('calc-btn');
     btn.classList.add('is-loading');
     API.showLoading('水资源配置模型计算中，请稍候…');
     try {
-      let res;
-      if (mode === 'exist') {
-        const body = {
-          mode: 'auto',
-          longPredictRecordId: $('cfg-mid').value,
-          demandRecordId: $('cfg-demand').value,
-          startLevel: +start,
-          floodLimitLevel: +flood,
-          maxLevel: +max
-        };
-        const lossId = $('cfg-loss').value;
-        if (lossId) body.lossRecordId = lossId;
-        const pondEl = document.querySelector('input[name="pond-option"]:checked');
-        if (pondEl) body.pondOption = pondEl.value;
-        res = await API.allocation.submit(body);
-      } else {
-        const fd = new FormData();
-        fd.append('file', uploadedFile);
-        fd.append('startLevel', start);
-        fd.append('floodLimitLevel', flood);
-        fd.append('maxLevel', max);
-        res = await API.allocation.upload(fd);
-      }
+      const res = await API.allocation.submit(body);
       const recordId = res.recordId || res.id;
       currentRecordId = recordId;
       await API.allocation.wait(recordId);
@@ -856,32 +1354,68 @@ tbody tr:hover td{background:#fafafa}
     }
   });
 
+  async function exportCfgExcel() {
+    const isRes = allocView === 'reservoir';
+    const q = (isRes ? resFilter : filter).trim();
+    // 无筛选且有方案记录时走后端全量下载；有筛选时前端导出筛选结果
+    if (!q && currentRecordId) {
+      try {
+        await API.allocation.downloadExcel(currentRecordId);
+      } catch (e) {
+        toast(API.friendlyError(e, '导出失败'));
+      }
+      return;
+    }
+    if (!window.XLSX) return toast('导出组件未加载');
+    const header = isRes
+      ? ['旬', '入库水量(万方)', '计划补充供水量(万方)', '总出库(万方)', '旬末水位(m)', '旬末库容(万方)']
+      : ['旬', '灌区总需水(万方)', '灌区计划供水总量(万方)', '花凉亭水库计划补充供水量(万方)'];
+    const rows = isRes ? filteredRows(resRows, resFilter) : filteredRows(irrRows, filter);
+    if (!rows.length) return toast('暂无数据可导出');
+    const data = rows.map(function (r) {
+      return isRes
+        ? [r.date, r.inflow, r.supplement, r.outflow, r.level, r.capacity]
+        : [r.date, r.demand, r.supply, r.supplement];
+    });
+    const ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+    ws['!cols'] = MonitorExport.fitCols(header);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, isRes ? '水库逐旬明细' : '灌区逐旬过程');
+    const suffix = q ? '_' + q : '';
+    XLSX.writeFile(wb, (isRes ? '水库水资源配置结果' : '灌区水资源配置结果') + suffix + '.xlsx');
+  }
+
+  $('alloc-view-tabs').addEventListener('click', function (e) {
+    const btn = e.target.closest('.sub-tab');
+    if (!btn) return;
+    setAllocView(btn.dataset.view);
+  });
   $('filter').addEventListener('input', function (e) {
     filter = e.target.value;
     page = 1;
-    renderTable('tbody');
+    renderIrrTable();
   });
   $('pg-btns').addEventListener('click', function (e) {
     const btn = e.target.closest('[data-page]');
     if (!btn || btn.disabled) return;
     page = +btn.dataset.page;
-    renderTable('tbody');
+    renderIrrTable();
   });
-  $('export-btn').addEventListener('click', function () {
-    const rows = filteredRows(resultRows, filter);
-    if (!rows.length) return toast('暂无数据可导出');
-    const header = ['日期', 'BP预测来水量(万方)', '库面蒸发数据(万方)', '灌溉需水', '城镇需水', '农村生活需水量', '河道生态需水总量', '总需水量(万方)', '总供水量(万方)', '缺水量(万方)', '弃水量(万方)', '月末水位(m)', '月末库容(万方)'];
-    const data = rows.map(function (r) {
-      return [r.date, r.bp, r.evap, r.irrig, r.urban, r.rural, r.eco, r.demand, r.supply, r.shortage, r.spill, r.level, r.capacity];
-    });
-    if (window.XLSX) {
-      const ws = XLSX.utils.aoa_to_sheet([header].concat(data));
-      ws['!cols'] = MonitorExport.fitCols(header);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, '配置明细');
-      XLSX.writeFile(wb, '水资源配置预测详细结果.xlsx');
-    } else toast('导出组件未加载');
+  $('res-filter').addEventListener('input', function (e) {
+    resFilter = e.target.value;
+    resPage = 1;
+    renderResTable();
   });
+  $('res-pg-btns').addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-page]');
+    if (!btn || btn.disabled) return;
+    resPage = +btn.dataset.page;
+    renderResTable();
+  });
+  $('export-btn').addEventListener('click', exportCfgExcel);
+  $('res-export-btn').addEventListener('click', exportCfgExcel);
+  stickyLayouts.push(bindStickyHScroll('cfg-tbl-wrap', 'cfg-tbl-x', document.querySelector('.right-scroll')));
+  stickyLayouts.push(bindStickyHScroll('res-tbl-wrap', 'res-tbl-x', document.querySelector('.right-scroll')));
 
   function openDrawer() {
     loadHistory();
@@ -957,11 +1491,14 @@ tbody tr:hover td{background:#fafafa}
       const detail = await API.allocation.detail(item.id);
       applyDetail(detail, 'view');
       viewFilter = '';
+      viewResFilter = '';
       $('view-filter').value = '';
-      renderStats('view-stats', viewSummary);
-      renderCharts('view-chart-compare', 'view-chart-level', viewRows);
-      renderTable('view-tbody', { noPager: true, rows: viewRows, filter: viewFilter });
+      $('view-res-filter').value = '';
+      const snapRec = Object.assign({}, item, (detail && detail.record) || {});
+      if (!snapRec.requestJson && item.requestJson) snapRec.requestJson = item.requestJson;
+      renderViewSnapshot(snapRec);
       $('view-overlay').classList.add('show');
+      setViewAllocView('irrigation');
       setTimeout(function () {
         Object.values(charts).forEach(function (c) { if (c) c.resize(); });
         refreshStickyHScrolls();
@@ -1005,7 +1542,16 @@ tbody tr:hover td{background:#fafafa}
   });
   $('view-filter').addEventListener('input', function (e) {
     viewFilter = e.target.value;
-    renderTable('view-tbody', { noPager: true, rows: viewRows, filter: viewFilter });
+    renderViewIrrTable();
+  });
+  $('view-res-filter').addEventListener('input', function (e) {
+    viewResFilter = e.target.value;
+    renderViewResTable();
+  });
+  $('view-alloc-tabs').addEventListener('click', function (e) {
+    const btn = e.target.closest('.sub-tab');
+    if (!btn) return;
+    setViewAllocView(btn.dataset.view);
   });
 
   window.addEventListener('resize', function () {

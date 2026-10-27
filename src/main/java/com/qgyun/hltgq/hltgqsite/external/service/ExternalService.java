@@ -291,6 +291,10 @@ public class ExternalService {
      * 保持档案默认顺序、在线优先（在线/未设置在前、离线站在后，组内保持默认顺序）。
      * <p>isOnline 与 hasData 每行必有：有实时值站点按实时值字段输出；无实时值站点按档案状态兜底
      * （zebpsu 1=在线 / 2=离线 / 未设置按在线），保证人工设为离线的站点不会因字段缺失被误当作在线。
+     * <p>coreIndicator（核心指标）每行必有，只有水位站与雨量站有：水位类型（#1#）取档案「核心指标-水位」列 ijzsby，
+     * 雨量类型（#2#）取档案「核心指标-雨量」列 ccnhtm（两列分列存储，互不混用）；
+     * 统一输出两位小数文本，档案未填按 0.00 输出；其余类型无核心指标固定为 null。
+     * 行上同时保留 ccnhtm / ijzsby 两个原始列名（档案原值），供核对。
      * <p>视频类型（#5#）为站点档案清单、无实时监测值：不查各业务实时接口，行上 isOnline 按档案状态兜底；
      * 关联对象按原 qx-api 补齐 ahieto.zzkaec 与 ywvyds.gfaegg（仅视频类型输出，其余类型结构不变）。
      * <p>视频类型额外排序（仅 #5# 生效，其余类型排序不变）：在线优先 → 有站点编号 → 有经纬度
@@ -313,6 +317,8 @@ public class ExternalService {
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Map<String, Object> archive : archives) {
             Map<String, Object> row = toArchiveRow(archive);
+            // 核心指标：水位与雨量在档案里分列存储，按当前监测类型取各自列后统一字段名输出
+            row.put("coreIndicator", coreIndicatorOf(archive, typeCode));
             if ("#5#".equals(typeCode)) {
                 // 视频站点对齐原 qx-api：关联对象附带简称列（ahieto.zzkaec / ywvyds.gfaegg，与 dataTitle 同值）
                 putRefExtra(row, "ahieto", "zzkaec", archive.get("ahieto_title"));
@@ -708,6 +714,34 @@ public class ExternalService {
     private String codeOf(Object code) {
         String text = ValueConvertUtils.str(code);
         return text == null ? null : text.trim().replace("#", "");
+    }
+
+    /**
+     * 核心指标：平台站点档案把水位与雨量分列存储，按当前监测类型取对应列。
+     * <p>列与业务对应关系：ijzsby =「核心指标-水位」、ccnhtm =「核心指标-雨量」
+     * （注意与平台字段定义表的标题顺序相反，以业务核实结果为准）。
+     * <p>输出统一为两位小数的文本（如 27.30 / 79.08），档案未填或空值按 0.00 输出——
+     * 核心指标是人工维护的指标值而非采集读数，缺省即表示 0，调用方无需再判空。
+     * <p>核心指标只属于水位站与雨量站：其余监测类型（流量 #3# / 闸门 #4# / 视频 #5# / 墒情 #7# / 水质 #8#）
+     * 档案无对应列，返回 null（与水位/雨量站的 0.00 区分）。
+     * 闸门尤其注意：虽有闸前 up_z / 闸后 down_z 两路实测水位，但核心指标不记录，同样返回 null，不要拿实测值顶替。
+     *
+     * @param archive  站点档案行（selectArchiveByType 结果）
+     * @param typeCode 监测类型编码（#1# 水位 / #2# 雨量 …）
+     */
+    private String coreIndicatorOf(Map<String, Object> archive, String typeCode) {
+        Object raw;
+        if ("#1#".equals(typeCode)) {
+            raw = archive.get("ijzsby");
+        } else if ("#2#".equals(typeCode)) {
+            raw = archive.get("ccnhtm");
+        } else {
+            return null;
+        }
+        BigDecimal value = ValueConvertUtils.decimal(raw);
+        return (value == null ? BigDecimal.ZERO : value)
+                .setScale(2, RoundingMode.HALF_UP)
+                .toPlainString();
     }
 
     /** 经纬度 → bviiio 对象（x/y/geohash，与原 qx-api 一致）；经纬度均空返回 null */
