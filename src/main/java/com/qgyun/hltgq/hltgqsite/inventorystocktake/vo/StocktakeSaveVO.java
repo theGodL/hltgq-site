@@ -24,6 +24,9 @@ public class StocktakeSaveVO {
     /** 备注（≤50 字） */
     private String remark;
 
+    /** 页面视角（可选）：emergency 应急物资；不传/common = 常用物资（保存时按此校验明细物资类别） */
+    private String scope;
+
     private List<Item> items;
 
     /** 附件 ID 列表（附件上传接口返回的 id，可空） */

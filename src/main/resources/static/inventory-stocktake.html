@@ -482,6 +482,7 @@ const ICON = {
 const S = {
   meta: null,                    // { warehouses: [], today, currentUser: {id,name} }
   users: [],                     // 盘点人候选（一次性加载，本地搜索）
+  scope: 'common',               // 页面视角：common 库存管理（默认）/ emergency 应急物资管理
   page: 1, size: 20, total: 0, records: [],
   filter: { orderNo: '', warehouseId: '', operatorId: '', materialCode: '', materialName: '', startDate: '', endDate: '' },
   filterOpen: false,
@@ -684,7 +685,8 @@ function filterParams() {
     materialCode: S.filter.materialCode,
     materialName: S.filter.materialName,
     startDate: S.filter.startDate,
-    endDate: S.filter.endDate
+    endDate: S.filter.endDate,
+    scope: S.scope
   };
 }
 
@@ -730,7 +732,7 @@ function attCell(r) {
 function renderTable() {
   const tb = $('tbl-body');
   if (!S.records.length) {
-    tb.innerHTML = emptyRow('暂无数据');
+    tb.innerHTML = emptyRow(S.scope === 'emergency' ? '暂无应急物资盘点单' : '暂无数据');
     return;
   }
   tb.innerHTML = S.records.map(r => {
@@ -1009,7 +1011,7 @@ async function openEdit(row) {
   showDrawer();
   const seq = ++S.seq;
   try {
-    const d = await api('/inventory-stocktake/detail?' + qs({ id: row.id }));
+    const d = await api('/inventory-stocktake/detail?' + qs({ id: row.id, scope: S.scope }));
     if (seq !== S.seq || S.mode !== 'edit') return;
     fillEdit(d);
   } catch (e) {
@@ -1029,7 +1031,7 @@ async function openDetail(row) {
   showDrawer();
   const seq = ++S.seq;
   try {
-    const d = await api('/inventory-stocktake/detail?' + qs({ id: row.id }));
+    const d = await api('/inventory-stocktake/detail?' + qs({ id: row.id, scope: S.scope }));
     if (seq !== S.seq || S.mode !== 'view') return;
     renderDetail(d);
   } catch (e) {
@@ -1149,7 +1151,7 @@ async function onBringOut() {
   btn.disabled = true;
   btn.classList.add('is-loading');
   try {
-    const rows = await api('/inventory-stocktake/stock-ledgers?' + qs({ warehouseId: whId }));
+    const rows = await api('/inventory-stocktake/stock-ledgers?' + qs({ warehouseId: whId, scope: S.scope }));
     // 期间又切了仓库：丢弃旧仓库的响应，避免把上一仓库台账合入新仓库明细
     if (seq !== S.bringSeq || whId !== selWh.getValue()) return;
     const list = Array.isArray(rows) ? rows : [];
@@ -1326,6 +1328,7 @@ function validateForm() {
     }
   }
   return {
+    scope: S.scope,
     checkDate: $('in-date').value,
     warehouseId: selWh.getValue(),
     operatorId: selOp.getValue(),
@@ -1341,6 +1344,7 @@ function validateEdit() {
   if (!selOp.getValue()) { setFormError('op', '请选择盘点人员'); return null; }
   return {
     id: S.row.id,
+    scope: S.scope,
     operatorId: selOp.getValue(),
     remark: $('in-remark').value.trim() || null,
     attachmentIds: S.attachments.map(a => a.id)
@@ -1426,7 +1430,7 @@ async function loadPickRows() {
   const kw = $('pick-kw').value.trim();
   $('pick-body').innerHTML = pickEmpty('加载中...', true);
   try {
-    const rows = await api('/inventory-stocktake/material-options?' + qs({ warehouseId: selWh.getValue(), keyword: kw }));
+    const rows = await api('/inventory-stocktake/material-options?' + qs({ warehouseId: selWh.getValue(), keyword: kw, scope: S.scope }));
     S.pickRows = Array.isArray(rows) ? rows : [];
     renderPickRows();
   } catch (e) {
@@ -1633,6 +1637,10 @@ async function loadUsers() {
 }
 
 (async function init() {
+  // 页面视角：应急物资管理菜单带 ?scope=emergency；库存管理旧菜单不带，按常用物资处理
+  const params = new URLSearchParams(location.search);
+  S.scope = String(params.get('scope') || '').toLowerCase() === 'emergency' ? 'emergency' : 'common';
+  if (S.scope === 'emergency') document.title = '应急物资盘点';
   bindEvents();
   try {
     await loadMeta();

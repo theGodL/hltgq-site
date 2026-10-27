@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.inventorystocktake.mapper;
 
+import com.qgyun.hltgq.hltgqsite.inventoryorder.InventoryCategory;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.mapper.InventoryLedgerMapper;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.StockLedgerOptionVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeAttachmentVO;
@@ -38,6 +39,18 @@ public interface InventoryStocktakeMapper {
     String T_LEDGER = "\"qixiao-apaas\".\"t_auto_hltgq_knc3g_tzkioe\"";
     String T_MATERIAL = "\"qixiao-apaas\".\"t_auto_hltgq_knc3g_slaifi\"";
 
+    /** 盘点单是否含应急物资明细（作用于主表别名 o）：明细按 material_id 回查目录 */
+    String HAS_EMERGENCY_ITEM = "EXISTS (SELECT 1 FROM " + T_ITEM + " d JOIN " + T_MATERIAL +
+            " m ON m.id = d.material_id AND m.corp_code = 'hltgq' " +
+            "WHERE d.order_id = o.id AND d.corp_code = 'hltgq' AND " + InventoryCategory.CONDITION_EMERGENCY + ")";
+
+    /** 视角类别过滤：emergency=true 只看含应急物资明细的盘点单；false 排除（明细未关联物资的历史单据保留） */
+    String CATEGORY_FILTER =
+            "<if test='emergency != null'><choose>" +
+            "<when test='emergency'>AND " + HAS_EMERGENCY_ITEM + " </when>" +
+            "<otherwise>AND NOT " + HAS_EMERGENCY_ITEM + " </otherwise>" +
+            "</choose></if>";
+
     /** P6 动态查询条件（page/count 共用，作用于主表别名 o；物资编码/名称按明细级 EXISTS） */
     String LIST_CONDITIONS =
             "<if test='orderNo != null and orderNo != \"\"'>AND o.order_no LIKE CONCAT('%', #{orderNo}, '%') </if>" +
@@ -48,7 +61,8 @@ public interface InventoryStocktakeMapper {
             "<if test='materialName != null and materialName != \"\"'>AND EXISTS (SELECT 1 FROM " + T_ITEM +
             " d WHERE d.order_id = o.id AND d.material_name LIKE CONCAT('%', #{materialName}, '%')) </if>" +
             "<if test='startDate != null and startDate != \"\"'>AND o.check_date &gt;= CAST(#{startDate} AS date) </if>" +
-            "<if test='endDate != null and endDate != \"\"'>AND o.check_date &lt;= CAST(#{endDate} AS date) </if>";
+            "<if test='endDate != null and endDate != \"\"'>AND o.check_date &lt;= CAST(#{endDate} AS date) </if>" +
+            CATEGORY_FILTER;
 
     // ==================== P6 列表 ====================
 
@@ -71,6 +85,7 @@ public interface InventoryStocktakeMapper {
                                          @Param("materialName") String materialName,
                                          @Param("startDate") String startDate,
                                          @Param("endDate") String endDate,
+                                         @Param("emergency") Boolean emergency,
                                          @Param("size") int size,
                                          @Param("offset") long offset);
 
@@ -83,7 +98,8 @@ public interface InventoryStocktakeMapper {
                    @Param("materialCode") String materialCode,
                    @Param("materialName") String materialName,
                    @Param("startDate") String startDate,
-                   @Param("endDate") String endDate);
+                   @Param("endDate") String endDate,
+                   @Param("emergency") Boolean emergency);
 
     // ==================== P7 详情 / 明细 / 附件 ====================
 
@@ -105,6 +121,12 @@ public interface InventoryStocktakeMapper {
             "WHERE d.order_id = #{orderId} AND d.corp_code = 'hltgq' " +
             "ORDER BY d.created_at ASC, d.id ASC")
     List<StocktakeItemVO> selectItems(@Param("orderId") String orderId);
+
+    /** 盘点单是否含应急物资明细（详情/编辑深链校验用，与列表 HAS_EMERGENCY_ITEM 同口径）。 */
+    @Select("SELECT COUNT(*) FROM " + T_ITEM + " d JOIN " + T_MATERIAL +
+            " m ON m.id = d.material_id AND m.corp_code = 'hltgq' " +
+            "WHERE d.order_id = #{orderId} AND d.corp_code = 'hltgq' AND " + InventoryCategory.CONDITION_EMERGENCY)
+    long countEmergencyItems(@Param("orderId") String orderId);
 
     /** 单据附件清单（详情/编辑管理用；不含 file_path，下载走 {@link #selectAttachmentById}） */
     @Select("SELECT a.id AS id, a.order_id AS orderId, a.file_name AS fileName, " +
@@ -239,12 +261,15 @@ public interface InventoryStocktakeMapper {
             "FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
             "WHERE t.corp_code = 'hltgq' AND t.oywydb = #{warehouseId} " +
+            InventoryLedgerMapper.CATEGORY_CONDITIONS +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR t.wpxwwi LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "ORDER BY m.higsdd ASC, t.id ASC " +
             "LIMIT 501" +
             "</script>")
     List<StockLedgerOptionVO> selectLedgerOptions(@Param("warehouseId") String warehouseId,
-                                                  @Param("keyword") String keyword);
+                                                  @Param("keyword") String keyword,
+                                                  @Param("emergency") boolean emergency,
+                                                  @Param("commonOnly") boolean commonOnly);
 
     /**
      * 手动加行：物资目录全量启用物资 + 该仓库实时账面（LEFT JOIN，无台账记 0）。
@@ -257,10 +282,13 @@ public interface InventoryStocktakeMapper {
             "FROM " + T_MATERIAL + " m " +
             "LEFT JOIN " + T_LEDGER + " t ON t.jzikio = m.id AND t.oywydb = #{warehouseId} AND t.corp_code = 'hltgq' " +
             "WHERE m.corp_code = 'hltgq' " +
+            InventoryLedgerMapper.CATEGORY_CONDITIONS +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR m.avlsdv LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "ORDER BY m.higsdd ASC, m.id ASC " +
             "LIMIT 1000" +
             "</script>")
     List<StockLedgerOptionVO> selectMaterialOptions(@Param("warehouseId") String warehouseId,
-                                                    @Param("keyword") String keyword);
+                                                    @Param("keyword") String keyword,
+                                                    @Param("emergency") boolean emergency,
+                                                    @Param("commonOnly") boolean commonOnly);
 }

@@ -454,6 +454,37 @@ public class DemandService {
         }
     }
 
+    /**
+     * 支渠作物设置默认配置（GET /water-forecast/demand/crop-config）。
+     * <p>数据源：classpath:data/tables/demand-default-table.json（模型方提供的默认需水预测表，
+     * 82 行六列：片区/分灌区/支渠/行政区/灌区面积/种植作物种类），按文档 4.1 英文键返回。
+     */
+    public List<Map<String, Object>> cropConfig() {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        try (java.io.InputStream in = getClass().getClassLoader()
+                .getResourceAsStream("data/tables/demand-default-table.json")) {
+            if (in == null) {
+                throw new IllegalStateException("内置默认需水预测表缺失：data/tables/demand-default-table.json");
+            }
+            JsonNode root = objectMapper.readTree(in);
+            if (root != null && root.isArray()) {
+                for (JsonNode item : root) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("district", textOf(item, "片区"));
+                    row.put("subDistrict", textOf(item, "分灌区"));
+                    row.put("branchName", textOf(item, "支渠"));
+                    row.put("county", textOf(item, "行政区"));
+                    row.put("area", doubleOf(item, "灌区面积"));
+                    row.put("cropType", textOf(item, "种植作物种类"));
+                    rows.add(row);
+                }
+            }
+            return rows;
+        } catch (IOException e) {
+            throw new IllegalStateException("内置默认需水预测表解析失败：" + e.getMessage(), e);
+        }
+    }
+
     /** 审计五连写（委托 AuditUtils） */
     private void fillBase(BaseWaterEntity entity, LocalDateTime now) {
         AuditUtils.fillCreate(entity, now, createdBy, corpCode);

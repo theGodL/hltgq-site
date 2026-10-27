@@ -15,6 +15,9 @@ public class StocktakeUpdateVO {
     /** 盘点单 ID（必填） */
     private String id;
 
+    /** 页面视角（可选）：emergency 应急物资；不传/common = 常用物资（跨类别编辑拒绝） */
+    private String scope;
+
     /** 盘点人 ID（可改，姓名快照同步更新；历史流水经手人不变） */
     private String operatorId;
 

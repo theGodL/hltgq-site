@@ -61,6 +61,7 @@ public class InventoryOrderController {
      * @param materialName 物资名称（明细级模糊，可选）
      * @param startDate    单据日期起（yyyy-MM-dd，可选，含当日）
      * @param endDate      单据日期止（yyyy-MM-dd，可选，含当日）
+     * @param scope        页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      * @return total / page / size / pages / records
      */
     @GetMapping("/page")
@@ -76,20 +77,23 @@ public class InventoryOrderController {
                                     @RequestParam(required = false) String materialCode,
                                     @RequestParam(required = false) String materialName,
                                     @RequestParam(required = false) String startDate,
-                                    @RequestParam(required = false) String endDate) {
+                                    @RequestParam(required = false) String endDate,
+                                    @RequestParam(required = false) String scope) {
         return orderService.page(page, size, source, orderNo, bizType, warehouseId, departmentId,
-                sourceUnit, receiveUnit, materialCode, materialName, startDate, endDate);
+                sourceUnit, receiveUnit, materialCode, materialName, startDate, endDate, scope);
     }
 
     /**
-     * 单据详情（主表 + 明细；业务类型与来源中文均已翻译）。
+     * 单据详情（主表 + 明细；业务类型与来源中文均已翻译；跨类别单据按 id 直达也拒绝）。
      *
      * @param source RK 入库 / CK 出库（必填）
      * @param id     单据 ID（必填）
+     * @param scope  页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      */
     @GetMapping("/detail")
-    public OrderDetailVO detail(@RequestParam String source, @RequestParam String id) {
-        return orderService.detail(source, id);
+    public OrderDetailVO detail(@RequestParam String source, @RequestParam String id,
+                                @RequestParam(required = false) String scope) {
+        return orderService.detail(source, id, scope);
     }
 
     /**
@@ -124,10 +128,12 @@ public class InventoryOrderController {
      * 物资目录候选（P2/P3「从目录选择」；不按默认仓库硬过滤）。
      *
      * @param keyword 物资编号/名称关键字（可选）
+     * @param scope   页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      */
     @GetMapping("/materials")
-    public List<MaterialVO> materials(@RequestParam(required = false) String keyword) {
-        return orderService.materials(keyword);
+    public List<MaterialVO> materials(@RequestParam(required = false) String keyword,
+                                      @RequestParam(required = false) String scope) {
+        return orderService.materials(keyword, scope);
     }
 
     /**
@@ -135,11 +141,13 @@ public class InventoryOrderController {
      *
      * @param warehouseId 仓库 ID（必填）
      * @param keyword     物资编号/名称关键字（可选）
+     * @param scope       页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      */
     @GetMapping("/stock-ledgers")
     public List<StockLedgerOptionVO> stockLedgers(@RequestParam String warehouseId,
-                                                  @RequestParam(required = false) String keyword) {
-        return orderService.stockLedgers(warehouseId, keyword);
+                                                  @RequestParam(required = false) String keyword,
+                                                  @RequestParam(required = false) String scope) {
+        return orderService.stockLedgers(warehouseId, keyword, scope);
     }
 
     /**
@@ -177,8 +185,9 @@ public class InventoryOrderController {
                                          @RequestParam(required = false) String materialCode,
                                          @RequestParam(required = false) String materialName,
                                          @RequestParam(required = false) String startDate,
-                                         @RequestParam(required = false) String endDate) {
+                                         @RequestParam(required = false) String endDate,
+                                         @RequestParam(required = false) String scope) {
         return orderService.export(source, orderNo, bizType, warehouseId, departmentId,
-                sourceUnit, receiveUnit, materialCode, materialName, startDate, endDate);
+                sourceUnit, receiveUnit, materialCode, materialName, startDate, endDate, scope);
     }
 }

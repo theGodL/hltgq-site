@@ -501,6 +501,7 @@ const ICON = {
 const S = {
   meta: null,                    // { types: [{value:'RK#1#',label,group}], warehouses: [], today }
   departments: [], users: [],    // 归口科室 / 经办人候选（一次性加载，本地搜索）
+  scope: 'common',               // 页面视角：common 库存管理（默认）/ emergency 应急物资管理
   page: 1, size: 20, total: 0, records: [],
   filter: { source: '', orderNo: '', bizType: '', warehouseId: '', departmentId: '', sourceUnit: '', receiveUnit: '', materialCode: '', materialName: '', startDate: '', endDate: '' },
   filterOpen: false,
@@ -667,7 +668,8 @@ function filterParams() {
     materialCode: S.filter.materialCode,
     materialName: S.filter.materialName,
     startDate: S.filter.startDate,
-    endDate: S.filter.endDate
+    endDate: S.filter.endDate,
+    scope: S.scope
   };
 }
 
@@ -711,7 +713,7 @@ function rowKey(r) { return String(r.source) + '#' + String(r.id); }
 function renderTable() {
   const tb = $('tbl-body');
   if (!S.records.length) {
-    tb.innerHTML = emptyRow('暂无数据');
+    tb.innerHTML = emptyRow(S.scope === 'emergency' ? '暂无应急物资出入库单据' : '暂无数据');
     return;
   }
   tb.innerHTML = S.records.map(r => {
@@ -1158,6 +1160,7 @@ function validateForm() {
     }
   }
   const base = {
+    scope: S.scope,
     orderDate: $('in-date').value,
     warehouseId: selWh.getValue(),
     departmentId: selDep.getValue(),
@@ -1263,8 +1266,8 @@ async function loadPickRows() {
   $('pick-body').innerHTML = pickEmpty('加载中...', true);
   try {
     const rows = isIn
-      ? await api('/inventory-order/materials?' + qs({ keyword: kw }))
-      : await api('/inventory-order/stock-ledgers?' + qs({ warehouseId: selWh.getValue(), keyword: kw }));
+      ? await api('/inventory-order/materials?' + qs({ keyword: kw, scope: S.scope }))
+      : await api('/inventory-order/stock-ledgers?' + qs({ warehouseId: selWh.getValue(), keyword: kw, scope: S.scope }));
     S.pickRows = Array.isArray(rows) ? rows : [];
     renderPickRows();
   } catch (e) {
@@ -1372,7 +1375,7 @@ async function openDetail(row) {
   showDrawer();
   const seq = ++S.seq;
   try {
-    const d = await api('/inventory-order/detail?' + qs({ source: row.source, id: row.id }));
+    const d = await api('/inventory-order/detail?' + qs({ source: row.source, id: row.id, scope: S.scope }));
     if (seq !== S.seq || S.mode !== 'view') return;
     renderDetail(d);
   } catch (e) {
@@ -1526,6 +1529,10 @@ async function loadPickers() {
 }
 
 (async function init() {
+  // 页面视角：应急物资管理菜单带 ?scope=emergency；库存管理旧菜单不带，按常用物资处理
+  const params = new URLSearchParams(location.search);
+  S.scope = String(params.get('scope') || '').toLowerCase() === 'emergency' ? 'emergency' : 'common';
+  if (S.scope === 'emergency') document.title = '应急物资出入库';
   bindEvents();
   try {
     await loadMeta();

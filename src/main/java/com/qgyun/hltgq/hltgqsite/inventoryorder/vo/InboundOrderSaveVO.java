@@ -34,6 +34,9 @@ public class InboundOrderSaveVO {
     /** 备注（可空） */
     private String remark;
 
+    /** 页面视角（可选）：emergency 应急物资；不传/common = 常用物资（保存时按此校验明细物资类别） */
+    private String scope;
+
     /** 物资明细（至少 1 行） */
     private List<Item> items;
 

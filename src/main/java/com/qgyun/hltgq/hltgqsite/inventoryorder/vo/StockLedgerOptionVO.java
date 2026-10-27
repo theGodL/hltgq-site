@@ -37,4 +37,7 @@ public class StockLedgerOptionVO {
     private Integer safetyStock;
 
     private String warehouseId;
+
+    /** 物资类别（slaifi.type 编码归一，空值视作常用物资 #1#） */
+    private String category;
 }

@@ -65,6 +65,15 @@ public class DemandController {
         return result;
     }
 
+    /**
+     * 支渠作物设置默认配置：内置默认需水预测表（82 行六列，classpath:data/tables/demand-default-table.json），
+     * 按 district/subDistrict/branchName/county/area/cropType 返回，供前端「作物设置」弹窗逐条查看/修改。
+     */
+    @GetMapping("/crop-config")
+    public List<Map<String, Object>> cropConfig() {
+        return demandService.cropConfig();
+    }
+
     /** 轮询需水方案执行状态：{id, status, errorMsg} */
     @GetMapping("/status/{id}")
     public Map<String, Object> status(@PathVariable String id) {

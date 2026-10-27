@@ -33,6 +33,7 @@ public class InventoryLedgerController {
      * @param warehouseId 仓库 ID（可选；左树选中「全部」时不传）
      * @param keyword     物资编号/名称关键字（可选）
      * @param status      库存状态（可选）：正常/偏低 或编码 #1#/#2#（Service 归一）
+     * @param scope       页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      * @return total / page / size / pages / records
      */
     @GetMapping("/page")
@@ -40,8 +41,9 @@ public class InventoryLedgerController {
                                     @RequestParam(defaultValue = "20") int size,
                                     @RequestParam(required = false) String warehouseId,
                                     @RequestParam(required = false) String keyword,
-                                    @RequestParam(required = false) String status) {
-        return ledgerService.page(warehouseId, keyword, status, page, size);
+                                    @RequestParam(required = false) String status,
+                                    @RequestParam(required = false) String scope) {
+        return ledgerService.page(warehouseId, keyword, status, scope, page, size);
     }
 
     /**
@@ -50,8 +52,9 @@ public class InventoryLedgerController {
     @GetMapping("/export")
     public List<LedgerPageItemVO> export(@RequestParam(required = false) String warehouseId,
                                          @RequestParam(required = false) String keyword,
-                                         @RequestParam(required = false) String status) {
-        return ledgerService.ledgerExport(warehouseId, keyword, status);
+                                         @RequestParam(required = false) String status,
+                                         @RequestParam(required = false) String scope) {
+        return ledgerService.ledgerExport(warehouseId, keyword, status, scope);
     }
 
     /**
@@ -61,13 +64,15 @@ public class InventoryLedgerController {
      * @param warehouseId 仓库 ID（必填）
      * @param page        页码（默认 1）
      * @param size        每页条数（默认 20，上限 100）
+     * @param scope       页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      */
     @GetMapping("/changes")
     public Map<String, Object> changes(@RequestParam String materialId,
                                        @RequestParam String warehouseId,
                                        @RequestParam(defaultValue = "1") int page,
-                                       @RequestParam(defaultValue = "20") int size) {
-        return ledgerService.changes(materialId, warehouseId, page, size);
+                                       @RequestParam(defaultValue = "20") int size,
+                                       @RequestParam(required = false) String scope) {
+        return ledgerService.changes(materialId, warehouseId, page, size, scope);
     }
 
     /**
@@ -75,8 +80,9 @@ public class InventoryLedgerController {
      */
     @GetMapping("/changes-export")
     public List<StockChangeVO> changesExport(@RequestParam String materialId,
-                                             @RequestParam String warehouseId) {
-        return ledgerService.changesExport(materialId, warehouseId);
+                                             @RequestParam String warehouseId,
+                                             @RequestParam(required = false) String scope) {
+        return ledgerService.changesExport(materialId, warehouseId, scope);
     }
 
     /**

@@ -271,17 +271,18 @@ public class DecisionService {
                         adminYearMapper.insert(row);
                     }
 
-                    // 4. 供水分配汇总：与 总计_全部旬 同口径同值（sheet 名别名），单行落库
-                    JsonNode supplyAllocNode = response.path("供水分配汇总");
-                    if (supplyAllocNode.isObject() && supplyAllocNode.size() > 0) {
+                    // 4. 供水分配汇总：实测 18 行逐旬表，逐行落库；净需水量合计仅「总计_全部旬」对象有，数组行不取
+                    for (JsonNode item : response.path("供水分配汇总")) {
                         DecisionSupplyAlloc supplyAlloc = new DecisionSupplyAlloc();
                         supplyAlloc.setRecordId(recordId);
-                        supplyAlloc.setDemandVolume(doubleOf(supplyAllocNode, "需水量"));
-                        supplyAlloc.setSuggestedSupply(doubleOf(supplyAllocNode, "建议供水量"));
-                        supplyAlloc.setPondSupplement(doubleOf(supplyAllocNode, "塘坝补水量"));
-                        supplyAlloc.setSupplyAfterPond(doubleOf(supplyAllocNode, "补水后总供水量"));
-                        supplyAlloc.setNetDemand(doubleOf(supplyAllocNode, "净需水量合计"));
-                        supplyAlloc.setIsSatisfied(BoolTextUtils.normalize(textOf(supplyAllocNode, "是否满足")));
+                        supplyAlloc.setTendayLabel(textOf(item, "旬"));
+                        Integer order = TenDayMapUtils.sortOrderOf(supplyAlloc.getTendayLabel());
+                        supplyAlloc.setSortOrder(order == null ? null : order.doubleValue());
+                        supplyAlloc.setDemandVolume(doubleOf(item, "需水量"));
+                        supplyAlloc.setSuggestedSupply(doubleOf(item, "建议供水量"));
+                        supplyAlloc.setPondSupplement(doubleOf(item, "塘坝补水量"));
+                        supplyAlloc.setSupplyAfterPond(doubleOf(item, "补水后总供水量"));
+                        supplyAlloc.setIsSatisfied(BoolTextUtils.normalize(textOf(item, "是否满足需水")));
                         fillBase(supplyAlloc, now);
                         supplyAllocMapper.insert(supplyAlloc);
                     }

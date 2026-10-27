@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.inventoryorder.mapper;
 
+import com.qgyun.hltgq.hltgqsite.inventoryorder.InventoryCategory;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.LedgerPageItemVO;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.MaterialVO;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.PickerOptionVO;
@@ -53,6 +54,15 @@ public interface InventoryLedgerMapper {
     /** 实时库存状态编码（库存 > 安全库存(空视0) → '#1#' 正常，否则含等于 → '#2#' 偏低）。要求台账行别名 {@code t}。 */
     String STOCK_STATUS_EXPR = "CASE WHEN COALESCE(t.ejgxlq, 0) > COALESCE(" + SAFE_STOCK_EXPR + ", 0) "
             + "THEN '#1#' ELSE '#2#' END";
+
+    /** 目录类别归一表达式（type 未设置的历史行 = 常用物资），要求别名 {@code m}。 */
+    String CATEGORY_EXPR = "COALESCE(NULLIF(TRIM(m.\"" + InventoryCategory.COLUMN + "\"), ''), '"
+            + InventoryCategory.COMMON + "')";
+
+    /** 类别过滤片段（emergency / commonOnly 互斥）：页面 scope 解析后传入，要求别名 {@code m}。 */
+    String CATEGORY_CONDITIONS =
+            "<if test='emergency'>AND " + InventoryCategory.CONDITION_EMERGENCY + " </if>" +
+            "<if test='commonOnly'>AND " + InventoryCategory.CONDITION_COMMON + " </if>";
 
     // ==================== 取号 ====================
 
@@ -149,8 +159,9 @@ public interface InventoryLedgerMapper {
             "CAST(#{row.order_date} AS date), 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
     int insertChangeLog(@Param("row") Map<String, Object> row);
 
-    /** 出入库记录分页（按台账行 material_id + warehouse_id 过滤，created_at 倒序）。 */
-    @Select("SELECT c.id AS id, c.change_type AS changeType, c.order_kind AS orderKind, " +
+    /** 出入库记录分页（按台账行 material_id + warehouse_id 过滤，created_at 倒序；按页面视角隔离类别）。 */
+    @Select("<script>" +
+            "SELECT c.id AS id, c.change_type AS changeType, c.order_kind AS orderKind, " +
             "c.order_id AS orderId, c.order_no AS orderNo, c.biz_type AS bizType, " +
             "c.change_qty AS changeQty, c.qty_before AS qtyBefore, c.qty_after AS qtyAfter, " +
             "c.counterparty AS counterparty, c.operator_name AS operatorName, " +
@@ -159,22 +170,33 @@ public interface InventoryLedgerMapper {
             "c.warehouse_id AS warehouseId, w.xoysox AS warehouseName " +
             "FROM " + T_CHANGE + " c " +
             "LEFT JOIN " + T_WAREHOUSE + " w ON w.id = c.warehouse_id AND w.corp_code = 'hltgq' " +
+            "LEFT JOIN " + T_MATERIAL + " m ON m.id = c.material_id AND m.corp_code = 'hltgq' " +
             "WHERE c.corp_code = 'hltgq' AND c.material_id = #{materialId} AND c.warehouse_id = #{warehouseId} " +
+            CATEGORY_CONDITIONS +
             "ORDER BY c.created_at DESC, c.id DESC " +
-            "LIMIT #{size} OFFSET #{offset}")
+            "LIMIT #{size} OFFSET #{offset}" +
+            "</script>")
     List<StockChangeVO> selectStockChanges(@Param("materialId") String materialId,
                                            @Param("warehouseId") String warehouseId,
+                                           @Param("emergency") boolean emergency,
+                                           @Param("commonOnly") boolean commonOnly,
                                            @Param("size") int size,
                                            @Param("offset") long offset);
 
     /** 出入库记录计数（条件与 {@link #selectStockChanges} 一致）。 */
-    @Select("SELECT COUNT(*) FROM " + T_CHANGE + " c " +
-            "WHERE c.corp_code = 'hltgq' AND c.material_id = #{materialId} AND c.warehouse_id = #{warehouseId}")
+    @Select("<script>SELECT COUNT(*) FROM " + T_CHANGE + " c " +
+            "LEFT JOIN " + T_MATERIAL + " m ON m.id = c.material_id AND m.corp_code = 'hltgq' " +
+            "WHERE c.corp_code = 'hltgq' AND c.material_id = #{materialId} AND c.warehouse_id = #{warehouseId} " +
+            CATEGORY_CONDITIONS +
+            "</script>")
     long countStockChanges(@Param("materialId") String materialId,
-                           @Param("warehouseId") String warehouseId);
+                           @Param("warehouseId") String warehouseId,
+                           @Param("emergency") boolean emergency,
+                           @Param("commonOnly") boolean commonOnly);
 
     /** 出入库记录导出（同列表条件，全量无分页）。 */
-    @Select("SELECT c.id AS id, c.change_type AS changeType, c.order_kind AS orderKind, " +
+    @Select("<script>" +
+            "SELECT c.id AS id, c.change_type AS changeType, c.order_kind AS orderKind, " +
             "c.order_id AS orderId, c.order_no AS orderNo, c.biz_type AS bizType, " +
             "c.change_qty AS changeQty, c.qty_before AS qtyBefore, c.qty_after AS qtyAfter, " +
             "c.counterparty AS counterparty, c.operator_name AS operatorName, " +
@@ -183,10 +205,15 @@ public interface InventoryLedgerMapper {
             "c.warehouse_id AS warehouseId, w.xoysox AS warehouseName " +
             "FROM " + T_CHANGE + " c " +
             "LEFT JOIN " + T_WAREHOUSE + " w ON w.id = c.warehouse_id AND w.corp_code = 'hltgq' " +
+            "LEFT JOIN " + T_MATERIAL + " m ON m.id = c.material_id AND m.corp_code = 'hltgq' " +
             "WHERE c.corp_code = 'hltgq' AND c.material_id = #{materialId} AND c.warehouse_id = #{warehouseId} " +
-            "ORDER BY c.created_at DESC, c.id DESC")
+            CATEGORY_CONDITIONS +
+            "ORDER BY c.created_at DESC, c.id DESC" +
+            "</script>")
     List<StockChangeVO> selectStockChangesForExport(@Param("materialId") String materialId,
-                                                    @Param("warehouseId") String warehouseId);
+                                                    @Param("warehouseId") String warehouseId,
+                                                    @Param("emergency") boolean emergency,
+                                                    @Param("commonOnly") boolean commonOnly);
 
     // ==================== P4 台账列表 ====================
 
@@ -201,6 +228,7 @@ public interface InventoryLedgerMapper {
             "LEFT JOIN " + T_WAREHOUSE + " w ON w.id = t.oywydb AND w.corp_code = 'hltgq' " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
             "WHERE t.corp_code = 'hltgq' " +
+            CATEGORY_CONDITIONS +
             "<if test='warehouseId != null and warehouseId != \"\"'>AND t.oywydb = #{warehouseId} </if>" +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR t.wpxwwi LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "<if test='statusCode != null and statusCode != \"\"'>AND (" + STOCK_STATUS_EXPR + ") = #{statusCode} </if>" +
@@ -210,6 +238,8 @@ public interface InventoryLedgerMapper {
     List<LedgerPageItemVO> selectLedgerPage(@Param("warehouseId") String warehouseId,
                                             @Param("keyword") String keyword,
                                             @Param("statusCode") String statusCode,
+                                            @Param("emergency") boolean emergency,
+                                            @Param("commonOnly") boolean commonOnly,
                                             @Param("size") int size,
                                             @Param("offset") long offset);
 
@@ -218,13 +248,16 @@ public interface InventoryLedgerMapper {
             "SELECT COUNT(*) FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
             "WHERE t.corp_code = 'hltgq' " +
+            CATEGORY_CONDITIONS +
             "<if test='warehouseId != null and warehouseId != \"\"'>AND t.oywydb = #{warehouseId} </if>" +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR t.wpxwwi LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "<if test='statusCode != null and statusCode != \"\"'>AND (" + STOCK_STATUS_EXPR + ") = #{statusCode} </if>" +
             "</script>")
     long countLedgers(@Param("warehouseId") String warehouseId,
                       @Param("keyword") String keyword,
-                      @Param("statusCode") String statusCode);
+                      @Param("statusCode") String statusCode,
+                      @Param("emergency") boolean emergency,
+                      @Param("commonOnly") boolean commonOnly);
 
     /** 台账导出（同 P4 条件，全量无分页；前端生成 Excel；安全库存/状态实时口径）。 */
     @Select("<script>" +
@@ -237,6 +270,7 @@ public interface InventoryLedgerMapper {
             "LEFT JOIN " + T_WAREHOUSE + " w ON w.id = t.oywydb AND w.corp_code = 'hltgq' " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
             "WHERE t.corp_code = 'hltgq' " +
+            CATEGORY_CONDITIONS +
             "<if test='warehouseId != null and warehouseId != \"\"'>AND t.oywydb = #{warehouseId} </if>" +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR t.wpxwwi LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "<if test='statusCode != null and statusCode != \"\"'>AND (" + STOCK_STATUS_EXPR + ") = #{statusCode} </if>" +
@@ -244,7 +278,9 @@ public interface InventoryLedgerMapper {
             "</script>")
     List<LedgerPageItemVO> selectLedgerExportRows(@Param("warehouseId") String warehouseId,
                                                   @Param("keyword") String keyword,
-                                                  @Param("statusCode") String statusCode);
+                                                  @Param("statusCode") String statusCode,
+                                                  @Param("emergency") boolean emergency,
+                                                  @Param("commonOnly") boolean commonOnly);
 
     // ==================== 表单选择器 / 校验辅助 ====================
 
@@ -308,18 +344,23 @@ public interface InventoryLedgerMapper {
     /** 物资目录候选（入库明细「从目录选择」，不按默认仓库硬过滤；safetyStockRaw 为原始文本由 Service 解析）。 */
     @Select("<script>" +
             "SELECT m.id AS id, m.higsdd AS code, m.avlsdv AS name, m.fqztqm AS brand, " +
-            "m.iwnyuk AS spec, m.boipik AS unit, m.unqvqe AS safetyStockRaw, m.fmewia AS defaultWarehouseId " +
+            "m.iwnyuk AS spec, m.boipik AS unit, m.unqvqe AS safetyStockRaw, m.fmewia AS defaultWarehouseId, " +
+            CATEGORY_EXPR + " AS category " +
             "FROM " + T_MATERIAL + " m " +
             "WHERE m.corp_code = 'hltgq' " +
+            CATEGORY_CONDITIONS +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR m.avlsdv LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "ORDER BY m.higsdd ASC, m.id ASC " +
             "LIMIT 1000" +
             "</script>")
-    List<MaterialVO> selectMaterials(@Param("keyword") String keyword);
+    List<MaterialVO> selectMaterials(@Param("keyword") String keyword,
+                                     @Param("emergency") boolean emergency,
+                                     @Param("commonOnly") boolean commonOnly);
 
-    /** 单个物资（入库明细快照来源；null = 不存在）。 */
+    /** 单个物资（入库明细快照来源与保存校验；null = 不存在）。 */
     @Select("SELECT m.id AS id, m.higsdd AS code, m.avlsdv AS name, m.fqztqm AS brand, " +
-            "m.iwnyuk AS spec, m.boipik AS unit, m.unqvqe AS safetyStockRaw, m.fmewia AS defaultWarehouseId " +
+            "m.iwnyuk AS spec, m.boipik AS unit, m.unqvqe AS safetyStockRaw, m.fmewia AS defaultWarehouseId, " +
+            CATEGORY_EXPR + " AS category " +
             "FROM " + T_MATERIAL + " m " +
             "WHERE m.id = #{id} AND m.corp_code = 'hltgq'")
     MaterialVO selectMaterialById(@Param("id") String id);
@@ -329,21 +370,24 @@ public interface InventoryLedgerMapper {
             "SELECT t.id AS ledgerId, t.jzikio AS materialId, m.higsdd AS code, t.wpxwwi AS name, " +
             "t.qhtxml AS brand, t.hughww AS spec, t.mddokm AS unit, " +
             "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, " + SAFE_STOCK_EXPR + " AS safetyStock, " +
-            "t.oywydb AS warehouseId " +
+            "t.oywydb AS warehouseId, " + CATEGORY_EXPR + " AS category " +
             "FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
             "WHERE t.corp_code = 'hltgq' AND t.oywydb = #{warehouseId} AND COALESCE(t.ejgxlq, 0) > 0 " +
+            CATEGORY_CONDITIONS +
             "<if test='keyword != null and keyword != \"\"'>AND (m.higsdd LIKE CONCAT('%', #{keyword}, '%') OR t.wpxwwi LIKE CONCAT('%', #{keyword}, '%')) </if>" +
             "ORDER BY m.higsdd ASC, t.id ASC" +
             "</script>")
     List<StockLedgerOptionVO> selectStockLedgerOptions(@Param("warehouseId") String warehouseId,
-                                                       @Param("keyword") String keyword);
+                                                       @Param("keyword") String keyword,
+                                                       @Param("emergency") boolean emergency,
+                                                       @Param("commonOnly") boolean commonOnly);
 
     /** 出库保存按台账行 id 取快照（校验行归属仓库、取物资六字段快照与可用库存；安全库存实时取物资目录）。 */
     @Select("SELECT t.id AS ledgerId, t.jzikio AS materialId, m.higsdd AS code, t.wpxwwi AS name, " +
             "t.qhtxml AS brand, t.hughww AS spec, t.mddokm AS unit, " +
             "CAST(t.ejgxlq AS numeric(20,0)) AS quantity, " + SAFE_STOCK_EXPR + " AS safetyStock, " +
-            "t.oywydb AS warehouseId " +
+            "t.oywydb AS warehouseId, " + CATEGORY_EXPR + " AS category " +
             "FROM " + T_LEDGER + " t " +
             "LEFT JOIN " + T_MATERIAL + " m ON m.id = t.jzikio AND m.corp_code = 'hltgq' " +
             "WHERE t.id = #{ledgerId} AND t.corp_code = 'hltgq'")

@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.inventoryorder.mapper;
 
+import com.qgyun.hltgq.hltgqsite.inventoryorder.InventoryCategory;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.OrderDetailVO;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.OrderExportRowVO;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.OrderPageItemVO;
@@ -28,6 +29,7 @@ public interface InventoryOrderMapper {
     String T_OUTBOUND_DETAIL = "\"qixiao-apaas\".\"t_auto_hltgq_water_outbound_order_detail\"";
     String T_WAREHOUSE = "\"qixiao-apaas\".\"t_auto_hltgq_knc3g_twufyx\"";
     String T_ORG = "\"qixiao-apaas\".\"t_apaas_uc_org\"";
+    String T_MATERIAL = "\"qixiao-apaas\".\"t_auto_hltgq_knc3g_slaifi\"";
 
     /** P1 单据来源子查询：两表同构输出 + 来源列 source（RK/CK）；del_flag 恒 #2#（本期无删除）。 */
     String ORDERS_UNION = "(SELECT 'RK' AS source, h.id AS id, h.order_no AS order_no, h.inbound_type AS biz_type, " +
@@ -41,6 +43,27 @@ public interface InventoryOrderMapper {
             "h.department_id AS department_id, h.operator_id AS operator_id, h.operator_name AS operator_name, " +
             "h.remark AS remark, h.created_at AS created_at " +
             "FROM " + T_OUTBOUND + " h WHERE h.corp_code = 'hltgq' AND h.del_flag = '#2#')";
+
+    /**
+     * 单据是否含应急物资明细（作用于 {@link #ORDERS_UNION} 外层别名 t）：入库/出库明细按 material_id 回查目录。
+     */
+    String HAS_EMERGENCY_LINE =
+            "((t.source = 'RK' AND EXISTS (SELECT 1 FROM " + T_INBOUND_DETAIL +
+            " d JOIN " + T_MATERIAL + " m ON m.id = d.material_id AND m.corp_code = 'hltgq' " +
+            "WHERE d.order_id = t.id AND d.corp_code = 'hltgq' AND " + InventoryCategory.CONDITION_EMERGENCY + ")) " +
+            "OR (t.source = 'CK' AND EXISTS (SELECT 1 FROM " + T_OUTBOUND_DETAIL +
+            " d JOIN " + T_MATERIAL + " m ON m.id = d.material_id AND m.corp_code = 'hltgq' " +
+            "WHERE d.order_id = t.id AND d.corp_code = 'hltgq' AND " + InventoryCategory.CONDITION_EMERGENCY + ")))";
+
+    /**
+     * 视角类别过滤：emergency=true 只看含应急物资明细的单据；false 排除含应急物资明细的单据
+     * （明细未关联物资的历史单据保留）。调用方恒传非 null（不传 scope 按常用物资处理）。
+     */
+    String CATEGORY_FILTER =
+            "<if test='emergency != null'><choose>" +
+            "<when test='emergency'>AND " + HAS_EMERGENCY_LINE + " </when>" +
+            "<otherwise>AND NOT " + HAS_EMERGENCY_LINE + " </otherwise>" +
+            "</choose></if>";
 
     /**
      * P1 动态查询条件（page/count/export 共用，作用于 {@link #ORDERS_UNION} 外层别名 t）。
@@ -58,7 +81,8 @@ public interface InventoryOrderMapper {
             "<if test='materialCode != null and materialCode != \"\"'>AND ((t.source = 'RK' AND EXISTS (SELECT 1 FROM " + T_INBOUND_DETAIL + " d WHERE d.order_id = t.id AND d.material_code LIKE CONCAT('%', #{materialCode}, '%'))) OR (t.source = 'CK' AND EXISTS (SELECT 1 FROM " + T_OUTBOUND_DETAIL + " d WHERE d.order_id = t.id AND d.material_code LIKE CONCAT('%', #{materialCode}, '%')))) </if>" +
             "<if test='materialName != null and materialName != \"\"'>AND ((t.source = 'RK' AND EXISTS (SELECT 1 FROM " + T_INBOUND_DETAIL + " d WHERE d.order_id = t.id AND d.material_name LIKE CONCAT('%', #{materialName}, '%'))) OR (t.source = 'CK' AND EXISTS (SELECT 1 FROM " + T_OUTBOUND_DETAIL + " d WHERE d.order_id = t.id AND d.material_name LIKE CONCAT('%', #{materialName}, '%')))) </if>" +
             "<if test='startDate != null and startDate != \"\"'>AND t.order_date &gt;= CAST(#{startDate} AS date) </if>" +
-            "<if test='endDate != null and endDate != \"\"'>AND t.order_date &lt;= CAST(#{endDate} AS date) </if>";
+            "<if test='endDate != null and endDate != \"\"'>AND t.order_date &lt;= CAST(#{endDate} AS date) </if>" +
+            CATEGORY_FILTER;
 
     // ==================== 写入 ====================
 
@@ -145,6 +169,7 @@ public interface InventoryOrderMapper {
                                           @Param("materialName") String materialName,
                                           @Param("startDate") String startDate,
                                           @Param("endDate") String endDate,
+                                          @Param("emergency") Boolean emergency,
                                           @Param("size") int size,
                                           @Param("offset") long offset);
 
@@ -161,7 +186,17 @@ public interface InventoryOrderMapper {
                      @Param("materialCode") String materialCode,
                      @Param("materialName") String materialName,
                      @Param("startDate") String startDate,
-                     @Param("endDate") String endDate);
+                     @Param("endDate") String endDate,
+                     @Param("emergency") Boolean emergency);
+
+    /** 单据是否含应急物资明细（详情深链校验用：同一 orderId 只可能命中一个来源明细表）。 */
+    @Select("SELECT (SELECT COUNT(*) FROM " + T_INBOUND_DETAIL + " d JOIN " + T_MATERIAL +
+            " m ON m.id = d.material_id AND m.corp_code = 'hltgq' " +
+            "WHERE d.order_id = #{orderId} AND d.corp_code = 'hltgq' AND " + InventoryCategory.CONDITION_EMERGENCY + ") + " +
+            "(SELECT COUNT(*) FROM " + T_OUTBOUND_DETAIL + " d JOIN " + T_MATERIAL +
+            " m ON m.id = d.material_id AND m.corp_code = 'hltgq' " +
+            "WHERE d.order_id = #{orderId} AND d.corp_code = 'hltgq' AND " + InventoryCategory.CONDITION_EMERGENCY + ")")
+    long countEmergencyLines(@Param("orderId") String orderId);
 
     /** 入库单详情头（bizType=inbound_type，counterparty=source_unit）。 */
     @Select("SELECT 'RK' AS source, h.id AS id, h.order_no AS orderNo, h.inbound_type AS bizType, " +
@@ -253,5 +288,6 @@ public interface InventoryOrderMapper {
                                                  @Param("materialCode") String materialCode,
                                                  @Param("materialName") String materialName,
                                                  @Param("startDate") String startDate,
-                                                 @Param("endDate") String endDate);
+                                                 @Param("endDate") String endDate,
+                                                 @Param("emergency") Boolean emergency);
 }

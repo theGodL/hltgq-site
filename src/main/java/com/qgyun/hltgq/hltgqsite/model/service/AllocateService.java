@@ -120,6 +120,8 @@ public class AllocateService {
         requireInRange("溢洪道开启水位", spillwayOpenLevel, 81, 99);
         // 其余 12 个 parameters 透传参数仅做非负校验（范围模型方未给出；类型由 JSON 反序列化保证，非数值直接 400）
         requireNonNegativeParams(req);
+        // 2026-10 模型方书面答复 C2：16 参数交叉校验（缺失参数以默认值代入，规则见方法注释）
+        requireCrossChecks(req, initialLevel, floodLimitLevel, spillwayOpenLevel);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("mode", "auto");
@@ -203,6 +205,54 @@ public class AllocateService {
     private void checkNonNegative(String name, Double value) {
         if (value != null && value < 0) {
             throw new IllegalArgumentException(name + "不能为负数，当前值：" + value);
+        }
+    }
+
+    /**
+     * 16 参数交叉校验（2026-10 模型方书面答复 C2 规则，缺失参数以默认值代入）：
+     * <ul>
+     * <li>44 ≤ 死水位 ≤ 发电最低水位 ≤ 发电适用水位上界 ≤ 99</li>
+     * <li>死水位 ≤ 起始水位 ≤ 99；死水位 ≤ 计划年末蓄水位 ≤ 99</li>
+     * <li>发电最低水位 ≤ 汛限水位 ≤ 泄洪隧洞启用水位 ≤ 溢洪道开启水位 ≤ 99</li>
+     * <li>常规发电基准流量 &gt; 0 且 ≤ 最大发电流量</li>
+     * </ul>
+     * 无 initial ≤ flood_limit 强制约束；供水四项仅非负（模型方未给上限）。
+     */
+    private void requireCrossChecks(AllocateSubmitRequest req, double initialLevel,
+                                    double floodLimitLevel, double spillwayOpenLevel) {
+        double dead = req.getDeadWaterLevel() == null ? 74.0 : req.getDeadWaterLevel();
+        double genMin = req.getGenerationMinLevel() == null ? 75.0 : req.getGenerationMinLevel();
+        double genMax = req.getGenerationMaxLevel() == null ? 90.0 : req.getGenerationMaxLevel();
+        double yearEndTarget = req.getYearEndTargetLevel() == null ? 77.0 : req.getYearEndTargetLevel();
+        double floodControlTarget = req.getFloodControlTargetLevel() == null ? 81.0 : req.getFloodControlTargetLevel();
+        // 44 ≤ 死水位 ≤ 发电最低水位 ≤ 发电适用水位上界 ≤ 99
+        requireInRange("死水位", dead, 44, 99);
+        requireLe("死水位", dead, "发电最低水位", genMin);
+        requireLe("发电最低水位", genMin, "发电适用水位上界", genMax);
+        requireInRange("发电适用水位上界", genMax, 44, 99);
+        // 死水位 ≤ 起始水位 ≤ 99（起始水位上界已由公共边界校验保证）
+        requireLe("死水位", dead, "起始水位", initialLevel);
+        // 死水位 ≤ 计划年末蓄水位 ≤ 99
+        requireLe("死水位", dead, "计划年末蓄水位", yearEndTarget);
+        requireInRange("计划年末蓄水位", yearEndTarget, 44, 99);
+        // 发电最低水位 ≤ 汛限水位 ≤ 泄洪隧洞启用水位 ≤ 溢洪道开启水位 ≤ 99（上界已由公共边界校验保证）
+        requireLe("发电最低水位", genMin, "汛限水位", floodLimitLevel);
+        requireLe("汛限水位", floodLimitLevel, "泄洪隧洞启用水位", floodControlTarget);
+        requireLe("泄洪隧洞启用水位", floodControlTarget, "溢洪道开启水位", spillwayOpenLevel);
+        // 常规发电基准流量 > 0 且 ≤ 最大发电流量
+        double baseGen = req.getBaseGenerationM3s() == null ? 30.0 : req.getBaseGenerationM3s();
+        double nameplate = req.getGenerationNameplateM3s() == null ? 120.0 : req.getGenerationNameplateM3s();
+        if (baseGen <= 0) {
+            throw new IllegalArgumentException("常规发电基准流量必须大于 0，当前值：" + baseGen);
+        }
+        requireLe("常规发电基准流量", baseGen, "最大发电流量", nameplate);
+    }
+
+    /** 交叉约束校验：左值不得大于右值 */
+    private void requireLe(String leftName, double left, String rightName, double right) {
+        if (left > right) {
+            throw new IllegalArgumentException(
+                    leftName + "(" + left + ") 不能大于 " + rightName + "(" + right + ")");
         }
     }
 
@@ -501,7 +551,7 @@ public class AllocateService {
         return result;
     }
 
-    /** 灌区年汇总卡：模型「年汇总」对象（塘坝可供水量/总需水量/总供水/水库计划补充） */
+    /** 灌区年汇总卡：模型「年汇总」对象（塘坝可供水量/总需水量/总供水/水库计划补充/供需缺口，键名按模型实测收敛） */
     private Map<String, Object> buildIrrigationAnnual(JsonNode views) {
         Map<String, Object> annual = new LinkedHashMap<>();
         JsonNode yearSummary = views.get("年汇总");
@@ -509,24 +559,28 @@ public class AllocateService {
             // 年汇总缺失时退化为「灌区水资源配置」逐旬求和
             double[] sums = new double[3];
             for (JsonNode item : views.path("灌区水资源配置")) {
-                sums[0] += nvl(doubleOfAny(item, "塘坝可供水量", "塘坝可供水量（万方）"));
-                sums[1] += nvl(doubleOfAny(item, "总需水量（万方）", "灌区总需水", "总需水"));
-                sums[2] += nvl(doubleOfAny(item, "总供水", "灌区计划供水总量", "计划供水总量"));
+                sums[0] += nvl(doubleOfAny(item, "塘坝可供水量（万方）", "塘坝可供水量"));
+                sums[1] += nvl(doubleOfAny(item, "灌区总需水（万方）", "灌区总需水"));
+                sums[2] += nvl(doubleOfAny(item, "灌区计划供水总量（万方）", "灌区计划供水总量"));
             }
             annual.put("pondSupply", round2OrNull(sums[0]));
             annual.put("totalDemand", round2OrNull(sums[1]));
             annual.put("plannedSupplyTotal", round2OrNull(sums[2]));
             annual.put("reservoirSupplementSupply", null);
+            annual.put("gap", null);
+            annual.put("irrigationTotalDemand", annual.get("totalDemand"));
             return annual;
         }
-        annual.put("pondSupply", doubleOfAny(yearSummary, "塘坝可供水量", "塘坝可供水量（万方）", "塘坝供水"));
-        annual.put("totalDemand", doubleOfAny(yearSummary, "总需水量（万方）", "灌区总需水", "总需水"));
-        annual.put("plannedSupplyTotal", doubleOfAny(yearSummary, "总供水", "灌区计划供水总量", "计划供水总量"));
-        annual.put("reservoirSupplementSupply", doubleOfAny(yearSummary, "花凉亭水库计划补充供水量", "水库计划补水", "水库补充供水量"));
+        annual.put("pondSupply", doubleOfAny(yearSummary, "塘坝可供水量（万方）", "塘坝可供水量", "塘坝供水"));
+        annual.put("totalDemand", doubleOfAny(yearSummary, "总需水量（万方）", "灌区总需水（万方）", "总需水"));
+        annual.put("plannedSupplyTotal", doubleOfAny(yearSummary, "总供水", "灌区计划供水总量（万方）", "计划供水总量"));
+        annual.put("reservoirSupplementSupply", doubleOfAny(yearSummary, "花凉亭水库计划补充供水量（万方）", "花凉亭水库计划补充供水量", "水库计划补水"));
+        annual.put("gap", doubleOfAny(yearSummary, "灌区供需缺口（万方）"));
+        annual.put("irrigationTotalDemand", doubleOfAny(yearSummary, "灌区总需水（万方）", "灌区总需水"));
         return annual;
     }
 
-    /** 灌区过程曲线：灌区水资源配置 array 逐旬三列 */
+    /** 灌区过程曲线：灌区水资源配置 array 逐旬三列（键名按模型实测收敛） */
     private List<Map<String, Object>> buildIrrigationProcess(JsonNode views) {
         List<Map<String, Object>> process = new ArrayList<>();
         JsonNode array = views.path("灌区水资源配置");
@@ -537,16 +591,19 @@ public class AllocateService {
                 String label = textOfAny(item, "日期", "旬", "旬标签");
                 row.put("tendayLabel", label);
                 row.put("sortOrder", fullSortOf(label));
-                row.put("totalDemand", doubleOfAny(item, "灌区总需水", "总需水量（万方）", "总需水", "农业需水"));
-                row.put("plannedSupplyTotal", doubleOfAny(item, "灌区计划供水总量", "计划供水总量", "总供水"));
-                row.put("reservoirSupplementSupply", doubleOfAny(item, "花凉亭水库计划补充供水量", "水库计划补水", "水库补充供水"));
+                row.put("totalDemand", doubleOfAny(item, "灌区总需水（万方）", "灌区总需水", "总需水量（万方）"));
+                row.put("plannedSupplyTotal", doubleOfAny(item, "灌区计划供水总量（万方）", "灌区计划供水总量", "总供水"));
+                row.put("reservoirSupplementSupply", doubleOfAny(item, "花凉亭水库计划补充供水量（万方）", "花凉亭水库计划补充供水量", "水库计划补水"));
                 process.add(row);
             }
         }
         return process;
     }
 
-    /** 水库年汇总卡：水库年汇总 object（26 字段，契约七项重点指标按候选键名取） */
+    /**
+     * 水库年汇总卡：水库年汇总 object。
+     * <p>七项重点指标按模型实测键名解析（英文键），26 个中文键以 JsonNode 原样全量透出（raw）供前端/联调取用。
+     */
     private Map<String, Object> buildReservoirAnnual(JsonNode views) {
         Map<String, Object> annual = new LinkedHashMap<>();
         JsonNode node = views.get("水库年汇总");
@@ -561,17 +618,19 @@ public class AllocateService {
             return annual;
         }
         log.info("配置两视图键名核对（水库年汇总）：键={}", fieldNamesOf(node));
-        annual.put("inflow", doubleOfAny(node, "入库水量", "总入库水量", "入库总量", "来水量"));
-        annual.put("supplementSupply", doubleOfAny(node, "计划补充供水量", "灌溉供水量", "渠首建议供水", "水库补充供水量"));
-        annual.put("powerGeneration", doubleOfAny(node, "过机发电水量", "发电量", "发电水量", "发电"));
-        annual.put("leakageLoss", doubleOfAny(node, "渗漏损失", "总渗漏损失", "渗漏量"));
-        annual.put("startLevel", doubleOfAny(node, "期初水位", "起始水位", "年初水位"));
-        annual.put("endLevel", doubleOfAny(node, "期末水位", "年末水位", "年末蓄水位"));
-        annual.put("maxLevel", doubleOfAny(node, "最高水位", "最大水位"));
+        // 26 个中文键 JsonNode 原样全量透出（不解析，避免键名歧义丢字段）
+        node.fields().forEachRemaining(entry -> annual.put(entry.getKey(), entry.getValue()));
+        annual.put("inflow", doubleOfAny(node, "入库水量（万方）", "入库水量", "总入库水量", "来水量"));
+        annual.put("supplementSupply", doubleOfAny(node, "花凉亭水库计划补充供水量（万方）", "花凉亭水库计划补充供水量", "计划补充供水量", "渠首建议供水"));
+        annual.put("powerGeneration", doubleOfAny(node, "过机发电水量（万方）", "过机发电水量", "发电水量"));
+        annual.put("leakageLoss", doubleOfAny(node, "渗漏损失（万方）", "渗漏损失", "总渗漏损失"));
+        annual.put("startLevel", doubleOfAny(node, "期初水位（m）", "期初水位", "起始水位"));
+        annual.put("endLevel", doubleOfAny(node, "期末水位（m）", "期末水位", "年末水位"));
+        annual.put("maxLevel", doubleOfAny(node, "水库最高水位（m）", "最高水位", "最大水位"));
         return annual;
     }
 
-    /** 水库逐旬清单 array → tendayDetails（入库/计划补水/总出库/旬末水位/旬末库容） */
+    /** 水库逐旬清单 array → tendayDetails（入库/计划补水/总出库/旬末水位/旬末库容，键名按模型实测收敛） */
     private List<Map<String, Object>> buildReservoirTendays(JsonNode views) {
         List<Map<String, Object>> tendays = new ArrayList<>();
         JsonNode array = views.path("水库逐旬清单");
@@ -582,18 +641,18 @@ public class AllocateService {
                 String label = textOfAny(item, "日期", "旬", "旬标签");
                 row.put("tendayLabel", label);
                 row.put("sortOrder", fullSortOf(label));
-                row.put("inflow", doubleOfAny(item, "入库水量", "BP预测来水量（万方）", "来水量", "来水量（万方）"));
-                row.put("supplementSupply", doubleOfAny(item, "花凉亭水库计划补充供水量", "渠首建议供水", "灌溉供水"));
-                row.put("totalOutflow", doubleOfAny(item, "总出库", "水库总出库", "出库水量", "出库"));
-                row.put("endWaterLevel", doubleOfAny(item, "旬末水位", "月末水位", "水位"));
-                row.put("endStorage", doubleOfAny(item, "旬末库容", "月末库容", "库容"));
+                row.put("inflow", doubleOfAny(item, "入库水量（万方）", "入库水量", "BP预测来水量（万方）"));
+                row.put("supplementSupply", doubleOfAny(item, "花凉亭水库计划补充供水量（万方）", "花凉亭水库计划补充供水量", "渠首建议供水"));
+                row.put("totalOutflow", doubleOfAny(item, "水库总出库（含渗漏）（万方）", "水库总出库", "总出库", "出库水量"));
+                row.put("endWaterLevel", doubleOfAny(item, "旬末水位（m）", "旬末水位", "月末水位"));
+                row.put("endStorage", doubleOfAny(item, "旬末库容（万方）", "旬末库容", "月末库容"));
                 tendays.add(row);
             }
         }
         return tendays;
     }
 
-    /** 水库月汇总 array → monthlySummaries（逐月：月末水位/月末库容，键名候选 + 核对日志） */
+    /** 水库月汇总 array → monthlySummaries（逐月：期末水位/期末库容，键名按模型实测收敛） */
     private List<Map<String, Object>> buildReservoirMonthly(JsonNode views) {
         List<Map<String, Object>> monthly = new ArrayList<>();
         JsonNode array = views.path("水库月汇总");
@@ -601,9 +660,9 @@ public class AllocateService {
             log.info("配置两视图键名核对（水库月汇总）：首行键={}", fieldNamesOf(firstOf(array)));
             for (JsonNode item : array) {
                 Map<String, Object> row = new LinkedHashMap<>();
-                row.put("month", textOfAny(item, "月份", "月", "月份标签"));
-                row.put("endWaterLevel", doubleOfAny(item, "月末水位", "水位"));
-                row.put("endStorage", doubleOfAny(item, "月末库容", "库容"));
+                row.put("month", textOfAny(item, "日期", "月份", "月"));
+                row.put("endWaterLevel", doubleOfAny(item, "期末水位（m）", "期末水位", "月末水位"));
+                row.put("endStorage", doubleOfAny(item, "期末库容（万方）", "期末库容", "月末库容"));
                 monthly.add(row);
             }
         }

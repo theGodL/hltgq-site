@@ -90,11 +90,13 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_decision_admin_year
 CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_decision_supply_alloc (
     id                VARCHAR(64) PRIMARY KEY,
     record_id         VARCHAR(64),
+    tenday_label      VARCHAR(64),                 -- 旬标签（如 "5月上旬"），2026-10 实测数组 18 行逐旬表新增
+    sort_order        DOUBLE PRECISION,            -- 旬排序 1~18（按 TEN_DAY_MAP），详情按旬正序展示
     demand_volume     DOUBLE PRECISION,            -- 需水量(万方)
     suggested_supply  DOUBLE PRECISION,            -- 建议供水量(万方)
     pond_supplement   DOUBLE PRECISION,            -- 塘坝补水量(万方)
     supply_after_pond DOUBLE PRECISION,            -- 补水后总供水量(万方)
-    net_demand        DOUBLE PRECISION,            -- 净需水量合计(万方)
+    net_demand        DOUBLE PRECISION,            -- 净需水量合计(万方)，数组行无此键（仅「总计_全部旬」对象有），恒 null
     is_satisfied      VARCHAR(16),                 -- 是否满足：#1# 是 / #2# 否
     corp_code         VARCHAR(64),
     created_at        TIMESTAMP,
@@ -105,6 +107,10 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_decision_supply_all
 CREATE INDEX IF NOT EXISTS idx_decision_admin_month_record ON "qixiao-apaas".t_auto_hltgq_water_decision_admin_month(record_id, "year", "month");
 CREATE INDEX IF NOT EXISTS idx_decision_admin_year_record ON "qixiao-apaas".t_auto_hltgq_water_decision_admin_year(record_id, "year");
 CREATE INDEX IF NOT EXISTS idx_decision_supply_alloc_record ON "qixiao-apaas".t_auto_hltgq_water_decision_supply_alloc(record_id);
+-- 供水分配汇总改为 18 行逐旬落库（模型实测数组；表已建时补列，幂等；带 schema 前缀防 search_path 不含时找不到表）
+ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_decision_supply_alloc ADD COLUMN IF NOT EXISTS tenday_label VARCHAR(64);
+ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_decision_supply_alloc ADD COLUMN IF NOT EXISTS sort_order DOUBLE PRECISION;
+CREATE INDEX IF NOT EXISTS idx_decision_supply_alloc_sort ON "qixiao-apaas".t_auto_hltgq_water_decision_supply_alloc(record_id, sort_order);
 
 -- 短期来水预测
 ALTER TABLE t_auto_hltgq_water_short_forecast_record ALTER COLUMN request_json TYPE TEXT;
@@ -865,6 +871,25 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_patrol_record_photo
 );
 CREATE INDEX IF NOT EXISTS idx_patrol_record_photo_record
     ON "qixiao-apaas".t_auto_hltgq_water_patrol_record_photo(record_id);
+
+-- 8. 应急保障附件：自研应急保障页上传；上传时 support_id 为空，保存/编辑时回填
+--    文件落盘 file-dir/emergency/{yyyy-MM}/，编辑移除/整条删除时提交后物理删文件 + 删行
+--    主表为低代码表 t_auto_hltgq_bcmxdv_ifjcmy（已有），本表不写平台附件关系表
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_emergency_attachment (
+    id         VARCHAR(64)  PRIMARY KEY,
+    support_id VARCHAR(64),                       -- 应急保障记录 ID（ifjcmy.id，上传时为空）
+    file_name  VARCHAR(255) NOT NULL,             -- 原始文件名（下载展示用）
+    file_path  VARCHAR(500) NOT NULL,             -- 相对 file-dir 的存储路径（emergency/yyyy-MM/uuid_原名）
+    file_size  BIGINT,                            -- 文件大小（字节）
+    file_ext   VARCHAR(16),                       -- 扩展名（小写，下载 Content-Type 判别）
+    corp_code  VARCHAR(64),
+    created_at TIMESTAMP,
+    created_by VARCHAR(64),
+    updated_at TIMESTAMP,
+    updated_by VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_emergency_attachment_support
+    ON "qixiao-apaas".t_auto_hltgq_water_emergency_attachment(support_id);
 
 -- ========== 模型一体化 V3（2026-10-26 会议定稿改造） ==========
 -- 需水：支渠明细加行政区列（county 主数据源为入参 demand_table 按支渠匹配；模型响应支渠明细无行政区列时同源）

@@ -60,6 +60,7 @@ public class InventoryStocktakeController {
      * @param materialName 物资名称（明细级模糊，可选）
      * @param startDate    盘点日期起（yyyy-MM-dd，可选，含当日）
      * @param endDate      盘点日期止（yyyy-MM-dd，可选，含当日）
+     * @param scope        页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      * @return total / page / size / pages / records（records 行含附件摘要）
      */
     @GetMapping("/page")
@@ -71,19 +72,22 @@ public class InventoryStocktakeController {
                                     @RequestParam(required = false) String materialCode,
                                     @RequestParam(required = false) String materialName,
                                     @RequestParam(required = false) String startDate,
-                                    @RequestParam(required = false) String endDate) {
+                                    @RequestParam(required = false) String endDate,
+                                    @RequestParam(required = false) String scope) {
         return stocktakeService.page(page, size, orderNo, warehouseId, operatorId,
-                materialCode, materialName, startDate, endDate);
+                materialCode, materialName, startDate, endDate, scope);
     }
 
     /**
-     * 盘点单详情（主表 + 明细 + 附件）。
+     * 盘点单详情（主表 + 明细 + 附件；跨类别单据按 id 直达也拒绝）。
      *
-     * @param id 盘点单 ID（必填）
+     * @param id    盘点单 ID（必填）
+     * @param scope 页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      */
     @GetMapping("/detail")
-    public StocktakeDetailVO detail(@RequestParam String id) {
-        return stocktakeService.detail(id);
+    public StocktakeDetailVO detail(@RequestParam String id,
+                                    @RequestParam(required = false) String scope) {
+        return stocktakeService.detail(id, scope);
     }
 
     /**
@@ -118,11 +122,13 @@ public class InventoryStocktakeController {
      *
      * @param warehouseId 仓库 ID（必填）
      * @param keyword     物资编号/名称关键字（可选）
+     * @param scope       页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      */
     @GetMapping("/stock-ledgers")
     public List<StockLedgerOptionVO> stockLedgers(@RequestParam String warehouseId,
-                                                  @RequestParam(required = false) String keyword) {
-        return stocktakeService.stockLedgers(warehouseId, keyword);
+                                                  @RequestParam(required = false) String keyword,
+                                                  @RequestParam(required = false) String scope) {
+        return stocktakeService.stockLedgers(warehouseId, keyword, scope);
     }
 
     /**
@@ -130,11 +136,13 @@ public class InventoryStocktakeController {
      *
      * @param warehouseId 仓库 ID（必填）
      * @param keyword     物资编号/名称关键字（可选）
+     * @param scope       页面视角（可选）：emergency 应急物资；不传/common = 常用物资
      */
     @GetMapping("/material-options")
     public List<StockLedgerOptionVO> materialOptions(@RequestParam String warehouseId,
-                                                     @RequestParam(required = false) String keyword) {
-        return stocktakeService.materialOptions(warehouseId, keyword);
+                                                     @RequestParam(required = false) String keyword,
+                                                     @RequestParam(required = false) String scope) {
+        return stocktakeService.materialOptions(warehouseId, keyword, scope);
     }
 
     /**

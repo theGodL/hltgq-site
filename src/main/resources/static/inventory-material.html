@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物资目录</title>
+<script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/monitor-export.js"></script>
+<style>
+/* ===== 平台变量：对齐库存管理其他页面；色值/圆角/层级集中在此，规则里禁止硬编码 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-color-danger:#f56c6c;
+  --el-color-danger-hover:#f78989;
+  --el-color-danger-light:rgba(245,108,108,.08);
+  --el-color-danger-ring:rgba(245,108,108,.2);
+  --el-color-warning:#fa8c16;
+  --el-color-warning-light:rgba(250,140,22,.1);
+  --el-color-success:#52c41a;
+  --el-color-success-light:rgba(82,196,26,.1);
+  --el-color-purple:#722ed1;             /* 应急物资标识 */
+  --el-color-purple-light:rgba(114,46,209,.1);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-tertiary:#8c8c8c;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-text-color-disabled:#bfbfbf;
+  --el-text-color-icon:#606266;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-border-color-hover:#1677FF;
+  --el-fill-color-light:#f5f7fa;
+  --el-fill-color-disabled:#f5f5f5;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height:40px;
+  --el-control-height-sm:36px;
+  --el-table-header-bg:#f5f7fa;
+  --el-table-stripe-bg:#fafafa;
+  --el-table-row-height:52px;
+  --el-table-border:#f0f0f0;
+  --el-tag-bg:#f0f0f0;
+  --el-tag-color:#666;
+  --el-shadow-popper:0 2px 12px rgba(0,0,0,.1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;max-width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+
+/* ===== 页面骨架：筛选卡 + 表格卡 ===== */
+.page-wrap{height:100%;min-height:0;padding:16px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%;overflow:hidden}
+.filter-card{flex-shrink:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:16px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.filter-item{display:flex;align-items:center;gap:8px}
+.flt-label{font-size:14px;color:var(--el-text-color-title);text-align:right;white-space:nowrap}
+.filter-item .field{width:260px}
+.filter-item .sel{width:180px}
+.filter-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+.panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+.panel-hd{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:16px 24px 0;flex-shrink:0}
+.panel-hd .btn{height:var(--el-control-height-sm);padding:0 16px}
+.hd-acts{display:flex;align-items:center;gap:8px}
+.panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
+
+/* ===== 控件 ===== */
+.field{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);padding:0 12px;font-size:14px;color:var(--el-text-color-primary);outline:none;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s;width:100%;font-family:inherit}
+.field::placeholder{color:var(--el-text-color-placeholder)}
+.field:hover{border-color:var(--el-border-color-hover)}
+.field:focus{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.field:disabled{background:var(--el-fill-color-disabled);color:var(--el-text-color-disabled);cursor:not-allowed}
+textarea.field{height:auto;min-height:76px;padding:8px 12px;line-height:22px;resize:vertical}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height);padding:0 20px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative;font-family:inherit}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn:disabled,.btn.is-loading{opacity:.85;cursor:not-allowed;pointer-events:none}
+.btn[hidden]{display:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+.btn-default.is-loading::after{border-color:rgba(0,0,0,.1);border-top-color:var(--el-text-color-regular)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== 表格 ===== */
+.tbl-wrap{flex:1;min-height:0;overflow:auto;max-width:100%}
+table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
+thead tr{background:var(--el-table-header-bg)}
+th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
+td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(--el-table-border);font-size:14px;color:var(--el-text-color-primary);text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th:first-child,td:first-child{padding-left:16px}
+tbody tr:nth-child(even) td{background:var(--el-table-stripe-bg)}
+tbody tr:hover td{background:var(--el-fill-color-light)}
+td.col-act{white-space:nowrap;overflow:visible}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+td .tag{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--el-radius);background:var(--el-tag-bg);color:var(--el-tag-color);font-size:12px;line-height:1;border:none;vertical-align:middle}
+td .tag::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+td .tag.common{color:var(--el-color-primary);background:var(--el-color-primary-light)}
+td .tag.emg{color:var(--el-color-purple);background:var(--el-color-purple-light)}
+.lnk-text{padding:0 4px;border:none;border-radius:var(--el-radius);background:transparent;color:var(--el-color-primary);font-size:14px;font-family:inherit;line-height:22px;cursor:pointer;transition:background .2s;vertical-align:middle}
+.lnk-text:hover{background:var(--el-color-primary-light)}
+.lnk-text.danger{color:var(--el-color-danger)}
+.lnk-text.danger:hover{background:var(--el-color-danger-light)}
+.lnk-text+.lnk-text{margin-left:8px}
+td.empty{padding:0;color:var(--el-text-color-secondary)}
+td.empty:hover{background:transparent}
+.empty-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:64px 0;font-size:14px;line-height:22px;color:var(--el-text-color-secondary)}
+tr.flash td{animation:flash 1s ease}
+@keyframes flash{0%{background:var(--el-color-primary-light)}100%{background:transparent}}
+
+/* ===== 分页 ===== */
+.pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:16px 0 0;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.pg-info{color:var(--el-text-color-primary);font-size:13px;margin-right:4px}
+.pg-size{height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);padding:0 8px;outline:none}
+.pg-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-btn{min-width:32px;height:32px;padding:0 6px;border:1px solid var(--el-border-color);background:var(--el-bg-color);border-radius:var(--el-radius);cursor:pointer;font-size:13px;color:var(--el-text-color-primary);transition:all .2s;display:inline-flex;align-items:center;justify-content:center}
+.pg-ellipsis{min-width:20px;height:32px;display:inline-flex;align-items:center;justify-content:center;color:var(--el-text-color-secondary);font-size:13px;user-select:none;letter-spacing:1px}
+.pg-btn:hover:not([disabled]):not(.active){border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn.active{background:var(--el-bg-color);border-color:var(--el-color-primary);color:var(--el-color-primary)}
+.pg-btn[disabled]{color:var(--el-text-color-disabled);cursor:not-allowed}
+.pg-btn[data-pg="prev"],.pg-btn[data-pg="next"]{border-color:transparent;background:transparent;font-size:16px;color:var(--el-text-color-tertiary)}
+.pg-btn[data-pg="prev"]:hover:not([disabled]),.pg-btn[data-pg="next"]:hover:not([disabled]){border-color:transparent;background:transparent;color:var(--el-color-primary)}
+.pg-jump{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--el-text-color-primary)}
+.pg-jump input{width:52px;height:32px;border:1px solid var(--el-border-color);border-radius:var(--el-radius);text-align:center;font-size:13px;color:var(--el-text-color-primary);background:var(--el-bg-color);outline:none;padding:0 8px}
+.pg-jump input:focus{border-color:var(--el-color-primary)}
+
+/* ===== 抽屉（新增/编辑物资） ===== */
+.drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s}
+.drawer-mask.show{opacity:1;visibility:visible}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:600px;max-width:100%;background:var(--el-bg-color);z-index:2001;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s ease;border-radius:8px 0 0 8px;overflow:hidden}
+.drawer.show{transform:translateX(0)}
+.drawer-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.drawer-hd h3{font-size:16px;font-weight:500;color:var(--el-text-color-primary)}
+.icon-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-text-color-icon);cursor:pointer;transition:all .2s}
+.icon-btn:hover{color:var(--el-text-color-primary);background:var(--el-fill-color-light)}
+.drawer-bd{flex:1;min-height:0;overflow-y:auto;padding:24px}
+.drawer-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
+.drawer-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
+@media (max-width:768px){.drawer{width:100%;border-radius:0}}
+.drawer-bd .field,.drawer-bd .sel-box{height:var(--el-control-height-sm);border-radius:var(--el-radius)}
+
+/* 表单：两列网格（标签上置、必填红星） */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 16px}
+.form-grid .span2{grid-column:span 2}
+@media (max-width:768px){.form-grid{grid-template-columns:1fr}.form-grid .span2{grid-column:span 1}}
+.f-label{display:block;font-size:14px;font-weight:400;color:var(--el-text-color-primary);margin-bottom:8px}
+.f-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
+.f-hint{margin-top:6px;font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
+.f-err{display:none;margin-top:4px;font-size:12px;color:var(--el-color-danger);line-height:16px}
+.f-err.show{display:block}
+.counter{margin-top:4px;text-align:right;font-size:12px;color:var(--el-text-color-secondary)}
+.scope-tip{margin-bottom:16px;padding:8px 12px;border:1px solid var(--el-color-purple-light);background:var(--el-color-purple-light);border-radius:var(--el-radius);font-size:13px;line-height:20px;color:var(--el-color-purple)}
+
+/* ===== 下拉组件（筛选 / 表单共用） ===== */
+.sel{position:relative}
+.sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 12px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
+.sel-box:hover{border-color:var(--el-border-color-hover)}
+.sel.open .sel-box{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sel.is-err .sel-box{border-color:var(--el-color-danger);box-shadow:0 0 0 2px var(--el-color-danger-ring)}
+.sel-text{flex:1;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-text.placeholder{color:var(--el-text-color-placeholder)}
+.sel-arrow{position:absolute;right:12px;top:50%;margin-top:-3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--el-text-color-placeholder);transition:transform .2s}
+.sel.open .sel-arrow{transform:rotate(180deg)}
+.sel.is-disabled .sel-box{background:var(--el-fill-color-disabled);border-color:var(--el-border-color-light);cursor:not-allowed}
+.sel.is-disabled .sel-text{color:var(--el-text-color-disabled)}
+.sel.is-disabled .sel-arrow{border-top-color:var(--el-text-color-disabled)}
+.sel-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);box-shadow:var(--el-shadow-popper);z-index:20;overflow:hidden}
+.sel.open .sel-panel{display:block}
+.sel-search{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--el-border-color-lighter);color:var(--el-text-color-secondary)}
+.sel-search[hidden]{display:none}
+.sel-search input{flex:1;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.sel-search input::placeholder{color:var(--el-text-color-placeholder)}
+.sel-list{max-height:274px;overflow-y:auto;padding:4px 0}
+.sel-opt{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--el-text-color-primary);cursor:pointer}
+.sel-opt:hover{background:var(--el-fill-color-light)}
+.sel-opt.active{color:var(--el-color-primary)}
+.sel-opt .opt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-opt .opt-sub{margin-left:auto;flex-shrink:0;font-size:12px;color:var(--el-text-color-secondary)}
+.sel-opt .tick{flex-shrink:0;color:var(--el-color-primary)}
+.sel-empty{padding:12px;text-align:center;font-size:13px;color:var(--el-text-color-secondary);line-height:18px}
+
+.toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
+.toast.show{opacity:1}
+.toast.err{color:var(--el-color-danger)}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="filter-card">
+    <div class="filter-item">
+      <span class="flt-label">仓库</span>
+      <div class="sel" id="f-warehouse"></div>
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">物资名称</span>
+      <input class="field" id="f-kw" placeholder="请输入物资名称" autocomplete="off">
+    </div>
+    <div class="filter-acts">
+      <button class="btn btn-primary" id="flt-search">查询</button>
+      <button class="btn btn-default" id="flt-reset">重置</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd">
+      <div class="hd-acts">
+        <button class="btn btn-default" id="btn-export">导出</button>
+        <button class="btn btn-primary" id="btn-add">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <span id="btn-add-text">新增物资</span>
+        </button>
+      </div>
+    </div>
+    <div class="panel-bd">
+      <div class="tbl-wrap">
+        <table>
+          <colgroup id="colgroup"></colgroup>
+          <thead><tr id="thead-row"></tr></thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="pg-bar"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 抽屉：新增 / 编辑物资 -->
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3 id="drawer-title">新增物资</h3>
+    <div class="hd-acts">
+      <button class="icon-btn" id="btn-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="drawer-bd">
+    <div class="scope-tip" id="scope-tip" hidden>当前为应急物资管理：新物资自动归入「应急物资」类别，类别不可修改。</div>
+    <div class="form-grid">
+      <div class="f-item">
+        <label class="f-label">物资编号</label>
+        <input class="field" id="in-code" maxlength="64" placeholder="留空自动生成" autocomplete="off">
+        <div class="f-hint">留空时系统按 WZ+时间戳 自动生成</div>
+      </div>
+      <div class="f-item">
+        <label class="f-label"><i class="req">*</i>物资名称</label>
+        <input class="field" id="in-name" maxlength="255" placeholder="请输入物资名称" autocomplete="off">
+        <div class="f-err" id="err-name"></div>
+      </div>
+      <div class="f-item" id="fld-category">
+        <label class="f-label"><i class="req">*</i>物资分类</label>
+        <div class="sel" id="sel-category"></div>
+        <div class="f-hint">选择「应急物资」后，该物资仅在应急物资管理中维护与出入库</div>
+      </div>
+      <div class="f-item">
+        <label class="f-label"><i class="req">*</i>计量单位</label>
+        <input class="field" id="in-unit" maxlength="64" placeholder="如 个 / 米 / 台" list="unit-list" autocomplete="off">
+        <datalist id="unit-list"></datalist>
+        <div class="f-err" id="err-unit"></div>
+      </div>
+      <div class="f-item">
+        <label class="f-label">品牌/生产厂家</label>
+        <input class="field" id="in-brand" maxlength="255" placeholder="请输入品牌/生产厂家" autocomplete="off">
+      </div>
+      <div class="f-item">
+        <label class="f-label">规格型号</label>
+        <input class="field" id="in-spec" maxlength="255" placeholder="请输入规格型号" autocomplete="off">
+      </div>
+      <div class="f-item">
+        <label class="f-label">安全库存下限</label>
+        <input class="field" id="in-safety" maxlength="20" placeholder="数字，如 100（可空）" autocomplete="off">
+        <div class="f-err" id="err-safety"></div>
+      </div>
+      <div class="f-item">
+        <label class="f-label">默认仓库</label>
+        <div class="sel" id="sel-warehouse"></div>
+      </div>
+      <div class="f-item span2">
+        <label class="f-label">备注</label>
+        <textarea class="field" id="in-remark" maxlength="500" placeholder="最多 500 字"></textarea>
+        <div class="counter"><span id="remark-count">0</span>/500</div>
+      </div>
+    </div>
+  </div>
+  <div class="drawer-ft">
+    <button class="btn btn-default" id="btn-cancel">取消</button>
+    <button class="btn btn-primary" id="btn-save">保存</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+<script>
+/* ============================ 常量与状态 ============================ */
+const API = '/hltgq-site';
+const ICON = {
+  search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  tick: '<svg class="tick" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+const S = {
+  scope: '', emergency: false,
+  meta: null,
+  page: 1, size: 10, total: 0, records: [],
+  filter: { keyword: '', warehouseId: '' },
+  editingId: '', viewing: false, saving: false, listSeq: 0, flashKey: null
+};
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v === null || v === undefined ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+function showToast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/** 统一请求：非 2xx 抛出后端 message */
+async function api(path, opts) {
+  const init = Object.assign({ credentials: 'include' }, opts || {});
+  if (init.body && typeof init.body !== 'string') {
+    init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
+    init.body = JSON.stringify(init.body);
+  }
+  const res = await fetch(API + path, init);
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = null; }
+  }
+  if (!res.ok) {
+    const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+    throw new Error((data && (data.message || data.error)) || fallback);
+  }
+  return data;
+}
+
+/** 过滤值转查询串（跳过空值） */
+function qs(obj) {
+  const p = new URLSearchParams();
+  Object.keys(obj).forEach(k => {
+    const v = obj[k];
+    if (v !== null && v !== undefined && String(v).trim() !== '') p.set(k, String(v).trim());
+  });
+  return p.toString();
+}
+
+/* ============================ 下拉组件（筛选 / 表单共用） ============================ */
+function createSelect(el) {
+  const st = {
+    value: '', label: '', options: [], placeholder: '请选择', emptyText: '无匹配数据',
+    searchable: false, disabled: false, onChange: null
+  };
+  el.innerHTML =
+    '<div class="sel-box" tabindex="0"><span class="sel-text placeholder"></span><span class="sel-arrow"></span></div>' +
+    '<div class="sel-panel"><div class="sel-search" hidden>' + ICON.search +
+    '<input type="text" placeholder="搜索" autocomplete="off"></div><div class="sel-list"></div></div>';
+
+  const box = el.querySelector('.sel-box');
+  const textEl = el.querySelector('.sel-text');
+  const searchWrap = el.querySelector('.sel-search');
+  const searchInput = searchWrap.querySelector('input');
+  const list = el.querySelector('.sel-list');
+
+  function sync() {
+    const hit = st.options.filter(o => o.value === st.value)[0];
+    const label = st.value ? (hit ? hit.label : (st.label || st.value)) : '';
+    textEl.textContent = label || st.placeholder;
+    textEl.classList.toggle('placeholder', !label);
+  }
+  function render() {
+    const kw = (st.searchable ? searchInput.value : '').trim().toLowerCase();
+    const opts = kw
+      ? st.options.filter(o => (o.label + ' ' + (o.sub || '')).toLowerCase().indexOf(kw) >= 0)
+      : st.options;
+    if (!opts.length) { list.innerHTML = '<div class="sel-empty">' + esc(st.emptyText) + '</div>'; return; }
+    list.innerHTML = opts.map(o =>
+      '<div class="sel-opt' + (o.value === st.value ? ' active' : '') + '" data-value="' + esc(o.value) + '">' +
+      '<span class="opt-name">' + esc(o.label) + '</span>' +
+      (o.sub ? '<span class="opt-sub">' + esc(o.sub) + '</span>' : '') +
+      (o.value === st.value ? ICON.tick : '') + '</div>').join('');
+  }
+  function open() {
+    if (st.disabled) return;
+    closeAllSelects(el);
+    el.classList.add('open');
+    if (st.searchable) searchInput.value = '';
+    render();
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 忽略 */ }
+    if (st.searchable) setTimeout(() => { try { searchInput.focus(); } catch (e) { /* 忽略 */ } }, 0);
+  }
+  function close() { el.classList.remove('open'); }
+
+  box.addEventListener('click', () => el.classList.contains('open') ? close() : open());
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    if (e.key === 'Escape') close();
+  });
+  searchInput.addEventListener('input', render);
+  list.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.sel-opt');
+    if (!opt) return;
+    e.preventDefault();
+    st.value = opt.dataset.value;
+    st.label = '';
+    sync(); render(); close();
+    if (st.onChange) st.onChange(st.value);
+  });
+  el._close = close;
+
+  return {
+    getValue: () => st.value,
+    setOptions(list2) { st.options = list2 || []; sync(); render(); return this; },
+    setValue(v, label) { st.value = v || ''; st.label = label || ''; sync(); render(); return this; },
+    setPlaceholder(t) { st.placeholder = t; sync(); return this; },
+    setEmptyText(t) { st.emptyText = t; render(); return this; },
+    setSearchable(on) { st.searchable = !!on; searchWrap.hidden = !on; return this; },
+    setDisabled(on) { st.disabled = !!on; el.classList.toggle('is-disabled', !!on); return this; },
+    setError(on) { el.classList.toggle('is-err', !!on); return this; },
+    onChange(fn) { st.onChange = fn; return this; }
+  };
+}
+
+function closeAllSelects(except) {
+  document.querySelectorAll('.sel.open').forEach(s => {
+    if (s !== except && typeof s._close === 'function') s._close();
+  });
+}
+
+/* ============================ 表头（库存管理与应急物资管理列一致） ============================ */
+function buildHead() {
+  const cols = [['物资编号', '14'], ['物资名称', '15'], ['物资分类', '9'], ['品牌/生产厂家', '13'],
+    ['计量单位', '8'], ['安全库存下限', '9'], ['仓库', '10'], ['备注', '10'], ['操作', '14']];
+  $('colgroup').innerHTML = cols.map(c => '<col style="width:' + c[1] + '%">').join('');
+  $('thead-row').innerHTML = cols.map(c => '<th>' + esc(c[0]) + '</th>').join('');
+}
+
+function emptyRow(text, plain) {
+  return '<tr><td colspan="9" class="empty"><div class="empty-box">' +
+    (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
+}
+
+/* ============================ 列表 ============================ */
+async function loadList() {
+  const seq = ++S.listSeq;
+  const params = new URLSearchParams(qs(Object.assign({}, S.filter, { scope: S.scope })));
+  params.set('page', String(S.page));
+  params.set('size', String(S.size));
+  $('tbl-body').innerHTML = emptyRow('加载中...', true);
+  try {
+    const data = await api('/inventory-material/page?' + params.toString());
+    if (seq !== S.listSeq) return;
+    S.total = Number(data && data.total) || 0;
+    S.records = (data && Array.isArray(data.records)) ? data.records : [];
+    if (!S.records.length && S.page > 1) { S.page -= 1; return loadList(); }
+    renderTable();
+    renderPager();
+  } catch (e) {
+    if (seq !== S.listSeq) return;
+    S.records = [];
+    S.total = 0;
+    $('tbl-body').innerHTML = emptyRow('数据加载失败');
+    renderPager();
+    showToast(e.message || '数据加载失败', true);
+  }
+}
+
+function catLabel(category) {
+  // 低代码物资类别编码：#1# 常用物资 / #2# 应急物资；历史空值按常用物资
+  return category === '#2#' ? '应急物资' : '常用物资';
+}
+function catTag(category) {
+  const emg = category === '#2#';
+  return '<span class="tag ' + (emg ? 'emg' : 'common') + '">' + esc(catLabel(category)) + '</span>';
+}
+
+function renderTable() {
+  const tb = $('tbl-body');
+  if (!S.records.length) {
+    tb.innerHTML = emptyRow(S.emergency ? '暂无应急物资，可在库存管理中将物资分类设为应急物资' : '暂无数据');
+    return;
+  }
+  tb.innerHTML = S.records.map(r => {
+    const acts = '<button class="lnk-text" data-act="view" data-id="' + esc(r.id) + '">查看</button>' +
+      '<button class="lnk-text" data-act="edit" data-id="' + esc(r.id) + '">编辑</button>' +
+      '<button class="lnk-text danger" data-act="del" data-id="' + esc(r.id) + '">删除</button>';
+    return '<tr data-key="' + esc(String(r.id)) + '">' +
+      '<td title="' + esc(r.code || '') + '">' + esc(r.code || '--') + '</td>' +
+      '<td title="' + esc(r.name || '') + '">' + esc(r.name || '--') + '</td>' +
+      '<td>' + catTag(r.category) + '</td>' +
+      '<td title="' + esc(r.brand || '') + '">' + esc(r.brand || '--') + '</td>' +
+      '<td>' + esc(r.unit || '--') + '</td>' +
+      '<td class="num">' + esc(r.safetyStockRaw === null || r.safetyStockRaw === undefined || r.safetyStockRaw === ''
+        ? '--' : r.safetyStockRaw) + '</td>' +
+      '<td title="' + esc(r.defaultWarehouseName || '') + '">' + esc(r.defaultWarehouseName || '--') + '</td>' +
+      '<td title="' + esc(r.remark || '') + '">' + esc(r.remark || '--') + '</td>' +
+      '<td class="col-act">' + acts + '</td></tr>';
+  }).join('');
+
+  if (S.flashKey) {
+    const tr = tb.querySelector('tr[data-key="' + S.flashKey + '"]');
+    S.flashKey = null;
+    if (tr) {
+      tr.classList.add('flash');
+      setTimeout(() => tr.classList.remove('flash'), 1100);
+    }
+  }
+}
+
+function findRow(id) {
+  return S.records.filter(r => String(r.id) === String(id))[0] || null;
+}
+
+function onTableClick(e) {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const row = findRow(el.dataset.id);
+  if (!row) return;
+  if (el.dataset.act === 'view') openView(row);
+  else if (el.dataset.act === 'edit') openEdit(row);
+  else if (el.dataset.act === 'del') onDelete(row);
+}
+
+/* ============================ 分页 ============================ */
+function pageNumbers(cur, total) {
+  if (total <= 7) {
+    const all = [];
+    for (let i = 1; i <= total; i++) all.push(i);
+    return all;
+  }
+  const out = [1];
+  const start = Math.max(2, cur - 1);
+  const end = Math.min(total - 1, cur + 1);
+  if (start > 2) out.push('...');
+  for (let p = start; p <= end; p++) out.push(p);
+  if (end < total - 1) out.push('...');
+  out.push(total);
+  return out;
+}
+
+function pagerHtml(page, size, total) {
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  const sizes = [10, 20, 50, 100];
+  let html = '<span class="pg-info">共 ' + total + ' 条</span><div class="pg-btns">' +
+    '<button class="pg-btn" data-pg="prev"' + (page <= 1 ? ' disabled' : '') + '>‹</button>';
+  pageNumbers(page, totalPages).forEach(p => {
+    html += p === '...'
+      ? '<span class="pg-ellipsis">···</span>'
+      : '<button class="pg-btn' + (p === page ? ' active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+  });
+  html += '<button class="pg-btn" data-pg="next"' + (page >= totalPages ? ' disabled' : '') + '>›</button></div>' +
+    '<select class="pg-size" data-pgsize="1">' +
+    sizes.map(n => '<option value="' + n + '"' + (n === size ? ' selected' : '') + '>' + n + ' 条/页</option>').join('') +
+    '</select>' +
+    '<span class="pg-jump">跳至<input type="text" data-pgjump="1" inputmode="numeric" aria-label="跳至页码"' +
+    ' value="' + page + '" autocomplete="off">页</span>';
+  return html;
+}
+
+function renderPager() {
+  $('pg-bar').innerHTML = pagerHtml(S.page, S.size, S.total);
+}
+
+function jumpTarget(val, page, size, total) {
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  const n = parseInt(String(val).trim(), 10);
+  return isNaN(n) ? page : Math.min(totalPages, Math.max(1, n));
+}
+
+function onPagerClick(e) {
+  const btn = e.target.closest('[data-pg]');
+  if (!btn || btn.disabled) return;
+  const totalPages = Math.max(1, Math.ceil(S.total / S.size));
+  const v = btn.dataset.pg;
+  if (v === 'prev') S.page = Math.max(1, S.page - 1);
+  else if (v === 'next') S.page = Math.min(totalPages, S.page + 1);
+  else S.page = Number(v);
+  loadList();
+}
+
+/* ============================ 筛选 / 导出 ============================ */
+let fltWarehouse = null;
+
+function doSearch() {
+  S.filter.keyword = $('f-kw').value.trim();
+  S.filter.warehouseId = fltWarehouse.getValue() || '';
+  S.page = 1;
+  loadList();
+}
+
+function resetFilter() {
+  $('f-kw').value = '';
+  fltWarehouse.setValue('');
+  S.filter.keyword = '';
+  S.filter.warehouseId = '';
+  S.page = 1;
+  loadList();
+}
+
+const EXPORT_FIELDS = [
+  { key: 'code', label: '物资编号' }, { key: 'name', label: '物资名称' }, { key: 'category', label: '物资分类' },
+  { key: 'brand', label: '品牌/生产厂家' }, { key: 'unit', label: '计量单位' },
+  { key: 'safetyStockRaw', label: '安全库存下限' }, { key: 'defaultWarehouseName', label: '仓库' },
+  { key: 'remark', label: '备注' }
+];
+
+async function onExport() {
+  const btn = $('btn-export');
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  try {
+    const rows = await api('/inventory-material/export?' + qs(Object.assign({}, S.filter, { scope: S.scope })));
+    // 导出时把类别编码转换为中文
+    const list = (Array.isArray(rows) ? rows : []).map(r => Object.assign({}, r, { category: catLabel(r.category) }));
+    if (!list.length) { showToast('暂无数据可导出', true); return; }
+    const name = S.emergency ? '应急物资目录' : '物资目录';
+    MonitorExport.download({ fields: EXPORT_FIELDS, rows: list, filename: name, sheetName: name });
+    showToast('已导出 ' + list.length + ' 条');
+  } catch (e) {
+    showToast(e.message || '导出失败', true);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+/* ============================ 抽屉：新增 / 编辑 ============================ */
+let selCategory = null;
+let selWarehouse = null;
+
+function setErr(id, msg) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = msg || '';
+  el.classList.toggle('show', !!msg);
+}
+
+function clearErrs() {
+  ['err-name', 'err-unit', 'err-safety'].forEach(id => setErr(id, ''));
+  selCategory.setError(false);
+}
+
+function showDrawer() {
+  $('drawer-mask').classList.add('show');
+  $('drawer').classList.add('show');
+  $('drawer').setAttribute('aria-hidden', 'false');
+}
+
+/** 查看模式：表单字段全部只读 */
+function setFormDisabled(on) {
+  ['in-code', 'in-name', 'in-unit', 'in-brand', 'in-spec', 'in-safety', 'in-remark'].forEach(id => {
+    $(id).disabled = on;
+  });
+  selCategory.setDisabled(on);
+  selWarehouse.setDisabled(on);
+}
+
+/** 抽屉恢复为可编辑状态（每次打开前调用） */
+function normalizeDrawer() {
+  S.viewing = false;
+  setFormDisabled(false);
+  $('btn-save').hidden = false;
+  $('btn-cancel').textContent = '取消';
+}
+
+function closeDrawer() {
+  $('drawer-mask').classList.remove('show');
+  $('drawer').classList.remove('show');
+  $('drawer').setAttribute('aria-hidden', 'true');
+  S.editingId = '';
+  normalizeDrawer();
+}
+
+function fillForm(row) {
+  $('in-code').value = row && row.code ? row.code : '';
+  $('in-name').value = row && row.name ? row.name : '';
+  $('in-unit').value = row && row.unit ? row.unit : '';
+  $('in-brand').value = row && row.brand ? row.brand : '';
+  $('in-spec').value = row && row.spec ? row.spec : '';
+  $('in-safety').value = row && row.safetyStockRaw !== null && row.safetyStockRaw !== undefined ? row.safetyStockRaw : '';
+  $('in-remark').value = row && row.remark ? row.remark : '';
+  selWarehouse.setValue(row && row.defaultWarehouseId ? row.defaultWarehouseId : '');
+  selCategory.setValue(S.emergency ? '#2#'
+    : (row && row.category ? row.category : (S.meta && S.meta.defaultCategory) || '#1#'));
+  $('remark-count').textContent = String($('in-remark').value.length);
+  clearErrs();
+}
+
+function openCreate() {
+  normalizeDrawer();
+  S.editingId = '';
+  $('drawer-title').textContent = S.emergency ? '新增应急物资' : '新增物资';
+  // 库存管理新增默认常用物资；应急视角类别强制应急物资且隐藏该字段
+  $('fld-category').hidden = S.emergency;
+  $('scope-tip').hidden = !S.emergency;
+  fillForm(null);
+  showDrawer();
+}
+
+function openEdit(row) {
+  normalizeDrawer();
+  S.editingId = row.id;
+  $('drawer-title').textContent = '编辑物资';
+  $('fld-category').hidden = S.emergency;
+  $('scope-tip').hidden = !S.emergency;
+  fillForm(row);
+  showDrawer();
+}
+
+/** 查看详情：走详情接口按视角校验类别，跨类别数据不可见 */
+async function openView(row) {
+  let detail = null;
+  try {
+    detail = await api('/inventory-material/detail?' + qs({ id: row.id, scope: S.scope }));
+  } catch (e) {
+    showToast(e.message || '详情加载失败', true);
+    return;
+  }
+  normalizeDrawer();
+  S.viewing = true;
+  S.editingId = '';
+  $('drawer-title').textContent = '物资详情';
+  $('fld-category').hidden = false;
+  $('scope-tip').hidden = true;
+  fillForm(detail);
+  setFormDisabled(true);
+  $('btn-save').hidden = true;
+  $('btn-cancel').textContent = '关闭';
+  showDrawer();
+}
+
+function collectBody() {
+  return {
+    id: S.editingId,
+    scope: S.scope,
+    code: $('in-code').value.trim(),
+    name: $('in-name').value.trim(),
+    unit: $('in-unit').value.trim(),
+    brand: $('in-brand').value.trim(),
+    spec: $('in-spec').value.trim(),
+    safetyStock: $('in-safety').value.trim(),
+    defaultWarehouseId: selWarehouse.getValue() || '',
+    remark: $('in-remark').value.trim(),
+    category: S.emergency ? '#2#' : (selCategory.getValue() || '#1#')
+  };
+}
+
+function validate(body) {
+  clearErrs();
+  let ok = true;
+  if (!body.name) { setErr('err-name', '请填写物资名称'); ok = false; }
+  if (!body.unit) { setErr('err-unit', '请填写计量单位'); ok = false; }
+  if (body.safetyStock && !/^-?[0-9]+(\.[0-9]+)?$/.test(body.safetyStock)) {
+    setErr('err-safety', '安全库存必须为数字');
+    ok = false;
+  }
+  if (!S.emergency && !body.category) {
+    selCategory.setError(true);
+    ok = false;
+  }
+  return ok;
+}
+
+async function onSave() {
+  if (S.saving) return;
+  const body = collectBody();
+  if (!validate(body)) return;
+  const isEdit = !!S.editingId;
+  const btn = $('btn-save');
+  S.saving = true;
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  try {
+    const saved = await api(isEdit ? '/inventory-material/update' : '/inventory-material/save', {
+      method: 'POST', body: body
+    });
+    closeDrawer();
+    // 库存管理里归入应急物资后，本列表不再展示，提示去应急物资管理查看
+    showToast(!S.emergency && body.category === '#2#'
+      ? '已保存为「应急物资」，可在应急物资管理中查看'
+      : '保存成功');
+    S.flashKey = saved && saved.id ? String(saved.id) : null;
+    await loadList();
+  } catch (e) {
+    showToast(e.message || '保存失败', true);
+  } finally {
+    S.saving = false;
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+/* ============================ 删除 ============================ */
+async function onDelete(row) {
+  if (!window.confirm('确定删除物资「' + (row.name || row.code || '') + '」？删除后不可恢复。')) return;
+  try {
+    await api('/inventory-material/delete?' + qs({ id: row.id, scope: S.scope }), { method: 'POST' });
+    showToast('删除成功');
+    await loadList();
+  } catch (e) {
+    showToast(e.message || '删除失败', true);
+  }
+}
+
+/* ============================ 初始化 ============================ */
+async function loadMeta() {
+  try {
+    S.meta = await api('/inventory-material/meta?' + qs({ scope: S.scope }));
+  } catch (e) {
+    S.meta = null;
+    showToast(e.message || '基础数据加载失败', true);
+  }
+  const meta = S.meta || {};
+  // 筛选：全部仓库 + 启用仓库
+  fltWarehouse.setOptions([{ value: '', label: '全部仓库' }].concat(
+    (meta.warehouses || []).map(w => ({ value: w.id, label: w.name }))));
+  fltWarehouse.setPlaceholder('全部仓库');
+  // 表单：不设默认 + 启用仓库
+  selWarehouse.setOptions([{ value: '', label: '不设默认仓库' }].concat(
+    (meta.warehouses || []).map(w => ({ value: w.id, label: w.name }))));
+  selWarehouse.setPlaceholder('不设默认仓库');
+  // 表单：类别（仅库存管理视角可选，应急视角隐藏且固定）
+  selCategory.setOptions((meta.categories || ['#1#', '#2#']).map(c => ({ value: c, label: catLabel(c) })));
+  selCategory.setValue(S.emergency ? '#2#' : (meta.defaultCategory || '#1#'));
+  // 单位候选
+  $('unit-list').innerHTML = (meta.units || []).map(u => '<option value="' + esc(u) + '"></option>').join('');
+}
+
+function bindEvents() {
+  $('tbl-body').addEventListener('click', onTableClick);
+
+  const pgBar = $('pg-bar');
+  pgBar.addEventListener('click', onPagerClick);
+  pgBar.addEventListener('change', e => {
+    if (e.target && e.target.dataset.pgsize) {
+      S.size = Number(e.target.value) || 10;
+      S.page = 1;
+      loadList();
+    }
+  });
+  pgBar.addEventListener('keydown', e => {
+    if (e.target && e.target.dataset.pgjump && e.key === 'Enter') e.target.blur();
+  });
+  pgBar.addEventListener('focusout', e => {
+    if (e.target && e.target.dataset.pgjump) {
+      const target = jumpTarget(e.target.value, S.page, S.size, S.total);
+      e.target.value = String(target);
+      if (target !== S.page) { S.page = target; loadList(); }
+    }
+  });
+
+  $('flt-search').addEventListener('click', doSearch);
+  $('flt-reset').addEventListener('click', resetFilter);
+  $('f-kw').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  $('btn-export').addEventListener('click', onExport);
+  $('btn-add').addEventListener('click', openCreate);
+
+  $('btn-close').addEventListener('click', closeDrawer);
+  $('btn-cancel').addEventListener('click', closeDrawer);
+  $('btn-save').addEventListener('click', onSave);
+  $('drawer-mask').addEventListener('click', closeDrawer);
+  $('in-remark').addEventListener('input', () => {
+    $('remark-count').textContent = String($('in-remark').value.length);
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.sel')) closeAllSelects(null);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if ($('drawer').classList.contains('show')) { closeDrawer(); return; }
+    if (document.querySelector('.sel.open')) closeAllSelects(null);
+  });
+}
+
+(async function init() {
+  const params = new URLSearchParams(location.search);
+  S.scope = String(params.get('scope') || '').toLowerCase() === 'emergency' ? 'emergency' : '';
+  S.emergency = S.scope === 'emergency';
+  document.title = S.emergency ? '应急物资目录' : '物资目录';
+  $('btn-add-text').textContent = S.emergency ? '新增应急物资' : '新增物资';
+
+  buildHead();
+  bindEvents();
+  fltWarehouse = createSelect($('f-warehouse'));
+  selCategory = createSelect($('sel-category'));
+  selWarehouse = createSelect($('sel-warehouse')).setSearchable(true);
+  await loadMeta();
+  await loadList();
+})();
+</script>
+</body>
+</html>

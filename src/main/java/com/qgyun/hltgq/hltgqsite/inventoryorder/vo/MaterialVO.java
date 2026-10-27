@@ -32,4 +32,7 @@ public class MaterialVO {
 
     /** 默认仓库 ID（fmewia，可空） */
     private String defaultWarehouseId;
+
+    /** 物资类别（slaifi.type 编码，#1# 常用物资 / #2# 应急物资，空值归一为常用物资） */
+    private String category;
 }

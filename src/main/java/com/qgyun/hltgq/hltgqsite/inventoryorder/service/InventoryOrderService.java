@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.inventoryorder.service;
 
+import com.qgyun.hltgq.hltgqsite.inventoryorder.InventoryCategory;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.InventoryTypeDict;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.mapper.InventoryLedgerMapper;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.mapper.InventoryOrderMapper;
@@ -80,11 +81,12 @@ public class InventoryOrderService {
 
     /**
      * 单据列表分页（全部/入库/出库 + 9 项查询条件，见 {@link InventoryOrderMapper#LIST_CONDITIONS}）。
+     * <p>scope 仅用于类别隔离（emergency 只看应急物资单据，不传/common 只看常用物资单据，两侧互不可见）。
      */
     public Map<String, Object> page(int page, int size, String source, String orderNo, String bizType,
                                     String warehouseId, String departmentId, String sourceUnit,
                                     String receiveUnit, String materialCode, String materialName,
-                                    String startDate, String endDate) {
+                                    String startDate, String endDate, String scope) {
         int p = clampPage(page);
         int s = clampSize(size);
         String src = normalizeSource(source);
@@ -101,9 +103,10 @@ public class InventoryOrderService {
         String sd = normalizeDay(startDate, "起始日期");
         String ed = normalizeDay(endDate, "结束日期");
 
-        long total = orderMapper.countOrders(src, no, bizSource, bizCode, wid, did, su, ru, mc, mn, sd, ed);
+        long total = orderMapper.countOrders(src, no, bizSource, bizCode, wid, did, su, ru, mc, mn, sd, ed,
+                scopeEmergency(scope));
         List<OrderPageItemVO> records = orderMapper.selectOrderPage(src, no, bizSource, bizCode, wid, did, su, ru,
-                mc, mn, sd, ed, s, (long) (p - 1) * s);
+                mc, mn, sd, ed, scopeEmergency(scope), s, (long) (p - 1) * s);
         for (OrderPageItemVO row : records) {
             row.setBizTypeName(InventoryTypeDict.bizTypeName(row.getSource(), row.getBizType()));
         }
@@ -114,7 +117,7 @@ public class InventoryOrderService {
     public List<OrderExportRowVO> export(String source, String orderNo, String bizType,
                                          String warehouseId, String departmentId, String sourceUnit,
                                          String receiveUnit, String materialCode, String materialName,
-                                         String startDate, String endDate) {
+                                         String startDate, String endDate, String scope) {
         String src = normalizeSource(source);
         String[] biz = InventoryTypeDict.parseBizType(trim(bizType));
         String bizSource = biz == null ? null : biz[0];
@@ -122,7 +125,7 @@ public class InventoryOrderService {
         List<OrderExportRowVO> rows = orderMapper.selectOrderExportRows(src, trim(orderNo), bizSource, bizCode,
                 trim(warehouseId), trim(departmentId), trim(sourceUnit), trim(receiveUnit),
                 trim(materialCode), trim(materialName),
-                normalizeDay(startDate, "起始日期"), normalizeDay(endDate, "结束日期"));
+                normalizeDay(startDate, "起始日期"), normalizeDay(endDate, "结束日期"), scopeEmergency(scope));
         for (OrderExportRowVO row : rows) {
             row.setSourceName(InventoryTypeDict.sourceName(row.getSource()));
             row.setBizTypeName(InventoryTypeDict.bizTypeName(row.getSource(), row.getBizType()));
@@ -130,10 +133,15 @@ public class InventoryOrderService {
         return rows;
     }
 
+    /** 列表/导出视角类别标记：未传 scope（库存管理旧菜单）按常用物资处理；common=false、emergency=true。 */
+    private static Boolean scopeEmergency(String scope) {
+        return InventoryCategory.isEmergency(scope);
+    }
+
     // ==================== 详情 / 元数据 ====================
 
-    /** 单据详情（source=RK|CK 必填；主表 + 明细，含仓库名/科室名/业务类型中文）。 */
-    public OrderDetailVO detail(String source, String id) {
+    /** 单据详情（带页面视角：跨类别单据按 id 直达也拒绝，与列表过滤同口径）。 */
+    public OrderDetailVO detail(String source, String id, String scope) {
         String src = normalizeSource(source);
         if (src == null) {
             throw new IllegalArgumentException("请指定单据来源（RK 或 CK）");
@@ -145,6 +153,11 @@ public class InventoryOrderService {
         if (vo == null) {
             throw new IllegalArgumentException("单据不存在");
         }
+        // 视角类别校验：单据含应急物资明细即归应急视角，否则归常用视角
+        boolean hasEmergency = orderMapper.countEmergencyLines(key) > 0;
+        InventoryCategory.requireCategory(scope,
+                hasEmergency ? InventoryCategory.EMERGENCY : InventoryCategory.COMMON,
+                "该单据不属于当前页面类别，无法查看");
         vo.setBizTypeName(InventoryTypeDict.bizTypeName(src, vo.getBizType()));
         vo.setItems(InventoryTypeDict.SOURCE_INBOUND.equals(src)
                 ? orderMapper.selectInboundItems(key)
@@ -161,14 +174,16 @@ public class InventoryOrderService {
         return out;
     }
 
-    /** 物资目录候选（P2/P3「从目录选择」，不按默认仓库硬过滤）。 */
-    public List<MaterialVO> materials(String keyword) {
-        return ledgerMapper.selectMaterials(trim(keyword));
+    /** 物资目录候选（P2/P3「从目录选择」，不按默认仓库硬过滤；按页面 scope 隔离常用/应急）。 */
+    public List<MaterialVO> materials(String keyword, String scope) {
+        return ledgerMapper.selectMaterials(trim(keyword),
+                InventoryCategory.isEmergency(scope), InventoryCategory.isCommon(scope));
     }
 
-    /** 出库台账候选（当前仓库可用库存 &gt; 0 的物资）。 */
-    public List<StockLedgerOptionVO> stockLedgers(String warehouseId, String keyword) {
-        return ledgerMapper.selectStockLedgerOptions(requireText(warehouseId, "请先选择仓库"), trim(keyword));
+    /** 出库台账候选（当前仓库可用库存 &gt; 0 的物资；按页面 scope 隔离常用/应急）。 */
+    public List<StockLedgerOptionVO> stockLedgers(String warehouseId, String keyword, String scope) {
+        return ledgerMapper.selectStockLedgerOptions(requireText(warehouseId, "请先选择仓库"), trim(keyword),
+                InventoryCategory.isEmergency(scope), InventoryCategory.isCommon(scope));
     }
 
     /** 归口科室候选。 */
@@ -224,6 +239,9 @@ public class InventoryOrderService {
             if (material == null) {
                 throw new IllegalArgumentException("第 " + lineNo + " 行：物资不存在或已删除");
             }
+            InventoryCategory.requireCategory(req.getScope(), material.getCategory(),
+                    "第 " + lineNo + " 行：当前页面只能选择" + InventoryCategory.scopeLabel(req.getScope())
+                            + "，请重新选择物资");
             materials.add(material);
             quantities.add(requirePositiveQty(item.getQuantity(), lineNo));
             specOverrides.add(normalizeSpecOverride(item.getSpec(), lineNo));
@@ -316,7 +334,8 @@ public class InventoryOrderService {
 
         log.info("[出入库] 新增入库单：{}，仓库={}（{}），明细 {} 行，操作人={}",
                 orderNo, warehouse.getName(), warehouseId, materials.size(), operator);
-        return detail(InventoryTypeDict.SOURCE_INBOUND, orderId);
+        // 回显必须带页面视角：应急视角新增的单据含应急物资明细，按常用视角校验会被拒并回滚整单
+        return detail(InventoryTypeDict.SOURCE_INBOUND, orderId, req.getScope());
     }
 
     // ==================== P3 新增出库单 ====================
@@ -365,6 +384,9 @@ public class InventoryOrderService {
             if (!warehouseId.equals(trim(ledger.getWarehouseId()))) {
                 throw new IllegalArgumentException("第 " + lineNo + " 行：所选物资与当前仓库不一致，请重新选择");
             }
+            InventoryCategory.requireCategory(req.getScope(), ledger.getCategory(),
+                    "第 " + lineNo + " 行：当前页面只能选择" + InventoryCategory.scopeLabel(req.getScope())
+                            + "，请重新选择物资");
             int qty = requirePositiveQty(item.getQuantity(), lineNo);
             if (ledger.getQuantity() != null && qty > ledger.getQuantity()) {
                 throw new IllegalArgumentException("第 " + lineNo + " 行：出库数量超过当前可用库存（"
@@ -446,7 +468,7 @@ public class InventoryOrderService {
 
         log.info("[出入库] 新增出库单：{}，仓库={}（{}），明细 {} 行，操作人={}",
                 orderNo, warehouse.getName(), warehouseId, ledgers.size(), operator);
-        return detail(InventoryTypeDict.SOURCE_OUTBOUND, orderId);
+        return detail(InventoryTypeDict.SOURCE_OUTBOUND, orderId, req.getScope());
     }
 
     // ==================== 校验与工具 ====================

@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.inventorystocktake.service;
 
 import com.qgyun.hltgq.hltgqsite.auth.UserContext;
 import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
+import com.qgyun.hltgq.hltgqsite.inventoryorder.InventoryCategory;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.InventoryTypeDict;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.mapper.InventoryLedgerMapper;
 import com.qgyun.hltgq.hltgqsite.inventoryorder.service.InventoryOrderNoService;
@@ -105,9 +106,13 @@ public class StocktakeService {
 
     // ==================== P6 列表 / 元数据 ====================
 
-    /** 盘点单分页（单号/仓库/盘点人/物资编码/物资名称/盘点日期范围，条件见 InventoryStocktakeMapper.LIST_CONDITIONS）。 */
+    /**
+     * 盘点单分页（单号/仓库/盘点人/物资编码/物资名称/盘点日期范围，条件见 InventoryStocktakeMapper.LIST_CONDITIONS）。
+     * <p>scope 仅用于类别隔离（emergency 只看应急物资盘点单，不传/common 只看常用物资盘点单，两侧互不可见）。
+     */
     public Map<String, Object> page(int page, int size, String orderNo, String warehouseId, String operatorId,
-                                    String materialCode, String materialName, String startDate, String endDate) {
+                                    String materialCode, String materialName, String startDate, String endDate,
+                                    String scope) {
         int p = clampPage(page);
         int s = clampSize(size);
         String no = trim(orderNo);
@@ -117,8 +122,11 @@ public class StocktakeService {
         String mn = trim(materialName);
         String sd = normalizeDay(startDate, "起始日期");
         String ed = normalizeDay(endDate, "结束日期");
-        long total = stocktakeMapper.countPage(no, wid, oid, mc, mn, sd, ed);
-        List<StocktakePageItemVO> records = stocktakeMapper.selectPage(no, wid, oid, mc, mn, sd, ed, s, (long) (p - 1) * s);
+        // 未传 scope（库存管理旧菜单）按常用物资处理，与物资目录/台账口径一致
+        boolean emergency = InventoryCategory.isEmergency(scope);
+        long total = stocktakeMapper.countPage(no, wid, oid, mc, mn, sd, ed, emergency);
+        List<StocktakePageItemVO> records = stocktakeMapper.selectPage(no, wid, oid, mc, mn, sd, ed, emergency,
+                s, (long) (p - 1) * s);
         decorateAttachments(records);
         return pageResult(total, p, s, records);
     }
@@ -137,16 +145,29 @@ public class StocktakeService {
         return out;
     }
 
-    /** 盘点单详情（主表 + 明细 + 附件）。 */
+    /** 盘点单详情（主表 + 明细 + 附件；按视角拒绝跨类别单据直达）。 */
     public StocktakeDetailVO detail(String id) {
+        return detail(id, null);
+    }
+
+    /** 盘点单详情（带页面视角：跨类别单据按 id 直达也拒绝，与列表过滤同口径）。 */
+    public StocktakeDetailVO detail(String id, String scope) {
         String key = requireText(id, "盘点单 id 不能为空");
         StocktakeDetailVO vo = stocktakeMapper.selectHeader(key);
         if (vo == null) {
             throw new IllegalArgumentException("盘点单不存在");
         }
+        requireViewScope(key, scope, "该盘点单不属于当前页面类别，无法查看");
         vo.setItems(stocktakeMapper.selectItems(key));
         vo.setAttachments(stocktakeMapper.selectAttachments(key));
         return vo;
+    }
+
+    /** 视角类别断言：盘点单含应急物资明细即归应急视角，否则归常用视角（与列表 CATEGORY_FILTER 同口径）。 */
+    private void requireViewScope(String orderId, String scope, String message) {
+        boolean hasEmergency = stocktakeMapper.countEmergencyItems(orderId) > 0;
+        InventoryCategory.requireCategory(scope,
+                hasEmergency ? InventoryCategory.EMERGENCY : InventoryCategory.COMMON, message);
     }
 
     /** 列表附件批量装配（一次查询多单附件，避免逐行查询）。 */
@@ -166,14 +187,16 @@ public class StocktakeService {
 
     // ==================== 带出 / 加行选择器 ====================
 
-    /** 盘点带出：当前仓库台账全量行（含 0 库存；明细默认账面 = quantity，实盘默认同账面由前端预填）。 */
-    public List<StockLedgerOptionVO> stockLedgers(String warehouseId, String keyword) {
-        return stocktakeMapper.selectLedgerOptions(requireText(warehouseId, "请先选择盘点仓库"), trim(keyword));
+    /** 盘点带出：当前仓库台账全量行（含 0 库存；按页面 scope 隔离常用/应急）。 */
+    public List<StockLedgerOptionVO> stockLedgers(String warehouseId, String keyword, String scope) {
+        return stocktakeMapper.selectLedgerOptions(requireText(warehouseId, "请先选择盘点仓库"), trim(keyword),
+                InventoryCategory.isEmergency(scope), InventoryCategory.isCommon(scope));
     }
 
-    /** 手动加行：物资目录全量 + 该仓库实时账面（无台账记 0，含纯盘盈场景）。 */
-    public List<StockLedgerOptionVO> materialOptions(String warehouseId, String keyword) {
-        return stocktakeMapper.selectMaterialOptions(requireText(warehouseId, "请先选择盘点仓库"), trim(keyword));
+    /** 手动加行：物资目录 + 该仓库实时账面（无台账记 0，含纯盘盈场景；按页面 scope 隔离）。 */
+    public List<StockLedgerOptionVO> materialOptions(String warehouseId, String keyword, String scope) {
+        return stocktakeMapper.selectMaterialOptions(requireText(warehouseId, "请先选择盘点仓库"), trim(keyword),
+                InventoryCategory.isEmergency(scope), InventoryCategory.isCommon(scope));
     }
 
     // ==================== P7 新增（保存即生效） ====================
@@ -212,6 +235,9 @@ public class StocktakeService {
             if (material == null) {
                 throw new IllegalArgumentException("第 " + lineNo + " 行：物资不存在或已删除");
             }
+            InventoryCategory.requireCategory(req.getScope(), material.getCategory(),
+                    "第 " + lineNo + " 行：当前页面只能盘点" + InventoryCategory.scopeLabel(req.getScope())
+                            + "，请重新选择物资");
             int bookQty = requireNonNegativeInt(item.getBookQty(), lineNo, "账面库存");
             int checkQty = requireNonNegativeInt(item.getCheckQty(), lineNo, "实盘数量");
             materials.add(material);
@@ -350,7 +376,7 @@ public class StocktakeService {
 
         log.info("[盘点] 新增盘点单：{}，仓库={}（{}），明细 {} 行，操作人={}",
                 orderNo, warehouse.getName(), warehouseId, materials.size(), operator);
-        return detail(orderId);
+        return detail(orderId, req.getScope());
     }
 
     // ==================== P7 编辑（仅盘点人/备注/附件） ====================
@@ -368,6 +394,7 @@ public class StocktakeService {
         if (stocktakeMapper.selectHeader(id) == null) {
             throw new IllegalArgumentException("盘点单不存在");
         }
+        requireViewScope(id, req.getScope(), "该盘点单不属于当前页面类别，无法编辑");
         String operatorId = requireText(req.getOperatorId(), "请选择盘点人员");
         String operatorName = ledgerMapper.selectUserName(operatorId);
         if (operatorName == null) {
@@ -418,7 +445,7 @@ public class StocktakeService {
 
         log.info("[盘点] 编辑盘点单：{}（{}），盘点人={}，保留附件 {} 个，操作人={}",
                 id, req.getRemark(), operatorName, keepIds.size(), operator);
-        return detail(id);
+        return detail(id, req.getScope());
     }
 
     // ==================== 附件（上传 / 下载 / 移除） ====================

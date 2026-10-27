@@ -141,7 +141,7 @@ public class DecisionController {
         return staticTableService.flowLimitTable();
     }
 
-    /** 调度方案详情：主表 + 缩放系数 + 支渠明细（含缺水量三列）+ V3 三张汇总表 + 4 张扩展表 */
+    /** 调度方案详情：主表 + 缩放系数 + 供水分配汇总（18 行逐旬）+ 支渠明细（含缺水量三列）+ V3 三张汇总表 + 4 张扩展表 */
     @GetMapping("/{id}")
     public Map<String, Object> detail(@PathVariable String id) {
         DecisionRecord record = commonService.require(id, recordMapper);
@@ -159,8 +159,8 @@ public class DecisionController {
         adminYearWrapper.eq("\"record_id\"", id).orderByAsc("\"year\"").orderByAsc("\"district\"");
         List<DecisionAdminYear> adminYearSummary = adminYearMapper.selectList(adminYearWrapper);
         QueryWrapper<DecisionSupplyAlloc> allocWrapper = new QueryWrapper<>();
-        allocWrapper.eq("\"record_id\"", id).last("LIMIT 1");
-        DecisionSupplyAlloc supplyAlloc = supplyAllocMapper.selectOne(allocWrapper);
+        allocWrapper.eq("\"record_id\"", id).orderByAsc("\"sort_order\"");
+        List<DecisionSupplyAlloc> supplyAlloc = supplyAllocMapper.selectList(allocWrapper);
         QueryWrapper<DecisionExtraTable> extraWrapper = new QueryWrapper<>();
         extraWrapper.eq("\"record_id\"", id).orderByAsc("\"table_key\"").orderByAsc("\"sort_order\"");
         List<DecisionExtraTable> extraTables = extraTableMapper.selectList(extraWrapper);
