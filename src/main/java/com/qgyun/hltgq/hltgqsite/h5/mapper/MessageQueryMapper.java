@@ -357,7 +357,7 @@ public interface MessageQueryMapper {
             ") x " +
             "WHERE NOT EXISTS (" +
             "SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
-            "WHERE r.user_id = #{userId} AND r.message_type = '#5#' AND r.message_id = x.message_id" +
+            "WHERE r.id = CONCAT(#{userId}, '_', x.message_id)" +
             ")")
     int syncModelCalcReceives(@Param("userId") String userId);
 
@@ -402,7 +402,7 @@ public interface MessageQueryMapper {
             ") x " +
             "WHERE NOT EXISTS (" +
             "SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_message_receive\" r " +
-            "WHERE r.user_id = #{userId} AND r.message_type = '#5#' AND r.message_id = x.message_id" +
+            "WHERE r.id = CONCAT(#{userId}, '_', x.message_id)" +
             ")")
     int syncModelCalcRuleReceives(@Param("userId") String userId, @Param("since") String since);
 

@@ -19,8 +19,9 @@ import java.util.List;
  * 计划置已完成 #3# 即已完成（人工终态优先）。
  * <p>列表分页 LIMIT/OFFSET（总数与列表同条件，Service 统一裁剪页码与条数）。
  * <p>开始巡检：校验计划状态归属（主表 "user"）后写入一条草稿 #1# 占位记录（仅标记已开始，
- * 站点/设备/结果/内容留空），巡检人强制为当前登录人；同一计划已有记录时不写入（WHERE NOT EXISTS）。
- * 该占位记录即「空白草稿」，后续提交优先填充它（见 PatrolRecordMapper.selectBlankDraftId）。
+ * 站点/设备/结果/内容留空），巡检人强制为当前登录人；优先复用当前登录人在该计划下最早一条草稿，
+ * 已有草稿时不写入（WHERE NOT EXISTS）。
+ * 该草稿即「当前可继续编辑的草稿」，与列表行 draftRecordId 同一口径（见 selectDraftId）。
  * <p>列别名与 VO 属性同名（map-underscore-to-camel-case=false 下依赖同名自动映射）。
  */
 public interface H5PatrolScheduleMapper {
@@ -55,8 +56,8 @@ public interface H5PatrolScheduleMapper {
      * rangeStationIds 取巡查范围关系表 t_auto_hltgq_knc3g_nlbdju_tkwovk_rel 按 biz_id 聚合
      * （string_agg 逗号分隔，按 nature_order 顺序），无范围关系为 null；
      * started 为该计划是否已开始巡检（存在巡检记录）；
-     * draftRecordId 为该计划当前空白占位草稿 id（草稿 #1# 且站点/设备/结果/内容全空，取最早一条），
-     * 前端提交巡检记录时优先用它更新+提交（幂等），无则 null。
+     * draftRecordId 为当前登录人在该计划下最早一条草稿 id（status='#1#'，不限是否已填明细），
+     * 前端提交巡检记录时优先用它更新+提交（幂等），无草稿为 null。
      */
     @Select("<script>" +
             "SELECT p.id AS id, p.code AS code, p.title AS title, p.content AS content, " +
@@ -67,8 +68,7 @@ public interface H5PatrolScheduleMapper {
             "THEN true ELSE false END AS started, " +
             "(SELECT dr.id FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" dr " +
             "WHERE dr.corp_code = 'hltgq' AND dr.patrol_schedule = p.id AND dr.status = '#1#' " +
-            "AND dr.site IS NULL AND dr.\"_d_10497_device\" IS NULL " +
-            "AND dr.result IS NULL AND dr.content IS NULL " +
+            "AND dr.\"user\" = #{userId} " +
             "ORDER BY dr.created_at ASC NULLS LAST, dr.id ASC LIMIT 1) AS draftRecordId, " +
             "u.name AS creatorName, r.station_ids AS rangeStationIds " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_schedule\" p " +
@@ -112,17 +112,24 @@ public interface H5PatrolScheduleMapper {
             "WHERE id = #{scheduleId} AND corp_code = 'hltgq' AND \"user\" = #{userId}")
     String selectOwnedScheduleStatus(@Param("scheduleId") String scheduleId, @Param("userId") String userId);
 
-    /** 计划下最早一条巡检记录 id（开始巡检幂等：已开始则复用原记录，避免重复写入；无记录返回 null）。 */
+    /**
+     * 当前登录人在该计划下最早一条草稿 id（status='#1#'，不限是否已填明细）。
+     * <p>与列表行 draftRecordId 同一口径（同样限定 "user"=当前登录人、status='#1#'、取最早一条），
+     * 保证「开始巡检返回的 recordId」与「列表行 draftRecordId」指向同一条可编辑草稿；
+     * 无草稿返回 null（Service 随后新建占位草稿）。
+     */
     @Select("SELECT id FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" " +
-            "WHERE corp_code = 'hltgq' AND patrol_schedule = #{scheduleId} " +
+            "WHERE corp_code = 'hltgq' AND patrol_schedule = #{scheduleId} AND status = '#1#' " +
+            "AND \"user\" = #{userId} " +
             "ORDER BY created_at ASC NULLS LAST, id ASC LIMIT 1")
-    String selectFirstRecordId(@Param("scheduleId") String scheduleId);
+    String selectDraftId(@Param("scheduleId") String scheduleId, @Param("userId") String userId);
 
     /**
      * 开始巡检写入占位记录：状态草稿 #1#（不进入已提交统计），站点/设备/结果/内容留空，
-     * 巡检记录时间与审计列取当前时间/当前登录人；同一计划已有记录时不写入（WHERE NOT EXISTS）。
+     * 巡检记录时间与审计列取当前时间/当前登录人；
+     * 当前登录人在该计划下已有草稿时不写入（WHERE NOT EXISTS，与 selectDraftId 同条件）。
      *
-     * @return 实际写入行数（0 = 已有记录，未写入）
+     * @return 实际写入行数（0 = 已有草稿，未写入）
      */
     @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" " +
             "(\"id\", \"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\", " +
@@ -130,7 +137,8 @@ public interface H5PatrolScheduleMapper {
             "SELECT #{recordId}, 'hltgq', #{now}, #{userId}, #{now}, #{userId}, " +
             "#{now}, #{scheduleId}, #{userId}, '#1#' " +
             "WHERE NOT EXISTS (SELECT 1 FROM \"qixiao-apaas\".\"t_auto_hltgq_water_inspection_record\" " +
-            "WHERE corp_code = 'hltgq' AND patrol_schedule = #{scheduleId})")
+            "WHERE corp_code = 'hltgq' AND patrol_schedule = #{scheduleId} " +
+            "AND \"user\" = #{userId} AND status = '#1#')")
     int insertStartRecord(@Param("recordId") String recordId,
                           @Param("scheduleId") String scheduleId,
                           @Param("userId") String userId,

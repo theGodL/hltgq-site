@@ -51,12 +51,14 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         // stcd 过滤（作用于外层结果，直接参数绑定）
         String stcdFilter = (stcd != null && !stcd.trim().isEmpty()) ? stcd.trim() : null;
 
-        // 查询总数
-        long total = irrigationWaterLevelMapper.selectCount(dateWrapper, stcdFilter);
-        page.setTotal(total);
+        // 查询总数：仅取列表（searchCount=false，如对外大屏接口）时跳过，省掉一次全量统计
+        if (page.searchCount()) {
+            long total = irrigationWaterLevelMapper.selectCount(dateWrapper, stcdFilter);
+            page.setTotal(total);
 
-        if (total == 0) {
-            return page;
+            if (total == 0) {
+                return page;
+            }
         }
 
         // 计算分页偏移

@@ -28,4 +28,7 @@ public class PatrolIssuePhotoFileVO {
 
     /** 上传人用户 id（移除/绑定时校验归属） */
     private String createdBy;
+
+    /** 照片类型：1 现场照片 / 2 处理结果附件（上传时为空，绑定时写入） */
+    private String photoType;
 }

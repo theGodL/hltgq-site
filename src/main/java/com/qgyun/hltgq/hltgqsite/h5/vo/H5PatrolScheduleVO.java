@@ -48,8 +48,9 @@ public class H5PatrolScheduleVO {
     private Boolean started;
 
     /**
-     * 当前空白占位草稿 id：该计划下最早一条草稿 #1# 且站点/设备/结果/内容全空的记录；无草稿为 null。
-     * <p>H5 提交巡检记录时优先用该 id 更新 + 提交（幂等），不再另建记录，避免「草稿 + 正式」两条。
+     * 当前可继续编辑的草稿 id：当前登录人在该计划下最早一条草稿 #1#（不限是否已填明细）；无草稿为 null。
+     * <p>与开始巡检（§5.3）返回的 recordId 同一口径（当前登录人 + status='#1#' + 最早一条）。
+     * H5 提交巡检记录时优先用它更新 + 提交（幂等）；为 null 时调 /patrol-record/create 新建。
      */
     private String draftRecordId;
 

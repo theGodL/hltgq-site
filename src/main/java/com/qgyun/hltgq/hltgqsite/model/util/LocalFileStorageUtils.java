@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Collections;
@@ -42,6 +43,16 @@ public final class LocalFileStorageUtils {
 
     /** 附件按月分桶目录（yyyy-MM） */
     public static final DateTimeFormatter MONTH_DIR = DateTimeFormatter.ofPattern("yyyy-MM");
+
+    /**
+     * 附件相对路径：{@code 业务子目录/yyyy-MM/存储ID_原始文件名}（各业务模块共用同一命名规则）。
+     * <p>年月经 {@code time} 归桶——由调用方传入业务侧 {@code now}，保证目录月份与记录创建时间一致
+     * （模板内取当前时间会在跨月边界与入库时间错开）。
+     * <p>存储ID 前置可避免同名文件覆盖；原始文件名已由 {@link #sanitizeFileName} 清洗。
+     */
+    public static String relPath(String subDir, LocalDateTime time, String storedId, String originalName) {
+        return subDir + "/" + time.format(MONTH_DIR) + "/" + storedId + "_" + originalName;
+    }
 
     /** 清洗后文件名长度上限（超出则截断主干、保留扩展名） */
     private static final int NAME_MAX_LENGTH = 120;

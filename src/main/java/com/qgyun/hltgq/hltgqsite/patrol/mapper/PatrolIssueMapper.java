@@ -96,34 +96,74 @@ public interface PatrolIssueMapper {
 
     /** 按 id 取照片行（下载 / 归属校验 / 移除）。 */
     @Select("SELECT id, issue_id AS issueId, file_name AS fileName, file_path AS filePath, " +
-            "file_size AS fileSize, file_ext AS fileExt, created_by AS createdBy " +
+            "file_size AS fileSize, file_ext AS fileExt, created_by AS createdBy, " +
+            "photo_type AS photoType " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_issue_photo\" WHERE id = #{id}")
     PatrolIssuePhotoFileVO selectPhoto(@Param("id") String id);
 
-    /** 按问题 id 取照片列表（H5 / PC 回显，按提交时的上传顺序）。 */
-    @Select("SELECT id, file_name AS \"name\", file_size AS \"size\", file_ext AS \"ext\", " +
-            "nature_order AS natureOrder " +
+    /**
+     * 按问题 id 取照片列表（H5 / PC 回显，按提交时的上传顺序）；
+     * photoType 可选：1 现场照片 / 2 处理结果附件，不传返回全部。
+     */
+    @Select("<script>" +
+            "SELECT id, file_name AS \"name\", file_size AS \"size\", file_ext AS \"ext\", " +
+            "nature_order AS natureOrder, photo_type AS photoType " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_issue_photo\" " +
-            "WHERE issue_id = #{issueId} ORDER BY nature_order NULLS LAST, created_at")
-    List<PatrolIssuePhotoItemVO> selectPhotosByIssue(@Param("issueId") String issueId);
+            "WHERE issue_id = #{issueId} " +
+            "<if test='photoType != null'>AND photo_type = #{photoType} </if>" +
+            "ORDER BY nature_order NULLS LAST, created_at" +
+            "</script>")
+    List<PatrolIssuePhotoItemVO> selectPhotosByIssue(@Param("issueId") String issueId,
+                                                     @Param("photoType") String photoType);
 
     /**
-     * 绑定照片到问题并写排序：带 created_by = 当前操作人、issue_id IS NULL 条件，
-     * 防止绑定他人照片或重复绑定；返回 0 表示校验失败（事务整体回滚）。
+     * 绑定现场照片到问题并写排序：带 created_by = 当前操作人、issue_id IS NULL 条件，
+     * 防止绑定他人照片或重复绑定；photo_type 固定写 1；返回 0 表示校验失败（事务整体回滚）。
      */
     @Update("UPDATE \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_issue_photo\" " +
-            "SET issue_id = #{issueId}, nature_order = #{order}, updated_at = #{now}, updated_by = #{operatorId} " +
+            "SET issue_id = #{issueId}, photo_type = #{photoType}, nature_order = #{order}, " +
+            "updated_at = #{now}, updated_by = #{operatorId} " +
             "WHERE id = #{id} AND created_by = #{operatorId} AND issue_id IS NULL")
     int bindPhoto(@Param("id") String id,
                   @Param("issueId") String issueId,
+                  @Param("photoType") String photoType,
                   @Param("order") int order,
                   @Param("operatorId") String operatorId,
                   @Param("now") LocalDateTime now);
+
+    /** 取本问题已绑定的处理结果附件（保存时清理不在集合内的行）。 */
+    @Select("SELECT id, file_path AS filePath FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_issue_photo\" " +
+            "WHERE issue_id = #{issueId} AND photo_type = '2'")
+    List<PatrolIssuePhotoFileVO> selectResultPhotos(@Param("issueId") String issueId);
+
+    /** 已绑定处理附件的顺序刷新（保存时按本次集合顺序重排）。 */
+    @Update("UPDATE \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_issue_photo\" " +
+            "SET nature_order = #{order}, updated_at = #{now}, updated_by = #{operatorId} " +
+            "WHERE id = #{id} AND issue_id = #{issueId} AND photo_type = '2'")
+    int updateResultPhotoOrder(@Param("id") String id,
+                               @Param("issueId") String issueId,
+                               @Param("order") int order,
+                               @Param("operatorId") String operatorId,
+                               @Param("now") LocalDateTime now);
+
+    /**
+     * 删除本问题的处理结果附件行：保存时清理不在集合内的附件、移除接口共用；
+     * 限定 issue_id + photo_type='2'，返回 0 表示已变化。
+     */
+    @Delete("DELETE FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_issue_photo\" " +
+            "WHERE id = #{id} AND issue_id = #{issueId} AND photo_type = '2'")
+    int deleteResultPhoto(@Param("id") String id, @Param("issueId") String issueId);
 
     /** 移除未提交的照片行（已绑定问题的不允许移除）。 */
     @Delete("DELETE FROM \"qixiao-apaas\".\"t_auto_hltgq_water_patrol_issue_photo\" " +
             "WHERE id = #{id} AND created_by = #{operatorId} AND issue_id IS NULL")
     int deleteUnboundPhoto(@Param("id") String id, @Param("operatorId") String operatorId);
+
+    /** 问题状态与处理结果（填写处理结果 / 关闭问题前置判断）。 */
+    @Select("SELECT status AS statusCode, ezuvil AS result " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" " +
+            "WHERE id = #{id} AND corp_code = 'hltgq'")
+    PatrolIssueAdminDetailVO selectIssueStatusResult(@Param("id") String id);
 
     // ==================== 管理页：分页 / 详情 ====================
 
@@ -198,10 +238,11 @@ public interface PatrolIssueMapper {
                   @Param("operatorId") String operatorId,
                   @Param("now") LocalDateTime now);
 
-    /** 关闭问题：处理中 #2# → 已关闭 #4#。 */
+    /** 关闭问题：处理中 #2# → 已关闭 #4#；处理结果 ezuvil 必填（trim 后非空）。 */
     @Update("UPDATE \"qixiao-apaas\".\"t_auto_hltgq_knc3g_bpzjoh\" " +
             "SET status = '#4#', updated_at = #{now}, updated_by = #{operatorId} " +
-            "WHERE id = #{id} AND corp_code = 'hltgq' AND status = '#2#'")
+            "WHERE id = #{id} AND corp_code = 'hltgq' AND status = '#2#' " +
+            "AND ezuvil IS NOT NULL AND btrim(ezuvil) <> ''")
     int closeIssue(@Param("id") String id,
                    @Param("operatorId") String operatorId,
                    @Param("now") LocalDateTime now);

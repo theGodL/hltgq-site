@@ -610,7 +610,8 @@ public class ExternalService {
         List<?> rows;
         switch (typeCode) {
             case "#1#":
-                rows = irrigationWaterLevelService.page(new Page<>(1, MAX_MONITOR_SITES), null, null, null).getRecords();
+                // 只要列表不要总数：searchCount=false 跳过 count 查询（水位列表的 count 需全量统计，约 0.4s）
+                rows = irrigationWaterLevelService.page(new Page<>(1, MAX_MONITOR_SITES, false), null, null, null).getRecords();
                 break;
             case "#2#":
                 rows = stPptnRService.gqRainfallMonitoringAll();

@@ -6,8 +6,10 @@ import java.util.List;
 
 /**
  * 巡检记录新增/编辑入参（POST /patrol-record/create、/update）。
- * <p>字段口径：time/patrol_schedule/site/device/result/site_image 为必填、content/巡检人员非必填；
- * 平台多值字段（imjjpx 可选站点、tzxlun 问题子表）不在此入参内（imjjpx 由计划范围推导，问题走新增问题页）。
+ * <p>字段口径：time/scheduleId/siteId/deviceId/result 必填，content/cost/userId/photoIds 可选；
+ * 照片草稿阶段可空（0~3 张），提交（POST /patrol-record/submit）时要求至少 1 张。
+ * <p>平台多值字段（imjjpx 可选站点、tzxlun 问题子表）不在此入参内
+ * （imjjpx 由计划范围推导，问题走 /patrol-issue/create）。
  */
 @Data
 public class PatrolRecordSaveRequest {
@@ -39,6 +41,6 @@ public class PatrolRecordSaveRequest {
     /** 成本金额（非必填，2 位小数） */
     private Double cost;
 
-    /** 现场照片 id 列表（1~3 张，顺序即展示顺序） */
+    /** 现场照片 id 列表（0~3 张，先调 /patrol-record/photo 上传；顺序即展示顺序；提交时至少 1 张） */
     private List<String> photoIds;
 }

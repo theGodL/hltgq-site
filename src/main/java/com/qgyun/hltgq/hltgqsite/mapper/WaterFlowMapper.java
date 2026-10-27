@@ -287,7 +287,9 @@ public interface WaterFlowMapper {
      * <p>仅取当年（tm ≥ yearStart）记录：ytf 为当年累计，跨年旧值不能当作今年累计。
      * endTime 非空时作为上界（“截至某日”查询），避免回退值晚于调用方指定的截止时间。
      * ytf 为空或 -999（设备不存在）/-9991（设备异常）的记录不参与。
-     * DISTINCT ON 走 (site, tm) 索引，按站点取最新一条，无 N+1。
+     * 取数结构：站点列表 VALUES + JOIN LATERAL 每站走 (site, tm DESC) 索引点查最新一条（无 N+1 往返）。
+     * 不能用 DISTINCT ON (site) 全表聚合：planner 会选全表扫描 + 全量排序（实测 20 余站 ≈660ms），
+     * 改为逐站索引点查后执行 ≈2ms。
      *
      * @param siteIds   站点 UUID 列表（必填，调用方保证非空）
      * @param yearStart 当年 1月1日 0点
@@ -295,14 +297,19 @@ public interface WaterFlowMapper {
      * @return 每站一行：site、ytf（m³ 原值）、tm（累计截止时间）；无有效记录的站点不返回行
      */
     @Select("<script>" +
-            "SELECT DISTINCT ON (f.site) f.site AS site, f.ytf AS ytf, f.tm AS tm " +
-            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
-            "WHERE f.site IN " +
-            "<foreach collection='siteIds' item='s' open='(' separator=',' close=')'>#{s}</foreach> " +
-            "AND f.ytf IS NOT NULL AND f.ytf NOT IN (-999, -9991) " +
-            "AND f.tm &gt;= #{yearStart} " +
-            "<if test='endTime != null'>AND f.tm &lt;= #{endTime} </if>" +
-            "ORDER BY f.site, f.tm DESC" +
+            "SELECT s.site AS site, fw.ytf AS ytf, fw.tm AS tm " +
+            "FROM (VALUES " +
+            "<foreach collection='siteIds' item='s' separator=','>(#{s}::text)</foreach>" +
+            ") s(site) " +
+            "JOIN LATERAL ( " +
+            "  SELECT f.ytf, f.tm " +
+            "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "  WHERE f.site = s.site " +
+            "  AND f.ytf IS NOT NULL AND f.ytf NOT IN (-999, -9991) " +
+            "  AND f.tm &gt;= #{yearStart} " +
+            "<if test='endTime != null'>  AND f.tm &lt;= #{endTime} </if>" +
+            "  ORDER BY f.tm DESC LIMIT 1 " +
+            ") fw ON true" +
             "</script>")
     List<Map<String, Object>> selectLatestCumulativeBySites(@Param("siteIds") List<String> siteIds,
                                                             @Param("yearStart") LocalDateTime yearStart,

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qgyun.hltgq.hltgqsite.h5.mapper.H5WaterResourceMapper;
 import com.qgyun.hltgq.hltgqsite.h5.vo.WaterResourceOverviewVO;
 import com.qgyun.hltgq.hltgqsite.irrigation.config.IrrigationStationConfig;
+import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport.GateConfig;
 import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterUserMapper;
@@ -24,6 +26,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * H5 水资源概览服务：一个接口聚合页面三块组件（避免 H5 多请求），按年度区间查询。
@@ -129,7 +133,7 @@ public class H5WaterResourceService {
         if (rows != null) {
             for (Map<String, Object> row : rows) {
                 String userId = row.get("userid") == null ? null : String.valueOf(row.get("userid"));
-                BigDecimal amount = asBigDecimal(row.get("planwater"));
+                BigDecimal amount = ValueConvertUtils.decimal(row.get("planwater"));
                 if (userId != null && amount != null) {
                     result.put(userId, amount);
                 }
@@ -150,7 +154,7 @@ public class H5WaterResourceService {
         if (rows != null) {
             for (Map<String, Object> row : rows) {
                 String userId = row.get("userid") == null ? null : String.valueOf(row.get("userid"));
-                BigDecimal amount = asBigDecimal(row.get("amount"));
+                BigDecimal amount = ValueConvertUtils.decimal(row.get("amount"));
                 if (userId != null && amount != null) {
                     result.put(userId, amount);
                 }
@@ -203,7 +207,7 @@ public class H5WaterResourceService {
             item.setCode(user.getId());
             item.setUserNo(user.getUserNo());
             item.setDistrict(user.getName());
-            item.setAllocatedVolume(planned == null ? null : wanOf(planned));
+            item.setAllocatedVolume(WaterVolumeUtils.toWan(planned, 2));
             item.setProgress(supply != null && planned != null && planned.compareTo(BigDecimal.ZERO) > 0
                     ? supply.multiply(HUNDRED).divide(planned, 1, RoundingMode.DOWN) : null);
             result.add(item);
@@ -227,24 +231,17 @@ public class H5WaterResourceService {
             return result;
         }
         for (IrrigationStationConfig.CountySupply county : IrrigationStationConfig.COUNTIES) {
-            BigDecimal cubic = null;
-            String matched = null;
-            for (WaterUserVO user : users) {
-                if (user.getName() == null || !user.getName().contains(county.district)) {
-                    continue;
-                }
-                matched = (matched == null) ? user.getName() : matched + "、" + user.getName();
-                BigDecimal supply = supplyByUser.get(user.getId());
-                if (supply != null) {
-                    cubic = (cubic == null) ? supply : cubic.add(supply);
-                }
-            }
+            BigDecimal cubic = sumByCounty(county.district, users, user -> supplyByUser.get(user.getId()));
+            String matched = users.stream()
+                    .filter(user -> user.getName() != null && user.getName().contains(county.district))
+                    .map(WaterUserVO::getName)
+                    .collect(Collectors.joining("、"));
             if (cubic == null) {
                 log.info("[水资源概览] 四卡片 行政区={} 供水=null（关联用水户={}，闸口无放水量）",
-                        county.district, matched == null ? "无" : matched);
+                        county.district, matched.isEmpty() ? "无" : matched);
                 continue;
             }
-            BigDecimal wan = scale3(cubic.movePointLeft(4));
+            BigDecimal wan = WaterVolumeUtils.m3ToWan(cubic);
             result.put(county.district, wan);
             log.info("[水资源概览] 四卡片 行政区={} 供水={}万m³（闸口放水量合计={}m³，关联用水户={}）",
                     county.district, wan, cubic, matched);
@@ -252,7 +249,15 @@ public class H5WaterResourceService {
         return result;
     }
 
-    /** 四卡片：固定四县顺序（该县面积取用水户档案 + 供水 + 总需水；无数据时对应字段为 null，卡片仍可渲染） */
+    /**
+     * 四卡片：固定四县顺序，无数据时对应字段为 null，卡片仍可渲染。
+     * <ul>
+     *   <li>面积 = 用水户档案「灌溉面积」（亩 → 万亩，2 位截断）。面积在「用水户」页面手填维护，
+     *       改档案即生效；未维护为 null，不补 0</li>
+     *   <li>供水 = 该县闸口放水量合计（万m³，3 位截断）</li>
+     *   <li>总需水 = 该县用水户当年用水申请合计（万m³，2 位截断）</li>
+     * </ul>
+     */
     private List<WaterResourceOverviewVO.CountyDetail> buildCountyDetails(
             List<WaterUserVO> users, Map<String, BigDecimal> demandByUser, Map<String, BigDecimal> countySupply) {
         List<WaterResourceOverviewVO.CountyDetail> result = new ArrayList<>();
@@ -260,10 +265,11 @@ public class H5WaterResourceService {
             WaterResourceOverviewVO.CountyDetail item = new WaterResourceOverviewVO.CountyDetail();
             item.setCode(planKey(county.district));
             item.setDistrict(county.district);
-            item.setIrrigationArea(areaOfCounty(county.district, users));
+            item.setIrrigationArea(
+                    WaterVolumeUtils.toWan(sumByCounty(county.district, users, WaterUserVO::getIrrigationArea), 2));
             item.setFinishedVolume(countySupply.get(county.district));
-            BigDecimal demand = demandOfCounty(county.district, users, demandByUser);
-            item.setDemandVolume(demand == null ? null : wanOf(demand));
+            item.setDemandVolume(
+                    WaterVolumeUtils.toWan(sumByCounty(county.district, users, user -> demandByUser.get(user.getId())), 2));
             result.add(item);
             log.info("[水资源概览] 四卡片 行政区={} 面积={}万亩 供水={}万m³ 总需水={}万m³",
                     item.getDistrict(), item.getIrrigationArea(), item.getFinishedVolume(), item.getDemandVolume());
@@ -272,12 +278,14 @@ public class H5WaterResourceService {
     }
 
     /**
-     * 该县总需水（m³）= 归属该县的用水户当年用水申请合计。
-     * <p>业务口径：一县即一个用水户，行政区名即用水户名称；为兼容「太湖县XX用水户」这类命名，
-     * 按名称包含县名匹配，命中多个时全部计入。无匹配户或无申请返回 null。
+     * 按县归集：归属该县的用水户取值之和。
+     * <p>县归属按用水户名称包含县名匹配（兼容「太湖县XX用水户」命名），命中多个全部计入；
+     * 供水、总需水、面积三种口径共用本方法，取值方式由 {@code extractor} 决定。
+     * <p>无匹配户、或命中户的取值全为 null 时返回 null（不补 0）。
      */
-    private BigDecimal demandOfCounty(String district, List<WaterUserVO> users, Map<String, BigDecimal> demandByUser) {
-        if (users == null || users.isEmpty() || demandByUser.isEmpty()) {
+    private BigDecimal sumByCounty(String district, List<WaterUserVO> users,
+                                   Function<WaterUserVO, BigDecimal> extractor) {
+        if (users == null || users.isEmpty()) {
             return null;
         }
         BigDecimal sum = null;
@@ -285,34 +293,12 @@ public class H5WaterResourceService {
             if (user.getName() == null || !user.getName().contains(district)) {
                 continue;
             }
-            BigDecimal demand = demandByUser.get(user.getId());
-            if (demand != null) {
-                sum = sum == null ? demand : sum.add(demand);
+            BigDecimal value = extractor.apply(user);
+            if (value != null) {
+                sum = sum == null ? value : sum.add(value);
             }
         }
         return sum;
-    }
-
-    /**
-     * 该县面积（万亩，2 位截断）= 归属该县的用水户档案「灌溉面积」合计（亩 → 万亩）。
-     * <p>面积在「用水户」页面手填维护（字段 irrigation_area，单位亩），一县一户即县面积；
-     * 改档案即生效，无需改代码。未维护返回 null（不补 0）。
-     */
-    private BigDecimal areaOfCounty(String district, List<WaterUserVO> users) {
-        if (users == null || users.isEmpty()) {
-            return null;
-        }
-        BigDecimal mu = null;
-        for (WaterUserVO user : users) {
-            if (user.getName() == null || !user.getName().contains(district)) {
-                continue;
-            }
-            BigDecimal area = user.getIrrigationArea();
-            if (area != null) {
-                mu = mu == null ? area : mu.add(area);
-            }
-        }
-        return mu == null ? null : mu.movePointLeft(4).setScale(2, RoundingMode.DOWN);
     }
 
     /** 县名 → 稳定编码（前端按 code 精确映射，不依赖数组顺序） */
@@ -347,28 +333,4 @@ public class H5WaterResourceService {
         return stats;
     }
 
-    /** Object → BigDecimal（PG numeric/Integer/Double 通用） */
-    private BigDecimal asBigDecimal(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof BigDecimal) {
-            return (BigDecimal) value;
-        }
-        try {
-            return new BigDecimal(String.valueOf(value));
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    /** m³ → 万m³（2 位截断：分配水量/总需水口径） */
-    private BigDecimal wanOf(BigDecimal cubicMeters) {
-        return cubicMeters.movePointLeft(4).setScale(2, RoundingMode.DOWN);
-    }
-
-    /** 3 位截断（累计流量口径水量：实际供水量及其合计） */
-    private BigDecimal scale3(BigDecimal value) {
-        return value.setScale(3, RoundingMode.DOWN);
-    }
 }

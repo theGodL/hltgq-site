@@ -7,6 +7,7 @@ import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
+import com.qgyun.hltgq.hltgqsite.patrol.PatrolRecordConflictException;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolPlanMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolRecordMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolDicts;
@@ -54,8 +55,12 @@ import java.util.Set;
  * </ul>
  *
  * <p>现场照片：自建表 t_auto_hltgq_water_patrol_record_photo + 本地 file-dir（patrol-record/yyyy-MM/），
- * 上传时仅记录上传人，保存记录时绑定并按列表顺序排序；<b>不写平台文件关系表</b>
- * （平台文件服务上传契约未接入，H5 提交的记录照片在 PC 端不可见）。
+ * 上传时仅记录上传人，保存记录时绑定并按列表顺序排序；<b>不写平台 site_image 关系表</b>，
+ * 入参统一为 photoIds（先调 /patrol-record/photo 上传），单条记录最多 3 张。
+ * <p>照片必填口径：草稿保存（create/update）允许 0~3 张，提交（submit）要求至少 1 张
+ * （与计划页「添加巡检记录」草稿可空、提交需照片的口径一致）。
+ * <p>状态冲突：已提交记录再编辑/重复提交抛 {@link PatrolRecordConflictException}（HTTP 409），
+ * 参数缺失或记录不存在仍为 400。
  */
 @Service
 public class PatrolRecordService {
@@ -174,7 +179,9 @@ public class PatrolRecordService {
     // ==================== 新增 / 编辑 ====================
 
     /**
-     * 新增记录（草稿）：校验计划/站点/设备/结果/照片后写主表并按顺序绑定照片，整单事务。
+     * 新增记录（草稿）：校验计划/站点/设备/结果后写主表并按顺序绑定照片，整单事务。
+     * <p>照片可选（0~3 张）：草稿阶段允许先存草稿、后续到记录页/再次 create 补照片；
+     * 提交时（{@link #submit}）才要求至少 1 张。
      * <p>幂等：优先“认领”该计划下的空白占位草稿（H5 开始巡检写入、四项全空）并填充，
      * 仅在无空白草稿或并发被认领时新增；保存后清理同计划其余空白草稿，
      * 保证任何客户端都不会出现「草稿 + 正式」两条。
@@ -195,9 +202,6 @@ public class PatrolRecordService {
         Double cost = normalizeCost(req.getCost());
         String userId = requireUser(req.getUserId(), operatorId);
         List<String> photoIds = PatrolPhotoSupport.normalizePhotoIds(req.getPhotoIds(), PHOTO_MAX_COUNT);
-        if (photoIds.isEmpty()) {
-            throw new IllegalArgumentException("现场照片不能为空（至少上传 1 张）");
-        }
         PatrolPhotoSupport.precheckNewPhotos(photoIds, operatorId, mapper::selectPhoto);
 
         LocalDateTime now = LocalDateTime.now();
@@ -229,7 +233,10 @@ public class PatrolRecordService {
     }
 
     /**
-     * 编辑记录（仅草稿）：字段校验同新增；照片以入参列表为准（不在列表中的旧照片删行 + 删文件）。
+     * 编辑记录（仅草稿）：字段校验同新增；照片以入参列表为准
+     * （列表即最终照片集合：未包含的旧照片删行 + 删文件，空列表/缺省 = 清空照片）。
+     * <p>照片可选（0~3 张），提交时才要求至少 1 张。
+     * <p>已提交记录返回 409（状态冲突，不是参数错误），前端据此提示刷新。
      */
     @Transactional(rollbackFor = Exception.class)
     public String update(PatrolRecordSaveRequest req) {
@@ -245,7 +252,7 @@ public class PatrolRecordService {
             throw new IllegalArgumentException("巡检记录不存在：" + id);
         }
         if (!STATUS_DRAFT.equals(record.getStatusCode())) {
-            throw new IllegalArgumentException("已提交的巡检记录不可编辑");
+            throw new PatrolRecordConflictException("巡检记录已提交，不可编辑");
         }
         String operatorId = OperatorUtils.currentOperatorId(fallbackOperator);
         LocalDateTime time = parseTime(req.getTime());
@@ -261,9 +268,6 @@ public class PatrolRecordService {
         Double cost = normalizeCost(req.getCost());
         String userId = requireUser(req.getUserId(), operatorId);
         List<String> photoIds = PatrolPhotoSupport.normalizePhotoIds(req.getPhotoIds(), PHOTO_MAX_COUNT);
-        if (photoIds.isEmpty()) {
-            throw new IllegalArgumentException("现场照片不能为空（至少上传 1 张）");
-        }
         List<PatrolRecordPhotoFileVO> existing = mapper.selectPhotoRowsByRecord(id);
         Map<String, PatrolRecordPhotoFileVO> existingMap = new LinkedHashMap<>();
         for (PatrolRecordPhotoFileVO row : existing) {
@@ -281,7 +285,11 @@ public class PatrolRecordService {
         int updated = mapper.updateDraft(id, operatorId, now, time, scheduleId, siteId, deviceId,
                 userId, result, content, cost);
         if (updated == 0) {
-            throw new IllegalArgumentException("巡检记录不存在或已提交");
+            // 并发窗口：查询后被他人提交/删除，按当前状态区分 400（不存在）与 409（已提交）
+            if (mapper.selectDetail(id) == null) {
+                throw new IllegalArgumentException("巡检记录不存在：" + id);
+            }
+            throw new PatrolRecordConflictException("巡检记录已提交，不可编辑");
         }
         List<String> removedPaths = new ArrayList<>();
         for (PatrolRecordPhotoFileVO old : existing) {
@@ -339,7 +347,7 @@ public class PatrolRecordService {
     }
 
     /** 提交记录（草稿 → 已提交）：脏草稿（缺站点/设备/结果/照片）拒绝提交，先编辑补全；
-     *  提交成功后兜底清理同计划其余空白占位草稿，避免残留「正式 + 空草稿」。 */
+     *  重复提交返回 409（状态冲突）；提交成功后兜底清理同计划其余空白占位草稿（非空白旧草稿保留）。 */
     @Transactional(rollbackFor = Exception.class)
     public void submit(String id) {
         String key = CheckUtils.trim(id);
@@ -351,7 +359,7 @@ public class PatrolRecordService {
             throw new IllegalArgumentException("巡检记录不存在：" + key);
         }
         if (!STATUS_DRAFT.equals(record.getStatusCode())) {
-            throw new IllegalArgumentException("巡检记录已提交，请勿重复提交");
+            throw new PatrolRecordConflictException("巡检记录已提交，请勿重复提交");
         }
         if (record.getSiteId() == null) {
             throw new IllegalArgumentException("巡检记录缺少站点，请先编辑补全后再提交");
@@ -391,7 +399,7 @@ public class PatrolRecordService {
         String operatorId = OperatorUtils.currentOperatorId(fallbackOperator);
         LocalDateTime now = LocalDateTime.now();
         String photoId = shortIdGenerator.nextUUID(null);
-        String relPath = PHOTO_DIR + "/" + now.format(LocalFileStorageUtils.MONTH_DIR) + "/" + photoId + "_" + originalName;
+        String relPath = LocalFileStorageUtils.relPath(PHOTO_DIR, now, photoId, originalName);
         Path base = LocalFileStorageUtils.root(fileDir);
         LocalFileStorageUtils.write(base, relPath, file);
 

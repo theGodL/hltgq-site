@@ -118,8 +118,10 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
      * 再按 (site, gate_no, tm) 关联回闸门表取整行；最外层 DISTINCT ON (site, gate_no) 兜底去重。
      * <p>性能注意：流量取值不在本查询——Service 层按闸门表最新时刻 ±20 分钟窗口
      * 批量查询流量表（WaterFlowMapper.selectLatestInWindowBatch，VALUES + LATERAL 一次取多站）。
-     * 电压 vol 用预聚合子查询关联电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID，取最新一条；
-     * 站点筛选时按站点下推过滤，全站模式限定为闸门监测站点集合，避免电压表全表 DISTINCT ON 排序）。
+     * 电压 vol 用 LATERAL 按站点索引点查电压表 t_auto_hltgq_water_vol_info（电压表 site = 站点 UUID，
+     * 走 (site, tm DESC) 索引取窗口内最新一条）。电压取值不能用聚合子查询再 JOIN：
+     * 原写法 DISTINCT ON 子查询会被 Nested Loop 按行重复执行（全站模式 65 行 × 电压表全表扫描 ≈4s），
+     * 改为每行一次索引点查后整条 SQL 降至 ≈0.4s。
      * <p>累计流量取数：fq_prev（仅指定起始时间时拼接）用 LATERAL 点查返回起始时间前最近一条
      * ttf 非空行的 ttf（走 (site, tm) 索引 LIMIT 1），供 Service 层相减计算范围累计流量。
      * <p>数据清洗：库中存在 gate_no='0' 且开度为 NULL 的采集占位行，
@@ -161,18 +163,14 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
             "    ) m ON g.site = m.site AND g.gate_no = m.gate_no AND g.tm = m.tm " +
             "    INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
             "    LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON s.ywvyds = c.id " +
-            "    LEFT JOIN ( " +
-            "      SELECT DISTINCT ON (v.site) v.site, v.vol " +
+            "    LEFT JOIN LATERAL ( " +
+            "      SELECT v.vol " +
             "      FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
-            "      WHERE 1=1 " +
-            "      <if test='site != null and site != \"\"'>AND v.site = #{site} </if>" +
-            "      <if test='site == null or site == \"\"'>" +
-            "AND v.site IN (SELECT id FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" WHERE epjutj LIKE '%#4#%') " +
-            "      </if>" +
+            "      WHERE v.site = g.site " +
             "      <if test='startTime != null'>AND v.tm &gt;= #{startTime} </if>" +
             "      <if test='endTime != null'>AND v.tm &lt;= #{endTime} </if>" +
-            "      ORDER BY v.site, v.tm DESC " +
-            "    ) fv ON fv.site = g.site " +
+            "      ORDER BY v.tm DESC LIMIT 1 " +
+            "    ) fv ON true " +
             "    <if test='startTime != null'>" +
             "    LEFT JOIN LATERAL ( " +
             "      SELECT f.ttf AS prev_ttf " +

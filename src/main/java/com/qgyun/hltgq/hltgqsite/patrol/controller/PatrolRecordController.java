@@ -76,7 +76,7 @@ public class PatrolRecordController {
         return recordService.planOptions(includeId);
     }
 
-    /** 新增记录（草稿）：站点须在计划巡查范围、对象须属于站点、照片 1~3 张；返回记录 id。
+    /** 新增记录（草稿）：站点须在计划巡查范围、对象须属于站点、照片 0~3 张（提交时要求至少 1 张）；返回记录 id。
      *  幂等：该计划下有空白占位草稿时优先填充它（返回其 id），不会产生「草稿 + 正式」两条。 */
     @PostMapping("/create")
     public Map<String, Object> create(@RequestBody PatrolRecordSaveRequest request) {
@@ -86,7 +86,7 @@ public class PatrolRecordController {
         return out;
     }
 
-    /** 编辑记录（仅草稿）：照片以入参列表为准，返回记录 id。 */
+    /** 编辑记录（仅草稿）：照片以入参列表为准（空/缺省=清空照片，0~3 张）；已提交返回 409。 */
     @PostMapping("/update")
     public Map<String, Object> update(@RequestBody PatrolRecordSaveRequest request) {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -102,7 +102,7 @@ public class PatrolRecordController {
         return ApiResultUtils.ok();
     }
 
-    /** 提交记录（草稿 → 已提交）：缺站点/对象/结果/照片的脏草稿拒绝提交。 */
+    /** 提交记录（草稿 → 已提交）：缺站点/对象/结果/照片的脏草稿拒绝提交；重复提交返回 409。 */
     @PostMapping("/submit")
     public Map<String, Object> submit(@RequestBody IdRequest request) {
         recordService.submit(request == null ? null : request.getId());

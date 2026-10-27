@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,6 +35,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 工单管理接口（/work-order/*，work-order-list.html + work-order-export.html）。
@@ -41,8 +43,9 @@ import java.util.Map;
  * <p>列表页：分页（所属站点 + 处理时间区间 + 状态）、详情（查看弹窗）、
  * 编辑（抽屉内嵌 work-order-add.html，仅待指派）、删除/指派/取消（仅待指派）、
  * 填写处理结果/提交验收（仅处理中）；既有 /list（裸 List）继续服务导出页。
- * <p>处理结果附件：上传即落盘并插行（order_id 为空），保存处理结果时按附件 id 集合绑定；
- * 未归属附件可即时移除，工单删除连带清理行与文件。
+ * <p>处理结果附件：仅收图片（jpg/jpeg/png/gif/bmp/webp，单张 ≤5MB，每单最多 5 张），
+ * 上传即落盘并插行（order_id 为空），保存处理结果时按附件 id 集合绑定；
+ * 未归属附件可即时移除，工单删除连带清理行与文件；预览走 inline 接口，下载走 attachment 接口。
  * <p>状态口径：#1# 待指派、#2# 处理中、#3# 已关闭、#4# 已取消、#iizl# 已逾期；
  * 状态流转均为条件更新，状态已变化返回 400 提示刷新。
  */
@@ -156,13 +159,23 @@ public class WorkOrderController {
         return ApiResultUtils.ok();
     }
 
-    /** 处理结果附件上传（multipart 单文件；白名单：图片/PDF/Word/Excel；返回 {id, fileName, fileSize, fileExt}） */
+    /** 处理结果附件上传（multipart 单文件；仅图片 jpg/jpeg/png/gif/bmp/webp，单张 ≤5MB，每单最多 5 张；返回 {id, fileName, fileSize, fileExt}） */
     @PostMapping("/attachment/upload")
     public WorkOrderAttachmentVO uploadAttachment(@RequestParam("file") MultipartFile file) {
         log.info("收到工单附件上传请求：{}（{} 字节）",
                 file == null ? null : file.getOriginalFilename(),
                 file == null ? 0 : file.getSize());
         return workOrderService.uploadAttachment(file);
+    }
+
+    /** 处理结果图片预览（inline 直出图片，供 <img> 直连或 fetch+blob；缩略图/大图共用） */
+    @GetMapping("/attachment/preview")
+    public ResponseEntity<byte[]> previewAttachment(@RequestParam String id) {
+        WorkOrderAttachmentDownloadVO file = workOrderService.downloadAttachment(id);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePrivate())
+                .contentType(MediaTypeUtils.of(file.getFileExt()))
+                .body(file.getContent());
     }
 
     /** 处理结果附件下载（Content-Disposition 带原始文件名，前端 fetch + blob 使用） */

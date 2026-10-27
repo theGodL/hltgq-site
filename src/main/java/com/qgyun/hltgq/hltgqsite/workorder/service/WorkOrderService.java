@@ -32,6 +32,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,6 +53,7 @@ import java.util.Map;
  * <p>关联问题：工单表无 azgquf 物理列，统一由问题记录表 work_order_id 反查；
  * 工单附件/图片（file/xdkvyp）无物理列，处理结果附件改用独立表
  * t_auto_hltgq_water_work_order_attachment（本地存储 file-dir/work-order/{yyyy-MM}/{uuid}_{原名}）：
+ * 仅收图片（jpg/jpeg/png/gif/bmp/webp），单张 ≤5MB，每张工单最多 5 张；
  * 上传时行 order_id 为空，保存处理结果时回填归属，不在保留集合内的行与文件一并清理。
  */
 @Service
@@ -61,6 +63,16 @@ public class WorkOrderService {
 
     /** 附件存储根目录名（file-dir 下的工单专属目录） */
     private static final String ATTACH_DIR = "work-order";
+
+    /** 处理结果附件扩展名白名单（只收图片，不收 PDF/Office） */
+    private static final List<String> ATTACH_IMAGE_EXTENSIONS =
+            Arrays.asList("jpg", "jpeg", "png", "gif", "bmp", "webp");
+
+    /** 处理结果附件单张大小上限（5MB；全局 multipart 20MB 仅作兜底） */
+    private static final long ATTACH_MAX_SIZE = 5L * 1024 * 1024;
+
+    /** 处理结果附件数量上限（每张工单最多 5 张） */
+    private static final int ATTACH_MAX_COUNT = 5;
 
     /** 工单标题长度上限 */
     private static final int TITLE_MAX_LENGTH = 200;
@@ -388,20 +400,22 @@ public class WorkOrderService {
 
     // ==================== 处理结果附件（上传 / 下载 / 移除） ====================
 
-    /** 上传附件：白名单 + 落盘（work-order/yyyy-MM/uuid_原名） + 行入库（order_id 为空待回填）。 */
+    /** 上传附件图片：图片白名单 + 单张大小上限 + 落盘（work-order/yyyy-MM/uuid_原名） + 行入库（order_id 为空待回填）。 */
     public WorkOrderAttachmentVO uploadAttachment(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空");
         }
+        if (file.getSize() > ATTACH_MAX_SIZE) {
+            throw new IllegalArgumentException("单张图片不能超过 5MB");
+        }
         String originalName = LocalFileStorageUtils.sanitizeFileName(file.getOriginalFilename());
         String ext = LocalFileStorageUtils.extOf(originalName);
-        if (!LocalFileStorageUtils.isAllowedExt(ext)) {
-            throw new IllegalArgumentException("不支持的文件类型（仅支持图片、PDF、Word、Excel）：" + originalName);
+        if (ext == null || !ATTACH_IMAGE_EXTENSIONS.contains(ext)) {
+            throw new IllegalArgumentException("仅支持上传图片（jpg/jpeg/png/gif/bmp/webp）：" + originalName);
         }
         String operatorId = OperatorUtils.currentOperatorId(fallbackOperator);
         LocalDateTime now = LocalDateTime.now();
-        String storedName = shortIdGenerator.nextUUID(null) + "_" + originalName;
-        String relPath = ATTACH_DIR + "/" + now.format(LocalFileStorageUtils.MONTH_DIR) + "/" + storedName;
+        String relPath = LocalFileStorageUtils.relPath(ATTACH_DIR, now, shortIdGenerator.nextUUID(null), originalName);
         LocalFileStorageUtils.write(fileDirPath(), relPath, file);
 
         String attachmentId = shortIdGenerator.nextUUID(null);
@@ -464,7 +478,8 @@ public class WorkOrderService {
     /**
      * 处理结果附件绑定/清理（保存处理结果时调用）：
      * attachmentIds 为 null → 不调整（兼容不带附件的旧调用）；
-     * 非 null → 以集合为准：新上传的绑定本工单，现属本工单但不在集合内的删行（文件事务提交后删）。
+     * 非 null → 以集合为准：去重后不得超过 5 张，新上传的绑定本工单，
+     * 现属本工单但不在集合内的删行（文件事务提交后删）。
      *
      * @return 保留附件个数（null 入参返回 -1，表示未调整）
      */
@@ -489,6 +504,9 @@ public class WorkOrderService {
                 throw new IllegalArgumentException("附件绑定失败，请刷新后重试：" + att.getFileName());
             }
             keepIds.add(aid);
+            if (keepIds.size() > ATTACH_MAX_COUNT) {
+                throw new IllegalArgumentException("处理结果附件最多上传 " + ATTACH_MAX_COUNT + " 张");
+            }
         }
         List<String> removedPaths = new ArrayList<>();
         for (WorkOrderAttachmentVO att : mapper.selectAttachmentPaths(orderId)) {

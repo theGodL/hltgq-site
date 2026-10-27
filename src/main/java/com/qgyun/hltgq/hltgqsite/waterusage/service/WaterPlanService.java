@@ -664,8 +664,7 @@ public class WaterPlanService {
         }
         String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
         LocalDateTime now = LocalDateTime.now();
-        String storedName = shortIdGenerator.nextUUID(null) + "_" + originalName;
-        String relPath = PLAN_DIR + "/" + now.format(LocalFileStorageUtils.MONTH_DIR) + "/" + storedName;
+        String relPath = LocalFileStorageUtils.relPath(PLAN_DIR, now, shortIdGenerator.nextUUID(null), originalName);
         LocalFileStorageUtils.write(fileDirPath(), relPath, file);
 
         String attachmentId = shortIdGenerator.nextUUID(null);

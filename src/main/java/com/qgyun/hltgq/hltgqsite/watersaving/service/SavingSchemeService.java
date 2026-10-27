@@ -429,8 +429,7 @@ public class SavingSchemeService {
         String oldPath = SavingSupport.trim(schemeMapper.selectAttachmentUrl(exist.getId()));
         LocalDateTime now = LocalDateTime.now();
         String operator = SavingSupport.currentOperatorId(fallbackOperator);
-        String storedName = shortIdGenerator.nextUUID(null) + "_" + originalName;
-        String relPath = SavingSupport.SAVING_DIR + "/" + now.format(LocalFileStorageUtils.MONTH_DIR) + "/" + storedName;
+        String relPath = LocalFileStorageUtils.relPath(SavingSupport.SAVING_DIR, now, shortIdGenerator.nextUUID(null), originalName);
         LocalFileStorageUtils.write(fileDirPath(), relPath, file);
         try {
             schemeMapper.updateAttachment(exist.getId(), originalName, relPath, now, operator);

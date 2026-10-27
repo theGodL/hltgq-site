@@ -23,7 +23,8 @@ public interface IrrigationWaterLevelMapper {
     /**
      * 分页 UNION 分支一 SQL（河道/水库站）：每站最新一条水位 + 1h 涨幅；
      * 日期过滤由调用注解在 ${ew.customSqlSegment} 占位处注入；
-     * vol 子查询按站点下推（stcd 为空限定水位站集合，非空限定单站），避免全表 DISTINCT ON 排序
+     * vol 走 LEFT JOIN LATERAL 按站点索引点查（原 DISTINCT ON 子查询在 Nested Loop 下会被
+     * 按行重复执行、每次全表扫描电压表，实测约 0.4s，改为每行一次索引取首条）
      */
     String RIVER_LATEST_SQL =
             "SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, " +
@@ -43,20 +44,19 @@ public interface IrrigationWaterLevelMapper {
             "  GROUP BY STCD" +
             ") rm ON r.STCD = rm.STCD AND r.TM = rm.MaxTM " +
             "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON r.STCD = s.iofhpi " +
-            "LEFT JOIN (" +
-            "  SELECT DISTINCT ON (v.site) v.site, v.vol " +
+            "LEFT JOIN LATERAL (" +
+            "  SELECT v.vol " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
-            "  WHERE 1=1 " +
-            "  <if test='stcd != null'>AND v.site = (SELECT id FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE iofhpi = #{stcd} LIMIT 1) </if>" +
-            "  <if test='stcd == null'>AND v.site IN (SELECT id FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#1#%') </if>" +
-            "  ORDER BY v.site, v.tm DESC " +
-            ") fv ON fv.site = s.id ";
+            "  WHERE v.site = s.id " +
+            "  ORDER BY v.tm DESC LIMIT 1" +
+            ") fv ON true ";
 
     /**
      * 分页 UNION 分支二 SQL（闸站）：每站最新一批有效闸前水位 up_z（哨兵 -999/-9991 预过滤），
      * 同一时刻多闸孔（gate_no）取一条；1h 涨幅取至少 1 小时前最近有效值，无更早记录按 0。
      * 最新批次改用「分组 MAX(tm) 聚合 + 点查回表 + DISTINCT ON 兜底」（原全表 DISTINCT ON 排序）、
-     * vol 子查询按站点下推（同分支一）；日期过滤仍由 ${ew.customSqlSegment} 注入聚合内层
+     * vol 改为 LEFT JOIN LATERAL 按站点索引点查（同分支一，原 DISTINCT ON 子查询会被按行重复执行）；
+     * 日期过滤仍由 ${ew.customSqlSegment} 注入聚合内层
      */
     String GATE_LATEST_SQL =
             "SELECT s2.iofhpi AS stcd, s2.zzkaec AS stnm, s2.id AS id, gm.tm AS tm, " +
@@ -82,14 +82,12 @@ public interface IrrigationWaterLevelMapper {
             "  WHERE g3.up_z IS NOT NULL AND g3.up_z NOT IN (-999, -9991) " +
             "  ORDER BY g3.site" +
             ") gm ON gm.site = s2.id " +
-            "LEFT JOIN (" +
-            "  SELECT DISTINCT ON (v.site) v.site, v.vol " +
+            "LEFT JOIN LATERAL (" +
+            "  SELECT v.vol " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
-            "  WHERE 1=1 " +
-            "  <if test='stcd != null'>AND v.site = (SELECT id FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE iofhpi = #{stcd} LIMIT 1) </if>" +
-            "  <if test='stcd == null'>AND v.site IN (SELECT id FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef WHERE epjutj LIKE '%#1#%') </if>" +
-            "  ORDER BY v.site, v.tm DESC " +
-            ") fv2 ON fv2.site = s2.id ";
+            "  WHERE v.site = s2.id " +
+            "  ORDER BY v.tm DESC LIMIT 1" +
+            ") fv2 ON true ";
 
     /**
      * 分页查询：每个站点最新一条水位数据

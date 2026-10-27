@@ -8,6 +8,7 @@ import com.qgyun.hltgq.hltgqsite.h5.vo.H5PatrolStationVO;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
+import com.qgyun.hltgq.hltgqsite.patrol.PatrolRecordConflictException;
 import com.qgyun.hltgq.hltgqsite.patrol.support.PatrolDicts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,8 +31,9 @@ import java.util.Map;
  * 计划类型/状态返回编码 + 权威中文双字段。
  * <p>关联点位（stations）：当前页计划一次 IN 批量查询巡查范围关系表 + 站点档案表
  * （名称/经纬度实时关联），按 nature_order 分组；无范围关系为空数组。
- * <p>开始巡检（start）：仅计划巡检人员本人、仅已发布计划可开始；写入一条草稿 #1# 占位记录
- * （巡检人强制为当前登录人，站点/设备/结果/内容留空）；计划已有记录时幂等返回原记录。
+ * <p>开始巡检（start）：仅计划巡检人员本人、仅已发布计划可开始；返回当前登录人在该计划下
+ * 最早一条草稿（没有则新建一条：巡检人强制为当前登录人，站点/设备/结果/内容留空）；
+ * 与列表行 draftRecordId 同一口径（当前登录人 + status='#1#' + 最早一条），有草稿时不重复写入。
  * <p>分页：page 从 1 起（非正按 1）、size 默认 10 上限 100（非正按默认），
  * total 与列表同条件，空结果跳过明细查询。
  */
@@ -124,14 +126,16 @@ public class H5PatrolScheduleService {
     }
 
     /**
-     * 开始巡检：校验计划归属与状态后写入一条草稿占位记录，使计划从「未开始」转为「进行中」。
+     * 开始巡检：校验计划归属与状态后返回一条可编辑草稿（当前登录人 + 草稿 #1# + 最早一条）。
      * <p>归属：仅计划巡检人员本人可开始（计划不存在/未指派给当前登录人 → 400）；
      * 状态：仅已发布 #2# 可开始（草稿 #1#/已完成 #3#/已取消 #4# → 400）。
-     * <p>幂等：计划下已有巡检记录时直接返回最早一条记录 id，不重复写入；
-     * 重复调用由写 SQL 的 NOT EXISTS 兜底，不会重复落开始记录。
+     * <p>幂等：当前登录人在该计划下已有草稿时直接返回最早一条草稿 id，不重复写入；
+     * 无草稿（未开始，或上一轮已全部提交）时新建一条占位草稿并返回其 id。
+     * 插入 SQL 带 NOT EXISTS（同口径），并发重复调用不会重复落草稿。
+     * <p>与列表行 draftRecordId 同一口径（当前登录人 + status='#1#' + 最早一条），
+     * 前端用它调 /patrol-record/update 更新后再 /patrol-record/submit，不再另建记录。
      * <p>记录字段：巡检人强制为当前登录人（前端不可指定），状态草稿 #1#（不进入已提交统计），
-     * 站点/设备/结果/内容留空；返回的 recordId 即当前空白占位草稿 id，
-     * 后续提交（/patrol-record/update + /submit）优先用它填充+提交，不再另建记录，避免「草稿 + 正式」两条。
+     * 站点/设备/结果/内容留空。
      *
      * @param scheduleId 巡检计划 id（必填）
      * @param userId     当前登录人 id（同时作为记录巡检人与审计列）
@@ -155,11 +159,15 @@ public class H5PatrolScheduleService {
             throw new IllegalArgumentException("巡检计划未发布，不能开始巡检");
         }
 
-        String recordId = mapper.selectFirstRecordId(id);
+        String recordId = mapper.selectDraftId(id, userId);
         if (recordId == null) {
             String newId = shortIdGenerator.nextUUID(null);
             int inserted = mapper.insertStartRecord(newId, id, userId, LocalDateTime.now());
-            recordId = inserted > 0 ? newId : mapper.selectFirstRecordId(id);
+            recordId = inserted > 0 ? newId : mapper.selectDraftId(id, userId);
+            if (recordId == null) {
+                // 并发窗口：刚写入的草稿被他人提交/删除，返回 409 让前端刷新重试
+                throw new PatrolRecordConflictException("巡检记录状态已变化，请刷新后重试");
+            }
         }
 
         H5PatrolStartVO result = new H5PatrolStartVO();

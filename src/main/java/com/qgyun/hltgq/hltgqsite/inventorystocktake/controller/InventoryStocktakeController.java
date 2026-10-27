@@ -4,11 +4,11 @@ import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.StockLedgerOptionVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.service.StocktakeService;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeAttachmentVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeDetailVO;
-import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeDownloadVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeSaveVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeUpdateVO;
 import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.MediaTypeUtils;
+import com.qgyun.hltgq.hltgqsite.model.vo.FileDownloadVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -165,7 +165,7 @@ public class InventoryStocktakeController {
      */
     @GetMapping("/attachment/download")
     public ResponseEntity<byte[]> downloadAttachment(@RequestParam String id) {
-        StocktakeDownloadVO file = stocktakeService.downloadAttachment(id);
+        FileDownloadVO file = stocktakeService.downloadAttachment(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, DownloadHeaderUtils.attachment(file.getFileName()))
                 .contentType(MediaTypeUtils.of(file.getFileExt()))

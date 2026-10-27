@@ -5,6 +5,7 @@ import com.qgyun.hltgq.hltgqsite.auth.SessionUnavailableException;
 import com.qgyun.hltgq.hltgqsite.auth.UnauthorizedException;
 import com.qgyun.hltgq.hltgqsite.duty.DutyConflictException;
 import com.qgyun.hltgq.hltgqsite.model.client.ModelCallException;
+import com.qgyun.hltgq.hltgqsite.patrol.PatrolRecordConflictException;
 import com.qgyun.hltgq.hltgqsite.stats.client.DeviceStatsCallException;
 import com.qgyun.hltgq.hltgqsite.stats.client.MqStatsCallException;
 import com.qgyun.hltgq.hltgqsite.system.service.FaultRecordService;
@@ -27,6 +28,7 @@ import java.util.Map;
  * UnauthorizedException → 401（未登录/会话过期）；
  * SessionUnavailableException → 503（会话服务不可用）；
  * DutyConflictException → 409（值班交接班状态机冲突）；
+ * PatrolRecordConflictException → 409（巡检记录已提交，不可编辑/不可重复提交）；
  * DataIntegrityViolationException → 409（唯一约束冲突，如阈值表 uniq_hltgq_threshold_site_type_zb）。
  * <p>上游依赖异常（6 类，401/400/409 除外）同时埋点记录软件故障
  * （t_auto_hltgq_sys_fault_record，页面 system-monitor.html），"监控信息反馈给报警子系统"的数据来源之一。
@@ -125,6 +127,19 @@ public class GlobalExceptionHandler {
     public Map<String, Object> handleDutyConflict(DutyConflictException e) {
         Map<String, Object> result = new HashMap<>();
         result.put("message", e.getMessage() == null ? "当前状态不允许该操作" : e.getMessage());
+        return result;
+    }
+
+    /**
+     * 巡检记录状态冲突 → 409（已提交的巡检记录不可编辑/不可重复提交）。
+     * <p>与 400 区分：请求参数本身合法，是记录状态已变化（通常为并发提交或页面数据过期），
+     * 前端据此提示刷新，而不是修正入参。
+     */
+    @ExceptionHandler(PatrolRecordConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, Object> handlePatrolRecordConflict(PatrolRecordConflictException e) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("message", e.getMessage() == null ? "巡检记录状态已变化，请刷新后重试" : e.getMessage());
         return result;
     }
 

@@ -24,6 +24,9 @@ public class PatrolIssuePhotoItemVO {
     /** 展示顺序（1 起，提交时的上传顺序） */
     private Integer natureOrder;
 
+    /** 照片类型：1 现场照片 / 2 处理结果附件 */
+    private String photoType;
+
     /** 读取地址（/patrol-issue/photo/{id}，不含 /hltgq-site 前缀） */
     private String url;
 }

@@ -12,12 +12,12 @@ import com.qgyun.hltgq.hltgqsite.inventoryorder.vo.WarehouseVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.mapper.InventoryStocktakeMapper;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeAttachmentVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeDetailVO;
-import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeDownloadVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakePageItemVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeSaveVO;
 import com.qgyun.hltgq.hltgqsite.inventorystocktake.vo.StocktakeUpdateVO;
 import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
+import com.qgyun.hltgq.hltgqsite.model.vo.FileDownloadVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -462,8 +462,7 @@ public class StocktakeService {
         }
         String operator = currentOperatorId(fallbackOperator);
         LocalDateTime now = LocalDateTime.now();
-        String storedName = shortIdGenerator.nextUUID(null) + "_" + originalName;
-        String relPath = STOCKTAKE_DIR + "/" + now.format(LocalFileStorageUtils.MONTH_DIR) + "/" + storedName;
+        String relPath = LocalFileStorageUtils.relPath(STOCKTAKE_DIR, now, shortIdGenerator.nextUUID(null), originalName);
         LocalFileStorageUtils.write(fileDirPath(), relPath, file);
 
         String attachmentId = shortIdGenerator.nextUUID(null);
@@ -495,13 +494,13 @@ public class StocktakeService {
     }
 
     /** 下载附件：路径穿越校验 + 文件读取（缺失提示已被清理）。 */
-    public StocktakeDownloadVO downloadAttachment(String id) {
+    public FileDownloadVO downloadAttachment(String id) {
         StocktakeAttachmentVO att = stocktakeMapper.selectAttachmentById(requireText(id, "附件 id 不能为空"));
         if (att == null) {
             throw new IllegalArgumentException("附件不存在或已删除");
         }
         byte[] bytes = LocalFileStorageUtils.readBytes(fileDirPath(), requireText(att.getFilePath(), "附件路径缺失"));
-        StocktakeDownloadVO vo = new StocktakeDownloadVO();
+        FileDownloadVO vo = new FileDownloadVO();
         vo.setContent(bytes);
         vo.setFileName(att.getFileName());
         vo.setFileExt(att.getFileExt());

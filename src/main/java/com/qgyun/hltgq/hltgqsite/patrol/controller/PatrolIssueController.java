@@ -37,7 +37,8 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>页面：pc 端 patrol-plan-list.html 巡检记录行「新增问题」→ 右侧抽屉内嵌 patrol-issue-add.html；
  * 问题记录管理页 patrol-issue-list.html（分页/详情/作废/关闭/直接处理/填写结果/转工单）；
- * H5 端不依赖页面，直接调用本组接口（上传照片 → 提交问题）。
+ * H5 端不依赖页面，直接调用本组接口（上传照片 → 提交问题 / 填写处理结果 + 处理附件）。
+ * <p>处理附件与现场照片共用上传/读取接口，photo_type 在绑定时区分：1 现场照片、2 处理结果附件。
  * <p>鉴权：与其它接口一致走登录拦截器；发现人缺省取当前登录人，审计列取当前操作人。
  * <p>契约详见 src/main/resources/H5接口.md「新增巡检问题」章节。
  */
@@ -97,11 +98,17 @@ public class PatrolIssueController {
         return ApiResultUtils.ok();
     }
 
-    /** 填写处理结果（仅处理中）：只写处理结果，不改状态，可重复保存。 */
+    /**
+     * 填写处理结果（仅处理中）：写处理结果（≤500 字）并按 photoIds 绑定处理附件，不改状态。
+     * <p>photoIds 不传表示不调整附件、传空数组表示清空；返回最终附件张数。
+     */
     @PostMapping("/result")
     public Map<String, Object> saveResult(@RequestBody PatrolIssueAdminRequest request) {
-        issueService.saveResult(request);
-        return ApiResultUtils.ok();
+        int photoCount = issueService.saveResult(request);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("success", true);
+        out.put("photoCount", photoCount);
+        return out;
     }
 
     /**
@@ -148,15 +155,21 @@ public class PatrolIssueController {
     }
 
     /**
-     * 按问题 id 查现场照片列表（H5 / PC 回显）：返回顺序与提交时一致，
+     * 按问题 id 查照片列表（H5 / PC 回显）：返回顺序与提交时一致，
      * url 为站点内相对路径，前端拼 API 前缀后直接用于 img。
+     *
+     * @param photoType 照片类型：1 现场照片 / 2 处理结果附件；可选，不传返回全部
      */
     @GetMapping("/photos")
-    public List<PatrolIssuePhotoItemVO> photos(@RequestParam("issueId") String issueId) {
-        return issueService.listPhotos(issueId);
+    public List<PatrolIssuePhotoItemVO> photos(@RequestParam("issueId") String issueId,
+                                               @RequestParam(required = false) String photoType) {
+        return issueService.listPhotos(issueId, photoType);
     }
 
-    /** 移除未提交的照片（误传清理；已提交到问题记录的不允许移除）。 */
+    /**
+     * 移除照片：未绑定的本人上传照片可直接移除；现场照片（type=1）提交后不可移除；
+     * 处理结果附件（type=2）在问题处理中可移除、关闭后返回 400。
+     */
     @PostMapping("/photo/remove")
     public Map<String, Object> removePhoto(@RequestBody PhotoRemoveRequest request) {
         issueService.removePhoto(request == null ? null : request.getId());

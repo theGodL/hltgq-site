@@ -23,11 +23,21 @@ public final class WaterVolumeUtils {
     }
 
     /**
+     * 数值 ÷ 10000 后按指定小数位截断（null 安全）。
+     * <p>三种口径共用同一换算：水量 m³→万m³（3 位）、面积 亩→万亩（2 位）、
+     * 年度计划/用水申请 m³→万m³（2 位，计划类字段业主口径为 2 位）。
+     * <p>示例：12345678 m³ → 1234.56（scale=2）
+     */
+    public static BigDecimal toWan(BigDecimal value, int scale) {
+        return value == null ? null : value.divide(TEN_THOUSAND, scale, RoundingMode.DOWN);
+    }
+
+    /**
      * m³ → 万m³（3 位小数截断，null 安全）。
      * <p>示例：12345678 m³ → 1234.567 万m³
      */
     public static BigDecimal m3ToWan(BigDecimal m3) {
-        return m3 == null ? null : m3.divide(TEN_THOUSAND, SCALE, RoundingMode.DOWN);
+        return toWan(m3, SCALE);
     }
 
     /**

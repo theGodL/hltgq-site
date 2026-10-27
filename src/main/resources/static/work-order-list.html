@@ -184,21 +184,25 @@ td.empty:hover{background:transparent}
 .dlg-sub{font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
 .count-tip{font-size:12px;color:var(--el-text-color-secondary);text-align:right}
 
-/* 附件区（处理结果弹窗 / 详情展示） */
+/* 附件区（处理结果弹窗 / 详情展示；仅图片，缩略图网格） */
 .att-block{display:flex;flex-direction:column;gap:8px;padding-top:4px;border-top:1px dashed var(--el-border-color-lighter)}
 .att-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .att-hd .att-label{font-size:13px;color:var(--el-text-color-regular)}
+.att-hd .att-count{margin-left:4px;font-size:12px;color:var(--el-text-color-secondary)}
 .att-hd .btn{height:32px;padding:0 12px;border-radius:var(--el-radius);font-size:13px}
-.att-list{display:flex;flex-direction:column;gap:8px}
-.att-row{display:flex;align-items:center;gap:10px;padding:6px 12px;border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);background:var(--el-fill-color-light)}
-.att-row .att-name{flex:1;min-width:0;color:var(--el-color-primary);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.att-row .att-name:hover{text-decoration:underline}
-.att-row .att-size{font-size:12px;color:var(--el-text-color-secondary);flex-shrink:0}
-.att-row .att-del{flex-shrink:0;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-text-color-secondary);cursor:pointer;transition:all .2s}
-.att-row .att-del:hover{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+.att-grid{display:flex;flex-wrap:wrap;gap:12px}
+.att-card{position:relative;width:96px}
+.att-card .att-thumb{display:block;width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid var(--el-border-color-lighter);background:var(--el-fill-color-light);cursor:pointer;transition:border-color .2s}
+.att-card .att-thumb:hover{border-color:var(--el-color-primary)}
+.att-card .att-meta{margin-top:4px;font-size:11px;line-height:14px;color:var(--el-text-color-secondary);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-card .att-del{position:absolute;top:-8px;right:-8px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;background:var(--el-bg-color);border:1px solid var(--el-border-color-lighter);border-radius:50%;color:var(--el-text-color-secondary);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12);transition:all .2s}
+.att-card .att-del:hover{color:var(--el-color-danger);border-color:var(--el-color-danger)}
+.att-card .att-del svg{width:13px;height:13px}
+.att-card .att-file{width:96px;height:96px;padding:6px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:1px solid var(--el-border-color-lighter);border-radius:6px;background:var(--el-fill-color-light);color:var(--el-color-primary);font-size:12px;line-height:16px;text-align:center;word-break:break-all;overflow:hidden;cursor:pointer;transition:border-color .2s}
+.att-card .att-file:hover{border-color:var(--el-color-primary)}
 .att-empty{font-size:13px;color:var(--el-text-color-secondary);padding:2px 0}
 .att-hint{margin-top:2px;font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
-.view-row .v .att-list{padding-top:2px}
+.view-row .v .att-grid{padding-top:4px}
 
 /* ===== 下拉组件 ===== */
 .sel{position:relative}
@@ -367,16 +371,15 @@ td.empty:hover{background:transparent}
       <div class="count-tip"><span id="rs-count">0</span>/1000</div>
       <div class="att-block">
         <div class="att-hd">
-          <span class="att-label">处理结果附件</span>
+          <span class="att-label">处理结果附件<span class="att-count" id="rs-att-count">0/5</span></span>
           <button class="btn btn-default" id="rs-upload" type="button">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 11V3.5M5 6l3-3 3 3M3 12.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            上传附件
+            上传图片
           </button>
         </div>
-        <div class="att-list" id="rs-att-list"></div>
-        <div class="att-hint">支持图片、PDF、Word、Excel，单个文件不超过 20MB；与处理结果一并保存</div>
-        <input type="file" id="rs-file" multiple hidden
-               accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.pdf,.doc,.docx,.xls,.xlsx">
+        <div class="att-grid" id="rs-att-list"></div>
+        <div class="att-hint">仅支持图片（jpg/jpeg/png/gif/bmp/webp），单张不超过 5MB，最多 5 张；与处理结果一并保存</div>
+        <input type="file" id="rs-file" multiple hidden accept="image/jpeg,image/png,image/gif,image/bmp,image/webp">
       </div>
     </div>
     <div class="dlg-ft">
@@ -710,6 +713,7 @@ function closeMask(key) {
 /** 复位处理结果弹窗状态，并异步清理未保存附件（失败仅静默，孤儿文件由后续人工清理） */
 function resetResultDialog() {
   const pending = S.rsPending.slice();
+  (S.rsAtts || []).forEach(releaseAttPreview);   // 回收本次新上传的本地缩略图地址
   S.rsPending = [];
   S.rsAtts = [];
   S.resultId = '';
@@ -740,13 +744,30 @@ function viewRow(k, v, span2) {
     '<div class="v">' + (v || '--') + '</div></div>';
 }
 
-/** 附件清单（只读：点击文件名下载） */
+/** 附件是否图片（历史数据可能含 PDF/Office，非图片降级为文件卡片） */
+function isImageAtt(a) {
+  return ATT_EXT.indexOf(String(a && a.fileExt || '').toLowerCase()) >= 0;
+}
+
+/** 附件卡片（图片出缩略图；非图片文件显示文件名，点击均走下载） */
+function attCardHtml(a, withDel) {
+  const id = esc(a.id);
+  const name = esc(a.fileName || '');
+  const inner = isImageAtt(a)
+    ? '<img class="att-thumb" src="' + esc(attPreviewUrl(a)) + '" alt="' + name + '" ' +
+      'data-att="' + id + '" data-att-name="' + name + '" title="查看 / 下载 ' + name + '">'
+    : '<div class="att-file" data-att="' + id + '" data-att-name="' + name + '" title="下载 ' + name + '">' + (name || '--') + '</div>';
+  return '<div class="att-card">' + inner +
+    (withDel ? '<button class="att-del" data-att-del="' + id + '" type="button" title="移除">' + ICON.trash + '</button>' : '') +
+    '<div class="att-meta" title="' + name + '">' + esc(withDel ? fmtSize(a.fileSize) : (a.fileName || '--')) + '</div>' +
+    '</div>';
+}
+
+/** 附件清单（只读缩略图网格：点击图片/文件下载） */
 function attLinkHtml(list) {
   const arr = Array.isArray(list) ? list : [];
   if (!arr.length) return '--';
-  return '<div class="att-list">' + arr.map(a =>
-    '<div class="att-row"><span class="att-name" data-att="' + esc(a.id) + '" data-att-name="' + esc(a.fileName || '') + '" title="下载 ' + esc(a.fileName || '') + '">' + esc(a.fileName || '--') + '</span>' +
-    '<span class="att-size">' + esc(fmtSize(a.fileSize)) + '</span></div>').join('') + '</div>';
+  return '<div class="att-grid">' + arr.map(a => attCardHtml(a, false)).join('') + '</div>';
 }
 
 function renderDetail(d) {
@@ -940,8 +961,10 @@ async function submitAssign() {
 }
 
 /* ============================ 填写处理结果 ============================ */
-const ATT_EXT = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'];
-const ATT_MAX = 20 * 1024 * 1024;
+/** 处理结果附件：仅图片、单张 ≤5MB、最多 5 张（与后端校验一致） */
+const ATT_EXT = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+const ATT_MAX = 5 * 1024 * 1024;
+const ATT_COUNT_MAX = 5;
 
 /** 文件大小展示（B / KB / MB） */
 function fmtSize(n) {
@@ -980,29 +1003,43 @@ async function downloadOrderAtt(id, name) {
   }
 }
 
-/** 处理结果弹窗附件区渲染（新上传带移除按钮；已保存附件保存后按集合清理） */
+/** 缩略图地址：本次新上传用本地 blob（秒开、不发请求），已保存附件走预览接口（同源带 Cookie） */
+function attPreviewUrl(a) {
+  if (a && a.preview) return a.preview;
+  return API + '/work-order/attachment/preview?id=' + encodeURIComponent(a.id);
+}
+
+/** 回收本次新上传的 blob 地址（关闭弹窗 / 移除时调用，避免内存泄漏） */
+function releaseAttPreview(a) {
+  if (a && a.preview && a.preview.indexOf('blob:') === 0) URL.revokeObjectURL(a.preview);
+}
+
+/** 处理结果弹窗附件区渲染（缩略图网格；新上传带移除按钮，已保存附件保存时按集合清理） */
 function renderRsAtt() {
   const box = $('rs-att-list');
   if (!box) return;
   const list = S.rsAtts || [];
+  const cnt = $('rs-att-count');
+  if (cnt) cnt.textContent = list.length + '/' + ATT_COUNT_MAX;
   if (!list.length) {
-    box.innerHTML = '<div class="att-empty">暂无附件</div>';
+    box.innerHTML = '<div class="att-empty">暂无图片</div>';
     return;
   }
-  box.innerHTML = list.map(a =>
-    '<div class="att-row">' +
-    '<span class="att-name" data-att="' + esc(a.id) + '" data-att-name="' + esc(a.fileName || '') + '" title="下载 ' + esc(a.fileName || '') + '">' + esc(a.fileName || '--') + '</span>' +
-    '<span class="att-size">' + esc(fmtSize(a.fileSize)) + '</span>' +
-    '<button class="att-del" data-att-del="' + esc(a.id) + '" type="button" title="移除">' + ICON.trash + '</button>' +
-    '</div>').join('');
+  box.innerHTML = list.map(a => attCardHtml(a, true)).join('');
 }
 
-/** 选择文件后逐个上传（校验类型/大小；弹窗已关闭则立即清理，避免孤儿附件） */
+/** 选择图片后逐个上传（数量/类型/大小校验；弹窗已关闭则立即清理，避免孤儿附件） */
 async function onUploadRs(e) {
-  const files = Array.prototype.slice.call(e.target.files || []);
+  let files = Array.prototype.slice.call(e.target.files || []);
   e.target.value = '';
   if (!files.length) return;
-  if (S.rsUploading) { showToast('附件上传中，请稍候', true); return; }
+  if (S.rsUploading) { showToast('图片上传中，请稍候', true); return; }
+  const remain = ATT_COUNT_MAX - (S.rsAtts || []).length;
+  if (remain <= 0) { showToast('最多上传 ' + ATT_COUNT_MAX + ' 张图片，请先移除后再上传', true); return; }
+  if (files.length > remain) {
+    showToast('最多上传 ' + ATT_COUNT_MAX + ' 张图片，本次仅上传前 ' + remain + ' 张', true);
+    files = files.slice(0, remain);
+  }
   const orderId = S.resultId;
   const seq = S.rsSeq;
   const btn = $('rs-upload');
@@ -1012,9 +1049,10 @@ async function onUploadRs(e) {
   try {
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
+      if ((S.rsAtts || []).length >= ATT_COUNT_MAX) { showToast('最多上传 ' + ATT_COUNT_MAX + ' 张图片', true); break; }
       const ext = (f.name.split('.').pop() || '').toLowerCase();
-      if (ATT_EXT.indexOf(ext) < 0) { showToast('「' + f.name + '」类型不支持（仅图片/PDF/Word/Excel）', true); continue; }
-      if (f.size > ATT_MAX) { showToast('「' + f.name + '」超过 20MB 上限', true); continue; }
+      if (ATT_EXT.indexOf(ext) < 0) { showToast('「' + f.name + '」不是支持的图片格式（仅 jpg/png/gif/bmp/webp）', true); continue; }
+      if (f.size > ATT_MAX) { showToast('「' + f.name + '」超过 5MB 上限', true); continue; }
       const fd = new FormData();
       fd.append('file', f);
       const vo = await api('/work-order/attachment/upload', { method: 'POST', body: fd });
@@ -1025,25 +1063,29 @@ async function onUploadRs(e) {
           .catch(() => { /* 清理失败不回显 */ });
         continue;
       }
-      S.rsAtts.push({ id: vo.id, orderId: null, fileName: vo.fileName || f.name, fileSize: vo.fileSize || f.size, fileExt: vo.fileExt || ext });
+      S.rsAtts.push({
+        id: vo.id, orderId: null, fileName: vo.fileName || f.name,
+        fileSize: vo.fileSize || f.size, fileExt: vo.fileExt || ext,
+        preview: URL.createObjectURL(f)   // 本地立即出缩略图，不等接口回读
+      });
       S.rsPending.push(vo.id);
       uploaded++;
       renderRsAtt();
     }
-    if (uploaded > 0) showToast('已上传 ' + uploaded + ' 个附件');
+    if (uploaded > 0) showToast('已上传 ' + uploaded + ' 张图片');
   } catch (err) {
-    showToast(err.message || '附件上传失败', true);
+    showToast(err.message || '图片上传失败', true);
   } finally {
     S.rsUploading = false;
     if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); }
   }
 }
 
-/** 附件区交互：下载（点文件名）/ 移除（新上传立即物理删除；已保存附件仅内存移除，保存时按集合清理） */
+/** 附件区交互：下载（点缩略图）/ 移除（新上传立即物理删除；已保存附件仅内存移除，保存时按集合清理） */
 async function onRsAttClick(e) {
   const del = e.target.closest('[data-att-del]');
   if (del) {
-    if (S.rsUploading) { showToast('附件上传中，请稍候', true); return; }
+    if (S.rsUploading) { showToast('图片上传中，请稍候', true); return; }
     const id = del.dataset.attDel;
     const isNew = S.rsPending.indexOf(id) >= 0;
     if (isNew) {
@@ -1055,9 +1097,10 @@ async function onRsAttClick(e) {
       }
       S.rsPending = S.rsPending.filter(x => x !== id);
     }
+    (S.rsAtts || []).forEach(a => { if (a.id === id) releaseAttPreview(a); });
     S.rsAtts = S.rsAtts.filter(a => a.id !== id);
     renderRsAtt();
-    showToast(isNew ? '附件已移除' : '已标记移除，保存后生效');
+    showToast(isNew ? '图片已移除' : '已标记移除，保存后生效');
     return;
   }
   const name = e.target.closest('[data-att]');
