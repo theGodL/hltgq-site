@@ -76,4 +76,7 @@ public class WaterPlanVO {
 
     /** 明细（详情返回；列表为空） */
     private List<WaterPlanItemVO> items;
+
+    /** 附件清单（详情返回；列表为空） */
+    private List<WaterPlanAttachmentVO> attachments;
 }

@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.workorder.mapper;
 
+import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAttachmentVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderDetailVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderListVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderOrgVO;
@@ -19,7 +20,8 @@ import java.util.Map;
  * <p>表与列均已实证：工单主表 t_auto_hltgq_water_work_order 物理列含
  * code/title/qjulvf/content/site/device/org/user/time/result/status/alert/pyxcen，
  * <b>无 azgquf（关联问题）/file（附件）/xdkvyp（图片）物理列</b>；
- * 关联问题改由问题记录表 work_order_id 反查（与站点详情同口径）。
+ * 关联问题改由问题记录表 work_order_id 反查（与站点详情同口径）；
+ * 处理结果附件改用独立表 t_auto_hltgq_water_work_order_attachment（见 work-order-attachment-ddl.sql）。
  * <p>枚举口径：qjulvf 9 档；status #1# 待指派、#2# 处理中、#3# 已关闭、#4# 已取消、#iizl# 已逾期。
  * <p>"time"/"user" 为关键字列需双引号；org 存量兼容部门 id 与短码 code 双写法。
  */
@@ -225,4 +227,63 @@ public interface WorkOrderMapper {
     int closeIssuesByWorkOrder(@Param("id") String id,
                                @Param("operatorId") String operatorId,
                                @Param("now") LocalDateTime now);
+
+    // ==================== 附件（处理结果佐证材料） ====================
+
+    /** 工单附件清单（详情展示用；不含 file_path，下载走 {@link #selectAttachmentById}） */
+    @Select("SELECT a.id AS id, a.order_id AS orderId, a.file_name AS fileName, " +
+            "a.file_size AS fileSize, a.file_ext AS fileExt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_work_order_attachment\" a " +
+            "WHERE a.order_id = #{orderId} AND a.corp_code = 'hltgq' " +
+            "ORDER BY a.created_at ASC, a.id ASC")
+    List<WorkOrderAttachmentVO> selectAttachments(@Param("orderId") String orderId);
+
+    /** 工单附件删除前取路径（物理文件在事务提交后删） */
+    @Select("SELECT a.id AS id, a.order_id AS orderId, a.file_name AS fileName, a.file_path AS filePath, " +
+            "a.file_size AS fileSize, a.file_ext AS fileExt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_work_order_attachment\" a " +
+            "WHERE a.order_id = #{orderId} AND a.corp_code = 'hltgq'")
+    List<WorkOrderAttachmentVO> selectAttachmentPaths(@Param("orderId") String orderId);
+
+    /** 单个附件（下载/绑定前的行查询，含 file_path） */
+    @Select("SELECT a.id AS id, a.order_id AS orderId, a.file_name AS fileName, a.file_path AS filePath, " +
+            "a.file_size AS fileSize, a.file_ext AS fileExt " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_work_order_attachment\" a " +
+            "WHERE a.id = #{id} AND a.corp_code = 'hltgq'")
+    WorkOrderAttachmentVO selectAttachmentById(@Param("id") String id);
+
+    /**
+     * 附件行（上传成功即写入，order_id 为空；保存处理结果时由 {@link #bindAttachment} 回填）。
+     * <p>row key：id/order_id/file_name/file_path/file_size/file_ext/now/operator。
+     */
+    @Insert("INSERT INTO \"qixiao-apaas\".\"t_auto_hltgq_water_work_order_attachment\" " +
+            "(\"id\", \"order_id\", \"file_name\", \"file_path\", \"file_size\", \"file_ext\", " +
+            "\"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\") " +
+            "VALUES (#{row.id}, #{row.order_id}, #{row.file_name}, #{row.file_path}, #{row.file_size}, " +
+            "#{row.file_ext}, 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
+    int insertAttachment(@Param("row") Map<String, Object> row);
+
+    /** 附件回填归属（仅允许无归属或本工单附件，防跨工单占用；0 行 = 已被占用/不存在） */
+    @Update("UPDATE \"qixiao-apaas\".\"t_auto_hltgq_water_work_order_attachment\" " +
+            "SET order_id = #{orderId}, updated_at = #{now}, updated_by = #{operator} " +
+            "WHERE id = #{id} AND corp_code = 'hltgq' AND (order_id IS NULL OR order_id = #{orderId})")
+    int bindAttachment(@Param("id") String id,
+                       @Param("orderId") String orderId,
+                       @Param("operator") String operator,
+                       @Param("now") LocalDateTime now);
+
+    /** 附件行删除（保存时移除已归属附件用；文件由 Service 在事务提交后删） */
+    @Delete("DELETE FROM \"qixiao-apaas\".\"t_auto_hltgq_water_work_order_attachment\" " +
+            "WHERE id = #{id} AND corp_code = 'hltgq'")
+    int deleteAttachment(@Param("id") String id);
+
+    /** 附件行删除（仅限未归属附件：并发绑定后返回 0 行，由 Service 拒绝移除且不删文件） */
+    @Delete("DELETE FROM \"qixiao-apaas\".\"t_auto_hltgq_water_work_order_attachment\" " +
+            "WHERE id = #{id} AND corp_code = 'hltgq' AND order_id IS NULL")
+    int deleteUnboundAttachment(@Param("id") String id);
+
+    /** 工单删除连带清空附件行（文件由 Service 在事务提交后删） */
+    @Delete("DELETE FROM \"qixiao-apaas\".\"t_auto_hltgq_water_work_order_attachment\" " +
+            "WHERE order_id = #{orderId} AND corp_code = 'hltgq'")
+    int deleteAttachmentsByOrder(@Param("orderId") String orderId);
 }

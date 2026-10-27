@@ -9,24 +9,25 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 
 /**
  * 导航页「应急响应 / 响应解除」提示。
- * <p>判定口径（按响应类别分组，各类别相互独立，可同时存在）：
+ * <p>判定口径（每条通知独立成一条提示，不按响应类别合并）：
  * <ol>
- *   <li>只看「已发布」通知（草稿、已终止不参与）；</li>
- *   <li>每个类别取上级发布时间（空值回退录入时间）最近的一条作为当前状态；</li>
- *   <li>该条事项为「终止响应」→ 该类别「响应已解除」，否则「应急响应中」；</li>
- *   <li>响应中时等级取最近一次非空等级（「补充工作要求」通常不填等级，需回溯）；</li>
- *   <li>解除时等级取终止通知自身等级（可能为空，不影响提示文案）。</li>
+ *   <li>返回「已发布」和「已终止」的通知，草稿不返回；</li>
+ *   <li>`status` 直接反映通知状态：已发布 → `published`，已终止 → `terminated`；
+ *       事项为「终止响应」的同属终止类；</li>
+ *   <li>终止类只保留发布时间或录入时间在近 {@code RELEASE_WINDOW_DAYS} 天内的，其余按发布时间正常返回；</li>
+ *   <li>等级取该条自身等级；为空且非终止时，向更早的同类别通知回溯（「补充工作要求」通常不填等级）；</li>
+ *   <li>排序：上级发布时间倒序（空值回退录入时间），同时间再按录入时间倒序。</li>
  * </ol>
- * <p>展示时长属前端展示口径：后端只返回事实与建议文案，不做过期过滤。
+ * <p>提示文案 {@code tipText} 直接取该条通知录入的「灌区落实要求」原文，不做字段拼接。
  */
 @Service
 public class EmergencyNoticeService {
@@ -54,7 +55,9 @@ public class EmergencyNoticeService {
 
     private List<EmergencyNoticeRowVO> listPublished() {
         try {
-            List<EmergencyNoticeRowVO> rows = noticeMapper.selectPublished();
+            Timestamp cutoff = Timestamp.valueOf(
+                    LocalDateTime.now().minusDays(EmergencyNoticeDict.RELEASE_WINDOW_DAYS));
+            List<EmergencyNoticeRowVO> rows = noticeMapper.selectForNavTip(cutoff);
             return rows == null ? Collections.<EmergencyNoticeRowVO>emptyList() : rows;
         } catch (Exception e) {
             log.warn("应急通知导航提示查询失败，按无提示返回：{}", e.getMessage());
@@ -62,66 +65,63 @@ public class EmergencyNoticeService {
         }
     }
 
-    /** 按响应类别分组（保持发布时间倒序），每组取最新一条推导状态 */
+    /** 每条已发布通知一条提示，保持查询给出的发布时间倒序 */
     private List<EmergencyNoticeNavTipVO.Item> buildItems(List<EmergencyNoticeRowVO> rows) {
-        Map<String, List<EmergencyNoticeRowVO>> byCategory = new LinkedHashMap<>();
-        for (EmergencyNoticeRowVO row : rows) {
+        List<EmergencyNoticeNavTipVO.Item> items = new ArrayList<>(rows.size());
+        for (int i = 0; i < rows.size(); i++) {
+            EmergencyNoticeRowVO row = rows.get(i);
             if (row == null) {
                 continue;
             }
-            String category = EmergencyNoticeDict.trimToNull(row.getCategoryCode());
-            if (category == null) {
-                // 历史脏数据未填类别，无法归属到任一响应类别
-                continue;
-            }
-            List<EmergencyNoticeRowVO> group = byCategory.get(category);
-            if (group == null) {
-                group = new ArrayList<>();
-                byCategory.put(category, group);
-            }
-            group.add(row);
+            items.add(buildItem(row, rows, i));
         }
-
-        List<EmergencyNoticeNavTipVO.Item> items = new ArrayList<>(byCategory.size());
-        for (List<EmergencyNoticeRowVO> group : byCategory.values()) {
-            items.add(buildItem(group));
-        }
-        // 响应中在前、已解除在后；同状态保持各类别最新发布时间的先后
-        items.sort(Comparator.comparingInt(EmergencyNoticeService::statusRank));
         return items;
     }
 
-    private EmergencyNoticeNavTipVO.Item buildItem(List<EmergencyNoticeRowVO> group) {
-        EmergencyNoticeRowVO latest = group.get(0);
-        boolean released = EmergencyNoticeDict.isTerminate(latest.getItemCode());
+    private EmergencyNoticeNavTipVO.Item buildItem(EmergencyNoticeRowVO row,
+                                                   List<EmergencyNoticeRowVO> rows,
+                                                   int index) {
+        boolean terminated = EmergencyNoticeDict.isTerminated(row.getNoticeStatus(), row.getItemCode());
 
         EmergencyNoticeNavTipVO.Item item = new EmergencyNoticeNavTipVO.Item();
-        item.setNoticeId(EmergencyNoticeDict.trimToNull(latest.getNoticeId()));
-        item.setTitle(EmergencyNoticeDict.trimToNull(latest.getTitle()));
-        item.setCategoryCode(EmergencyNoticeDict.trimToNull(latest.getCategoryCode()));
-        item.setCategoryName(EmergencyNoticeDict.categoryLabel(latest.getCategoryCode()));
-        item.setItemCode(EmergencyNoticeDict.trimToNull(latest.getItemCode()));
-        item.setItemName(EmergencyNoticeDict.itemLabel(latest.getItemCode()));
-        item.setPublishUnit(EmergencyNoticeDict.trimToNull(latest.getPublishUnit()));
-        item.setPublishTime(EmergencyNoticeDict.trimToNull(latest.getPublishTime()));
-        item.setStatus(released ? EmergencyNoticeDict.TIP_RELEASE : EmergencyNoticeDict.TIP_RESPONSE);
-        item.setStatusName(released
-                ? EmergencyNoticeDict.STATUS_NAME_RELEASE
-                : EmergencyNoticeDict.STATUS_NAME_RESPONSE);
+        item.setNoticeId(EmergencyNoticeDict.trimToNull(row.getNoticeId()));
+        item.setTitle(EmergencyNoticeDict.trimToNull(row.getTitle()));
+        item.setCategoryCode(EmergencyNoticeDict.trimToNull(row.getCategoryCode()));
+        item.setCategoryName(EmergencyNoticeDict.categoryLabel(row.getCategoryCode()));
+        item.setItemCode(EmergencyNoticeDict.trimToNull(row.getItemCode()));
+        item.setItemName(EmergencyNoticeDict.itemLabel(row.getItemCode()));
+        item.setPublishUnit(EmergencyNoticeDict.trimToNull(row.getPublishUnit()));
+        item.setPublishTime(EmergencyNoticeDict.trimToNull(row.getPublishTime()));
+        item.setStatus(terminated ? EmergencyNoticeDict.TIP_TERMINATED : EmergencyNoticeDict.TIP_PUBLISHED);
+        item.setStatusName(terminated
+                ? EmergencyNoticeDict.STATUS_NAME_TERMINATED
+                : EmergencyNoticeDict.STATUS_NAME_PUBLISHED);
 
-        // 解除只认终止通知自身等级；响应中回溯最近一次非空等级（补充工作要求不带等级）
-        String levelCode = released
-                ? EmergencyNoticeDict.trimToNull(latest.getLevelCode())
-                : firstNonBlankLevel(group);
+        // 等级取该条自身；未填写且非终止时，回溯更早的同类别通知（「补充工作要求」通常不填等级）
+        String levelCode = EmergencyNoticeDict.trimToNull(row.getLevelCode());
+        if (levelCode == null && !terminated) {
+            levelCode = lookupEarlierLevel(rows, index, row.getCategoryCode());
+        }
         item.setLevelCode(levelCode);
         item.setLevelName(EmergencyNoticeDict.levelLabel(levelCode));
-        item.setTipText(buildTipText(item, released));
+
+        // 提示文案直接用通知里录入的「灌区落实要求」原文，不做字段拼接
+        String requirement = EmergencyNoticeDict.trimToNull(row.getRequirementText());
+        item.setRequirementText(requirement);
+        item.setTipText(requirement != null ? requirement : nvl(item.getTitle()));
         return item;
     }
 
-    private String firstNonBlankLevel(List<EmergencyNoticeRowVO> group) {
-        for (EmergencyNoticeRowVO row : group) {
-            String level = EmergencyNoticeDict.trimToNull(row.getLevelCode());
+    /** 在更早的同类别通知中找最近一次非空等级（rows 已按发布时间倒序） */
+    private String lookupEarlierLevel(List<EmergencyNoticeRowVO> rows, int index, String categoryCode) {
+        String category = EmergencyNoticeDict.trimToNull(categoryCode);
+        for (int i = index + 1; i < rows.size(); i++) {
+            EmergencyNoticeRowVO earlier = rows.get(i);
+            if (earlier == null
+                    || !Objects.equals(category, EmergencyNoticeDict.trimToNull(earlier.getCategoryCode()))) {
+                continue;
+            }
+            String level = EmergencyNoticeDict.trimToNull(earlier.getLevelCode());
             if (level != null) {
                 return level;
             }
@@ -129,44 +129,21 @@ public class EmergencyNoticeService {
         return null;
     }
 
-    /** 建议提示文案；等级缺失时退化为不带等级的表述 */
-    private String buildTipText(EmergencyNoticeNavTipVO.Item item, boolean released) {
-        String category = item.getCategoryName();
-        String level = item.getLevelName() == null ? "" : item.getLevelName();
-        if (released) {
-            return level.isEmpty() ? category + "应急响应已解除" : category + level + "应急响应已解除";
-        }
-        String itemCode = item.getItemCode();
-        if (EmergencyNoticeDict.ITEM_START.equals(itemCode)) {
-            return level.isEmpty() ? category + "应急响应启动" : category + level + "应急响应启动";
-        }
-        if (EmergencyNoticeDict.ITEM_UPGRADE.equals(itemCode)) {
-            return level.isEmpty() ? category + "应急响应升级" : category + "应急响应升级至" + level;
-        }
-        if (EmergencyNoticeDict.ITEM_DOWNGRADE.equals(itemCode)) {
-            return level.isEmpty() ? category + "应急响应降级" : category + "应急响应降级至" + level;
-        }
-        if (EmergencyNoticeDict.ITEM_SUPPLEMENT.equals(itemCode)) {
-            return level.isEmpty() ? category + "应急响应持续中" : category + level + "应急响应持续中";
-        }
-        // 未知事项：通用表述，避免出现空提示
-        return level.isEmpty() ? category + "应急响应中" : category + level + "应急响应中";
+    /** 去首尾空白，空值归一为空串（文案兜底用） */
+    private static String nvl(String value) {
+        String trimmed = EmergencyNoticeDict.trimToNull(value);
+        return trimmed == null ? "" : trimmed;
     }
 
-    /** 排序权重：响应中 0 / 已解除 1 */
-    private static int statusRank(EmergencyNoticeNavTipVO.Item item) {
-        return EmergencyNoticeDict.TIP_RESPONSE.equals(item.getStatus()) ? 0 : 1;
-    }
-
-    /** 汇总提示类型：存在响应中即 response，否则有解除即 release，都没有则 none */
+    /** 汇总提示类型：存在已发布即 published，否则有终止即 terminated，都没有则 none */
     private String resolveTipType(List<EmergencyNoticeNavTipVO.Item> items) {
-        boolean hasRelease = false;
+        boolean hasTerminated = false;
         for (EmergencyNoticeNavTipVO.Item item : items) {
-            if (EmergencyNoticeDict.TIP_RESPONSE.equals(item.getStatus())) {
-                return EmergencyNoticeDict.TIP_RESPONSE;
+            if (EmergencyNoticeDict.TIP_PUBLISHED.equals(item.getStatus())) {
+                return EmergencyNoticeDict.TIP_PUBLISHED;
             }
-            hasRelease = true;
+            hasTerminated = true;
         }
-        return hasRelease ? EmergencyNoticeDict.TIP_RELEASE : EmergencyNoticeDict.TIP_NONE;
+        return hasTerminated ? EmergencyNoticeDict.TIP_TERMINATED : EmergencyNoticeDict.TIP_NONE;
     }
 }

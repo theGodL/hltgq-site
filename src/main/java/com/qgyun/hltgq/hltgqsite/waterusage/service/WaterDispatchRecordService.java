@@ -25,8 +25,8 @@ import java.util.Map;
 /**
  * 调度记录服务（列表/详情/新增/编辑/删除）。
  * <p>闸口操作留痕，不参与水量与费用计算；记录为留痕数据宽进管理（编辑/删除不限状态），
- * 仅做存在性与关联一致性校验：关联方案（dispatchId）填写时用水户与操作闸口须与方案一致。
- * <p>操作类型对外英文码 up/down/adjust（空按 up）；升降高度 0~999 cm 选填。
+ * 仅做存在性与关联一致性校验：关联指令（dispatchId）填写时用水户与操作闸口须与指令一致。
+ * <p>记录内容：用水户（必填）+ 操作闸口 + 操作时间 + 操作后闸门高度（0~999 cm，选填）+ 操作人 + 备注。
  */
 @Service
 public class WaterDispatchRecordService {
@@ -59,16 +59,15 @@ public class WaterDispatchRecordService {
 
     // ==================== 元数据 / 列表 / 详情 ====================
 
-    /** 表单元数据（操作类型字典 + 操作人候选（平台用户）+ 当天日期） */
+    /** 表单元数据（操作人候选（平台用户）+ 当天日期） */
     public Map<String, Object> meta() {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("opTypes", WaterUsageDict.recordTypeOptions());
         out.put("operators", platformUsers.options());
         out.put("today", LocalDate.now().toString());
         return out;
     }
 
-    /** 列表分页（关键字匹配操作人/备注/方案编号） */
+    /** 列表分页（关键字匹配操作人/备注/指令编号） */
     public Map<String, Object> page(int page, int size, String keyword, String waterUserId, String gateId) {
         int p = WaterUsageSupport.clampPage(page);
         int s = WaterUsageSupport.clampSize(size);
@@ -77,9 +76,6 @@ public class WaterDispatchRecordService {
         String gid = WaterUsageSupport.trim(gateId);
         long total = recordMapper.countRecords(kw, uid, gid);
         List<WaterDispatchRecordVO> records = recordMapper.selectRecordPage(kw, uid, gid, s, (long) (p - 1) * s);
-        for (WaterDispatchRecordVO row : records) {
-            decorate(row);
-        }
         return WaterUsageSupport.pageResult(total, p, s, records);
     }
 
@@ -90,11 +86,10 @@ public class WaterDispatchRecordService {
         if (vo == null) {
             throw new IllegalArgumentException("调度记录不存在");
         }
-        decorate(vo);
         return vo;
     }
 
-    /** 「关联调度方案」下拉（未取消全部，编号倒序） */
+    /** 「关联调度指令」下拉（未取消全部，编号倒序） */
     public List<DispatchOptionVO> planOptions(String keyword) {
         List<DispatchOptionVO> rows = dispatchMapper.selectActivePlanOptions(WaterUsageSupport.trim(keyword));
         for (DispatchOptionVO row : rows) {
@@ -105,7 +100,7 @@ public class WaterDispatchRecordService {
 
     // ==================== 新增 / 编辑 / 删除 ====================
 
-    /** 新增（关联方案选填；填写时用水户/闸口须与方案一致） */
+    /** 新增（关联指令选填；填写时用水户/闸口须与指令一致） */
     @Transactional(rollbackFor = Exception.class)
     public WaterDispatchRecordVO create(WaterDispatchRecordSaveVO req) {
         Draft d = validate(req);
@@ -118,8 +113,7 @@ public class WaterDispatchRecordService {
         row.put("water_user_id", d.userId);
         row.put("gate_id", d.gateId);
         row.put("op_time", d.opTime);
-        row.put("op_type", d.opType);
-        row.put("height", d.height);
+        row.put("gate_height_after", d.gateHeightAfter);
         row.put("operator", d.operator);
         row.put("remark", d.remark);
         row.put("now", now);
@@ -128,7 +122,7 @@ public class WaterDispatchRecordService {
         return detail(id);
     }
 
-    /** 编辑（留痕数据宽进：全字段可改，关联一致性同新增） */
+    /** 编辑（留痕数据宽进：业务字段可改，关联一致性同新增） */
     @Transactional(rollbackFor = Exception.class)
     public WaterDispatchRecordVO update(String id, WaterDispatchRecordSaveVO req) {
         String key = WaterUsageSupport.requireText(id, "记录 id 不能为空");
@@ -145,8 +139,7 @@ public class WaterDispatchRecordService {
         row.put("water_user_id", d.userId);
         row.put("gate_id", d.gateId);
         row.put("op_time", d.opTime);
-        row.put("op_type", d.opType);
-        row.put("height", d.height);
+        row.put("gate_height_after", d.gateHeightAfter);
         row.put("operator", d.operator);
         row.put("remark", d.remark);
         row.put("now", now);
@@ -170,19 +163,18 @@ public class WaterDispatchRecordService {
 
     // ==================== 内部 ====================
 
-    /** 校验产物：已归一化的入库值（LocalDateTime / #N# 编码 / trim 文本） */
+    /** 校验产物：已归一化的入库值（LocalDateTime / trim 文本） */
     private static final class Draft {
         String dispatchId;
         String userId;
         String gateId;
         LocalDateTime opTime;
-        String opType;
-        Integer height;
+        Integer gateHeightAfter;
         String operator;
         String remark;
     }
 
-    /** 新增/编辑共用校验：户/闸口存在、方案关联一致性、时间/类型/高度/文本 */
+    /** 新增/编辑共用校验：户/闸口存在、指令关联一致性、时间/闸门高度/文本 */
     private Draft validate(WaterDispatchRecordSaveVO req) {
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
@@ -201,41 +193,26 @@ public class WaterDispatchRecordService {
         if (d.dispatchId != null) {
             WaterDispatchVO dispatch = dispatchMapper.selectDispatchById(d.dispatchId);
             if (dispatch == null) {
-                throw new IllegalArgumentException("关联的调度方案不存在");
+                throw new IllegalArgumentException("关联的调度指令不存在");
             }
             if (!d.userId.equals(dispatch.getWaterUserId())) {
-                throw new IllegalArgumentException("关联方案的用水户与所选用水户不一致");
+                throw new IllegalArgumentException("关联指令的用水户与所选用水户不一致");
             }
             if (!d.gateId.equals(dispatch.getGateId())) {
-                throw new IllegalArgumentException("关联方案的操作闸口与所选闸口不一致");
+                throw new IllegalArgumentException("关联指令的操作闸口与所选闸口不一致");
             }
         }
         d.opTime = WaterUsageSupport.parseDateTime(req.getOpTime(), "操作时间");
-        String opUnit = WaterUsageSupport.trim(req.getOpType());
-        d.opType = opUnit == null ? WaterUsageDict.RECORD_TYPE_UP : WaterUsageDict.recordTypeOfCode(opUnit);
-        if (d.opType == null) {
-            throw new IllegalArgumentException("操作类型参数不正确");
+        Integer gateHeightAfter = req.getGateHeightAfter();
+        if (gateHeightAfter != null && (gateHeightAfter < 0 || gateHeightAfter > 999)) {
+            throw new IllegalArgumentException("操作后闸门高度需在 0~999 cm 之间");
         }
-        Integer height = req.getHeight();
-        if (height != null && (height < 0 || height > 999)) {
-            throw new IllegalArgumentException("升降高度需在 0~999 cm 之间");
-        }
-        d.height = height;
+        d.gateHeightAfter = gateHeightAfter;
         // 操作人必填：传 operatorUserId 时按平台用户回查固化姓名（不信任前端文本）；
         // 仅回传姓名（未换人/存量手填的闸管员）时按文本入库，不阻塞留痕
         d.operator = platformUsers.resolveName(
                 req.getOperatorUserId(), req.getOperator(), "操作人 / 闸管员", true);
         d.remark = WaterUsageSupport.maxLength(WaterUsageSupport.trim(req.getRemark()), 200, "备注");
         return d;
-    }
-
-    /** 出口装饰：操作类型英文码 + 中文名 */
-    private void decorate(WaterDispatchRecordVO vo) {
-        if (vo == null) {
-            return;
-        }
-        String raw = vo.getOpType();
-        vo.setOpTypeName(WaterUsageDict.recordTypeName(raw));
-        vo.setOpType(WaterUsageDict.recordTypeCodeOf(raw));
     }
 }

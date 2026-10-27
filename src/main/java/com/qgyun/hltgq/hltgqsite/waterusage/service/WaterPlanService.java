@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.waterusage.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageDict;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageRules;
@@ -15,6 +16,8 @@ import com.qgyun.hltgq.hltgqsite.waterusage.vo.DispatchExecRowVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.QuotaOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.UserOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDemandVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanAttachmentVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanDownloadVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanItemVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanSaveVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanVO;
@@ -23,8 +26,10 @@ import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterUserVO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -50,9 +55,14 @@ import java.util.Set;
  * <p>实测装配（列表 / 详情 doneQty + missingCnt、实际保证率接口）：计量统一走
  * {@link WaterUsageMeter}（与账单出账同源）——计划灌溉进度按方案闸口逐条计量（差额扣减取负，缺读数计缺）；
  * 保证率按申请时段户级全部闸口计量（任一闸口缺读数即计缺）。
+ * <p>附件：用水计划存档文件，本地存储 file-dir/water-plan/{yyyy-MM}/{uuid}_{原名}；
+ * 上传时行 plan_id 为空，保存/编辑计划时回填归属，删除计划连带清空行与文件。
  */
 @Service
 public class WaterPlanService {
+
+    /** 附件存储根目录名（file-dir 下的用水计划专属目录） */
+    private static final String PLAN_DIR = "water-plan";
 
     private final WaterPlanMapper planMapper;
 
@@ -73,6 +83,10 @@ public class WaterPlanService {
     /** 操作人兜底（会话缺失时使用，审计列 NOT NULL） */
     @Value("${hltgq.created-by}")
     private String fallbackOperator;
+
+    /** 附件本地存储根目录（宿主机挂载 ./file-dir；与库存盘点同模式） */
+    @Value("${hltgq.file-dir:./file-dir}")
+    private String fileDir;
 
     public WaterPlanService(WaterPlanMapper planMapper,
                             WaterUserMapper userMapper,
@@ -136,6 +150,7 @@ public class WaterPlanService {
         }
         decorateMeasuredDetail(vo, items);
         vo.setItems(items);
+        vo.setAttachments(planMapper.selectPlanAttachments(key));
         return vo;
     }
 
@@ -235,6 +250,7 @@ public class WaterPlanService {
         row.put("operator", operator);
         planMapper.insertPlan(row);
         insertItems(planId, draft.items, now, operator);
+        bindAttachments(planId, req.getAttachmentIds(), now, operator);
         return detail(planId);
     }
 
@@ -268,10 +284,12 @@ public class WaterPlanService {
             }
             planMapper.deletePlanItems(key);
             insertItems(key, draft.items, now, operator);
+            bindAttachments(key, req.getAttachmentIds(), now, operator);
             return detail(key);
         }
         if (WaterUsageDict.PLAN_STATUS_ACTIVE.equals(plan.getStatus())) {
             updateActive(plan, req, now, operator);
+            bindAttachments(key, req.getAttachmentIds(), now, operator);
             return detail(key);
         }
         throw new IllegalArgumentException("已归档 / 已作废计划不可编辑");
@@ -279,7 +297,7 @@ public class WaterPlanService {
 
     // ==================== 状态机 ====================
 
-    /** 物理删除（仅编制中；主表 + 明细） */
+    /** 物理删除（仅编制中；主表 + 明细 + 附件行，附件文件事务提交后删） */
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
         String key = WaterUsageSupport.requireText(id, "计划 id 不能为空");
@@ -290,10 +308,16 @@ public class WaterPlanService {
         if (!WaterUsageDict.PLAN_STATUS_DRAFT.equals(plan.getStatus())) {
             throw new IllegalArgumentException("仅编制中计划可删除（已生效 / 已归档 / 已作废为终态保护）");
         }
+        List<String> removedPaths = new ArrayList<>();
+        for (WaterPlanAttachmentVO att : planMapper.selectPlanAttachmentPaths(key)) {
+            removedPaths.add(att.getFilePath());
+        }
+        planMapper.deletePlanAttachments(key);
         planMapper.deletePlanItems(key);
         if (planMapper.deletePlan(key) == 0) {
             throw new IllegalArgumentException("计划状态已变更，请刷新后重试");
         }
+        LocalFileStorageUtils.deleteAfterCommit(fileDirPath(), removedPaths);
     }
 
     /** 生效（三层校验最终裁决在同一事务内执行；block 阻止、warn 放行） */
@@ -336,7 +360,7 @@ public class WaterPlanService {
         }
     }
 
-    /** 作废（仅已生效；存在未完结调度方案时禁止，记录作废人/时间/原因） */
+    /** 作废（仅已生效；存在未完结调度指令时禁止，记录作废人/时间/原因） */
     @Transactional(rollbackFor = Exception.class)
     public void voidPlan(String id, String reason) {
         String key = WaterUsageSupport.requireText(id, "计划 id 不能为空");
@@ -350,7 +374,7 @@ public class WaterPlanService {
         int unfinished = dispatchMapper.countUnfinishedByPlan(key);
         if (unfinished > 0) {
             throw new IllegalArgumentException("该计划存在 " + unfinished
-                    + " 条待执行 / 执行中的调度方案，请先在调度模块取消或完结方案后再作废");
+                    + " 条待执行 / 执行中的调度指令，请先在调度模块取消或完结指令后再作废");
         }
         String validReason = WaterUsageSupport.requireText(reason, "请填写作废原因");
         WaterUsageSupport.maxLength(validReason, 200, "作废原因");
@@ -606,12 +630,12 @@ public class WaterPlanService {
                 throw new IllegalArgumentException("第 " + line + " 行：计划水量超过测算水量，请填写超测算说明");
             }
             WaterUsageSupport.maxLength(overrideReason, 200, "第 " + line + " 行：超测算说明");
-            // 户级守恒：新水量不得低于该户在本计划下已下达的调度方案合计（与调度侧配额管控同口径）
+            // 户级守恒：新水量不得低于该户在本计划下已下达的调度指令合计（与调度侧配额管控同口径）
             BigDecimal userScheduled = dispatchMapper.selectActiveSumByPlanUser(plan.getId(),
                     current.getWaterUserId(), null);
             if (userScheduled.signum() > 0 && planWater.compareTo(userScheduled) < 0) {
                 throw new IllegalArgumentException("第 " + line + " 行：计划水量（"
-                        + WaterUsageSupport.formatWan(planWater) + " 万m³）不能低于该用水户已下达调度方案合计（"
+                        + WaterUsageSupport.formatWan(planWater) + " 万m³）不能低于该用水户已下达调度指令合计（"
                         + WaterUsageSupport.formatWan(userScheduled) + " 万m³）");
             }
             planMapper.updatePlanItemWater(itemId, plan.getId(), planWater, overrideReason, now, operator);
@@ -624,6 +648,124 @@ public class WaterPlanService {
             throw new IllegalArgumentException("计划总水量（" + WaterUsageSupport.formatWan(totalWater)
                     + " 万m³）不能低于已调度水量（" + WaterUsageSupport.formatWan(scheduled) + " 万m³）");
         }
+    }
+
+    // ==================== 附件（上传 / 下载 / 移除） ====================
+
+    /** 上传附件：白名单 + 落盘（water-plan/yyyy-MM/uuid_原名） + 行入库（plan_id 为空待回填）。 */
+    public WaterPlanAttachmentVO uploadAttachment(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("上传文件不能为空");
+        }
+        String originalName = LocalFileStorageUtils.sanitizeFileName(file.getOriginalFilename());
+        String ext = LocalFileStorageUtils.extOf(originalName);
+        if (!LocalFileStorageUtils.isAllowedExt(ext)) {
+            throw new IllegalArgumentException("不支持的文件类型（仅支持图片、PDF、Word、Excel）：" + originalName);
+        }
+        String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
+        LocalDateTime now = LocalDateTime.now();
+        String storedName = shortIdGenerator.nextUUID(null) + "_" + originalName;
+        String relPath = PLAN_DIR + "/" + now.format(LocalFileStorageUtils.MONTH_DIR) + "/" + storedName;
+        LocalFileStorageUtils.write(fileDirPath(), relPath, file);
+
+        String attachmentId = shortIdGenerator.nextUUID(null);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", attachmentId);
+        row.put("plan_id", null);
+        row.put("file_name", originalName);
+        row.put("file_path", relPath);
+        row.put("file_size", file.getSize());
+        row.put("file_ext", ext);
+        row.put("now", now);
+        row.put("operator", operator);
+        try {
+            planMapper.insertPlanAttachment(row);
+        } catch (RuntimeException e) {
+            // 行写入失败：清理已落盘文件，避免孤儿文件
+            LocalFileStorageUtils.deleteQuietly(fileDirPath(), relPath);
+            throw e;
+        }
+
+        WaterPlanAttachmentVO vo = new WaterPlanAttachmentVO();
+        vo.setId(attachmentId);
+        vo.setFileName(originalName);
+        vo.setFileSize(file.getSize());
+        vo.setFileExt(ext);
+        return vo;
+    }
+
+    /** 下载附件：路径穿越校验 + 文件读取（缺失提示已被清理）。 */
+    public WaterPlanDownloadVO downloadAttachment(String id) {
+        WaterPlanAttachmentVO att = planMapper.selectPlanAttachmentById(
+                WaterUsageSupport.requireText(id, "附件 id 不能为空"));
+        if (att == null) {
+            throw new IllegalArgumentException("附件不存在或已删除");
+        }
+        byte[] bytes = LocalFileStorageUtils.readBytes(fileDirPath(),
+                WaterUsageSupport.requireText(att.getFilePath(), "附件路径缺失"));
+        WaterPlanDownloadVO vo = new WaterPlanDownloadVO();
+        vo.setContent(bytes);
+        vo.setFileName(att.getFileName());
+        vo.setFileExt(att.getFileExt());
+        return vo;
+    }
+
+    /** 移除附件（新增取消清理 / 编辑态移除新上传）：原子删行（未归属守卫） + 物理删文件（best-effort）。 */
+    public void removeAttachment(String id) {
+        String key = WaterUsageSupport.requireText(id, "附件 id 不能为空");
+        WaterPlanAttachmentVO att = planMapper.selectPlanAttachmentById(key);
+        if (att == null) {
+            throw new IllegalArgumentException("附件不存在或已删除");
+        }
+        // 仅允许删除未归属附件：DELETE 带 plan_id IS NULL 守卫，并发绑定后返回 0 行 → 拒绝移除且不删文件
+        if (planMapper.deleteUnboundPlanAttachment(key) == 0) {
+            throw new IllegalArgumentException("附件已保存到用水计划，不能直接移除");
+        }
+        LocalFileStorageUtils.deleteQuietly(fileDirPath(), att.getFilePath());
+    }
+
+    /**
+     * 计划附件绑定/清理（保存/编辑时调用）：
+     * attachmentIds 为 null → 不调整（已生效受限编辑可省略）；
+     * 非 null → 以集合为准：新上传的绑定本计划，现属本计划但不在集合内的删行（文件事务提交后删）。
+     */
+    private void bindAttachments(String planId, List<String> attachmentIds, LocalDateTime now, String operator) {
+        if (attachmentIds == null) {
+            return;
+        }
+        List<String> keepIds = new ArrayList<>();
+        for (String raw : attachmentIds) {
+            String aid = WaterUsageSupport.trim(raw);
+            if (aid == null) {
+                continue;
+            }
+            WaterPlanAttachmentVO att = planMapper.selectPlanAttachmentById(aid);
+            if (att == null) {
+                throw new IllegalArgumentException("附件不存在或已移除：" + aid);
+            }
+            if (att.getPlanId() != null && !att.getPlanId().equals(planId)) {
+                throw new IllegalArgumentException("附件已被其他用水计划占用：" + att.getFileName());
+            }
+            if (att.getPlanId() == null && planMapper.bindPlanAttachment(aid, planId, operator, now) == 0) {
+                throw new IllegalArgumentException("附件绑定失败，请刷新后重试：" + att.getFileName());
+            }
+            keepIds.add(aid);
+        }
+        List<String> removedPaths = new ArrayList<>();
+        for (WaterPlanAttachmentVO att : planMapper.selectPlanAttachments(planId)) {
+            if (!keepIds.contains(att.getId())) {
+                WaterPlanAttachmentVO row = planMapper.selectPlanAttachmentById(att.getId());
+                if (row != null && planMapper.deletePlanAttachment(row.getId()) > 0) {
+                    removedPaths.add(row.getFilePath());
+                }
+            }
+        }
+        LocalFileStorageUtils.deleteAfterCommit(fileDirPath(), removedPaths);
+    }
+
+    /** 附件存储根目录（绝对路径归一，用作穿越校验基准；文件操作见 LocalFileStorageUtils）。 */
+    private Path fileDirPath() {
+        return LocalFileStorageUtils.root(fileDir);
     }
 
     // ==================== 私有支撑 ====================

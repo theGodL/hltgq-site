@@ -17,10 +17,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 调度方案（t_auto_hltgq_water_dispatch）。表结构见 init.sql 灌区用水管理 2.2 / water-dispatch-bill-ddl.sql。
- * <p>行 = 闸口 × 时段的放水载体：计入水量 = 该闸口 [start_time, end_time] 实测累计流量（带符号），
- * 出账时以 billed_qty 快照计费、bill_id 挂接账单。
+ * 调度指令（t_auto_hltgq_water_dispatch，原「调度方案」）。表结构见 init.sql 灌区用水管理 2.2 / water-usage-v3-ddl.sql。
+ * <p>行 = 闸口 × 执行窗口的放水载体：计入水量 = 该闸口
+ * [COALESCE(exec_time, start_time), COALESCE(finish_time, end_time, 当前时间)] 实测累计流量（带符号），
+ * 出账时以 billed_qty 快照计费、bill_id 挂接账单。旧数据 exec_time/finish_time 为空，窗口即原 [start_time, end_time]。
  * <p>状态机：待执行(#1#) →（开始执行）执行中(#2#) →（完成）已完成(#3#)；待执行/执行中 →（取消）已取消(#4#)。
+ * 已完成时写入 finish_time（仅当 end_time 为空，即新指令，避免影响历史数据）。
  * 已计费（bill_id 非空）禁改、禁取消、禁删，须先删除关联账单恢复未计费。
  * <p>配额闭环：关联计划时受「该计划该户 plan_water 合计」约束（lockPlanForUpdate 锁行防并发），
  * 每次创建/编辑/调整/删除/取消后经 recalcPlanScheduled 回写计划 scheduled_qty（= Σ 未取消方案 plan_amount）。
@@ -45,6 +47,12 @@ public interface WaterDispatchMapper {
             "<if test='status != null and status != \"\"'>AND d.status = #{status} </if>" +
             "<if test='planId != null and planId != \"\"'>AND d.plan_id = #{planId} </if>";
 
+    /** 计量窗口起（执行时间，旧数据回落原执行时段起） */
+    String WINDOW_START = "COALESCE(d.exec_time, d.start_time)";
+
+    /** 计量窗口止（完成时间；未完成取当前时间；旧数据回落原执行时段止） */
+    String WINDOW_END = "COALESCE(d.finish_time, d.end_time, CURRENT_TIMESTAMP)";
+
     /** 基础列（列表/详情共用；plan_amount 库内 m³，Service 出口折算万m³；trail = 记录数） */
     String BASE_COLS = "d.id AS id, d.dispatch_no AS dispatchNo, " +
             "to_char(d.created_at, 'YYYY-MM-DD HH24:MI') AS createTime, " +
@@ -53,8 +61,11 @@ public interface WaterDispatchMapper {
             "d.water_user_id AS waterUserId, u.user_no AS waterUserNo, u.name AS waterUserName, " +
             "d.gate_id AS gateId, s.zzkaec AS gateName, " +
             "d.plan_amount AS planAmount, " +
-            "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
-            "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime, " +
+            "to_char(d.exec_time, 'YYYY-MM-DD HH24:MI') AS execTime, " +
+            "to_char(d.finish_time, 'YYYY-MM-DD HH24:MI') AS finishTime, " +
+            "d.gate_height_cm AS gateHeightCm, " +
+            "to_char(" + WINDOW_START + ", 'YYYY-MM-DD HH24:MI') AS startTime, " +
+            "to_char(" + WINDOW_END + ", 'YYYY-MM-DD HH24:MI') AS endTime, " +
             "d.owner AS owner, d.status AS status, d.bill_id AS billId, b.bill_no AS billNo, " +
             "(SELECT COUNT(*) FROM " + T_RECORD + " r WHERE r.dispatch_id = d.id) AS trail, " +
             "d.remark AS remark";
@@ -98,39 +109,51 @@ public interface WaterDispatchMapper {
             " WHERE corp_code = 'hltgq' AND dispatch_no ~ '^DD[0-9]+$'")
     int selectMaxDispatchSeq();
 
-    /** 新增（row key：id/dispatch_no/plan_id/demand_id/water_user_id/gate_id/plan_amount/start_time/end_time/owner/remark/now/operator） */
+    /** 新增（row key：id/dispatch_no/plan_id/demand_id/water_user_id/gate_id/plan_amount/exec_time/gate_height_cm/start_time/owner/remark/now/operator） */
     @Insert("INSERT INTO " + T_DISPATCH + " " +
             "(\"id\", \"dispatch_no\", \"plan_id\", \"demand_id\", \"water_user_id\", \"gate_id\", \"plan_amount\", " +
-            "\"start_time\", \"end_time\", \"owner\", \"status\", \"remark\", \"corp_code\", \"created_at\", " +
+            "\"exec_time\", \"gate_height_cm\", \"start_time\", \"owner\", \"status\", \"remark\", \"corp_code\", \"created_at\", " +
             "\"created_by\", \"updated_at\", \"updated_by\") " +
             "VALUES (#{row.id}, #{row.dispatch_no}, #{row.plan_id}, #{row.demand_id}, #{row.water_user_id}, " +
-            "#{row.gate_id}, #{row.plan_amount}, #{row.start_time}, #{row.end_time}, #{row.owner}, '#1#', " +
-            "#{row.remark}, 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
+            "#{row.gate_id}, #{row.plan_amount}, #{row.exec_time}, #{row.gate_height_cm}, #{row.start_time}, " +
+            "#{row.owner}, '#1#', #{row.remark}, 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
     int insertDispatch(@Param("row") Map<String, Object> row);
 
     /** 编辑（仅待执行且未计费：全字段；状态流转经 updateDispatchStatus/cancelDispatch，水费页调整经 adjustDispatch） */
     @Update("UPDATE " + T_DISPATCH + " SET \"plan_id\" = #{row.plan_id}, \"demand_id\" = #{row.demand_id}, " +
             "\"water_user_id\" = #{row.water_user_id}, \"gate_id\" = #{row.gate_id}, " +
-            "\"plan_amount\" = #{row.plan_amount}, \"start_time\" = #{row.start_time}, " +
-            "\"end_time\" = #{row.end_time}, \"owner\" = #{row.owner}, \"remark\" = #{row.remark}, " +
+            "\"plan_amount\" = #{row.plan_amount}, \"exec_time\" = #{row.exec_time}, " +
+            "\"gate_height_cm\" = #{row.gate_height_cm}, \"start_time\" = #{row.start_time}, " +
+            "\"end_time\" = NULL, " +
+            "\"owner\" = #{row.owner}, \"remark\" = #{row.remark}, " +
             "\"updated_at\" = #{row.now}, \"updated_by\" = #{row.operator} " +
             "WHERE \"id\" = #{row.id} AND \"status\" = '#1#' AND \"bill_id\" IS NULL AND \"corp_code\" = 'hltgq'")
     int updateDispatch(@Param("row") Map<String, Object> row);
 
     /**
-     * 调整（水费页「编辑水量」：计划放水量/执行时段/备注）：未计费且未取消即可（不限执行态），
-     * 台账与待出账金额随新时段实时重算、账期归属按新开始时间推导。
+     * 调整（水费页「编辑水量」：计划放水量 / 执行时间 / 备注）：未计费且未取消即可（不限执行态），
+     * 台账与待出账金额随新窗口实时重算、账期归属按新执行时间推导。
+     * <p>exec_time 非空时同步 start_time 并清空历史 end_time（新口径）；否则按旧口径更新 start_time / end_time。
      */
-    @Update("UPDATE " + T_DISPATCH + " SET \"plan_amount\" = #{row.plan_amount}, " +
-            "\"start_time\" = #{row.start_time}, \"end_time\" = #{row.end_time}, \"remark\" = #{row.remark}, " +
-            "\"updated_at\" = #{row.now}, \"updated_by\" = #{row.operator} " +
-            "WHERE \"id\" = #{row.id} AND \"bill_id\" IS NULL AND \"status\" != '#4#' AND \"corp_code\" = 'hltgq'")
+    @Update("<script>UPDATE " + T_DISPATCH + " SET " +
+            "<if test='row.plan_amount != null'>\"plan_amount\" = #{row.plan_amount}, </if>" +
+            "<if test='row.exec_time != null'>\"exec_time\" = #{row.exec_time}, \"start_time\" = #{row.exec_time}, " +
+            "\"end_time\" = NULL, </if>" +
+            "<if test='row.exec_time == null and row.start_time != null'>\"start_time\" = #{row.start_time}, </if>" +
+            "<if test='row.end_time != null'>\"end_time\" = #{row.end_time}, </if>" +
+            "\"remark\" = #{row.remark}, \"updated_at\" = #{row.now}, \"updated_by\" = #{row.operator} " +
+            "WHERE \"id\" = #{row.id} AND \"bill_id\" IS NULL AND \"status\" != '#4#' AND \"corp_code\" = 'hltgq'</script>")
     int adjustDispatch(@Param("row") Map<String, Object> row);
 
-    /** 状态流转（带原状态守卫；影响行数 0 = 状态已变更，报「请刷新」） */
-    @Update("UPDATE " + T_DISPATCH + " SET \"status\" = #{toStatus}, \"updated_at\" = #{now}, " +
-            "\"updated_by\" = #{operator} WHERE \"id\" = #{id} AND \"status\" = #{fromStatus} " +
-            "AND \"corp_code\" = 'hltgq'")
+    /**
+     * 状态流转（带原状态守卫；影响行数 0 = 状态已变更，报「请刷新」）。
+     * <p>流转到已完成时写入 finish_time（仅新指令：end_time 为空且 finish_time 为空；旧数据保持原执行时段止）。
+     */
+    @Update("UPDATE " + T_DISPATCH + " SET \"status\" = #{toStatus}, " +
+            "\"finish_time\" = CASE WHEN #{toStatus} = '#3#' AND \"end_time\" IS NULL AND \"finish_time\" IS NULL " +
+            "THEN #{now} ELSE \"finish_time\" END, " +
+            "\"updated_at\" = #{now}, \"updated_by\" = #{operator} " +
+            "WHERE \"id\" = #{id} AND \"status\" = #{fromStatus} AND \"corp_code\" = 'hltgq'")
     int updateDispatchStatus(@Param("id") String id,
                              @Param("fromStatus") String fromStatus,
                              @Param("toStatus") String toStatus,
@@ -216,8 +239,8 @@ public interface WaterDispatchMapper {
      */
     @Select("SELECT d.id AS dispatchId, d.dispatch_no AS dispatchNo, d.plan_id AS planId, " +
             "p.plan_name AS planName, d.gate_id AS gateId, s.zzkaec AS gateName, " +
-            "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
-            "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime, " +
+            "to_char(" + WINDOW_START + ", 'YYYY-MM-DD HH24:MI') AS startTime, " +
+            "to_char(" + WINDOW_END + ", 'YYYY-MM-DD HH24:MI') AS endTime, " +
             "d.plan_amount AS planAmount, d.billed_qty AS amount, b.bill_no AS billNo, " +
             "(d.bill_id IS NOT NULL) AS billed, d.status AS status, " +
             "(SELECT COUNT(*) FROM " + T_RECORD + " r WHERE r.dispatch_id = d.id) AS trail " +
@@ -226,7 +249,7 @@ public interface WaterDispatchMapper {
             "LEFT JOIN " + T_PLAN + " p ON p.id = d.plan_id " +
             "LEFT JOIN " + T_BILL + " b ON b.id = d.bill_id " +
             "WHERE d.water_user_id = #{userId} AND d.corp_code = 'hltgq' AND d.status != '#4#' " +
-            "ORDER BY d.start_time, d.dispatch_no")
+            "ORDER BY " + WINDOW_START + ", d.dispatch_no")
     List<BillPlanRowVO> selectActivePlansByUser(@Param("userId") String userId);
 
     /**
@@ -235,12 +258,12 @@ public interface WaterDispatchMapper {
      * <p>差额策略扣减闸口的符号判定由 Service 按用水户闸口配置完成。
      */
     @Select("<script>SELECT d.plan_id AS planId, d.water_user_id AS waterUserId, d.gate_id AS gateId, " +
-            "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
-            "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime " +
+            "to_char(" + WINDOW_START + ", 'YYYY-MM-DD HH24:MI') AS startTime, " +
+            "to_char(" + WINDOW_END + ", 'YYYY-MM-DD HH24:MI') AS endTime " +
             "FROM " + T_DISPATCH + " d " +
             "WHERE d.corp_code = 'hltgq' AND d.status != '#4#' AND d.plan_id IN " +
             "<foreach collection='planIds' item='pid' open='(' separator=',' close=')'>#{pid}</foreach>" +
-            "ORDER BY d.plan_id, d.water_user_id, d.start_time</script>")
+            "ORDER BY d.plan_id, d.water_user_id, " + WINDOW_START + "</script>")
     List<DispatchExecRowVO> selectActiveDispatchRows(@Param("planIds") List<String> planIds);
 
     /**
@@ -248,12 +271,12 @@ public interface WaterDispatchMapper {
      * <p>计量口径与账单台账 pendingQty 同源（WaterUsageMeter）；差额扣减符号由 Service 按户配置判定。
      */
     @Select("<script>SELECT d.plan_id AS planId, d.water_user_id AS waterUserId, d.gate_id AS gateId, " +
-            "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
-            "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime " +
+            "to_char(" + WINDOW_START + ", 'YYYY-MM-DD HH24:MI') AS startTime, " +
+            "to_char(" + WINDOW_END + ", 'YYYY-MM-DD HH24:MI') AS endTime " +
             "FROM " + T_DISPATCH + " d " +
             "WHERE d.corp_code = 'hltgq' AND d.status != '#4#' AND d.bill_id IS NULL AND d.water_user_id IN " +
             "<foreach collection='userIds' item='uid' open='(' separator=',' close=')'>#{uid}</foreach>" +
-            "ORDER BY d.water_user_id, d.start_time</script>")
+            "ORDER BY d.water_user_id, " + WINDOW_START + "</script>")
     List<DispatchExecRowVO> selectUnbilledDispatchRows(@Param("userIds") List<String> userIds);
 
     /** 方案下拉（调度记录「关联调度方案」：未取消全部，编号倒序） */

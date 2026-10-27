@@ -124,6 +124,15 @@ input[type="checkbox"]{width:15px;height:15px;accent-color:#1677ff;cursor:pointe
 .act.del:hover{color:#ff7875}
 .tbl td .act + .act{margin-left:12px}
 
+/* 方案明细返回条:左侧醒目返回按钮 + 面包屑(客户反馈原右上角返回按钮不显眼) */
+.back-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 18px;border:1px solid #1677ff;border-radius:18px;background:#e6f4ff;color:#1677ff;font-size:14px;font-weight:500;font-family:inherit;cursor:pointer;transition:all .2s}
+.back-btn:hover{background:#1677ff;border-color:#1677ff;color:#fff}
+.back-btn svg{display:block;flex-shrink:0}
+.back-crumb{font-size:13px;color:#8c8c8c}
+.back-crumb b{color:#1f1f1f;font-weight:600}
+.back-crumb .sep{margin:0 6px;color:#d9d9d9}
+
 /* 分页栏 */
 .pg-bar{display:flex;align-items:center;justify-content:flex-end;padding:16px 0 0;gap:8px;flex-wrap:wrap}
 .pg-info{color:#333;font-size:13px;margin-right:4px}
@@ -218,46 +227,47 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     <button type="button" class="vtab" data-view="summary">用水户水费汇总</button>
   </div>
 
-  <!-- ==================== 视图一:水费台账 ==================== -->
+  <!-- ==================== 视图一:用水台账(手工台账:新增→出账→账单收缴) ==================== -->
   <div id="view-ledger">
     <!-- 统计条 -->
     <div class="stat-bar" id="ledger-stat"></div>
     <div class="card">
       <div class="card-hd">
-        <div class="card-title">用水户水费台账</div>
-        <button type="button" class="btn btn-default btn-sm" id="btn-export-ledger">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>导出台账
-        </button>
+        <div class="card-title">水费台账<span class="count" id="ledger-count">共 0 条 · 用水量 × 单价自动计费</span></div>
+        <div class="card-hd-right">
+          <button type="button" class="btn btn-default btn-sm" id="btn-plan-bill">调度方案出账</button>
+          <button type="button" class="btn btn-default btn-sm" id="btn-export-ledger">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>导出台账
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-ledger-add">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>新增用水台账
+          </button>
+        </div>
       </div>
       <div class="toolbar">
         <div class="search-wrap">
           <span class="srch-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
-          <input type="text" class="search-input" id="ledger-kw" placeholder="搜索用水户名称 / 编号" autocomplete="off">
+          <input type="text" class="search-input" id="ledger-kw" placeholder="搜索台账编号 / 用水户 / 结算周期" autocomplete="off">
         </div>
         <div class="filter-sel">
           <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-ledger-cycle" placeholder="全部统计周期" autocomplete="off">
+            <input type="text" class="sel-input" id="f-ledger-billed" placeholder="全部出账状态" autocomplete="off">
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <div class="sel-dd" id="ledger-cycle-dd"></div>
+            <div class="sel-dd" id="ledger-billed-dd"></div>
           </div>
         </div>
-      </div>
-      <div class="filter-tabs">
-        <button type="button" class="ftab active" data-lf="all">全部用水户</button>
-        <button type="button" class="ftab" data-lf="pending">有待出账方案</button>
-        <button type="button" class="ftab" data-lf="abnormal">存在异常方案</button>
       </div>
       <!-- 台账列表(宽度只增不减,收窄时容器出横向滚动条) -->
       <div class="tbl-wrap">
         <table class="tbl">
           <colgroup>
-            <col style="width:7%"><col style="width:10%"><col style="width:8%"><col style="width:6%"><col style="width:8%">
-            <col style="width:11%"><col style="width:10%"><col style="width:11%"><col style="width:10%"><col style="width:8%"><col style="width:11%">
+            <col style="width:15%"><col style="width:12%"><col style="width:11%"><col style="width:8%"><col style="width:8%">
+            <col style="width:10%"><col style="width:8%"><col style="width:13%"><col style="width:15%">
           </colgroup>
           <thead>
             <tr>
-              <th>用水户</th><th>用水计算策略 / 闸口</th><th>统计周期</th><th>水价</th><th>本期水量<br>（万m³）</th>
-              <th>待出账水量<br>（万m³）</th><th>待出账金额</th><th>已出账水量<br>（万m³）</th><th>已出账金额</th><th>数据校验</th><th>操作</th>
+              <th>台账编号</th><th>用水户</th><th>结算周期</th><th>用水量<br>（m³）</th><th>单价<br>（元/m³）</th>
+              <th>应收金额</th><th>计费状态</th><th>备注</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="ledger-body"></tbody>
@@ -268,6 +278,13 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   <!-- ==================== 视图二:台账明细(第二层) ==================== -->
   <div id="view-detail" class="hide">
+    <!-- 返回条:左侧醒目返回按钮 + 面包屑(客户反馈原右上角返回不显眼) -->
+    <div class="back-bar">
+      <button type="button" class="back-btn" id="btn-detail-back">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M8.5 2.5L4 7l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.8 7h8.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>返回水费台账
+      </button>
+      <span class="back-crumb">水费台账<span class="sep">/</span><b id="detail-user-name">调度方案明细</b></span>
+    </div>
     <!-- 用水户汇总条 -->
     <div class="stat-bar" id="detail-bar"></div>
     <div class="card">
@@ -279,7 +296,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           <button type="button" class="btn btn-primary btn-sm" id="btn-detail-gen">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="1.5" y="2" width="9" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M4 1v2M8 1v2M1.5 5h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>生成账单
           </button>
-          <button type="button" class="btn btn-default btn-sm" id="btn-detail-back">返回台账</button>
         </div>
       </div>
       <div class="toolbar">
@@ -331,7 +347,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     <div class="stat-bar" id="bill-stat"></div>
     <div class="card">
       <div class="card-hd">
-        <div class="card-title">水费账单列表<span class="count">由台账方案明细批量生成，可管理收缴</span></div>
+        <div class="card-title">水费账单列表<span class="count">由台账「出账」生成（手工台账 / 调度方案均可），可管理收缴</span></div>
         <div class="card-hd-right">
           <button type="button" class="btn btn-default btn-sm" id="btn-export-bills">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>导出账单
@@ -398,6 +414,107 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           <tbody id="sum-body"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- 新增/编辑用水台账弹窗 -->
+<div class="ov" id="ledger-ov">
+  <div class="modal modal-md" role="dialog" aria-label="用水台账">
+    <button type="button" class="modal-x" data-close="ledger-ov" aria-label="关闭">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <div class="modal-hd">
+      <div id="ledger-modal-title">新增用水台账</div>
+    </div>
+    <div class="modal-bd">
+      <div class="plan-tip show">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="2.5" width="9" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 5h9M4 1.5v2M8 1.5v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span>填写用水量与单价后金额自动计算；保存后可点「出账」生成账单，再进入「水费账单」收缴。</span>
+      </div>
+      <div class="form-grid">
+        <div class="form-item span2">
+          <label>用水户 <i class="req">*</i></label>
+          <div class="select-wrap">
+            <input type="text" class="sel-input" id="ml-user" placeholder="搜索并选择用水户" autocomplete="off">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="sel-dd" id="ml-user-dd"></div>
+          </div>
+        </div>
+        <div class="form-item">
+          <label>结算周期 <i class="req">*</i></label>
+          <div class="select-wrap">
+            <input type="text" class="sel-input" id="ml-cycle" placeholder="请选择结算周期" autocomplete="off">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="sel-dd" id="ml-cycle-dd"></div>
+          </div>
+        </div>
+        <div class="form-item">
+          <label>结算年份 <i class="req">*</i></label>
+          <input type="number" class="ipt" id="ml-year" min="2000" max="2100" step="1" placeholder="例如 2026">
+        </div>
+        <div class="form-item" id="ml-part-item">
+          <label>结算月份 / 季度 <i class="req">*</i></label>
+          <div class="select-wrap">
+            <input type="text" class="sel-input" id="ml-part" placeholder="请选择" autocomplete="off">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="sel-dd" id="ml-part-dd"></div>
+          </div>
+        </div>
+        <div class="form-item">
+          <label>用水量（m³） <i class="req">*</i></label>
+          <input type="number" class="ipt" id="ml-volume" min="0" step="0.01" placeholder="0">
+        </div>
+        <div class="form-item">
+          <label>单价（元/m³） <i class="req">*</i></label>
+          <input type="number" class="ipt" id="ml-price" min="0" step="0.001" placeholder="0">
+        </div>
+        <div class="form-item span2">
+          <label>应收金额（元）</label>
+          <input type="text" class="ipt" id="ml-amount" readonly placeholder="自动计算">
+          <div class="f-tip">金额 = 用水量 × 单价，保留两位小数</div>
+        </div>
+        <div class="form-item span2">
+          <label>备注</label>
+          <textarea class="ipt" id="ml-remark" placeholder="选填"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button type="button" class="btn btn-default" data-close="ledger-ov">取消</button>
+      <button type="button" class="btn btn-primary" id="btn-ledger-save">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2L4.8 9 10 3.4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>保存台账
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 调度方案出账:先选用水户再进入方案明细 -->
+<div class="ov" id="plan-ov">
+  <div class="modal modal-sm" role="dialog" aria-label="调度方案出账">
+    <button type="button" class="modal-x" data-close="plan-ov" aria-label="关闭">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <div class="modal-hd">
+      <div>调度方案出账</div>
+    </div>
+    <div class="modal-bd">
+      <div class="plan-tip show">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="2.5" width="9" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 5h9M4 1.5v2M8 1.5v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span>按调度方案计量出账（1 账单可含多个方案）；如仅需手工录入水量，请用「新增用水台账」。</span>
+      </div>
+      <div class="form-item">
+        <label>用水户 <i class="req">*</i></label>
+        <div class="select-wrap">
+          <input type="text" class="sel-input" id="plan-user" placeholder="搜索并选择用水户" autocomplete="off">
+          <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div class="sel-dd" id="plan-user-dd"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button type="button" class="btn btn-default" data-close="plan-ov">取消</button>
+      <button type="button" class="btn btn-primary" id="btn-plan-go">进入方案明细</button>
     </div>
   </div>
 </div>
@@ -705,15 +822,38 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return '<div class="stat-item"' + (title ? ' title="' + esc(title) + '"' : '') + '><div class="stat-label">' + label + '</div><div class="stat-value">' + value + '</div></div>';
   }
 
-  /* ==================== 视图一:水费台账(7.5 /water-bill/ledger) ==================== */
-  var ledgerFilter = { kw: '', cycle: '', lf: 'all' };
+  /* ==================== 视图一:用水台账(手工台账:新增→出账→账单收缴) ==================== */
 
-  /** 拉取台账(服务端 keyword 过滤 户名/户号;全量不分页,含 stat 汇总) */
+  var ledgerFilter = { kw: '', status: '' };          // status: '' 全部 / pending 待出账 / billed 已出账
+  var LEDGER_USERS = [];                              // 用水户下拉缓存(新增/编辑/方案出账共用)
+  var ML = { user: null, cycle: 'month', part: 1 };   // 台账弹窗临时选择
+  var ML_PART_OPTIONS = [];                           // 月份/季度下拉选项(随结算周期重建)
+  var mlEditId = '';                                  // 正在编辑的台账 id(空=新增)
+
+  function findLedger(id) {
+    for (var i = 0; i < LEDGERS.length; i++) {
+      if (LEDGERS[i].id === id) return LEDGERS[i];
+    }
+    return null;
+  }
+
+  function findLedgerUser(id) {
+    for (var i = 0; i < LEDGER_USERS.length; i++) {
+      if (LEDGER_USERS[i].id === id) return LEDGER_USERS[i];
+    }
+    return null;
+  }
+
+  function ledgerUserLabel(u) { return u.name + '（' + u.userNo + '）'; }
+
+  /** 拉取手工台账(服务端 keyword/出账状态过滤;全量不分页,含 stat 汇总) */
   var ledgerSeq = 0;
   function loadLedger() {
     var seq = ++ledgerSeq;
-    var q = ledgerFilter.kw ? '?keyword=' + encodeURIComponent(ledgerFilter.kw) : '';
-    api('GET', '/water-bill/ledger' + q, null, function (err, data) {
+    var q = '?';
+    if (ledgerFilter.kw) q += '&keyword=' + encodeURIComponent(ledgerFilter.kw);
+    if (ledgerFilter.status) q += '&status=' + encodeURIComponent(ledgerFilter.status);
+    api('GET', '/water-bill/ledger/records' + q, null, function (err, data) {
       if (err || !data || seq !== ledgerSeq) return;
       LEDGERS = data.records || [];
       LEDGER_STAT = data.stat || null;
@@ -721,60 +861,224 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  /** 本地小筛选(周期/快速页签;keyword 已由服务端过滤),渲染与导出共用 */
-  function ledgerList() {
-    return LEDGERS.filter(function (r) {
-      if (ledgerFilter.cycle && r.cycle !== ledgerFilter.cycle) return false;
-      if (ledgerFilter.lf === 'pending' && !(r.pendingCount > 0)) return false;
-      if (ledgerFilter.lf === 'abnormal' && r.dataOk) return false;
-      return true;
+  /** 用水户下拉(仅正常状态;带出单价与默认结算周期) */
+  function loadLedgerUsers(cb) {
+    if (LEDGER_USERS.length) { if (cb) cb(); return; }
+    api('GET', '/water-bill/ledger/users', null, function (err, data) {
+      if (err || !data) { if (cb) cb(); return; }
+      LEDGER_USERS = data || [];
+      if (cb) cb();
     });
   }
 
   function renderLedger() {
-    var o = LEDGER_STAT || { farmerCount: 0, pendingCount: 0, pendingQty: 0, pendingAmount: 0, billedTotal: 0 };
+    var o = LEDGER_STAT || { ledgerCount: 0, pendingCount: 0, pendingVolume: 0, pendingAmount: 0, billedAmount: 0 };
     $('ledger-stat').innerHTML =
-      statItem('台账用水户', o.farmerCount + ' <span class="stat-unit">户</span>') +
-      statItem('待出账方案', o.pendingCount + ' <span class="stat-unit">个</span>') +
-      statItem('待出账水量', fmtQty(o.pendingQty) + ' <span class="stat-unit">万m³</span>') +
+      statItem('台账总数', o.ledgerCount + ' <span class="stat-unit">条</span>') +
+      statItem('待出账', o.pendingCount + ' <span class="stat-unit">条</span>') +
+      statItem('待出账水量', fmtQty(o.pendingVolume) + ' <span class="stat-unit">m³</span>') +
       statItem('待出账金额', fmtMoney(o.pendingAmount)) +
-      statItem('累计已出账', fmtMoney(o.billedTotal));
+      statItem('已出账金额', fmtMoney(o.billedAmount));
+    $('ledger-count').textContent = '共 ' + LEDGERS.length + ' 条 · 用水量 × 单价自动计费';
 
-    var list = ledgerList();
-    if (!list.length) {
-      $('ledger-body').innerHTML = '<tr><td colspan="11" class="empty-cell">没有符合条件的用水户</td></tr>';
+    if (!LEDGERS.length) {
+      $('ledger-body').innerHTML = '<tr><td colspan="9" class="empty-cell">暂无用水台账，请点击右上角「新增用水台账」</td></tr>';
       return;
     }
     var html = '';
-    list.forEach(function (r) {
-      var hasPending = r.pendingCount > 0;
+    LEDGERS.forEach(function (r) {
+      var billed = !!r.billed;
+      var statusHtml = billed
+        ? '<span class="st-tag billed" title="账单 ' + esc(r.billNo || '') + '">' + (r.billStatus === 'paid' ? '已缴清' : '已计费') + '</span>'
+        : '<span class="st-tag unbilled">未计费</span>';
+      var ops = billed
+        ? '<span class="act" data-vbillid="' + esc(r.billId) + '">查看账单</span>'
+        : '<button type="button" class="btn btn-primary btn-xs" data-mlbill="' + esc(r.id) + '">出账</button>' +
+          '<span class="act" style="margin-left:10px" data-mledit="' + esc(r.id) + '">编辑</span>' +
+          '<span class="act del" style="margin-left:10px" data-mldel="' + esc(r.id) + '">删除</span>';
       html += '<tr>' +
-        '<td><span class="cell-main">' + esc(r.userName) + '</span></td>' +
-        '<td><div class="cell-ellip" title="' + esc((r.strategy || '') + (r.gateText ? ' ' + r.gateText : '')) + '"><span class="tag ' + (r.strategy === '指定闸口累加' ? 'tag-blue' : 'tag-purple') + '">' + esc(r.strategy || '-') + '</span>' +
-          (r.gateText ? ' <span style="color:#8c8c8c">' + esc(r.gateText) + '</span>' : '') + '</div></td>' +
-        '<td><span class="tag ' + (CYCLE_TAG[r.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[r.cycle] || esc(r.cycleName || r.cycle || '')) + '</span></td>' +
-        '<td>' + fmtPrice(r.price) + ' 元/m³</td>' +
-        '<td>' + fmtQty(r.thisQty) + ' 万m³</td>' +
-        '<td>' + (hasPending
-          ? '<span class="num-orange">' + fmtQty(r.pendingQty) + ' 万m³</span>'
-          : '<span style="color:#bfbfbf">—</span>') + '</td>' +
-        '<td>' + (hasPending
-          ? '<span class="num-red">' + fmtMoney(r.pendingAmount) + '</span>'
-          : '<span style="color:#bfbfbf">¥0.00</span>') + '</td>' +
-        '<td>' + (r.billedQty > 0
-          ? fmtQty(r.billedQty) + ' 万m³'
-          : '<span style="color:#bfbfbf">0</span>') + '</td>' +
-        '<td>' + (r.billedAmount > 0
-          ? fmtMoney(r.billedAmount)
-          : '<span style="color:#bfbfbf">¥0.00</span>') + '</td>' +
-        '<td>' + (r.dataOk
-          ? '<span class="st-tag done">正常</span>'
-          : '<span class="st-tag abnormal" title="' + esc(r.dataNote || '') + '">异常</span>') + '</td>' +
-        '<td><span class="act" data-detail="' + esc(r.userId) + '">明细</span>' +
-          (hasPending ? '<button type="button" class="btn btn-primary btn-xs" style="margin-left:10px" data-billall="' + esc(r.userId) + '">全部出账</button>' : '') +
-        '</td></tr>';
+        '<td><span class="cell-main">' + esc(r.ledgerNo) + '</span></td>' +
+        '<td><span class="cell-main">' + esc(r.waterUserName || '-') + '</span>' +
+          (r.waterUserNo ? '<br><span style="color:#8c8c8c;font-size:12.5px">' + esc(r.waterUserNo) + '</span>' : '') + '</td>' +
+        '<td><span class="cell-main">' + esc(r.cycleLabel || r.cycleKey || '') + '</span><br>' +
+          '<span class="tag ' + (CYCLE_TAG[r.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[r.cycle] || esc(r.cycleName || '')) + '</span></td>' +
+        '<td>' + fmtQty(r.volume) + '</td>' +
+        '<td>' + fmtPrice(r.price) + '</td>' +
+        '<td><span class="amt">' + fmtMoney(r.amount) + '</span></td>' +
+        '<td>' + statusHtml + '</td>' +
+        '<td><div class="cell-ellip" title="' + esc(r.remark || '') + '">' + (r.remark ? esc(r.remark) : '<span style="color:#bfbfbf">—</span>') + '</div></td>' +
+        '<td>' + ops + '</td></tr>';
     });
     $('ledger-body').innerHTML = html;
+  }
+
+  /* ==================== 弹窗:新增/编辑用水台账(金额自动计算) ==================== */
+
+  /** 月份/季度下拉:随结算周期重建(年度隐藏月份/季度) */
+  function mlPartOptions(cycle, selected) {
+    var isYear = cycle === 'year';
+    $('ml-part-item').classList.toggle('hide', isYear);
+    var max = cycle === 'quarter' ? 4 : 12;
+    ML_PART_OPTIONS = [];
+    for (var i = 1; i <= max; i++) {
+      ML_PART_OPTIONS.push({ label: cycle === 'quarter' ? ('第 ' + i + ' 季度') : (i + ' 月'), value: String(i) });
+    }
+    var part = selected || ML.part || 1;
+    if (part > max) part = max;
+    if (part < 1) part = 1;
+    ML.part = part;
+    $('ml-part').value = ML_PART_OPTIONS[part - 1].label;
+    $('ml-part').dataset.value = String(part);
+  }
+
+  /** 结算周期回显(不触发 onChange),并重建月份/季度选项 */
+  function mlSetCycle(cycle) {
+    var label = CYCLE_SHORT[cycle] ? (CYCLE_SHORT[cycle] + '结算') : '';
+    CYCLE_OPTS.forEach(function (o) { if (o.value === cycle) label = o.label; });
+    ML.cycle = cycle || 'month';
+    $('ml-cycle').value = label;
+    $('ml-cycle').dataset.value = ML.cycle;
+    mlPartOptions(ML.cycle);
+  }
+
+  /** 结算年份/月份回显 */
+  function mlSetPeriod(cycleKey) {
+    var year = parseInt(String(cycleKey || '').slice(0, 4), 10);
+    $('ml-year').value = year >= 2000 ? year : new Date().getFullYear();
+    var part = 1;
+    if (ML.cycle === 'quarter') {
+      var qi = String(cycleKey || '').indexOf('-Q');
+      part = qi > 0 ? +String(cycleKey).slice(qi + 2) : Math.floor(new Date().getMonth() / 3) + 1;
+    } else if (ML.cycle === 'month') {
+      var mp = String(cycleKey || '').split('-');
+      part = mp.length > 1 ? +mp[1] : new Date().getMonth() + 1;
+    }
+    mlPartOptions(ML.cycle, part);
+  }
+
+  /** 金额自动计算:用水量 × 单价,保留两位小数 */
+  function updateMlAmount() {
+    var v = parseFloat($('ml-volume').value), p = parseFloat($('ml-price').value);
+    var ok = isFinite(v) && isFinite(p) && v >= 0 && p >= 0;
+    $('ml-amount').value = ok ? (Math.round((v * p + Number.EPSILON) * 100) / 100).toFixed(2) : '';
+  }
+
+  /** 打开新增(id 空)/编辑台账弹窗(已出账禁改) */
+  function openLedgerForm(id) {
+    var row = id ? findLedger(id) : null;
+    if (id && !row) return;
+    if (row && row.billed) { toast('该台账已出账，不可修改（请先删除关联账单）'); return; }
+    mlEditId = id || '';
+    $('ledger-modal-title').textContent = mlEditId ? '编辑用水台账' : '新增用水台账';
+    loadLedgerUsers(function () {
+      if (row) {
+        ML.user = findLedgerUser(row.waterUserId) || null;
+        $('ml-user').value = row.waterUserName ? (row.waterUserName + (row.waterUserNo ? '（' + row.waterUserNo + '）' : '')) : '';
+        $('ml-user').dataset.value = row.waterUserId || '';
+        mlSetCycle(row.cycle || 'month');
+        mlSetPeriod(row.cycleKey);
+        $('ml-volume').value = row.volume == null ? '' : row.volume;
+        $('ml-price').value = row.price == null ? '' : row.price;
+        $('ml-remark').value = row.remark || '';
+      } else {
+        var first = LEDGER_USERS.length ? LEDGER_USERS[0] : null;
+        ML.user = first;
+        $('ml-user').value = first ? ledgerUserLabel(first) : '';
+        $('ml-user').dataset.value = first ? first.id : '';
+        mlSetCycle(first && first.cycle ? first.cycle : 'month');
+        mlSetPeriod(first ? first.cycleKey : '');
+        $('ml-volume').value = '';
+        $('ml-price').value = first && first.price != null ? first.price : '';
+        $('ml-remark').value = '';
+      }
+      updateMlAmount();
+      openModal('ledger-ov');
+    });
+  }
+
+  /** 保存台账:金额服务端按 用水量×单价 复算,前端仅做校验与提示 */
+  function saveLedger() {
+    var userId = $('ml-user').dataset.value;
+    if (!userId) { toast('请选择用水户'); return; }
+    var year = parseInt($('ml-year').value, 10);
+    if (!(year >= 2000 && year <= 2100)) { toast('请填写有效的结算年份'); return; }
+    var cycle = ML.cycle;
+    if (!cycle) { toast('请选择结算周期'); return; }
+    var cycleKey = String(year);
+    if (cycle === 'month') {
+      if (!(ML.part >= 1 && ML.part <= 12)) { toast('请选择结算月份'); return; }
+      cycleKey += '-' + (ML.part < 10 ? '0' + ML.part : ML.part);
+    } else if (cycle === 'quarter') {
+      if (!(ML.part >= 1 && ML.part <= 4)) { toast('请选择结算季度'); return; }
+      cycleKey += '-Q' + ML.part;
+    }
+    var v = parseFloat($('ml-volume').value), p = parseFloat($('ml-price').value);
+    if (!(v > 0)) { toast('用水量必须大于 0'); return; }
+    if (!(p > 0)) { toast('单价必须大于 0'); return; }
+    if (Math.round((v * p + Number.EPSILON) * 100) / 100 <= 0) { toast('金额须不少于 0.01 元，请核对用水量与单价'); return; }
+    var payload = {
+      userId: userId,
+      cycle: cycle,
+      cycleKey: cycleKey,
+      volume: Number(v.toFixed(2)),
+      price: p,
+      remark: $('ml-remark').value.trim()
+    };
+    if (mlEditId) payload.id = mlEditId;
+    var btn = $('btn-ledger-save');
+    btn.disabled = true;
+    api('POST', '/water-bill/ledger/save', payload, function (err, data) {
+      btn.disabled = false;
+      if (err) return;
+      closeModal('ledger-ov');
+      toast('用水台账 ' + ((data && data.ledgerNo) || '') + ' 已保存，可在列表点「出账」生成账单');
+      refreshAll();
+    });
+  }
+
+  /** 台账出账:1 台账 → 1 账单 */
+  function billLedger(id) {
+    var row = findLedger(id);
+    if (!row || row.billed) return;
+    askConfirm('台账出账', '确定为台账 ' + row.ledgerNo + ' 生成账单？'
+      + row.waterUserName + ' · ' + fmtQty(row.volume) + ' m³ × ' + fmtPrice(row.price) + ' 元/m³ = ' + fmtMoney(row.amount)
+      + '，账期 ' + (row.cycleLabel || row.cycleKey || '') + '。', '确认出账', function () {
+      api('POST', '/water-bill/ledger/bill?id=' + encodeURIComponent(id), null, function (err, b) {
+        if (err) return;
+        toast('账单 ' + ((b && b.billNo) || '') + ' 已生成，应收 ' + fmtMoney(b && b.amount != null ? b.amount : row.amount));
+        refreshAll();
+      });
+    });
+  }
+
+  /** 删除台账:仅未出账可删 */
+  function deleteLedgerRow(id) {
+    var row = findLedger(id);
+    if (!row) return;
+    if (row.billed) { toast('该台账已出账，请先删除关联账单'); return; }
+    askConfirm('删除用水台账', '确定删除台账 ' + row.ledgerNo + '（' + row.waterUserName + ' · ' + fmtMoney(row.amount) + '）？删除后不可恢复。', '确认删除', function () {
+      api('DELETE', '/water-bill/ledger/delete?id=' + encodeURIComponent(id), null, function (err) {
+        if (err) return;
+        toast('台账 ' + row.ledgerNo + ' 已删除');
+        refreshAll();
+      });
+    });
+  }
+
+  /* ==================== 弹窗:调度方案出账入口(选择用水户 → 方案明细) ==================== */
+  function openPlanPicker() {
+    loadLedgerUsers(function () {
+      $('plan-user').value = '';
+      $('plan-user').dataset.value = '';
+      openModal('plan-ov');
+    });
+  }
+
+  function goPlanDetail() {
+    var id = $('plan-user').dataset.value;
+    if (!id) { toast('请选择用水户'); return; }
+    closeModal('plan-ov');
+    openDetail(id);
   }
 
   /* ==================== 视图二:台账明细(第二层;7.6 /water-bill/user-plans) ==================== */
@@ -792,6 +1096,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     setActiveTab('ledger');
     $('view-ledger').classList.add('hide');
     $('view-detail').classList.remove('hide');
+    $('detail-user-name').textContent = '调度方案明细';
     CUR_USER = null;
     CUR_PLANS = [];
     renderDetail();
@@ -806,6 +1111,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       if (err || !data || seq !== detailSeq) return;
       CUR_USER = data.user || null;
       CUR_PLANS = data.records || [];
+      var u = CUR_USER;
+      $('detail-user-name').textContent = u
+        ? (u.name || '') + (u.userNo ? '（' + u.userNo + '）' : '')
+        : '调度方案明细';
       renderDetail();
     });
   }
@@ -968,7 +1277,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   function renderBills() {
     if (!S2.rows.length) {
-      $('bill-body').innerHTML = '<tr><td colspan="10" class="empty-cell">暂无账单，请先到「水费台账」勾选方案生成账单</td></tr>';
+      $('bill-body').innerHTML = '<tr><td colspan="10" class="empty-cell">暂无账单，请先到「水费台账」新增台账并点「出账」（或使用「调度方案出账」）</td></tr>';
     } else {
       var html = '';
       S2.rows.forEach(function (b) {
@@ -1137,8 +1446,11 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       $('bill-kv').innerHTML =
         kvRow('用水户', esc(b.waterUserName || '-') + (b.waterUserNo ? '（' + esc(b.waterUserNo) + '）' : '')) +
         kvRow('统计周期', esc(b.cycleLabel || '') + '（' + esc(b.cycleName || '') + '）') +
+        (b.ledgerNo ? kvRow('来源台账', '<span class="cell-main">' + esc(b.ledgerNo) + '</span>（手工台账出账）') : '') +
         kvRow('账期区间', esc(b.startDate || '') + ' ~ ' + esc(b.endDate || '')) +
-        kvRow('计费水量', fmtQty(b.quantity) + ' 万m³（含 ' + (b.planCount || (b.plans || []).length) + ' 个方案）') +
+        kvRow('计费水量', fmtQty(b.quantity) + ' 万m³' + (b.ledgerNo
+          ? '（手工台账出账，无方案明细）'
+          : '（含 ' + (b.planCount || (b.plans || []).length) + ' 个方案）')) +
         kvRow('水价', fmtPrice(b.price) + ' 元/m³') +
         kvRow('应收金额', '<span class="num-red">' + fmtMoney(b.amount) + '</span>') +
         kvRow('已收 / 欠缴', fmtMoney(b.paid || 0) + ' / ' + (owe > 0 ? '<span class="num-red">' + fmtMoney(owe) + '</span>' : '¥0.00')) +
@@ -1162,7 +1474,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           '<td>' + fmtQty(p.amount) + '</td>' +
           '<td>' + amt + '</td></tr>';
       });
-      $('bill-plans-body').innerHTML = rows || '<tr><td colspan="7" class="empty-cell">无方案明细</td></tr>';
+      $('bill-plans-body').innerHTML = rows
+        || '<tr><td colspan="7" class="empty-cell">' + (b.ledgerNo ? '手工台账出账，无调度方案明细' : '无方案明细') + '</td></tr>';
       openModal('bill-ov');
     });
   }
@@ -1205,17 +1518,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     doCreateBills([id]);
   }
 
-  /** 台账行「全部出账」:先取该户待出账方案集合,再交后端按「户 × 分期」拆账 */
-  function genAll(userId) {
-    api('GET', '/water-bill/user-plans?userId=' + encodeURIComponent(userId), null, function (err, data) {
-      if (err || !data) return;
-      var ids = (data.records || []).filter(function (p) { return !p.billed; })
-        .map(function (p) { return p.dispatchId; });
-      if (!ids.length) { toast('该用水户暂无待出账方案'); return; }
-      doCreateBills(ids);
-    });
-  }
-
   /** 确认收款(7.8;仅「已生成」可收款,已缴清 400) */
   function askPay(id) {
     var b = findBill(id);
@@ -1250,14 +1552,14 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  /** 删除账单(7.9;任意状态可删,关联方案恢复未计费) */
+  /** 删除账单(7.9;任意状态可删,关联方案/台账恢复未计费) */
   function deleteBill(id) {
     var b = findBill(id);
     if (!b) return;
-    askConfirm('删除账单', '确定删除账单 ' + b.billNo + '（' + fmtMoney(b.amount) + '）？删除后其关联方案将恢复为「未计费」，可重新出账。', '确认删除', function () {
+    askConfirm('删除账单', '确定删除账单 ' + b.billNo + '（' + fmtMoney(b.amount) + '）？删除后其关联方案/台账将恢复为「未计费」，可重新出账。', '确认删除', function () {
       api('DELETE', '/water-bill/bills/delete?id=' + encodeURIComponent(b.id), null, function (err) {
         if (err) return;
-        toast('账单 ' + b.billNo + ' 已删除，关联方案已恢复为「未计费」');
+        toast('账单 ' + b.billNo + ' 已删除，关联方案/台账已恢复为「未计费」');
         refreshAll();
       });
     });
@@ -1275,40 +1577,43 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   /* ==================== 导出 Excel(复用项目通用 MonitorExport) ==================== */
   function dateTag() { return nowStr().slice(0, 10); }
 
-  /** 导出台账:按当前筛选条件导出用水户台账 */
+  /** 导出台账:按当前筛选结果导出手工台账(用水量 m³ / 单价 / 应收金额) */
   function exportLedger() {
-    var rows = ledgerList().map(function (r) {
+    if (!LEDGERS.length) { toast('当前筛选条件下没有可导出的台账'); return; }
+    var rows = LEDGERS.map(function (r) {
       return {
-        name: r.userName,
-        userNo: r.userNo,
-        strategy: r.strategy,
-        gateText: r.gateText,
-        cycle: r.cycleName || (CYCLE_SHORT[r.cycle] || '') + '结算',
+        ledgerNo: r.ledgerNo,
+        userName: r.waterUserName,
+        userNo: r.waterUserNo,
+        cycleLabel: r.cycleLabel || r.cycleKey,
+        cycleName: r.cycleName,
+        volume: r.volume,
         price: r.price,
-        thisQty: r.thisQty,
-        pendingQty: r.pendingQty,
-        pendingAmount: r.pendingAmount,
-        billedQty: r.billedQty,
-        billedAmount: r.billedAmount
+        amount: r.amount,
+        status: r.billed ? (r.billStatus === 'paid' ? '已缴清' : '已计费') : '未计费',
+        billNo: r.billNo || '',
+        remark: r.remark || '',
+        createTime: r.createTime || ''
       };
     });
     MonitorExport.download({
       fields: [
-        { key: 'name', label: '用水户' },
+        { key: 'ledgerNo', label: '台账编号' },
+        { key: 'userName', label: '用水户' },
         { key: 'userNo', label: '用水户编号' },
-        { key: 'strategy', label: '用水计算策略' },
-        { key: 'gateText', label: '计量闸口' },
-        { key: 'cycle', label: '统计周期' },
-        { key: 'price', label: '水价（元/m³）' },
-        { key: 'thisQty', label: '本期水量（万m³）' },
-        { key: 'pendingQty', label: '待出账水量（万m³）' },
-        { key: 'pendingAmount', label: '待出账金额（元）' },
-        { key: 'billedQty', label: '已出账水量（万m³）' },
-        { key: 'billedAmount', label: '已出账金额（元）' }
+        { key: 'cycleLabel', label: '结算周期' },
+        { key: 'cycleName', label: '周期类型' },
+        { key: 'volume', label: '用水量（m³）' },
+        { key: 'price', label: '单价（元/m³）' },
+        { key: 'amount', label: '应收金额（元）' },
+        { key: 'status', label: '计费状态' },
+        { key: 'billNo', label: '账单编号' },
+        { key: 'remark', label: '备注' },
+        { key: 'createTime', label: '创建时间' }
       ],
       rows: rows,
-      filename: '水费台账_' + dateTag(),
-      sheetName: '水费台账'
+      filename: '用水台账_' + dateTag(),
+      sheetName: '用水台账'
     });
   }
 
@@ -1474,7 +1779,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       if (btn) closeModal(btn.dataset.close);
     });
 
-    // 台账:搜索(300ms 防抖,服务端 keyword 匹配 户名/户号) / 周期筛选(本地) / 状态小tab
+    // 台账:搜索(300ms 防抖,服务端 keyword 匹配 台账编号/户名/户号/周期) / 出账状态筛选
     var ledgerKwTimer = null;
     $('ledger-kw').addEventListener('input', function () {
       var v = this.value.trim();
@@ -1484,25 +1789,56 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         loadLedger();
       }, 300);
     });
-    bindSearchSelect('f-ledger-cycle', 'ledger-cycle-dd', function () {
-      return [{ label: '全部统计周期', value: '' }].concat(CYCLE_OPTS);
-    }, function (v) { ledgerFilter.cycle = v; renderLedger(); });
-    document.querySelectorAll('.filter-tabs .ftab').forEach(function (t) {
-      t.addEventListener('click', function () {
-        document.querySelectorAll('.filter-tabs .ftab').forEach(function (x) { x.classList.remove('active'); });
-        t.classList.add('active');
-        ledgerFilter.lf = t.dataset.lf;
-        renderLedger();
-      });
-    });
-    // 台账行操作:明细 / 全部出账
+    bindSearchSelect('f-ledger-billed', 'ledger-billed-dd', function () {
+      return [
+        { label: '全部出账状态', value: '' },
+        { label: '待出账', value: 'pending' },
+        { label: '已出账', value: 'billed' }
+      ];
+    }, function (v) { ledgerFilter.status = v; loadLedger(); });
+    // 台账行操作:出账 / 编辑 / 删除 / 查看账单
     $('ledger-body').addEventListener('click', function (e) {
-      var d = e.target.closest('[data-detail]');
-      if (d) { openDetail(d.dataset.detail); return; }
-      var b = e.target.closest('[data-billall]');
-      if (b) genAll(b.dataset.billall);
+      var b = e.target.closest('[data-mlbill]');
+      if (b) { billLedger(b.dataset.mlbill); return; }
+      var ed = e.target.closest('[data-mledit]');
+      if (ed) { openLedgerForm(ed.dataset.mledit); return; }
+      var del = e.target.closest('[data-mldel]');
+      if (del) { deleteLedgerRow(del.dataset.mldel); return; }
+      var vb = e.target.closest('[data-vbillid]');
+      if (vb) { showBillModal(vb.dataset.vbillid); }
     });
     $('btn-export-ledger').addEventListener('click', exportLedger);
+    // 台账:新增 / 调度方案出账入口
+    $('btn-ledger-add').addEventListener('click', function () { openLedgerForm(); });
+    $('btn-plan-bill').addEventListener('click', openPlanPicker);
+    $('btn-plan-go').addEventListener('click', goPlanDetail);
+    // 台账弹窗:用水户 / 结算周期 / 月份季度(模糊搜索下拉) + 金额自动计算
+    bindSearchSelect('ml-user', 'ml-user-dd', function () {
+      return LEDGER_USERS.map(function (u) { return { label: ledgerUserLabel(u), value: u.id }; });
+    }, function (v) {
+      var u = findLedgerUser(v);
+      ML.user = u;
+      $('ml-price').value = u && u.price != null ? u.price : '';
+      if (!mlEditId) {
+        mlSetCycle(u && u.cycle ? u.cycle : 'month');
+        mlSetPeriod(u ? u.cycleKey : '');
+      }
+      updateMlAmount();
+    });
+    bindSearchSelect('ml-cycle', 'ml-cycle-dd', function () { return CYCLE_OPTS; }, function (v) {
+      ML.cycle = v || 'month';
+      mlPartOptions(ML.cycle);
+    });
+    bindSearchSelect('ml-part', 'ml-part-dd', function () { return ML_PART_OPTIONS; }, function (v) {
+      ML.part = parseInt(v, 10) || 1;
+    });
+    $('ml-volume').addEventListener('input', updateMlAmount);
+    $('ml-price').addEventListener('input', updateMlAmount);
+    $('btn-ledger-save').addEventListener('click', saveLedger);
+    // 方案出账弹窗:用水户下拉
+    bindSearchSelect('plan-user', 'plan-user-dd', function () {
+      return LEDGER_USERS.map(function (u) { return { label: ledgerUserLabel(u), value: u.id }; });
+    });
 
     // 明细:返回 / 取消选择 / 生成账单 / 全选 / 导出
     $('btn-detail-back').addEventListener('click', function () { setActiveTab('ledger'); loadLedger(); });

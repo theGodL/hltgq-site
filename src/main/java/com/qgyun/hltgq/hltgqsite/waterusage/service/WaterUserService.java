@@ -211,7 +211,7 @@ public class WaterUserService {
                 + refCount(bizRefs, "records") + refCount(bizRefs, "bills");
         if (bizTotal > 0) {
             throw new IllegalArgumentException("该用水户已存在业务数据（需水上报 " + refCount(bizRefs, "demands")
-                    + " 条 / 调度方案 " + refCount(bizRefs, "dispatches") + " 条 / 调度记录 "
+                    + " 条 / 调度指令 " + refCount(bizRefs, "dispatches") + " 条 / 调度记录 "
                     + refCount(bizRefs, "records") + " 条 / 账单 " + refCount(bizRefs, "bills")
                     + " 张），删除会使业务与财务记录悬空，不可删除");
         }
@@ -326,8 +326,10 @@ public class WaterUserService {
 
     /**
      * 闸口配置校验并重建 JSON 快照：结构须与计算策略一致
-     * （#1# → SUM：gates 至少 1 个；#2# → DIFF：main 必填、deduct 至少 1 个、主闸口不得出现在扣减列表）；
+     * （#1# → SUM：gates 至少 1 个；#2# → DIFF：mains 至少 1 个、deduct 至少 1 个、主闸口不得出现在扣减列表）；
      * 名称一律按 id 回查站档固化，不信任前端传入。
+     * <p>差额主闸口可多选（过闸水量相加后减扣减闸口合计）：快照写 mains 数组，
+     * 同时保留首个主闸口的 main 单对象（兼容旧版只读 main 的解析方）。
      */
     private String buildGateConfig(JsonNode node, String calcMode) {
         String expectedMode = WaterUsageDict.gateModeOf(calcMode);
@@ -349,37 +351,57 @@ public class WaterUserService {
                 gate.put("name", names.get(gateId));
             }
         } else {
-            JsonNode mainNode = node.get("main");
-            String mainId = mainNode == null || !mainNode.isObject()
-                    ? null : WaterUsageSupport.trim(mainNode.path("id").asText(null));
-            if (mainId == null) {
-                throw new IllegalArgumentException("请选择主闸口");
-            }
+            List<String> mainIds = collectDiffMainIds(node);
             List<String> deductIds = collectGateIds(node.get("deduct"), "请至少选择一个扣减闸口");
-            if (deductIds.contains(mainId)) {
-                throw new IllegalArgumentException("主闸口不能同时作为扣减闸口");
+            for (String mainId : mainIds) {
+                if (deductIds.contains(mainId)) {
+                    throw new IllegalArgumentException("主闸口不能同时作为扣减闸口");
+                }
             }
-            List<String> allIds = new ArrayList<>();
-            allIds.add(mainId);
+            List<String> allIds = new ArrayList<>(mainIds);
             allIds.addAll(deductIds);
             Map<String, String> names = queryGateNames(allIds);
             root.put("mode", WaterUsageDict.GATE_MODE_DIFF);
+            ArrayNode mains = root.putArray("mains");
+            for (String gateId : mainIds) {
+                ObjectNode gate = mains.addObject();
+                gate.put("id", gateId);
+                gate.put("name", names.get(gateId));
+            }
+            // 旧结构兼容：首个主闸口另存 main 单对象
             ObjectNode main = root.putObject("main");
-            main.put("id", mainId);
-            main.put("name", names.get(mainId));
+            main.put("id", mainIds.get(0));
+            main.put("name", names.get(mainIds.get(0)));
             ArrayNode deduct = root.putArray("deduct");
             for (String gateId : deductIds) {
                 ObjectNode gate = deduct.addObject();
                 gate.put("id", gateId);
                 gate.put("name", names.get(gateId));
             }
-            checkDiffReadings(mainId, deductIds);
+            checkDiffReadings(mainIds, deductIds);
         }
         try {
             return objectMapper.writeValueAsString(root);
         } catch (Exception e) {
             throw new IllegalArgumentException("关联闸口数据格式错误");
         }
+    }
+
+    /** 收集差额主闸口 id（优先 mains 数组，兼容旧版 main 单对象；去重保序） */
+    private List<String> collectDiffMainIds(JsonNode node) {
+        JsonNode mains = node.get("mains");
+        if (mains != null && mains.isArray() && mains.size() > 0) {
+            return collectGateIds(mains, "请至少选择一个主闸口");
+        }
+        JsonNode main = node.get("main");
+        String mainId = main == null || !main.isObject()
+                ? null : WaterUsageSupport.trim(main.path("id").asText(null));
+        if (mainId != null) {
+            List<String> ids = new ArrayList<>();
+            ids.add(mainId);
+            return ids;
+        }
+        throw new IllegalArgumentException("请至少选择一个主闸口");
     }
 
     /** 收集闸口 id（兼容 {"id":…} 对象与纯字符串两种形态；去重保序） */
@@ -416,14 +438,18 @@ public class WaterUserService {
     }
 
     /**
-     * 差额策略读数校验（设计方案 3.1）：主闸口读数 − 扣减闸口读数合计 ≤ 0 时禁止保存。
+     * 差额策略读数校验（设计方案 3.1）：主闸口读数合计 − 扣减闸口读数合计 ≤ 0 时禁止保存。
      * <p>读数口径与账单计量一致（最新累计流量 ttf，哨兵/缺失视为无读数）：
-     * 主闸口无读数或任一扣减闸口无读数时无法判定，跳过校验（保存不被流量数据阻塞）。
+     * 任一主闸口或扣减闸口无读数时无法判定，跳过校验（保存不被流量数据阻塞）。
      */
-    private void checkDiffReadings(String mainId, List<String> deductIds) {
-        BigDecimal mainReading = usableReading(mainId);
-        if (mainReading == null) {
-            return;
+    private void checkDiffReadings(List<String> mainIds, List<String> deductIds) {
+        BigDecimal mainSum = BigDecimal.ZERO;
+        for (String gateId : mainIds) {
+            BigDecimal reading = usableReading(gateId);
+            if (reading == null) {
+                return;
+            }
+            mainSum = mainSum.add(reading);
         }
         BigDecimal deductSum = BigDecimal.ZERO;
         for (String gateId : deductIds) {
@@ -433,9 +459,9 @@ public class WaterUserService {
             }
             deductSum = deductSum.add(reading);
         }
-        if (mainReading.subtract(deductSum).signum() <= 0) {
-            throw new IllegalArgumentException("差额策略保存失败：主闸口读数（"
-                    + WaterUsageSupport.scale2(mainReading).toPlainString() + " m³）未大于扣减闸口读数合计（"
+        if (mainSum.subtract(deductSum).signum() <= 0) {
+            throw new IllegalArgumentException("差额策略保存失败：主闸口读数合计（"
+                    + WaterUsageSupport.scale2(mainSum).toPlainString() + " m³）未大于扣减闸口读数合计（"
                     + WaterUsageSupport.scale2(deductSum).toPlainString() + " m³），请检查闸口选择或待流量数据更新后重试");
         }
     }

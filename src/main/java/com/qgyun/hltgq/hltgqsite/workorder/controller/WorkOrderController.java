@@ -2,8 +2,12 @@ package com.qgyun.hltgq.hltgqsite.workorder.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.model.util.ApiResultUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.MediaTypeUtils;
 import com.qgyun.hltgq.hltgqsite.workorder.service.WorkOrderService;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAssignRequest;
+import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAttachmentDownloadVO;
+import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAttachmentVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderCreateVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderDetailVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderListVO;
@@ -12,14 +16,19 @@ import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderResultRequest;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderRowVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderSaveRequest;
 import lombok.Data;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -32,12 +41,16 @@ import java.util.Map;
  * <p>列表页：分页（所属站点 + 处理时间区间 + 状态）、详情（查看弹窗）、
  * 编辑（抽屉内嵌 work-order-add.html，仅待指派）、删除/指派/取消（仅待指派）、
  * 填写处理结果/提交验收（仅处理中）；既有 /list（裸 List）继续服务导出页。
+ * <p>处理结果附件：上传即落盘并插行（order_id 为空），保存处理结果时按附件 id 集合绑定；
+ * 未归属附件可即时移除，工单删除连带清理行与文件。
  * <p>状态口径：#1# 待指派、#2# 处理中、#3# 已关闭、#4# 已取消、#iizl# 已逾期；
  * 状态流转均为条件更新，状态已变化返回 400 提示刷新。
  */
 @RestController
 @RequestMapping("/work-order")
 public class WorkOrderController {
+
+    private static final Logger log = LoggerFactory.getLogger(WorkOrderController.class);
 
     @Autowired
     private WorkOrderService workOrderService;
@@ -140,6 +153,33 @@ public class WorkOrderController {
     @PostMapping("/submit-accept")
     public Map<String, Object> submitAccept(@RequestBody IdRequest request) {
         workOrderService.submitAccept(request == null ? null : request.getId());
+        return ApiResultUtils.ok();
+    }
+
+    /** 处理结果附件上传（multipart 单文件；白名单：图片/PDF/Word/Excel；返回 {id, fileName, fileSize, fileExt}） */
+    @PostMapping("/attachment/upload")
+    public WorkOrderAttachmentVO uploadAttachment(@RequestParam("file") MultipartFile file) {
+        log.info("收到工单附件上传请求：{}（{} 字节）",
+                file == null ? null : file.getOriginalFilename(),
+                file == null ? 0 : file.getSize());
+        return workOrderService.uploadAttachment(file);
+    }
+
+    /** 处理结果附件下载（Content-Disposition 带原始文件名，前端 fetch + blob 使用） */
+    @GetMapping("/attachment/download")
+    public ResponseEntity<byte[]> downloadAttachment(@RequestParam String id) {
+        WorkOrderAttachmentDownloadVO file = workOrderService.downloadAttachment(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, DownloadHeaderUtils.attachment(file.getFileName()))
+                .contentType(MediaTypeUtils.of(file.getFileExt()))
+                .body(file.getContent());
+    }
+
+    /** 处理结果附件移除（上传后取消 / 弹窗内移除新上传：仅未归属附件可删） */
+    @PostMapping("/attachment/remove")
+    public Map<String, Object> removeAttachment(@RequestParam String id) {
+        log.info("收到工单附件移除请求：id={}", id);
+        workOrderService.removeAttachment(id);
         return ApiResultUtils.ok();
     }
 

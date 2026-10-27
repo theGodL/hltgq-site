@@ -12,7 +12,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 /* 页面头部:仅右侧「新增调度记录」(页面标题由平台菜单展示,页内不重复) */
 .page-head{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-bottom:16px}
 
-/* 按钮(与需水上报/调度方案页保持一致) */
+/* 按钮(与需水上报/调度指令页保持一致) */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border:1px solid transparent;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .2s}
 .btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}
 .btn-primary:hover{background:#4096ff;border-color:#4096ff}
@@ -44,13 +44,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .amt{font-weight:600;color:#1f1f1f}
 .amt .unit{margin-left:2px;font-size:12px;color:#8c8c8c;font-weight:400}
 .empty-cell{text-align:center;color:#bfbfbf;padding:32px 0}
-
-/* 操作类型徽标:圆点 + 文字(提升=绿 / 下降=橙 / 流量调整=蓝) */
-.st-tag{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;font-size:12px;font-weight:500;line-height:1;white-space:nowrap}
-.st-tag::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
-.st-tag.up{background:#f6ffed;color:#52c41a}
-.st-tag.down{background:#fff7e6;color:#fa8c16}
-.st-tag.adjust{background:#e6f4ff;color:#1677ff}
 
 /* 操作列链接(td 保持标准单元格与其余列对齐;内层 .act-box 承载 flex 排布:固定单行不换行,gap 控制列距/行距) */
 .act{color:#1677ff;cursor:pointer;transition:color .2s;white-space:nowrap}
@@ -143,7 +136,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           <path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
       </span>
-      <input type="text" class="search-input" id="f-kw" placeholder="搜索操作人 / 备注 / 方案编号" autocomplete="off">
+      <input type="text" class="search-input" id="f-kw" placeholder="搜索操作人 / 备注 / 指令编号" autocomplete="off">
     </div>
     <div class="filter-sel">
       <div class="select-wrap">
@@ -166,13 +159,13 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   <div class="tbl-wrap">
     <table class="tbl">
       <colgroup>
-        <col style="width:13%"><col style="width:11%"><col style="width:8%"><col style="width:11%"><col style="width:10%">
-        <col style="width:8%"><col style="width:10%"><col style="width:16%"><col style="width:13%">
+        <col style="width:15%"><col style="width:13%"><col style="width:10%"><col style="width:12%">
+        <col style="width:11%"><col style="width:9%"><col style="width:18%"><col style="width:12%">
       </colgroup>
       <thead>
         <tr>
-          <th>操作闸口</th><th>用水户</th><th>关联方案</th><th>操作时间</th><th>操作类型</th>
-          <th>升降高度</th><th>操作人</th><th>备注</th><th>操作</th>
+          <th>操作闸口</th><th>用水户</th><th>关联指令</th><th>操作时间</th>
+          <th>操作后闸门高度</th><th>操作人</th><th>备注</th><th>操作</th>
         </tr>
       </thead>
       <tbody id="tbl-body"></tbody>
@@ -197,9 +190,9 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     <div class="modal-bd">
       <div class="form-grid">
         <div class="form-item">
-          <label>关联调度方案</label>
+          <label>关联调度指令</label>
           <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-r-plan" placeholder="选择关联的调度方案" autocomplete="off">
+            <input type="text" class="sel-input" id="f-r-plan" placeholder="选择关联的调度指令" autocomplete="off">
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="r-plan-dd"></div>
           </div>
@@ -226,17 +219,9 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           <input type="datetime-local" class="ipt" id="f-r-time">
         </div>
         <div class="form-item">
-          <label>操作类型</label>
-          <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-r-type" placeholder="闸门提升" autocomplete="off">
-            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <div class="sel-dd" id="r-type-dd"></div>
-          </div>
-        </div>
-        <div class="form-item">
-          <label>升降高度（cm）</label>
-          <input type="number" class="ipt" id="f-r-height" min="0" max="999" step="1" placeholder="如 35" autocomplete="off">
-          <div class="f-tip">闸门提升 / 下降的开度变化值，流量调整可填微调值</div>
+          <label>操作后闸门高度（cm）</label>
+          <input type="number" class="ipt" id="f-r-height-after" min="0" max="999" step="1" placeholder="选填，0~999" autocomplete="off">
+          <div class="f-tip">现场操作完成后的闸门开度（cm）</div>
         </div>
         <div class="form-item">
           <label>操作人 / 闸管员 <i class="req">*</i></label>
@@ -245,7 +230,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="r-operator-dd"></div>
           </div>
-          <div class="f-tip">候选为平台用户（6.1 operators），与调度方案「调度负责人」同源</div>
+          <div class="f-tip">候选为平台用户（6.1 operators），与调度指令「调度负责人」同源</div>
         </div>
         <div class="form-item span2">
           <label>备注</label>
@@ -318,19 +303,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   var GATES = [];       // 闸口池 1.1 /water-user/meta: {id,code,name}
   var OPERATORS = [];   // 操作人 / 闸管员候选 6.1 /water-dispatch-record/meta operators: {id,name}(平台用户)
 
-  var LINK_PLANS = [];  // 未取消方案 6.4 /water-dispatch-record/plans
-  var OP_TYPE_LIST = [  // 操作类型下拉(6.1 meta.opTypes 覆盖;默认与 0.4 一致)
-    { value: 'up', label: '闸门提升' },
-    { value: 'down', label: '闸门下降' },
-    { value: 'adjust', label: '流量调整' }
-  ];
-
-  /** 操作类型徽标样式(英文码 → 文案/配色) */
-  var OP_TYPES = {
-    up: { text: '闸门提升', cls: 'up' },
-    down: { text: '闸门下降', cls: 'down' },
-    adjust: { text: '流量调整', cls: 'adjust' }
-  };
+  var LINK_PLANS = [];  // 未取消调度指令 6.4 /water-dispatch-record/plans
 
   /* ==================== 基础工具 ==================== */
 
@@ -373,7 +346,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   function gateOptions() { return GATES.map(function (g) { return { value: g.id, label: g.name }; }); }
 
-  /** 关联方案下拉文案:方案编号 · 户名 · 闸口名(6.4) */
+  /** 关联指令下拉文案:指令编号 · 户名 · 闸口名(6.4) */
   function linkPlanLabel(p) { return (p.dispatchNo || '') + ' · ' + (p.waterUserName || '') + ' · ' + (p.gateName || ''); }
   function linkPlanOptions() {
     return [{ value: '', label: '不关联（独立操作）' }].concat(LINK_PLANS.map(function (p) {
@@ -385,10 +358,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return null;
   }
 
-  /** 操作类型下拉(6.1 meta.opTypes) */
-  function opTypeOptions() { return OP_TYPE_LIST; }
-
-  /** 操作人候选:平台用户(6.1 operators),value=用户 id、label=姓名;与调度方案负责人同源 */
+  /** 操作人候选:平台用户(6.1 operators),value=用户 id、label=姓名;与调度指令负责人同源 */
   function operatorOptions() { return OPERATORS.map(function (o) { return { value: o.id, label: o.name }; }); }
   function operatorNameOf(id) {
     for (var i = 0; i < OPERATORS.length; i++) { if (OPERATORS[i].id === id) return OPERATORS[i].name; }
@@ -499,9 +469,11 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  function opTypeCell(r) {
-    var meta = OP_TYPES[r.opType] || {};
-    return '<td><span class="st-tag ' + (meta.cls || '') + '">' + esc(r.opTypeName || meta.text || r.opType) + '</span></td>';
+  /** 操作后闸门高度单元格(cm;空值显示 -) */
+  function heightAfterCell(r) {
+    var v = r.gateHeightAfter;
+    if (v === null || v === undefined || v === '') return '<td>-</td>';
+    return '<td><span class="amt">' + esc(v) + '<span class="unit">cm</span></span></td>';
   }
 
   function actionCell(r) {
@@ -514,20 +486,16 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   function renderRows(rows) {
     if (!rows.length) {
-      $('tbl-body').innerHTML = '<tr><td class="empty-cell" colspan="9">暂无数据</td></tr>';
+      $('tbl-body').innerHTML = '<tr><td class="empty-cell" colspan="8">暂无数据</td></tr>';
       return;
     }
     $('tbl-body').innerHTML = rows.map(function (r) {
-      var heightHtml = (r.height || r.height === 0)
-        ? '<span class="amt">' + esc(r.height) + '<span class="unit">cm</span></span>'
-        : '-';
       return '<tr>'
-        + '<td><span class="cell-main">' + esc(r.gateName || '-') + (r.gateCode ? '（' + esc(r.gateCode) + '）' : '') + '</span></td>'
+        + '<td><span class="cell-main">' + esc(r.gateName || '-') + '</span></td>'
         + '<td>' + esc(r.waterUserName || '-') + '</td>'
         + '<td>' + esc(r.dispatchNo || '-') + '</td>'
         + '<td>' + esc(r.opTime) + '</td>'
-        + opTypeCell(r)
-        + '<td>' + heightHtml + '</td>'
+        + heightAfterCell(r)
         + '<td>' + esc(r.operator || '-') + '</td>'
         + '<td>' + esc(r.remark || '-') + '</td>'
         + actionCell(r)
@@ -588,13 +556,12 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     el.dataset.label = label || ''; // 记录回填文案快照:展开下拉时据此判断“未手动输入”
   }
 
-  /** 选中关联调度方案后,自动带出用水户与操作闸口 */
-  /** 选中关联调度方案后,自动带出用水户与操作闸口(6.4;提交时后端仍校验一致性) */
+  /** 选中关联调度指令后,自动带出用水户与操作闸口(6.4;提交时后端仍校验一致性) */
   function fillByPlan() {
     var p = findLinkPlan($('f-r-plan').dataset.value);
     if (!p) return;
     setSel('f-r-farmer', rowUserLabel(p), p.waterUserId || '');
-    setSel('f-r-gate', (p.gateName || '') + (p.gateCode ? '（' + p.gateCode + '）' : ''), p.gateId || '');
+    setSel('f-r-gate', p.gateName || '', p.gateId || '');
   }
 
   function openFormModal(mode, row) {
@@ -605,10 +572,9 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (mode === 'edit' && row) {
       setSel('f-r-plan', row.dispatchNo ? linkPlanLabel(row) : '不关联（独立操作）', row.dispatchId || '');
       setSel('f-r-farmer', rowUserLabel(row), row.waterUserId);
-      setSel('f-r-gate', (row.gateName || '') + (row.gateCode ? '（' + row.gateCode + '）' : ''), row.gateId);
+      setSel('f-r-gate', row.gateName || '', row.gateId);
       $('f-r-time').value = String(row.opTime || '').replace(' ', 'T');
-      setSel('f-r-type', row.opTypeName || (OP_TYPES[row.opType] || {}).text || '闸门提升', row.opType || 'up');
-      $('f-r-height').value = (row.height === null || row.height === undefined) ? '' : row.height;
+      $('f-r-height-after').value = (row.gateHeightAfter === null || row.gateHeightAfter === undefined) ? '' : row.gateHeightAfter;
       setSelOperatorByName(row.operator);
       $('f-r-remark').value = row.remark || '';
     } else {
@@ -616,8 +582,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       setSel('f-r-farmer', '', '');
       setSel('f-r-gate', '', '');
       $('f-r-time').value = nowInputStr();
-      setSel('f-r-type', '闸门提升', 'up');
-      $('f-r-height').value = '';
+      $('f-r-height-after').value = '';
       setSel('f-r-operator', '', '');
       $('f-r-remark').value = '';
     }
@@ -629,8 +594,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var userId = $('f-r-farmer').dataset.value;
     var gateId = $('f-r-gate').dataset.value;
     var opTime = $('f-r-time').value;
-    var opType = $('f-r-type').dataset.value || 'up';
-    var heightRaw = $('f-r-height').value.trim();
+    var heightRaw = $('f-r-height-after').value.trim();
     var operator = $('f-r-operator').value.trim();
     var operatorId = $('f-r-operator').dataset.value;
     var remark = $('f-r-remark').value.trim();
@@ -639,23 +603,23 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (!gateId) { toast('请选择「操作闸口」'); return; }
     if (!opTime) { toast('请选择「操作时间」'); return; }
     if (!operator) { toast('请选择「操作人 / 闸管员」'); return; }
-    var height = null;
+    var heightAfter = null;
     if (heightRaw !== '') {
-      height = Number(heightRaw);
-      if (!isFinite(height) || height < 0 || height > 999) { toast('请输入正确的升降高度（0-999 cm）'); return; }
+      heightAfter = Number(heightRaw);
+      if (!(heightAfter >= 0 && heightAfter <= 999)) { toast('「操作后闸门高度」须在 0~999 cm 之间'); return; }
+      if (Math.floor(heightAfter) !== heightAfter) { toast('「操作后闸门高度」须为整数'); return; }
     }
 
     var payload = {
       waterUserId: userId,
       gateId: gateId,
       opTime: opTime,
-      opType: opType,
       // 操作人:下拉选中时传 id(后端按 id 回查固化姓名快照,不信任文本);存量/手填值仅按文本入库
       operator: operatorId ? (operatorNameOf(operatorId) || operator) : operator
     };
     if (operatorId) payload.operatorUserId = operatorId;
     if (dispatchId) payload.dispatchId = dispatchId;
-    if (height != null) payload.height = height;
+    if (heightAfter != null) payload.gateHeightAfter = heightAfter;
     if (remark) payload.remark = remark;
 
     var btn = $('btn-form-save');
@@ -695,7 +659,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   // 顶部按钮
   $('btn-add').addEventListener('click', function () { openFormModal('add'); });
 
-  // 搜索(300ms 防抖,服务端 keyword 匹配 操作人/备注/方案编号)
+  // 搜索(300ms 防抖,服务端 keyword 匹配 操作人/备注/指令编号)
   var kwTimer = null;
   $('f-kw').addEventListener('input', function () {
     var v = this.value.trim();
@@ -730,10 +694,9 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   });
 
   // 表单弹窗内下拉
-  bindSearchSelect('f-r-plan', 'r-plan-dd', linkPlanOptions, '无匹配方案', fillByPlan);
+  bindSearchSelect('f-r-plan', 'r-plan-dd', linkPlanOptions, '无匹配指令', fillByPlan);
   bindSearchSelect('f-r-farmer', 'r-farmer-dd', userOptions, '无匹配用水户', null);
   bindSearchSelect('f-r-gate', 'r-gate-dd', gateOptions, '无匹配闸口', null);
-  bindSearchSelect('f-r-type', 'r-type-dd', opTypeOptions, '无匹配类型', null);
   bindSearchSelect('f-r-operator', 'r-operator-dd', operatorOptions, '无匹配人员');
 
   // 表单按钮
@@ -798,10 +761,9 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   setSel('f-flt-farmer', '全部用水户', '');
   setSel('f-flt-gate', '全部闸口', '');
 
-  // 6.1 表单元数据:操作类型字典 + 操作人 / 闸管员候选(平台用户,与调度方案负责人同源)
+  // 6.1 表单元数据:操作人 / 闸管员候选(平台用户,与调度指令负责人同源)
   api('GET', '/water-dispatch-record/meta', null, function (err, d) {
     if (err || !d) return;
-    if (d.opTypes && d.opTypes.length) OP_TYPE_LIST = d.opTypes;
     OPERATORS = d.operators || [];
     // 候选晚于弹窗打开到达时补记 id:输入框仍为回填文案(未手动改动)且此前未命中候选池
     var op = $('f-r-operator');
@@ -815,7 +777,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   api('GET', '/water-demand/users', null, function (err, d) {
     if (!err) USERS = Array.isArray(d) ? d : [];
   });
-  // 6.4 关联调度方案下拉(未取消的全部方案)
+  // 6.4 关联调度指令下拉(未取消的全部指令)
   api('GET', '/water-dispatch-record/plans', null, function (err, arr) {
     if (!err) LINK_PLANS = arr || [];
   });

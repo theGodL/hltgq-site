@@ -24,7 +24,8 @@ import java.util.Map;
 /**
  * 需水上报管理（灌区用水模块页面四之一）。
  * <p>状态机：待审核 →（审核）已通过/已驳回；待审核/已驳回可编辑（保存后回到待审核并清空审核痕迹）。
- * 删除保护：被调度方案引用时禁止删除。编号 XS + 4 位序号，冲突重试同用水户。
+ * <p>用水时间按旬维度：年 + 月 + 旬多选（上旬/中旬/下旬），起止日期由后端派生。
+ * 删除保护：被调度指令引用时禁止删除。编号 XS + 4 位序号，冲突重试同用水户。
  */
 @RestController
 @RequestMapping("/water-demand")
@@ -68,7 +69,7 @@ public class WaterDemandController {
         return demandService.users(keyword);
     }
 
-    /** 「关联需水申请」下拉（仅已通过；调度方案编制用） */
+    /** 「关联需水申请」下拉（仅已通过；调度指令编制用） */
     @GetMapping("/demands")
     public List<DemandOptionVO> demands(@RequestParam(required = false) String keyword,
                                         @RequestParam(required = false) String userId) {
@@ -102,7 +103,7 @@ public class WaterDemandController {
         return demandService.audit(id, action, opinion);
     }
 
-    /** 删除（被调度方案引用时禁止） */
+    /** 删除（被调度指令引用时禁止） */
     @DeleteMapping("/delete")
     public Map<String, Object> delete(@RequestParam String id) {
         log.info("收到需水上报删除请求：id={}", id);

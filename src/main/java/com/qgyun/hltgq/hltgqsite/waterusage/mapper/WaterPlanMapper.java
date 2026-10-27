@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.waterusage.mapper;
 
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanAttachmentVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanItemVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanVO;
 import org.apache.ibatis.annotations.Delete;
@@ -24,6 +25,7 @@ public interface WaterPlanMapper {
 
     String T_PLAN = "\"qixiao-apaas\".\"t_auto_hltgq_water_plan\"";
     String T_ITEM = "\"qixiao-apaas\".\"t_auto_hltgq_water_plan_item\"";
+    String T_ATTACH = "\"qixiao-apaas\".\"t_auto_hltgq_water_plan_attachment\"";
     String T_USER = "\"qixiao-apaas\".\"t_auto_hltgq_water_user\"";
     String T_QUOTA = "\"qixiao-apaas\".\"t_auto_hltgq_water_quota\"";
     /** 平台用户表（人员列解析姓名，与库存模块 {@code InventoryLedgerMapper#selectUserName} 同源） */
@@ -219,4 +221,59 @@ public interface WaterPlanMapper {
     BigDecimal selectMonthSumForUser(@Param("waterUserId") String waterUserId,
                                      @Param("year") int year,
                                      @Param("excludePlanId") String excludePlanId);
+
+    // ==================== 附件（用水计划存档） ====================
+
+    /** 计划附件清单（详情/编辑管理用；不含 file_path，下载走 {@link #selectPlanAttachmentById}） */
+    @Select("SELECT a.id AS id, a.plan_id AS planId, a.file_name AS fileName, " +
+            "a.file_size AS fileSize, a.file_ext AS fileExt " +
+            "FROM " + T_ATTACH + " a " +
+            "WHERE a.plan_id = #{planId} AND a.corp_code = 'hltgq' " +
+            "ORDER BY a.created_at ASC, a.id ASC")
+    List<WaterPlanAttachmentVO> selectPlanAttachments(@Param("planId") String planId);
+
+    /** 计划附件删除前取路径（物理文件在事务提交后删） */
+    @Select("SELECT a.id AS id, a.plan_id AS planId, a.file_name AS fileName, a.file_path AS filePath, " +
+            "a.file_size AS fileSize, a.file_ext AS fileExt " +
+            "FROM " + T_ATTACH + " a " +
+            "WHERE a.plan_id = #{planId} AND a.corp_code = 'hltgq'")
+    List<WaterPlanAttachmentVO> selectPlanAttachmentPaths(@Param("planId") String planId);
+
+    /** 单个附件（下载/绑定前的行查询，含 file_path） */
+    @Select("SELECT a.id AS id, a.plan_id AS planId, a.file_name AS fileName, a.file_path AS filePath, " +
+            "a.file_size AS fileSize, a.file_ext AS fileExt " +
+            "FROM " + T_ATTACH + " a " +
+            "WHERE a.id = #{id} AND a.corp_code = 'hltgq'")
+    WaterPlanAttachmentVO selectPlanAttachmentById(@Param("id") String id);
+
+    /**
+     * 附件行（上传成功即写入，plan_id 为空；保存/编辑时由 {@link #bindPlanAttachment} 回填）。
+     * row key：id/plan_id/file_name/file_path/file_size/file_ext/now/operator。
+     */
+    @Insert("INSERT INTO " + T_ATTACH + " " +
+            "(\"id\", \"plan_id\", \"file_name\", \"file_path\", \"file_size\", \"file_ext\", " +
+            "\"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\") " +
+            "VALUES (#{row.id}, #{row.plan_id}, #{row.file_name}, #{row.file_path}, #{row.file_size}, " +
+            "#{row.file_ext}, 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
+    int insertPlanAttachment(@Param("row") Map<String, Object> row);
+
+    /** 附件回填归属（仅允许无归属或本计划附件，防跨计划占用；0 行 = 已被占用/不存在） */
+    @Update("UPDATE " + T_ATTACH + " SET plan_id = #{planId}, updated_at = #{now}, updated_by = #{operator} " +
+            "WHERE id = #{id} AND corp_code = 'hltgq' AND (plan_id IS NULL OR plan_id = #{planId})")
+    int bindPlanAttachment(@Param("id") String id,
+                           @Param("planId") String planId,
+                           @Param("operator") String operator,
+                           @Param("now") LocalDateTime now);
+
+    /** 附件行删除（编辑态移除已归属附件用；文件由 Service 在事务提交后删） */
+    @Delete("DELETE FROM " + T_ATTACH + " WHERE id = #{id} AND corp_code = 'hltgq'")
+    int deletePlanAttachment(@Param("id") String id);
+
+    /** 附件行删除（仅限未归属附件：并发绑定后返回 0 行，由 Service 拒绝移除且不删文件） */
+    @Delete("DELETE FROM " + T_ATTACH + " WHERE id = #{id} AND corp_code = 'hltgq' AND plan_id IS NULL")
+    int deleteUnboundPlanAttachment(@Param("id") String id);
+
+    /** 计划删除连带清空附件行（文件由 Service 在事务提交后删） */
+    @Delete("DELETE FROM " + T_ATTACH + " WHERE plan_id = #{planId} AND corp_code = 'hltgq'")
+    int deletePlanAttachments(@Param("planId") String planId);
 }

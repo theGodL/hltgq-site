@@ -18,7 +18,7 @@ import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
  * <p>闸口计算策略 JSON 结构（gate_config 列，与设计方案 2.1 一致）：
  * <pre>
  * 累加 {"mode":"SUM","gates":[{"id":"…","name":"…"},…]}
- * 差额 {"mode":"DIFF","main":{"id":"…","name":"…"},"deduct":[{…},…]}
+ * 差额 {"mode":"DIFF","mains":[{"id":"…","name":"…"},…],"deduct":[{…},…]}（主闸口可多选，兼容旧版 main 单对象）
  * </pre>
  * <p>计划周期由类型自动推导（年度=自然年；月度=自然月；旬度=上旬 1-10 / 中旬 11-20 / 下旬 21-自然月末）。
  * <p>规则同源（设计方案 2.4）：前端 static/rules.js（纯函数 + rules_version）与后端读取的
@@ -436,6 +436,20 @@ public final class WaterUsageDict {
             return "year";
         }
         return settleCycle == null ? "" : settleCycle;
+    }
+
+    /** 前端英文码 → 统计周期（month/quarter/year；非法返回 null） */
+    public static String settleCycleOfCode(String englishCode) {
+        if ("month".equals(englishCode)) {
+            return SETTLE_CYCLE_MONTH;
+        }
+        if ("quarter".equals(englishCode)) {
+            return SETTLE_CYCLE_QUARTER;
+        }
+        if ("year".equals(englishCode)) {
+            return SETTLE_CYCLE_YEAR;
+        }
+        return null;
     }
 
     /**

@@ -29,14 +29,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 调度方案服务（列表/详情/编制/编辑/调整/状态机/删除）。
- * <p>行 = 闸口 × 时段的放水载体：计入水量 = 该闸口 [startTime, endTime] 实测累计流量（带符号），
- * 出账时以 billed_qty 快照计费、bill_id 挂接账单。
+ * 调度指令服务（列表/详情/编制/编辑/调整/状态机/删除；原「调度方案」）。
+ * <p>行 = 闸口 × 执行窗口的放水载体：计入水量 = 该闸口 [执行时间, 完成时间]（未完成取当前时间）实测累计流量（带符号），
+ * 出账时以 billed_qty 快照计费、bill_id 挂接账单。旧数据回落到原 [startTime, endTime]。
  * <p>状态机：待执行(pending) →（开始执行）执行中(running) →（完成）已完成(done)；
  * 待执行/执行中 →（取消）已取消(canceled)。已计费（bill_id 非空）禁改、禁取消、禁删，
  * 须先删除关联账单恢复未计费。
- * <p>配额闭环：关联用水计划时受「该计划该户 plan_water 合计」约束（lockPlanForUpdate 锁行防并发），
- * 每次创建/编辑/调整/删除/取消后经 recalcPlanScheduled 回写计划 scheduled_qty（= Σ 未取消方案 plan_amount）。
+ * <p>用水户与计划放水量均为选填：未选户时跳过闸口归属与配额校验；未填水量时不参与配额累计。
+ * <p>配额闭环：关联用水计划且填了用水户与水量时受「该计划该户 plan_water 合计」约束
+ * （lockPlanForUpdate 锁行防并发），每次创建/编辑/调整/删除/取消后经 recalcPlanScheduled 回写计划
+ * scheduled_qty（= Σ 未取消指令 plan_amount）。
  */
 @Service
 public class WaterDispatchService {
@@ -120,10 +122,10 @@ public class WaterDispatchService {
 
     /** 详情 */
     public WaterDispatchVO detail(String id) {
-        String key = WaterUsageSupport.requireText(id, "方案 id 不能为空");
+        String key = WaterUsageSupport.requireText(id, "指令 id 不能为空");
         WaterDispatchVO vo = dispatchMapper.selectDispatchById(key);
         if (vo == null) {
-            throw new IllegalArgumentException("调度方案不存在");
+            throw new IllegalArgumentException("调度指令不存在");
         }
         decorate(vo);
         return vo;
@@ -154,7 +156,7 @@ public class WaterDispatchService {
 
     // ==================== 新增 / 编辑 / 调整 ====================
 
-    /** 新增（待执行；配额校验并回写计划已下达水量） */
+    /** 新增（待执行；填了户+计划+水量时校验配额并回写计划已下达水量） */
     @Transactional(rollbackFor = Exception.class)
     public WaterDispatchVO create(WaterDispatchSaveVO req) {
         Draft d = validate(req, null);
@@ -169,8 +171,9 @@ public class WaterDispatchService {
         row.put("water_user_id", d.userId);
         row.put("gate_id", d.gateId);
         row.put("plan_amount", d.planAmount);
-        row.put("start_time", d.startTime);
-        row.put("end_time", d.endTime);
+        row.put("exec_time", d.execTime);
+        row.put("gate_height_cm", d.gateHeightCm);
+        row.put("start_time", d.execTime);
         row.put("owner", d.owner);
         row.put("remark", d.remark);
         row.put("now", now);
@@ -182,19 +185,19 @@ public class WaterDispatchService {
         return detail(id);
     }
 
-    /** 编辑（仅待执行且未计费：全字段；计划变更时旧/新计划均已下达水量均回写） */
+    /** 编辑（仅待执行且未计费：全字段；计划变更时旧/新计划已下达水量均回写） */
     @Transactional(rollbackFor = Exception.class)
     public WaterDispatchVO update(String id, WaterDispatchSaveVO req) {
-        String key = WaterUsageSupport.requireText(id, "方案 id 不能为空");
+        String key = WaterUsageSupport.requireText(id, "指令 id 不能为空");
         WaterDispatchVO current = dispatchMapper.selectDispatchById(key);
         if (current == null) {
-            throw new IllegalArgumentException("调度方案不存在");
+            throw new IllegalArgumentException("调度指令不存在");
         }
         if (!WaterUsageDict.DISPATCH_STATUS_PENDING.equals(current.getStatus())) {
-            throw new IllegalArgumentException("仅待执行状态的调度方案可编辑");
+            throw new IllegalArgumentException("仅待执行状态的调度指令可编辑");
         }
         if (current.getBillId() != null) {
-            throw new IllegalArgumentException("该方案已计费，请先删除关联账单后再编辑");
+            throw new IllegalArgumentException("该指令已计费，请先删除关联账单后再编辑");
         }
         Draft d = validate(req, key);
         LocalDateTime now = LocalDateTime.now();
@@ -206,14 +209,15 @@ public class WaterDispatchService {
         row.put("water_user_id", d.userId);
         row.put("gate_id", d.gateId);
         row.put("plan_amount", d.planAmount);
-        row.put("start_time", d.startTime);
-        row.put("end_time", d.endTime);
+        row.put("exec_time", d.execTime);
+        row.put("gate_height_cm", d.gateHeightCm);
+        row.put("start_time", d.execTime);
         row.put("owner", d.owner);
         row.put("remark", d.remark);
         row.put("now", now);
         row.put("operator", operator);
         if (dispatchMapper.updateDispatch(row) == 0) {
-            throw new IllegalArgumentException("方案状态已变更，请刷新后重试");
+            throw new IllegalArgumentException("指令状态已变更，请刷新后重试");
         }
         String oldPlanId = current.getPlanId();
         if (oldPlanId != null && !oldPlanId.equals(d.planId)) {
@@ -226,48 +230,62 @@ public class WaterDispatchService {
     }
 
     /**
-     * 调整（水费页「编辑水量」：计划放水量/执行时段/备注）：未计费且未取消即可（不限执行态）；
-     * 配额重校验（排除自身），台账与待出账金额随时间段实时重算、账期归属按新开始时间推导。
+     * 调整（水费页「编辑水量」：计划放水量 / 执行时间 / 备注）：未计费且未取消即可（不限执行态）；
+     * 台账与待出账金额随新窗口实时重算、账期归属按新执行时间推导。
+     * <p>execTime 非空时按新口径改写执行时间（并清空原执行时段止）；
+     * 未传 execTime 时兼容旧口径 startTime / endTime。planAmount 未传则保持原值。
      */
     @Transactional(rollbackFor = Exception.class)
     public WaterDispatchVO adjust(String id, WaterDispatchSaveVO req) {
-        String key = WaterUsageSupport.requireText(id, "方案 id 不能为空");
+        String key = WaterUsageSupport.requireText(id, "指令 id 不能为空");
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
         }
         WaterDispatchVO current = dispatchMapper.selectDispatchById(key);
         if (current == null) {
-            throw new IllegalArgumentException("调度方案不存在");
+            throw new IllegalArgumentException("调度指令不存在");
         }
         if (WaterUsageDict.DISPATCH_STATUS_CANCELED.equals(current.getStatus())) {
-            throw new IllegalArgumentException("已取消的方案不可调整");
+            throw new IllegalArgumentException("已取消的指令不可调整");
         }
         if (current.getBillId() != null) {
-            throw new IllegalArgumentException("该方案已计费，请先删除关联账单后再调整");
+            throw new IllegalArgumentException("该指令已计费，请先删除关联账单后再调整");
         }
-        BigDecimal planAmount = WaterUsageSupport.requirePositiveWan(req.getPlanAmount(), "计划放水量");
-        LocalDateTime start = WaterUsageSupport.parseDateTime(req.getStartTime(), "执行时段起");
-        String endText = WaterUsageSupport.trim(req.getEndTime());
-        LocalDateTime end = endText == null
-                ? WaterUsageSupport.parseDateTime(current.getEndTime(), "执行时段止")
-                : WaterUsageSupport.parseDateTime(endText, "执行时段止");
-        if (end.isBefore(start)) {
-            throw new IllegalArgumentException("执行时段止不能早于执行时段起");
+        BigDecimal planAmount = req.getPlanAmount() == null
+                ? null
+                : WaterUsageSupport.requirePositiveWan(req.getPlanAmount(), "计划放水量");
+        String execText = WaterUsageSupport.trim(req.getExecTime());
+        LocalDateTime execTime = execText == null
+                ? null
+                : WaterUsageSupport.parseDateTime(execText, "执行时间");
+        LocalDateTime start = null;
+        LocalDateTime end = null;
+        if (execTime == null) {
+            String startText = WaterUsageSupport.trim(req.getStartTime());
+            start = startText == null ? null : WaterUsageSupport.parseDateTime(startText, "执行时段起");
+            String endText = WaterUsageSupport.trim(req.getEndTime());
+            end = endText == null ? null : WaterUsageSupport.parseDateTime(endText, "执行时段止");
+            if (start != null && end != null && end.isBefore(start)) {
+                throw new IllegalArgumentException("执行时段止不能早于执行时段起");
+            }
         }
         String remark = WaterUsageSupport.maxLength(WaterUsageSupport.trim(req.getRemark()), 200, "备注");
-        checkQuota(current.getPlanId(), current.getWaterUserId(), planAmount, key);
+        if (planAmount != null) {
+            checkQuota(current.getPlanId(), current.getWaterUserId(), planAmount, key);
+        }
         LocalDateTime now = LocalDateTime.now();
         String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", key);
         row.put("plan_amount", planAmount);
+        row.put("exec_time", execTime);
         row.put("start_time", start);
         row.put("end_time", end);
         row.put("remark", remark);
         row.put("now", now);
         row.put("operator", operator);
         if (dispatchMapper.adjustDispatch(row) == 0) {
-            throw new IllegalArgumentException("方案状态已变更，请刷新后重试");
+            throw new IllegalArgumentException("指令状态已变更，请刷新后重试");
         }
         if (current.getPlanId() != null) {
             dispatchMapper.recalcPlanScheduled(current.getPlanId(), now, operator);
@@ -280,40 +298,41 @@ public class WaterDispatchService {
     /** 状态流转：action = start（待执行→执行中）/ done（执行中→已完成）/ cancel（待执行/执行中→已取消） */
     @Transactional(rollbackFor = Exception.class)
     public void changeStatus(String id, String action) {
-        String key = WaterUsageSupport.requireText(id, "方案 id 不能为空");
+        String key = WaterUsageSupport.requireText(id, "指令 id 不能为空");
         WaterDispatchVO current = dispatchMapper.selectDispatchById(key);
         if (current == null) {
-            throw new IllegalArgumentException("调度方案不存在");
+            throw new IllegalArgumentException("调度指令不存在");
         }
         String act = WaterUsageSupport.requireText(action, "操作类型不能为空");
         LocalDateTime now = LocalDateTime.now();
         String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
         if ("start".equals(act)) {
             if (!WaterUsageDict.DISPATCH_STATUS_PENDING.equals(current.getStatus())) {
-                throw new IllegalArgumentException("仅待执行方案可开始执行");
+                throw new IllegalArgumentException("仅待执行指令可开始执行");
             }
             if (dispatchMapper.updateDispatchStatus(key, WaterUsageDict.DISPATCH_STATUS_PENDING,
                     WaterUsageDict.DISPATCH_STATUS_RUNNING, now, operator) == 0) {
-                throw new IllegalArgumentException("方案状态已变更，请刷新后重试");
+                throw new IllegalArgumentException("指令状态已变更，请刷新后重试");
             }
             return;
         }
         if ("done".equals(act)) {
             if (!WaterUsageDict.DISPATCH_STATUS_RUNNING.equals(current.getStatus())) {
-                throw new IllegalArgumentException("仅执行中方案可完成");
+                throw new IllegalArgumentException("仅执行中指令可完成");
             }
+            // 完成时写入关闸时刻（Mapper 内仅对 end_time 为空的新指令生效）
             if (dispatchMapper.updateDispatchStatus(key, WaterUsageDict.DISPATCH_STATUS_RUNNING,
                     WaterUsageDict.DISPATCH_STATUS_DONE, now, operator) == 0) {
-                throw new IllegalArgumentException("方案状态已变更，请刷新后重试");
+                throw new IllegalArgumentException("指令状态已变更，请刷新后重试");
             }
             return;
         }
         if ("cancel".equals(act)) {
             if (current.getBillId() != null) {
-                throw new IllegalArgumentException("该方案已计费，请先删除关联账单后再取消");
+                throw new IllegalArgumentException("该指令已计费，请先删除关联账单后再取消");
             }
             if (dispatchMapper.cancelDispatch(key, now, operator) == 0) {
-                throw new IllegalArgumentException("仅待执行/执行中方案可取消");
+                throw new IllegalArgumentException("仅待执行/执行中指令可取消");
             }
             if (current.getPlanId() != null) {
                 dispatchMapper.recalcPlanScheduled(current.getPlanId(), now, operator);
@@ -325,23 +344,23 @@ public class WaterDispatchService {
 
     /**
      * 删除（未计费即可，不限执行态）：记录挂接置空留痕后物理删除，计划已下达水量回写。
-     * 已计费方案须先删除关联账单。
+     * 已计费指令须先删除关联账单。
      */
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
-        String key = WaterUsageSupport.requireText(id, "方案 id 不能为空");
+        String key = WaterUsageSupport.requireText(id, "指令 id 不能为空");
         WaterDispatchVO current = dispatchMapper.selectDispatchById(key);
         if (current == null) {
-            throw new IllegalArgumentException("调度方案不存在");
+            throw new IllegalArgumentException("调度指令不存在");
         }
         if (current.getBillId() != null) {
-            throw new IllegalArgumentException("该方案已计费，请先删除关联账单后再删除");
+            throw new IllegalArgumentException("该指令已计费，请先删除关联账单后再删除");
         }
         LocalDateTime now = LocalDateTime.now();
         String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
         dispatchMapper.clearRecordDispatchRefs(key, now, operator);
         if (dispatchMapper.deleteDispatch(key) == 0) {
-            throw new IllegalArgumentException("方案状态已变更，请刷新后重试");
+            throw new IllegalArgumentException("指令状态已变更，请刷新后重试");
         }
         if (current.getPlanId() != null) {
             dispatchMapper.recalcPlanScheduled(current.getPlanId(), now, operator);
@@ -357,33 +376,38 @@ public class WaterDispatchService {
         String userId;
         String gateId;
         BigDecimal planAmount;
-        LocalDateTime startTime;
-        LocalDateTime endTime;
+        LocalDateTime execTime;
+        Integer gateHeightCm;
         String owner;
         String remark;
     }
 
-    /** 编制/编辑共用校验：户正常、闸口归属、计划已生效、需水已通过且同户、时间与文本、配额 */
+    /** 编制/编辑共用校验：户（选填）正常与闸口归属、计划已生效、需水已通过且同户、执行时间、闸门高度、配额 */
     private Draft validate(WaterDispatchSaveVO req, String excludeId) {
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
         }
         Draft d = new Draft();
-        d.userId = WaterUsageSupport.requireText(req.getWaterUserId(), "请选择用水户");
-        WaterUserVO user = userMapper.selectUserById(d.userId);
-        if (user == null) {
-            throw new IllegalArgumentException("用水户不存在");
-        }
-        if (!WaterUsageDict.USER_STATUS_NORMAL.equals(user.getStatus())) {
-            throw new IllegalArgumentException("用水户已停用，不可下达调度方案");
+        d.userId = WaterUsageSupport.trim(req.getWaterUserId());
+        WaterUserVO user = null;
+        if (d.userId != null) {
+            user = userMapper.selectUserById(d.userId);
+            if (user == null) {
+                throw new IllegalArgumentException("用水户不存在");
+            }
+            if (!WaterUsageDict.USER_STATUS_NORMAL.equals(user.getStatus())) {
+                throw new IllegalArgumentException("用水户已停用，不可下达调度指令");
+            }
         }
         d.gateId = WaterUsageSupport.requireText(req.getGateId(), "请选择调度闸口");
-        GateConfig config = WaterUsageSupport.gateConfigOf(user.getGateConfigRaw(), objectMapper);
-        if (config == null) {
-            throw new IllegalArgumentException("该用水户未配置关联闸口，不可下达调度方案");
-        }
-        if (!config.contains(d.gateId)) {
-            throw new IllegalArgumentException("调度闸口不属于该用水户的关联闸口组");
+        if (user != null) {
+            GateConfig config = WaterUsageSupport.gateConfigOf(user.getGateConfigRaw(), objectMapper);
+            if (config == null) {
+                throw new IllegalArgumentException("该用水户未配置关联闸口，不可下达调度指令");
+            }
+            if (!config.contains(d.gateId)) {
+                throw new IllegalArgumentException("调度闸口不属于该用水户的关联闸口组");
+            }
         }
         d.planId = WaterUsageSupport.trim(req.getPlanId());
         if (d.planId != null) {
@@ -392,7 +416,7 @@ public class WaterDispatchService {
                 throw new IllegalArgumentException("关联的用水计划不存在");
             }
             if (!WaterUsageDict.PLAN_STATUS_ACTIVE.equals(plan.getStatus())) {
-                throw new IllegalArgumentException("仅已生效的用水计划可关联调度方案");
+                throw new IllegalArgumentException("仅已生效的用水计划可关联调度指令");
             }
         }
         d.demandId = WaterUsageSupport.trim(req.getDemandId());
@@ -402,17 +426,17 @@ public class WaterDispatchService {
                 throw new IllegalArgumentException("关联的需水上报单不存在");
             }
             if (!WaterUsageDict.DEMAND_STATUS_PASS.equals(demand.getStatus())) {
-                throw new IllegalArgumentException("仅已通过的需水上报单可关联调度方案");
+                throw new IllegalArgumentException("仅已通过的需水上报单可关联调度指令");
             }
-            if (!d.userId.equals(demand.getWaterUserId())) {
+            if (d.userId != null && !d.userId.equals(demand.getWaterUserId())) {
                 throw new IllegalArgumentException("关联的需水上报单与所选用水户不一致");
             }
         }
-        d.planAmount = WaterUsageSupport.requirePositiveWan(req.getPlanAmount(), "计划放水量");
-        d.startTime = WaterUsageSupport.parseDateTime(req.getStartTime(), "执行时段起");
-        d.endTime = WaterUsageSupport.parseDateTime(req.getEndTime(), "执行时段止");
-        if (d.endTime.isBefore(d.startTime)) {
-            throw new IllegalArgumentException("执行时段止不能早于执行时段起");
+        d.planAmount = WaterUsageSupport.optionalPositiveWan(req.getPlanAmount(), "计划放水量");
+        d.execTime = WaterUsageSupport.parseDateTime(req.getExecTime(), "执行时间");
+        d.gateHeightCm = req.getGateHeightCm();
+        if (d.gateHeightCm != null && (d.gateHeightCm < 0 || d.gateHeightCm > 999)) {
+            throw new IllegalArgumentException("闸门高度须在 0~999 cm 之间");
         }
         // 负责人：传 ownerUserId 时按平台用户回查固化姓名快照（不信任前端文本）；仅回传姓名（未换人/存量值）时按文本入库
         d.owner = platformUsers.resolveName(req.getOwnerUserId(), req.getOwner(), "调度负责人", false);
@@ -423,10 +447,10 @@ public class WaterDispatchService {
 
     /**
      * 配额校验：FOR UPDATE 锁计划行防并发；已下达合计（排除自身）+ 本次下达 ≤ 该计划该户计划水量合计。
-     * 未关联计划跳过。
+     * 未关联计划、未选用水户或未填计划放水量时跳过。
      */
     private void checkQuota(String planId, String userId, BigDecimal planAmountM3, String excludeId) {
-        if (planId == null) {
+        if (planId == null || userId == null || planAmountM3 == null) {
             return;
         }
         if (dispatchMapper.lockPlanForUpdate(planId) == null) {

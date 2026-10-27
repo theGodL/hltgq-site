@@ -3,7 +3,7 @@ package com.qgyun.hltgq.hltgqsite.waterusage.vo;
 import lombok.Data;
 
 /**
- * 调度方案下拉选项（调度记录关联方案、方案筛选等）。
+ * 调度指令下拉选项（调度记录关联指令、计划筛选、需水编制指令等）。
  */
 @Data
 public class DispatchOptionVO {

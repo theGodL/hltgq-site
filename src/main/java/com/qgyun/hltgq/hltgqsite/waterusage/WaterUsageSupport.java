@@ -169,6 +169,12 @@ public final class WaterUsageSupport {
         return toM3(value);
     }
 
+    /** 选填正数（万m³ 录入，≤2 位小数）：null 放过；填写则 >0，返回 m³ 存储值（null 原样返回） */
+    public static BigDecimal optionalPositiveWan(BigDecimal wan, String label) {
+        BigDecimal value = optionalPositive(wan, label, 2);
+        return value == null ? null : toM3(value);
+    }
+
     /** 流量累计可用值：null 与哨兵值 -999（设备不存在）/ -9991（设备异常）视为缺失 */
     public static BigDecimal usableFlow(BigDecimal value) {
         if (value == null) {
@@ -210,6 +216,19 @@ public final class WaterUsageSupport {
             return LocalDate.parse(value.trim());
         } catch (Exception e) {
             throw new IllegalArgumentException(label + "格式不正确（应为 YYYY-MM-DD）");
+        }
+    }
+
+    /** 宽松解析日期文本（取前 10 位 YYYY-MM-DD）：为空/非法返回 null（仅展示/反推回显用，不报错） */
+    public static LocalDate parseQuiet(String text) {
+        String value = trim(text);
+        if (value == null || value.length() < 10) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value.substring(0, 10));
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -301,9 +320,9 @@ public final class WaterUsageSupport {
      * 解析用水户闸口配置 JSON（gate_config 列）：
      * <pre>
      * 累加 {"mode":"SUM","gates":[{"id":"…","name":"…"},…]}
-     * 差额 {"mode":"DIFF","main":{…},"deduct":[{…},…]}
+     * 差额 {"mode":"DIFF","mains":[{…},…],"deduct":[{…},…]}（主闸口可多选；旧数据为 "main":{…} 单对象）
      * </pre>
-     * 结构非法/缺失返回 null（调用方按业务兜底：方案闸口校验不通过、账单计量按无闸口组处理）。
+     * 结构非法/缺失返回 null（调用方按业务兜底：指令闸口校验不通过、账单计量按无闸口组处理）。
      */
     public static GateConfig parseGateConfig(JsonNode node) {
         if (node == null || !node.isObject()) {
@@ -326,19 +345,36 @@ public final class WaterUsageSupport {
                 allIds.add(id);
                 names.add(gate.path("name").asText(""));
             }
-            return new GateConfig(mode, null, deductIds, allIds, String.join("、", names));
+            return new GateConfig(mode, new ArrayList<String>(), deductIds, allIds, String.join("、", names));
         }
         if (WaterUsageDict.GATE_MODE_DIFF.equals(mode)) {
-            JsonNode main = node.get("main");
-            String mainId = main == null ? null : trim(main.path("id").asText(null));
-            if (mainId == null) {
-                return null;
+            List<String> mainIds = new ArrayList<>();
+            List<String> mainNames = new ArrayList<>();
+            JsonNode mains = node.get("mains");
+            if (mains != null && mains.isArray() && mains.size() > 0) {
+                for (JsonNode gate : mains) {
+                    String id = trim(gate.path("id").asText(null));
+                    if (id == null) {
+                        return null;
+                    }
+                    mainIds.add(id);
+                    mainNames.add(gate.path("name").asText(""));
+                }
+            } else {
+                // 兼容旧结构：单主闸口 main 对象
+                JsonNode main = node.get("main");
+                String mainId = main == null ? null : trim(main.path("id").asText(null));
+                if (mainId == null) {
+                    return null;
+                }
+                mainIds.add(mainId);
+                mainNames.add(main.path("name").asText(""));
             }
             JsonNode deduct = node.get("deduct");
             if (deduct == null || !deduct.isArray() || deduct.size() == 0) {
                 return null;
             }
-            allIds.add(mainId);
+            allIds.addAll(mainIds);
             List<String> deductNames = new ArrayList<>();
             for (JsonNode gate : deduct) {
                 String id = trim(gate.path("id").asText(null));
@@ -349,8 +385,8 @@ public final class WaterUsageSupport {
                 allIds.add(id);
                 deductNames.add(gate.path("name").asText(""));
             }
-            String text = main.path("name").asText("") + " − " + String.join("、", deductNames);
-            return new GateConfig(mode, mainId, deductIds, allIds, text);
+            String text = String.join("、", mainNames) + " − " + String.join("、", deductNames);
+            return new GateConfig(mode, mainIds, deductIds, allIds, text);
         }
         return null;
     }
@@ -376,22 +412,26 @@ public final class WaterUsageSupport {
         /** SUM 指定闸口累加 / DIFF 闸口差额计量 */
         public final String mode;
 
-        /** DIFF 主闸口 id（SUM 为 null） */
+        /** DIFF 主闸口 id 列表（SUM 为空列表；过闸水量相加后减扣减闸口合计） */
+        public final List<String> mainIds;
+
+        /** DIFF 首个主闸口 id（SUM / 无主闸口为 null；旧单选口径兼容） */
         public final String mainId;
 
         /** 扣减闸口 id 列表（SUM 为空列表） */
         public final List<String> deductIds;
 
-        /** 全部闸口 id（SUM = gates；DIFF = main + deduct） */
+        /** 全部闸口 id（SUM = gates；DIFF = mains + deduct） */
         public final List<String> allIds;
 
-        /** 展示文案（累加「闸A、闸B」；差额「主闸 − 扣A、扣B」） */
+        /** 展示文案（累加「闸A、闸B」；差额「主A、主B − 扣A、扣B」） */
         public final String gateText;
 
-        private GateConfig(String mode, String mainId, List<String> deductIds,
+        private GateConfig(String mode, List<String> mainIds, List<String> deductIds,
                            List<String> allIds, String gateText) {
             this.mode = mode;
-            this.mainId = mainId;
+            this.mainIds = mainIds;
+            this.mainId = mainIds.isEmpty() ? null : mainIds.get(0);
             this.deductIds = deductIds;
             this.allIds = allIds;
             this.gateText = gateText;

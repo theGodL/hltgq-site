@@ -536,8 +536,8 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_user (
     calc_mode       VARCHAR(16)  NOT NULL,          -- 计算策略：#1# 指定闸口累加 / #2# 闸口差额计量
     gate_config     TEXT         NOT NULL,          -- 关联闸口（JSON，闸站 id + 名称快照）：
                                                     --   累加 {"mode":"SUM","gates":[{"id":"…","name":"…"},…]}
-                                                    --   差额 {"mode":"DIFF","main":{…},"deduct":[{…},…]}
-                                                    --   差额策略保存时校验：主闸口读数 − 扣减闸口读数合计 > 0
+                                                    --   差额 {"mode":"DIFF","mains":[{…},…],"deduct":[{…},…]}（主闸口可多选，兼容旧版 main）
+                                                    --   差额策略保存时校验：主闸口读数合计 − 扣减闸口读数合计 > 0
     settle_cycle    VARCHAR(16)  NOT NULL,          -- 统计周期：#1# 月度结算 / #2# 季度结算 / #3# 年度结算
     lng             NUMERIC(10,6),                  -- 位置经度（可选，-180~180）
     lat             NUMERIC(10,6),                  -- 位置纬度（可选，-90~90）
@@ -627,8 +627,27 @@ CREATE INDEX IF NOT EXISTS idx_water_plan_item_user
 CREATE INDEX IF NOT EXISTS idx_water_plan_item_quota
     ON "qixiao-apaas".t_auto_hltgq_water_plan_item(quota_id);
 
+-- 1.5 用水计划附件：先上传落盘并插入一行（plan_id 为空），保存计划时按附件 id 回填 plan_id；
+--     计划删除时先删文件再删行（Service 事务内执行）；file_path 为相对 hltgq.file-dir 的路径。
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_plan_attachment (
+    id              VARCHAR(64)  PRIMARY KEY,
+    plan_id         VARCHAR(64),                    -- 所属用水计划（water_plan.id；为空 = 已上传未绑定）
+    file_name       VARCHAR(255) NOT NULL,          -- 原始文件名（下载时回填 Content-Disposition）
+    file_path       VARCHAR(500) NOT NULL,          -- 相对存储路径（plan/yyyy-MM/uuid_原名）
+    file_size       BIGINT,                         -- 文件字节数
+    file_ext        VARCHAR(16),                    -- 扩展名（小写，不含点）
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_water_plan_attach_plan
+    ON "qixiao-apaas".t_auto_hltgq_water_plan_attachment(plan_id);
+
 -- ========== 灌区用水 · 调度与水费四页面（2026-10 新增） ==========
--- 需水上报 / 调度方案 / 调度记录 / 水费账单四张表；独立执行版见根目录 water-dispatch-bill-ddl.sql。
+-- 需水上报 / 调度指令 / 调度记录 / 水费账单四张表；独立执行版见根目录 water-dispatch-bill-ddl.sql。
+-- 调度指令增量变更（执行时间/闸门高度/记录操作后高度/需水旬维度/计划附件）见 water-usage-v3-ddl.sql。
 -- 字典字段统一 "#N#" 文本编码（接口对外映射前端英文码 wait/pass/reject、pending/running/done/canceled、
 -- up/down/adjust、generated/paid、month/quarter/year）；水量库内一律 m³（NUMERIC 2 位小数），
 -- 四页面接口对外输出万m³（÷10000，4 位小数）；金额 = 计入水量(m³) × 水价(元/m³)，元（2 位）。
@@ -643,8 +662,11 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_demand (
     water_user_id   VARCHAR(64)  NOT NULL,          -- 用水户 ID（water_user.id）
     gate_id         VARCHAR(64),                    -- 申报拟用闸口（可空；编制方案时预填，须属于该户闸口组）
     amount          NUMERIC(16,2) NOT NULL,         -- 申报计划水量（m³，>0；对外展示万m³）
-    start_date      DATE         NOT NULL,          -- 用水时段起
+    start_date      DATE         NOT NULL,          -- 用水时段起（由所选年月 + 旬派生）
     end_date        DATE         NOT NULL,          -- 用水时段止（>= start_date）
+    period_year     SMALLINT,                       -- 用水年份（如 2026；旧数据为空）
+    period_month    SMALLINT,                       -- 用水月份（1~12；旧数据为空）
+    xun_list        VARCHAR(32),                    -- 旬多选（逗号分隔：1上旬/2中旬/3下旬，如 1,3；旧数据为空）
     usage_desc      VARCHAR(200),                   -- 用途（如 冬灌前补水）
     status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 审核状态：#1# 待审核 / #2# 已通过 / #3# 已驳回
     audit_opinion   VARCHAR(200),                   -- 审核意见（驳回必填）
@@ -664,18 +686,29 @@ CREATE INDEX IF NOT EXISTS idx_water_demand_user
 CREATE INDEX IF NOT EXISTS idx_water_demand_status
     ON "qixiao-apaas".t_auto_hltgq_water_demand(status);
 
--- 2.2 调度方案：编号 DD+4 位序号；执行态 待执行(#1#)→执行中(#2#)→已完成(#3#)；待执行/执行中→已取消(#4#)
---     行 = 闸口 × 时段的放水载体：计入水量 = 该闸口在 [start_time, end_time] 的实测累计流量（带符号）
+-- 2.1.1 存量环境补列（CREATE TABLE IF NOT EXISTS 不会改已有表）
+ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_demand
+    ADD COLUMN IF NOT EXISTS period_year SMALLINT,
+    ADD COLUMN IF NOT EXISTS period_month SMALLINT,
+    ADD COLUMN IF NOT EXISTS xun_list VARCHAR(32);
+
+-- 2.2 调度指令（原「调度方案」）：编号 DD+4 位序号；执行态 待执行(#1#)→执行中(#2#)→已完成(#3#)；待执行/执行中→已取消(#4#)
+--     执行时间 exec_time 为开闸时刻（取数窗口起点），完成时间 finish_time 为关闸时刻（状态改已完成时写入）；
+--     计量窗口 = [COALESCE(exec_time, start_time), COALESCE(finish_time, end_time, 当前时间)]
+--     （旧数据 exec_time/finish_time 为空，窗口仍为 [start_time, end_time]，行为不变）
 CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_dispatch (
     id              VARCHAR(64)  PRIMARY KEY,
     dispatch_no     VARCHAR(32)  NOT NULL,          -- 编号：DD + 4 位序号（全局唯一）
     plan_id         VARCHAR(64),                    -- 关联用水计划（water_plan.id，可空；关联后受该计划该户配额约束）
     demand_id       VARCHAR(64),                    -- 关联需水申请（water_demand.id，可空；须为已通过且同户）
-    water_user_id   VARCHAR(64)  NOT NULL,          -- 用水户 ID
-    gate_id         VARCHAR(64)  NOT NULL,          -- 调度闸口（须属于该户闸口组；计量取数锚点）
-    plan_amount     NUMERIC(16,2) NOT NULL,         -- 计划放水量（m³，>0；对外展示万m³）
-    start_time      TIMESTAMP    NOT NULL,          -- 执行时段起（计入水量取数窗口起点）
-    end_time        TIMESTAMP    NOT NULL,          -- 执行时段止（>= start_time）
+    water_user_id   VARCHAR(64),                    -- 用水户 ID（选填；不填则仅按闸口留痕）
+    gate_id         VARCHAR(64)  NOT NULL,          -- 调度闸口（计量取数锚点）
+    plan_amount     NUMERIC(16,2),                  -- 计划放水量（m³，选填；对外展示万m³）
+    exec_time       TIMESTAMP,                      -- 执行时间（开闸时刻；取数窗口起点）
+    finish_time     TIMESTAMP,                      -- 完成时间（关闸时刻；状态改已完成时写入，为空取当前时间）
+    gate_height_cm  INTEGER,                        -- 指定闸门高度（cm，0~999）
+    start_time      TIMESTAMP,                      -- 【历史】原执行时段起；新数据不再写入
+    end_time        TIMESTAMP,                      -- 【历史】原执行时段止；新数据不再写入
     owner           VARCHAR(50),                    -- 调度负责人
     status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 执行状态：#1# 待执行 / #2# 执行中 / #3# 已完成 / #4# 已取消
     bill_id         VARCHAR(64),                    -- 计费账单 ID（water_bill.id；非空=已计费，禁改禁删）
@@ -695,17 +728,50 @@ CREATE INDEX IF NOT EXISTS idx_water_dispatch_plan
     ON "qixiao-apaas".t_auto_hltgq_water_dispatch(plan_id);
 CREATE INDEX IF NOT EXISTS idx_water_dispatch_bill
     ON "qixiao-apaas".t_auto_hltgq_water_dispatch(bill_id);
+CREATE INDEX IF NOT EXISTS idx_water_dispatch_exec
+    ON "qixiao-apaas".t_auto_hltgq_water_dispatch(exec_time);
+
+-- 2.2.1 存量环境补列 / 放开必填（幂等）
+ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_dispatch
+    ADD COLUMN IF NOT EXISTS exec_time TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS finish_time TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS gate_height_cm INTEGER;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'qixiao-apaas' AND table_name = 't_auto_hltgq_water_dispatch'
+                  AND column_name = 'water_user_id' AND is_nullable = 'NO') THEN
+        ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_dispatch ALTER COLUMN water_user_id DROP NOT NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'qixiao-apaas' AND table_name = 't_auto_hltgq_water_dispatch'
+                  AND column_name = 'plan_amount' AND is_nullable = 'NO') THEN
+        ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_dispatch ALTER COLUMN plan_amount DROP NOT NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'qixiao-apaas' AND table_name = 't_auto_hltgq_water_dispatch'
+                  AND column_name = 'start_time' AND is_nullable = 'NO') THEN
+        ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_dispatch ALTER COLUMN start_time DROP NOT NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'qixiao-apaas' AND table_name = 't_auto_hltgq_water_dispatch'
+                  AND column_name = 'end_time' AND is_nullable = 'NO') THEN
+        ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_dispatch ALTER COLUMN end_time DROP NOT NULL;
+    END IF;
+END $$;
 
 -- 2.3 调度记录：闸口操作留痕（不参与水量与费用计算）；无编号
 --     方案删除时 dispatch_id 置空（记录保留，历史留痕不随方案消失）
+--     op_type / height 为历史列（保留兼容），新数据只写操作后闸门高度 gate_height_after
 CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_dispatch_record (
     id              VARCHAR(64)  PRIMARY KEY,
     dispatch_id     VARCHAR(64),                    -- 关联调度方案（water_dispatch.id，可空）
     water_user_id   VARCHAR(64)  NOT NULL,          -- 用水户 ID（关联方案时须与方案一致）
     gate_id         VARCHAR(64)  NOT NULL,          -- 操作闸口（关联方案时须与方案一致）
     op_time         TIMESTAMP    NOT NULL,          -- 操作时间
-    op_type         VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 操作类型：#1# 闸门提升 / #2# 闸门下降 / #3# 流量调整
-    height          INTEGER,                        -- 升降高度（cm，0~999；可空）
+    op_type         VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 【历史】操作类型：#1# 提升 / #2# 下降 / #3# 调整
+    height          INTEGER,                        -- 【历史】升降高度（cm）
+    gate_height_after INTEGER,                      -- 操作后闸门高度（cm，0~999）
     operator        VARCHAR(50)  NOT NULL,          -- 操作人 / 闸管员
     remark          VARCHAR(200),                   -- 备注（现场情况、指令依据等）
     corp_code       VARCHAR(64),
@@ -720,6 +786,10 @@ CREATE INDEX IF NOT EXISTS idx_water_dispatch_record_gate
     ON "qixiao-apaas".t_auto_hltgq_water_dispatch_record(gate_id);
 CREATE INDEX IF NOT EXISTS idx_water_dispatch_record_dispatch
     ON "qixiao-apaas".t_auto_hltgq_water_dispatch_record(dispatch_id);
+
+-- 2.3.1 存量环境补列（操作后闸门高度）
+ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_dispatch_record
+    ADD COLUMN IF NOT EXISTS gate_height_after INTEGER;
 
 -- 2.4 水费账单：编号 SF+期间码+'-'+户号+4 位序号；状态 已生成(#1#)→已缴清(#2#)
 --     账期按用水户统计周期分期：月（2026-10）/ 季（2026-Q3）/ 年（2026）；一份账单可含多方案（bill_id 反向挂接）
@@ -737,6 +807,7 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_bill (
     paid            NUMERIC(16,2) NOT NULL DEFAULT 0,  -- 已收金额（元；确认收款时 = amount）
     status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 账单状态：#1# 已生成 / #2# 已缴清
     pay_time        TIMESTAMP,                      -- 收款时间
+    ledger_id       VARCHAR(64),                    -- 来源手工台账 ID（water_ledger.id；方案出账为空）
     corp_code       VARCHAR(64),
     created_at      TIMESTAMP,
     created_by      VARCHAR(64),
@@ -747,6 +818,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_water_bill_no
     ON "qixiao-apaas".t_auto_hltgq_water_bill(bill_no);
 CREATE INDEX IF NOT EXISTS idx_water_bill_user
     ON "qixiao-apaas".t_auto_hltgq_water_bill(water_user_id, cycle_key);
+CREATE INDEX IF NOT EXISTS idx_water_bill_ledger
+    ON "qixiao-apaas".t_auto_hltgq_water_bill(ledger_id);
+-- 存量环境补列（CREATE TABLE IF NOT EXISTS 不会改已有表）
+ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_bill ADD COLUMN IF NOT EXISTS ledger_id VARCHAR(64);
+
+-- 2.5 手工水费台账：编号 TZ+期间码+'-'+户号+4 位序号（如 TZ202610-YH0010001）
+--     行 = 用水户 × 结算周期 × 用水量 × 单价，金额 = 用水量 × 单价（应用层计算，2 位小数）；
+--     出账后 bill_id 挂接账单（1 台账 : 1 账单），账单删除时清空挂接恢复未计费
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_ledger (
+    id              VARCHAR(64)  PRIMARY KEY,
+    ledger_no       VARCHAR(64)  NOT NULL,          -- 编号：TZ + 期间码 + '-' + 户号 + 4 位序号（全局唯一）
+    water_user_id   VARCHAR(64)  NOT NULL,          -- 用水户 ID（water_user.id）
+    settle_cycle    VARCHAR(16)  NOT NULL,          -- 统计周期快照：#1# 月度 / #2# 季度 / #3# 年度
+    cycle_key       VARCHAR(16)  NOT NULL,          -- 结算周期：月 2026-10 / 季 2026-Q3 / 年 2026
+    volume          NUMERIC(16,2) NOT NULL,         -- 用水量（m³，>0）
+    price           NUMERIC(16,3) NOT NULL,         -- 单价（元/m³，>0）
+    amount          NUMERIC(16,2) NOT NULL,         -- 应收金额（元 = volume × price，2 位小数）
+    bill_id         VARCHAR(64),                    -- 出账后账单 ID（water_bill.id；非空=已计费，禁改禁删）
+    remark          VARCHAR(200),                   -- 备注
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_water_ledger_no
+    ON "qixiao-apaas".t_auto_hltgq_water_ledger(ledger_no);
+CREATE INDEX IF NOT EXISTS idx_water_ledger_user
+    ON "qixiao-apaas".t_auto_hltgq_water_ledger(water_user_id, cycle_key);
+CREATE INDEX IF NOT EXISTS idx_water_ledger_bill
+    ON "qixiao-apaas".t_auto_hltgq_water_ledger(bill_id);
 
 -- ========== 节水管理（2026-10 新增，对应《节水潜力开发实施方案》V1.4 §3 数据模型） ==========
 -- 年度水量记录 / 节水方案 / 节水指标三张表；独立执行版见根目录 water-saving-ddl.sql。
@@ -934,3 +1036,22 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_decision_extra_tabl
 );
 CREATE INDEX IF NOT EXISTS idx_decision_extra_table_record
     ON "qixiao-apaas".t_auto_hltgq_water_decision_extra_table(record_id, table_key, sort_order);
+
+-- 工单处理结果附件：工单主表无附件物理列，独立建表（独立执行版见根目录 work-order-attachment-ddl.sql）。
+-- 上传即落盘并插入一行（order_id 为空），保存处理结果时按附件 id 回填 order_id；
+-- 工单删除时先删行、事务提交后删文件；file_path 为相对 hltgq.file-dir 的路径（work-order/yyyy-MM/uuid_原名）。
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_work_order_attachment (
+    id              VARCHAR(64)  PRIMARY KEY,
+    order_id        VARCHAR(64),                    -- 所属工单（t_auto_hltgq_water_work_order.id；为空 = 已上传未绑定）
+    file_name       VARCHAR(255) NOT NULL,          -- 原始文件名（下载时回填 Content-Disposition）
+    file_path       VARCHAR(500) NOT NULL,          -- 相对存储路径（work-order/yyyy-MM/uuid_原名）
+    file_size       BIGINT,                         -- 文件字节数
+    file_ext        VARCHAR(16),                    -- 扩展名（小写，不含点）
+    corp_code       VARCHAR(64),
+    created_at      TIMESTAMP,
+    created_by      VARCHAR(64),
+    updated_at      TIMESTAMP,
+    updated_by      VARCHAR(64)
+);
+CREATE INDEX IF NOT EXISTS idx_work_order_attach_order
+    ON "qixiao-apaas".t_auto_hltgq_water_work_order_attachment(order_id);

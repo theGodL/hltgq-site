@@ -5,7 +5,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 /**
- * 需水上报下拉选项（调度方案"关联需水申请"；仅已通过）。
+ * 需水上报下拉选项（调度指令"关联需水申请"；仅已通过）。
  * <p>amount 对外为万m³（下拉文案「XS0015 · 户名 · 1.98万m³」）。
  */
 @Data

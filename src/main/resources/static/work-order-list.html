@@ -158,6 +158,7 @@ td.empty:hover{background:transparent}
 .mask.show{display:flex}
 .dlg{width:min(880px,94vw);max-height:min(680px,88vh);background:var(--el-bg-color);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,.12)}
 .dlg-sm{width:min(440px,94vw)}
+.dlg-md{width:min(560px,94vw)}
 .dlg-lg{width:min(980px,94vw);max-height:min(760px,90vh)}
 .dlg-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .dlg-hd h3{font-size:16px;font-weight:500;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -182,6 +183,22 @@ td.empty:hover{background:transparent}
 .form-tip{font-size:12px;color:var(--el-text-color-secondary)}
 .dlg-sub{font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
 .count-tip{font-size:12px;color:var(--el-text-color-secondary);text-align:right}
+
+/* 附件区（处理结果弹窗 / 详情展示） */
+.att-block{display:flex;flex-direction:column;gap:8px;padding-top:4px;border-top:1px dashed var(--el-border-color-lighter)}
+.att-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.att-hd .att-label{font-size:13px;color:var(--el-text-color-regular)}
+.att-hd .btn{height:32px;padding:0 12px;border-radius:var(--el-radius);font-size:13px}
+.att-list{display:flex;flex-direction:column;gap:8px}
+.att-row{display:flex;align-items:center;gap:10px;padding:6px 12px;border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);background:var(--el-fill-color-light)}
+.att-row .att-name{flex:1;min-width:0;color:var(--el-color-primary);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-row .att-name:hover{text-decoration:underline}
+.att-row .att-size{font-size:12px;color:var(--el-text-color-secondary);flex-shrink:0}
+.att-row .att-del{flex-shrink:0;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-text-color-secondary);cursor:pointer;transition:all .2s}
+.att-row .att-del:hover{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+.att-empty{font-size:13px;color:var(--el-text-color-secondary);padding:2px 0}
+.att-hint{margin-top:2px;font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
+.view-row .v .att-list{padding-top:2px}
 
 /* ===== 下拉组件 ===== */
 .sel{position:relative}
@@ -337,7 +354,7 @@ td.empty:hover{background:transparent}
 
 <!-- 填写处理结果 -->
 <div class="mask" id="rs-mask">
-  <div class="dlg dlg-sm">
+  <div class="dlg dlg-md">
     <div class="dlg-hd">
       <h3>填写处理结果</h3>
       <button class="icon-btn" data-close="rs" title="关闭">
@@ -348,6 +365,19 @@ td.empty:hover{background:transparent}
       <div class="dlg-sub" id="rs-sub"></div>
       <textarea class="field" id="rs-result" maxlength="1000" placeholder="请填写处理结果（≤1000 字）"></textarea>
       <div class="count-tip"><span id="rs-count">0</span>/1000</div>
+      <div class="att-block">
+        <div class="att-hd">
+          <span class="att-label">处理结果附件</span>
+          <button class="btn btn-default" id="rs-upload" type="button">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 11V3.5M5 6l3-3 3 3M3 12.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            上传附件
+          </button>
+        </div>
+        <div class="att-list" id="rs-att-list"></div>
+        <div class="att-hint">支持图片、PDF、Word、Excel，单个文件不超过 20MB；与处理结果一并保存</div>
+        <input type="file" id="rs-file" multiple hidden
+               accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.pdf,.doc,.docx,.xls,.xlsx">
+      </div>
     </div>
     <div class="dlg-ft">
       <button class="btn btn-default" data-close="rs">取消</button>
@@ -380,6 +410,7 @@ const API = '/hltgq-site';
 const ICON = {
   search: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
   tick: '<svg class="tick" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6l3 3L12.8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.6 7V4.6h4.8V7M6.6 7l.9 12.3A1.6 1.6 0 0 0 9.1 20.8h5.8a1.6 1.6 0 0 0 1.6-1.5L17.4 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 10.8v5.6M13.6 10.8v5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
 
@@ -395,6 +426,11 @@ const S = {
   drawerId: '',
   assignId: '',
   resultId: '',
+  rsAtts: [],        // 处理结果附件（已存 + 本次上传）
+  rsPending: [],     // 本次新上传、尚未保存的附件 id（关闭弹窗时清理）
+  rsUploading: false,
+  rsAttSynced: false, // 已保存附件清单是否加载成功（未同步时禁止保存，避免误删已存附件）
+  rsSeq: 0,          // 处理结果弹窗会话序号（防关闭/切换后旧请求回填）
   orgs: [],          // 部门候选原文（含 code，兼容存量短码）
   orgsLoaded: false,
   usersLoaded: false
@@ -414,10 +450,11 @@ function showToast(msg, isErr) {
   showToast.timer = setTimeout(() => t.classList.remove('show'), 2400);
 }
 
-/** 统一请求：非 2xx 抛出后端 message（后端 IllegalArgumentException → 400 + message） */
+/** 统一请求：非 2xx 抛出后端 message（后端 IllegalArgumentException → 400 + message）；FormData 不做 JSON 化 */
 async function api(path, opts) {
   const init = Object.assign({ credentials: 'include' }, opts || {});
-  if (init.body && typeof init.body !== 'string') {
+  const isForm = init.body && typeof FormData !== 'undefined' && init.body instanceof FormData;
+  if (init.body && typeof init.body !== 'string' && !isForm) {
     init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
     init.body = JSON.stringify(init.body);
   }
@@ -666,6 +703,27 @@ function closeMask(key) {
   if (m) m.classList.remove('show');
   closeAllSelects();
   if (key === 'cfm') S.confirmFn = null;
+  // 处理结果弹窗：关闭时清理本次新上传、尚未保存的附件（保存成功路径已先行摘除）
+  if (key === 'rs') resetResultDialog();
+}
+
+/** 复位处理结果弹窗状态，并异步清理未保存附件（失败仅静默，孤儿文件由后续人工清理） */
+function resetResultDialog() {
+  const pending = S.rsPending.slice();
+  S.rsPending = [];
+  S.rsAtts = [];
+  S.resultId = '';
+  S.rsUploading = false;
+  S.rsAttSynced = false;
+  S.rsSeq++;
+  const file = $('rs-file');
+  if (file) file.value = '';
+  const btn = $('rs-ok');
+  if (btn) { btn.classList.remove('is-loading'); btn.disabled = false; }
+  pending.forEach(id => {
+    api('/work-order/attachment/remove?id=' + encodeURIComponent(id), { method: 'POST' })
+      .catch(() => { /* 清理失败不回显 */ });
+  });
 }
 
 function tagHtml(cls, label) {
@@ -680,6 +738,15 @@ function statusClass(code) {
 function viewRow(k, v, span2) {
   return '<div class="view-row' + (span2 ? ' span2' : '') + '"><span class="k">' + esc(k) + '</span>' +
     '<div class="v">' + (v || '--') + '</div></div>';
+}
+
+/** 附件清单（只读：点击文件名下载） */
+function attLinkHtml(list) {
+  const arr = Array.isArray(list) ? list : [];
+  if (!arr.length) return '--';
+  return '<div class="att-list">' + arr.map(a =>
+    '<div class="att-row"><span class="att-name" data-att="' + esc(a.id) + '" data-att-name="' + esc(a.fileName || '') + '" title="下载 ' + esc(a.fileName || '') + '">' + esc(a.fileName || '--') + '</span>' +
+    '<span class="att-size">' + esc(fmtSize(a.fileSize)) + '</span></div>').join('') + '</div>';
 }
 
 function renderDetail(d) {
@@ -699,6 +766,7 @@ function renderDetail(d) {
       viewRow('关联问题记录', esc(d.issueTitle || '')) +
       viewRow('内容描述', esc(d.content || ''), true) +
       viewRow('处理结果', esc(d.result || ''), true) +
+      viewRow('处理结果附件', attLinkHtml(d.attachments), true) +
     '</div>';
 }
 
@@ -872,25 +940,176 @@ async function submitAssign() {
 }
 
 /* ============================ 填写处理结果 ============================ */
-function openResult(id) {
+const ATT_EXT = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'];
+const ATT_MAX = 20 * 1024 * 1024;
+
+/** 文件大小展示（B / KB / MB） */
+function fmtSize(n) {
+  if (n === null || n === undefined || isNaN(n)) return '';
+  const num = Number(n);
+  if (num < 1024) return num + ' B';
+  if (num < 1024 * 1024) return (num / 1024).toFixed(1) + ' KB';
+  return (num / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+/** 附件下载：浏览器直载 URL 带不了会话头，用 fetch + blob（后端 Content-Disposition 带原始文件名） */
+async function downloadOrderAtt(id, name) {
+  try {
+    const res = await fetch(API + '/work-order/attachment/download?id=' + encodeURIComponent(id), { credentials: 'include' });
+    if (!res.ok) {
+      let msg = '附件下载失败';
+      try {
+        const t = await res.text();
+        const d = JSON.parse(t);
+        msg = (d && (d.message || d.error)) || msg;
+      } catch (e) { /* 非 JSON 错误体，用兜底文案 */ }
+      showToast(msg, true);
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name || '附件';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    showToast('附件下载失败', true);
+  }
+}
+
+/** 处理结果弹窗附件区渲染（新上传带移除按钮；已保存附件保存后按集合清理） */
+function renderRsAtt() {
+  const box = $('rs-att-list');
+  if (!box) return;
+  const list = S.rsAtts || [];
+  if (!list.length) {
+    box.innerHTML = '<div class="att-empty">暂无附件</div>';
+    return;
+  }
+  box.innerHTML = list.map(a =>
+    '<div class="att-row">' +
+    '<span class="att-name" data-att="' + esc(a.id) + '" data-att-name="' + esc(a.fileName || '') + '" title="下载 ' + esc(a.fileName || '') + '">' + esc(a.fileName || '--') + '</span>' +
+    '<span class="att-size">' + esc(fmtSize(a.fileSize)) + '</span>' +
+    '<button class="att-del" data-att-del="' + esc(a.id) + '" type="button" title="移除">' + ICON.trash + '</button>' +
+    '</div>').join('');
+}
+
+/** 选择文件后逐个上传（校验类型/大小；弹窗已关闭则立即清理，避免孤儿附件） */
+async function onUploadRs(e) {
+  const files = Array.prototype.slice.call(e.target.files || []);
+  e.target.value = '';
+  if (!files.length) return;
+  if (S.rsUploading) { showToast('附件上传中，请稍候', true); return; }
+  const orderId = S.resultId;
+  const seq = S.rsSeq;
+  const btn = $('rs-upload');
+  S.rsUploading = true;
+  if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
+  let uploaded = 0;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      if (ATT_EXT.indexOf(ext) < 0) { showToast('「' + f.name + '」类型不支持（仅图片/PDF/Word/Excel）', true); continue; }
+      if (f.size > ATT_MAX) { showToast('「' + f.name + '」超过 20MB 上限', true); continue; }
+      const fd = new FormData();
+      fd.append('file', f);
+      const vo = await api('/work-order/attachment/upload', { method: 'POST', body: fd });
+      if (!vo || !vo.id) continue;
+      if (seq !== S.rsSeq || S.resultId !== orderId) {
+        // 上传完成时弹窗已关闭/切换工单：立即服务端清理
+        api('/work-order/attachment/remove?id=' + encodeURIComponent(vo.id), { method: 'POST' })
+          .catch(() => { /* 清理失败不回显 */ });
+        continue;
+      }
+      S.rsAtts.push({ id: vo.id, orderId: null, fileName: vo.fileName || f.name, fileSize: vo.fileSize || f.size, fileExt: vo.fileExt || ext });
+      S.rsPending.push(vo.id);
+      uploaded++;
+      renderRsAtt();
+    }
+    if (uploaded > 0) showToast('已上传 ' + uploaded + ' 个附件');
+  } catch (err) {
+    showToast(err.message || '附件上传失败', true);
+  } finally {
+    S.rsUploading = false;
+    if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); }
+  }
+}
+
+/** 附件区交互：下载（点文件名）/ 移除（新上传立即物理删除；已保存附件仅内存移除，保存时按集合清理） */
+async function onRsAttClick(e) {
+  const del = e.target.closest('[data-att-del]');
+  if (del) {
+    if (S.rsUploading) { showToast('附件上传中，请稍候', true); return; }
+    const id = del.dataset.attDel;
+    const isNew = S.rsPending.indexOf(id) >= 0;
+    if (isNew) {
+      try {
+        await api('/work-order/attachment/remove?id=' + encodeURIComponent(id), { method: 'POST' });
+      } catch (err) {
+        showToast(err.message || '移除失败', true);
+        return;
+      }
+      S.rsPending = S.rsPending.filter(x => x !== id);
+    }
+    S.rsAtts = S.rsAtts.filter(a => a.id !== id);
+    renderRsAtt();
+    showToast(isNew ? '附件已移除' : '已标记移除，保存后生效');
+    return;
+  }
+  const name = e.target.closest('[data-att]');
+  if (name) downloadOrderAtt(name.dataset.att, name.dataset.attName);
+}
+
+async function openResult(id) {
   const row = findRow(id);
   if (!row) return;
+  const seq = ++S.rsSeq;
   S.resultId = id;
+  S.rsAtts = [];
+  S.rsPending = [];
+  S.rsUploading = false;
+  S.rsAttSynced = false;
   $('rs-sub').textContent = (row.code || '') + ' · ' + (row.title || '');
   $('rs-result').value = row.result || '';
   $('rs-count').textContent = String($('rs-result').value.length);
+  renderRsAtt();
   openMask('rs');
+  // 已保存附件：以详情为准（列表行不带附件）；详情返回前已上传的附件保留，避免被覆盖丢失
+  try {
+    const d = await api('/work-order/detail?id=' + encodeURIComponent(id));
+    if (seq !== S.rsSeq) return;
+    const loaded = (d && Array.isArray(d.attachments) ? d.attachments : [])
+      .map(a => ({ id: a.id, orderId: a.orderId, fileName: a.fileName, fileSize: a.fileSize, fileExt: a.fileExt }));
+    const loadedIds = loaded.map(a => a.id);
+    S.rsAtts = loaded.concat(S.rsAtts.filter(a => loadedIds.indexOf(a.id) < 0));
+    S.rsAttSynced = true;
+    renderRsAtt();
+  } catch (e) {
+    if (seq !== S.rsSeq) return;
+    showToast(e.message || '附件加载失败，请关闭后重试', true);
+  }
 }
 
 async function submitResult() {
   const result = $('rs-result').value.trim();
   if (!result) { showToast('请填写处理结果', true); return; }
+  if (!S.rsAttSynced) { showToast('附件信息加载中，请稍候重试', true); return; }
+  if (S.rsUploading) { showToast('附件上传中，请稍候', true); return; }
   const btn = $('rs-ok');
   if (btn.classList.contains('is-loading')) return;
   btn.classList.add('is-loading');
   btn.disabled = true;
   try {
-    await api('/work-order/result', { method: 'POST', body: { id: S.resultId, result: result } });
+    await api('/work-order/result', {
+      method: 'POST',
+      body: { id: S.resultId, result: result, attachmentIds: S.rsAtts.map(a => a.id) }
+    });
+    // 已随本次保存提交，关闭弹窗时不再清理
+    S.rsPending = [];
     closeMask('rs');
     showToast('处理结果已保存');
     await loadList();
@@ -1000,6 +1219,15 @@ function bindEvents() {
   // 处理结果字数
   $('rs-result').addEventListener('input', () => {
     $('rs-count').textContent = String($('rs-result').value.length);
+  });
+  // 处理结果附件：上传 / 移除 / 下载
+  $('rs-upload').addEventListener('click', () => $('rs-file').click());
+  $('rs-file').addEventListener('change', onUploadRs);
+  $('rs-att-list').addEventListener('click', onRsAttClick);
+  // 详情附件下载
+  $('view-body').addEventListener('click', e => {
+    const a = e.target.closest('[data-att]');
+    if (a) downloadOrderAtt(a.dataset.att, a.dataset.attName);
   });
   $('rs-ok').addEventListener('click', submitResult);
   $('as-ok').addEventListener('click', submitAssign);

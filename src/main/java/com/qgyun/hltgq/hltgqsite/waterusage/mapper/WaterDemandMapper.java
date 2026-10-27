@@ -39,6 +39,7 @@ public interface WaterDemandMapper {
     String BASE_COLS = "d.id AS id, d.demand_no AS demandNo, d.water_user_id AS waterUserId, " +
             "u.user_no AS waterUserNo, u.name AS waterUserName, d.gate_id AS gateId, " +
             "s.zzkaec AS gateName, d.amount AS amount, " +
+            "d.period_year AS periodYear, d.period_month AS periodMonth, d.xun_list AS xunValues, " +
             "to_char(d.start_date, 'YYYY-MM-DD') AS startDate, to_char(d.end_date, 'YYYY-MM-DD') AS endDate, " +
             "d.usage_desc AS usage, d.status AS status, d.audit_opinion AS auditOpinion, d.audit_by AS auditBy, " +
             "to_char(d.audit_at, 'YYYY-MM-DD HH24:MI') AS auditAt, " +
@@ -83,12 +84,14 @@ public interface WaterDemandMapper {
             " WHERE corp_code = 'hltgq' AND demand_no ~ '^XS[0-9]+$'")
     int selectMaxDemandSeq();
 
-    /** 新增（row key：id/demand_no/water_user_id/gate_id/amount/start_date/end_date/usage_desc/remark/now/operator） */
+    /** 新增（row key：id/demand_no/water_user_id/gate_id/amount/period_year/period_month/xun_list/start_date/end_date/usage_desc/remark/now/operator） */
     @Insert("INSERT INTO " + T_DEMAND + " " +
-            "(\"id\", \"demand_no\", \"water_user_id\", \"gate_id\", \"amount\", \"start_date\", \"end_date\", " +
+            "(\"id\", \"demand_no\", \"water_user_id\", \"gate_id\", \"amount\", " +
+            "\"period_year\", \"period_month\", \"xun_list\", \"start_date\", \"end_date\", " +
             "\"usage_desc\", \"status\", \"remark\", \"corp_code\", \"created_at\", \"created_by\", " +
             "\"updated_at\", \"updated_by\") " +
             "VALUES (#{row.id}, #{row.demand_no}, #{row.water_user_id}, #{row.gate_id}, #{row.amount}, " +
+            "#{row.period_year}, #{row.period_month}, #{row.xun_list}, " +
             "CAST(#{row.start_date} AS date), CAST(#{row.end_date} AS date), #{row.usage_desc}, '#1#', " +
             "#{row.remark}, 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
     int insertDemand(@Param("row") Map<String, Object> row);
@@ -96,6 +99,8 @@ public interface WaterDemandMapper {
     /** 编辑（仅待审核/已驳回；保存后重置为待审核并清空审核痕迹，重新进入审核流程） */
     @Update("UPDATE " + T_DEMAND + " SET \"water_user_id\" = #{row.water_user_id}, " +
             "\"gate_id\" = #{row.gate_id}, \"amount\" = #{row.amount}, " +
+            "\"period_year\" = #{row.period_year}, \"period_month\" = #{row.period_month}, " +
+            "\"xun_list\" = #{row.xun_list}, " +
             "\"start_date\" = CAST(#{row.start_date} AS date), \"end_date\" = CAST(#{row.end_date} AS date), " +
             "\"usage_desc\" = #{row.usage_desc}, \"remark\" = #{row.remark}, \"status\" = '#1#', " +
             "\"audit_opinion\" = NULL, \"audit_by\" = NULL, \"audit_at\" = NULL, " +

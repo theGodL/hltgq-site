@@ -7,12 +7,16 @@ import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport.GateConfig;
 import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterBillMapper;
 import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterDispatchMapper;
+import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterLedgerMapper;
 import com.qgyun.hltgq.hltgqsite.waterusage.mapper.WaterUserMapper;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.BillPlanRowVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.DispatchExecRowVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.LedgerRowVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterBillVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterDispatchVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterLedgerSaveVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterLedgerUserVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterLedgerVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterUserVO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -28,16 +32,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 水费账单服务（台账 / 明细 / 账单 / 出账 / 收款 / 删除）。
+ * 水费账单服务（手工台账 / 方案明细 / 账单 / 出账 / 收款 / 删除）。
  * <p>计入水量计量统一走 {@link WaterUsageMeter}（与流量监测/灌溉用水、用水计划灌溉进度同源同一实现）：
  * 区间累计 = ttf(窗口内末行) − prevTtf(起点前最近一条 ttf 非空行)，
  * 起点前无基准按 0，哨兵值 -999/-9991 视为缺失；差额策略（calc_mode=#2#）扣减闸口取负参与合计。
- * <p>出账：按 (用水户, 分期 key) 分组拆分多张账单（1 账单 : N 方案），组内逐方案实时计量、
- * 净计入水量 ≤0 拦截；成功后以 billed_qty 快照逐行打标、bill_id 挂接；账单删除清空挂接、
- * 方案恢复未计费（实时重新计量）。
- * <p>台账 four 视图共用：已计费行取快照、未计费行实时计量；待出账方案无有效计量时标记 dataOk=false。
+ * <p>出账有两条来源：① 手工台账（1 台账 : 1 账单，金额 = 台账用水量 × 单价快照）；
+ * ② 调度方案（按 (用水户, 分期 key) 分组拆分多张账单，1 账单 : N 方案，组内净计入水量 ≤0 拦截）。
+ * 两条来源写同一张账单表：台账出账回收 ledger_id、方案出账回收 方案.bill_id；账单删除时双向解除挂接
+ * （方案恢复未计费、台账恢复未出账），可重新出账。
  * <p>编号 SF + 期间码 + '-' + 户号 + 4 位全局序号：MAX+1 取号、唯一索引兜底并发（冲突重试在 Controller 层）。
- * <p>数量口径：接口对外万m³（4 位小数），库内 m³；金额 = 计入水量(m³) × 水价(元/m³)。
+ * <p>数量口径：账单接口对外万m³（4 位小数），库内 m³；手工台账接口直接输出 m³；
+ * 金额 = 计入水量(m³) × 水价(元/m³)。
  */
 @Service
 public class WaterBillService {
@@ -47,11 +52,16 @@ public class WaterBillService {
     /** 校验说明最多条数（超出折叠为「等 N 项」） */
     private static final int MAX_NOTES = 3;
 
+    /** 台账备注最大长度（库列 VARCHAR(200)） */
+    private static final int MAX_REMARK = 200;
+
     private final WaterBillMapper billMapper;
 
     private final WaterDispatchMapper dispatchMapper;
 
     private final WaterUserMapper userMapper;
+
+    private final WaterLedgerMapper ledgerMapper;
 
     private final ShortIdGenerator shortIdGenerator;
 
@@ -66,12 +76,14 @@ public class WaterBillService {
     public WaterBillService(WaterBillMapper billMapper,
                             WaterDispatchMapper dispatchMapper,
                             WaterUserMapper userMapper,
+                            WaterLedgerMapper ledgerMapper,
                             ShortIdGenerator shortIdGenerator,
                             ObjectMapper objectMapper,
                             WaterUsageMeter meter) {
         this.billMapper = billMapper;
         this.dispatchMapper = dispatchMapper;
         this.userMapper = userMapper;
+        this.ledgerMapper = ledgerMapper;
         this.shortIdGenerator = shortIdGenerator;
         this.objectMapper = objectMapper;
         this.meter = meter;
@@ -269,6 +281,228 @@ public class WaterBillService {
         return out;
     }
 
+    // ==================== 手工台账（视图一：新增 / 编辑 / 删除 / 出账） ====================
+
+    /**
+     * 手工台账列表（无分页，最新在前；含全量 stat）。
+     * <p>status 传 pending（仅未出账）/ billed（仅已出账）/ 空（全部）；keyword 匹配台账编号 / 户名 / 户号 / 结算周期。
+     */
+    public Map<String, Object> ledgerRecords(String keyword, String status) {
+        String st = WaterUsageSupport.trim(status);
+        Integer unbilled = null;
+        if (st != null) {
+            if ("pending".equals(st)) {
+                unbilled = 1;
+            } else if ("billed".equals(st)) {
+                unbilled = 0;
+            } else {
+                throw new IllegalArgumentException("出账状态参数不正确");
+            }
+        }
+        List<WaterLedgerVO> records = ledgerMapper.selectLedgerList(WaterUsageSupport.trim(keyword), unbilled);
+        for (WaterLedgerVO row : records) {
+            decorateLedger(row);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", records.size());
+        out.put("records", records);
+        out.put("stat", ledgerStat());
+        return out;
+    }
+
+    /** 手工台账统计条（全量，无筛选参数：台账总数 / 待出账条数 / 待出账水量(m³) / 待出账金额 / 已出账金额） */
+    public Map<String, Object> ledgerStat() {
+        Map<String, Object> agg = ledgerMapper.selectLedgerStat();
+        Map<String, Object> stat = new LinkedHashMap<>();
+        if (agg == null) {
+            stat.put("ledgerCount", 0L);
+            stat.put("pendingCount", 0L);
+            stat.put("pendingVolume", BigDecimal.ZERO);
+            stat.put("pendingAmount", BigDecimal.ZERO);
+            stat.put("billedAmount", BigDecimal.ZERO);
+            return stat;
+        }
+        stat.put("ledgerCount", agg.get("cnt") == null ? 0L : ((Number) agg.get("cnt")).longValue());
+        stat.put("pendingCount", agg.get("pendingcnt") == null ? 0L : ((Number) agg.get("pendingcnt")).longValue());
+        stat.put("pendingVolume", toDecimal(agg.get("pendingvol")));
+        stat.put("pendingAmount", toDecimal(agg.get("pendingamt")));
+        stat.put("billedAmount", toDecimal(agg.get("billedamt")));
+        return stat;
+    }
+
+    /** 手工台账「用水户」下拉（仅正常状态；带出单价、统计周期与当前期间 key） */
+    public List<WaterLedgerUserVO> ledgerUsers(String keyword) {
+        List<WaterLedgerUserVO> users = ledgerMapper.selectLedgerUserOptions(WaterUsageSupport.trim(keyword));
+        for (WaterLedgerUserVO user : users) {
+            String settle = user.getSettleCycle();
+            user.setCycle(WaterUsageDict.settleCycleUnitOf(settle));
+            user.setCycleName(WaterUsageDict.settleCycleName(settle));
+            user.setCycleKey(WaterUsageDict.currentCycleKey(settle));
+        }
+        return users;
+    }
+
+    /**
+     * 保存手工台账（id 为空新增、非空编辑）。
+     * <p>校验：用水户存在且正常、结算周期与期间 key 匹配、用水量 >0、单价 >0、金额（=水量×单价，2 位）≥0.01；
+     * 金额服务端计算不信任前端。编辑仅限未出账（已出账禁改），编号创建时固化不重编。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> saveLedger(WaterLedgerSaveVO vo) {
+        if (vo == null) {
+            throw new IllegalArgumentException("台账参数不能为空");
+        }
+        String userId = WaterUsageSupport.requireText(vo.getUserId(), "请选择用水户");
+        String cycle = WaterUsageSupport.trim(vo.getCycle());
+        String settle = WaterUsageDict.settleCycleOfCode(cycle);
+        if (settle == null) {
+            throw new IllegalArgumentException("结算周期不正确");
+        }
+        String cycleKey = WaterUsageSupport.requireText(vo.getCycleKey(), "请选择结算年份与月份/季度");
+        if (!cycleKeyMatches(cycle, cycleKey)) {
+            throw new IllegalArgumentException("结算周期与结算年份/月份不匹配");
+        }
+        if (WaterUsageDict.cycleRange(cycleKey) == null) {
+            throw new IllegalArgumentException("结算周期推导失败：" + cycleKey);
+        }
+        BigDecimal volume = vo.getVolume();
+        if (volume == null || volume.signum() <= 0) {
+            throw new IllegalArgumentException("用水量必须大于 0");
+        }
+        BigDecimal price = vo.getPrice();
+        if (price == null || price.signum() <= 0) {
+            throw new IllegalArgumentException("单价必须大于 0");
+        }
+        volume = WaterUsageSupport.scale2(volume);
+        BigDecimal amount = volume.multiply(price).setScale(2, RoundingMode.HALF_UP);
+        if (amount.signum() <= 0) {
+            throw new IllegalArgumentException("金额须不少于 0.01 元，请核对用水量与单价");
+        }
+        String id = WaterUsageSupport.trim(vo.getId());
+        WaterLedgerVO old = null;
+        if (id != null) {
+            old = ledgerMapper.selectLedgerById(id);
+            if (old == null) {
+                throw new IllegalArgumentException("用水台账不存在");
+            }
+            if (old.getBillId() != null) {
+                throw new IllegalArgumentException("该台账已出账（账单 " + old.getBillNo() + "），不可修改");
+            }
+        }
+        WaterUserVO user = userMapper.selectUserById(userId);
+        if (user == null) {
+            throw new IllegalArgumentException("用水户不存在");
+        }
+        // 新增仅限正常户；编辑沿用原户时允许（户可能事后停用），换户仍按正常户校验
+        boolean sameUser = old != null && userId.equals(old.getWaterUserId());
+        if (!sameUser && !WaterUsageDict.USER_STATUS_NORMAL.equals(user.getStatus())) {
+            throw new IllegalArgumentException("用水户 " + user.getName() + " 已停用，无法新增台账");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("water_user_id", userId);
+        row.put("settle_cycle", settle);
+        row.put("cycle_key", cycleKey);
+        row.put("volume", volume);
+        row.put("price", price);
+        row.put("amount", amount);
+        String remark = WaterUsageSupport.trim(vo.getRemark());
+        row.put("remark", remark == null ? null : (remark.length() > MAX_REMARK ? remark.substring(0, MAX_REMARK) : remark));
+        row.put("now", now);
+        row.put("operator", operator);
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (old != null) {
+            row.put("id", id);
+            if (ledgerMapper.updateLedger(row) == 0) {
+                throw new IllegalArgumentException("台账状态已变更，请刷新后重试");
+            }
+            out.put("id", id);
+            out.put("ledgerNo", old.getLedgerNo());
+        } else {
+            int seq = ledgerMapper.selectMaxLedgerSeq() + 1;
+            String ledgerId = shortIdGenerator.nextUUID(null);
+            String ledgerNo = "TZ" + WaterUsageDict.cycleCode(cycleKey) + "-"
+                    + user.getUserNo() + String.format("%04d", seq);
+            row.put("id", ledgerId);
+            row.put("ledger_no", ledgerNo);
+            ledgerMapper.insertLedger(row);
+            out.put("id", ledgerId);
+            out.put("ledgerNo", ledgerNo);
+        }
+        out.put("amount", amount);
+        return out;
+    }
+
+    /** 删除手工台账（仅未出账；已出账需先删除关联账单） */
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteLedger(String id) {
+        String key = WaterUsageSupport.requireText(id, "台账 id 不能为空");
+        WaterLedgerVO old = ledgerMapper.selectLedgerById(key);
+        if (old == null) {
+            throw new IllegalArgumentException("用水台账不存在");
+        }
+        if (old.getBillId() != null) {
+            throw new IllegalArgumentException("该台账已出账（账单 " + old.getBillNo() + "），请先删除关联账单");
+        }
+        if (ledgerMapper.deleteLedger(key) == 0) {
+            throw new IllegalArgumentException("台账状态已变更，请刷新后重试");
+        }
+    }
+
+    /**
+     * 手工台账出账（1 台账 : 1 账单）：账单水量/单价/金额取台账快照，账单回填 ledger_id、台账回填 bill_id。
+     * <p>并发抢标：markLedgerBilled 带 bill_id IS NULL 条件，行数 0 回滚整笔事务。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public WaterBillVO createBillFromLedger(String ledgerId) {
+        String key = WaterUsageSupport.requireText(ledgerId, "台账 id 不能为空");
+        WaterLedgerVO ledger = ledgerMapper.selectLedgerById(key);
+        if (ledger == null) {
+            throw new IllegalArgumentException("用水台账不存在");
+        }
+        if (ledger.getBillId() != null) {
+            throw new IllegalArgumentException("该台账已出账（账单 " + ledger.getBillNo() + "），请勿重复操作");
+        }
+        if (ledger.getVolume() == null || ledger.getVolume().signum() <= 0
+                || ledger.getPrice() == null || ledger.getPrice().signum() <= 0) {
+            throw new IllegalArgumentException("台账用水量或单价无效，无法出账");
+        }
+        WaterUserVO user = userMapper.selectUserById(ledger.getWaterUserId());
+        if (user == null) {
+            throw new IllegalArgumentException("用水户不存在，无法出账");
+        }
+        LocalDate[] range = WaterUsageDict.cycleRange(ledger.getCycleKey());
+        if (range == null) {
+            throw new IllegalArgumentException("结算周期推导失败：" + ledger.getCycleKey());
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
+        int seq = billMapper.selectMaxBillSeq() + 1;
+        String billId = shortIdGenerator.nextUUID(null);
+        String billNo = "SF" + WaterUsageDict.cycleCode(ledger.getCycleKey()) + "-"
+                + user.getUserNo() + String.format("%04d", seq);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", billId);
+        row.put("bill_no", billNo);
+        row.put("water_user_id", ledger.getWaterUserId());
+        row.put("settle_cycle", ledger.getSettleCycle());
+        row.put("cycle_key", ledger.getCycleKey());
+        row.put("period_start", range[0].toString());
+        row.put("period_end", range[1].toString());
+        row.put("quantity", WaterUsageSupport.scale2(ledger.getVolume()));
+        row.put("price", ledger.getPrice());
+        row.put("amount", ledger.getAmount());
+        row.put("ledger_id", ledger.getId());
+        row.put("now", now);
+        row.put("operator", operator);
+        billMapper.insertBill(row);
+        if (ledgerMapper.markLedgerBilled(key, billId, now, operator) == 0) {
+            throw new IllegalArgumentException("该台账已被其他出账操作占用，请刷新后重试");
+        }
+        return detail(billId);
+    }
+
     // ==================== 出账 / 收款 / 删除 ====================
 
     /**
@@ -281,7 +515,7 @@ public class WaterBillService {
         List<String> keys = normalizeIds(ids);
         List<WaterDispatchVO> rows = dispatchMapper.selectDispatchesByIds(keys);
         if (rows.size() != keys.size()) {
-            throw new IllegalArgumentException("部分调度方案不存在，请刷新后重试");
+            throw new IllegalArgumentException("部分调度指令不存在，请刷新后重试");
         }
         LocalDateTime now = LocalDateTime.now();
         String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
@@ -290,17 +524,17 @@ public class WaterBillService {
         Map<String, Group> groups = new LinkedHashMap<>();
         for (WaterDispatchVO row : rows) {
             if (WaterUsageDict.DISPATCH_STATUS_CANCELED.equals(row.getStatus())) {
-                throw new IllegalArgumentException("方案 " + row.getDispatchNo() + " 已取消，不可出账");
+                throw new IllegalArgumentException("指令 " + row.getDispatchNo() + " 已取消，不可出账");
             }
             if (row.getBillId() != null) {
-                throw new IllegalArgumentException("方案 " + row.getDispatchNo()
+                throw new IllegalArgumentException("指令 " + row.getDispatchNo()
                         + " 已计费（账单 " + row.getBillNo() + "），不可重复出账");
             }
             WaterUserVO user = userCache.get(row.getWaterUserId());
             if (user == null) {
                 user = userMapper.selectUserById(row.getWaterUserId());
                 if (user == null) {
-                    throw new IllegalArgumentException("用水户不存在（方案 " + row.getDispatchNo() + "）");
+                    throw new IllegalArgumentException("用水户不存在（指令 " + row.getDispatchNo() + "）");
                 }
                 userCache.put(row.getWaterUserId(), user);
             }
@@ -309,9 +543,9 @@ public class WaterBillService {
                 throw new IllegalArgumentException("用水户 " + user.getName() + " 未配置统计周期，无法出账");
             }
             String cycleKey = WaterUsageDict.cycleKeyOf(
-                    WaterUsageSupport.parseDateTime(row.getStartTime(), "执行时段起"), settle);
+                    WaterUsageSupport.parseDateTime(row.getStartTime(), "执行时间"), settle);
             if (cycleKey == null) {
-                throw new IllegalArgumentException("方案 " + row.getDispatchNo() + " 账期推导失败");
+                throw new IllegalArgumentException("指令 " + row.getDispatchNo() + " 账期推导失败");
             }
             GateConfig config = configCache.get(user.getId());
             if (config == null) {
@@ -325,12 +559,12 @@ public class WaterBillService {
                     row.getGateId(), row.getStartTime(), row.getEndTime());
             BigDecimal raw = measured.getValue();
             if (raw == null) {
-                throw new IllegalArgumentException("方案 " + row.getDispatchNo() + " 不可出账："
-                        + measured.getIssue() + "（时段 " + row.getStartTime() + " ~ " + row.getEndTime()
+                throw new IllegalArgumentException("指令 " + row.getDispatchNo() + " 不可出账："
+                        + measured.getIssue() + "（执行窗口 " + row.getStartTime() + " ~ " + row.getEndTime()
                         + "，闸口 " + (row.getGateName() == null ? row.getGateId() : row.getGateName()) + "）");
             }
             if (raw.signum() <= 0) {
-                throw new IllegalArgumentException("方案 " + row.getDispatchNo() + " 计入水量为 0 或负值（"
+                throw new IllegalArgumentException("指令 " + row.getDispatchNo() + " 计入水量为 0 或负值（"
                         + raw.toPlainString() + " m³），请核对流量数据");
             }
             BigDecimal signed = WaterUsageMeter.isDeduct(config, row.getGateId()) ? raw.negate() : raw;
@@ -382,7 +616,7 @@ public class WaterBillService {
             for (Billing billing : group.billings) {
                 if (dispatchMapper.markBilled(billing.dispatchId, billId,
                         WaterUsageSupport.scale2(billing.signed), now, operator) == 0) {
-                    throw new IllegalArgumentException("方案 " + billing.dispatchNo
+                    throw new IllegalArgumentException("指令 " + billing.dispatchNo
                             + " 已被其他出账操作占用，请刷新后重试");
                 }
             }
@@ -413,7 +647,7 @@ public class WaterBillService {
         }
     }
 
-    /** 删除（任意状态；方案挂接清空恢复未计费，可重新出账） */
+    /** 删除（任意状态；方案挂接清空恢复未计费、手工台账挂接清空恢复未出账，均可重新出账） */
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
         String key = WaterUsageSupport.requireText(id, "账单 id 不能为空");
@@ -424,6 +658,7 @@ public class WaterBillService {
         LocalDateTime now = LocalDateTime.now();
         String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
         dispatchMapper.clearBillRefs(key, now, operator);
+        ledgerMapper.clearBillRefByBillId(key, now, operator);
         if (billMapper.deleteBill(key) == 0) {
             throw new IllegalArgumentException("账单不存在，请刷新后重试");
         }
@@ -538,6 +773,23 @@ public class WaterBillService {
         }
     }
 
+    /** 结算周期英文码与期间 key 是否匹配：month 2026-10 / quarter 2026-Q3 / year 2026 */
+    private static boolean cycleKeyMatches(String cycle, String cycleKey) {
+        if (cycle == null || cycleKey == null) {
+            return false;
+        }
+        if ("month".equals(cycle)) {
+            return cycleKey.matches("\\d{4}-(0[1-9]|1[0-2])");
+        }
+        if ("quarter".equals(cycle)) {
+            return cycleKey.matches("\\d{4}-Q[1-4]");
+        }
+        if ("year".equals(cycle)) {
+            return cycleKey.matches("\\d{4}");
+        }
+        return false;
+    }
+
     /** 任意数值 → BigDecimal（SUM 聚合列类型容错） */
     private static BigDecimal toDecimal(Object value) {
         if (value == null) {
@@ -561,7 +813,7 @@ public class WaterBillService {
             }
         }
         if (keys.isEmpty()) {
-            throw new IllegalArgumentException("请选择要出账的调度方案");
+            throw new IllegalArgumentException("请选择要出账的调度指令");
         }
         return keys;
     }
@@ -591,6 +843,24 @@ public class WaterBillService {
         plan.setStatus(WaterUsageDict.dispatchStatusCodeOf(raw));
         plan.setPlanAmount(WaterUsageSupport.toWan(plan.getPlanAmount()));
         plan.setAmount(WaterUsageSupport.toWan(plan.getAmount()));
+    }
+
+    /** 台账行装饰：周期英文码 + 中文名/标签、已出账标记与账单状态英文码（水量保持 m³） */
+    private void decorateLedger(WaterLedgerVO vo) {
+        if (vo == null) {
+            return;
+        }
+        String settle = vo.getSettleCycle();
+        vo.setCycle(WaterUsageDict.settleCycleUnitOf(settle));
+        vo.setCycleName(WaterUsageDict.settleCycleName(settle));
+        vo.setCycleLabel(WaterUsageDict.cycleLabel(vo.getCycleKey()));
+        boolean billed = vo.getBillId() != null;
+        vo.setBilled(billed);
+        if (billed) {
+            String raw = vo.getBillStatus();
+            vo.setBillStatusName(WaterUsageDict.billStatusName(raw));
+            vo.setBillStatus(WaterUsageDict.billStatusCodeOf(raw));
+        }
     }
 
     /** 出账分组暂存：用水户 + 分期 key + 方案计量行（signed = 带符号计入水量 m³） */

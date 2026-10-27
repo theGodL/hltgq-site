@@ -36,6 +36,12 @@ public class WaterPlanSaveVO {
     /** 明细（至少 1 行；同一用水户仅可出现一次） */
     private List<Item> items;
 
+    /**
+     * 附件 id 集合（上传接口返回的 id）：null = 不调整附件（已生效受限编辑可省略）；
+     * 非 null = 以本集合为准（新增绑定 + 移除未保留附件）。
+     */
+    private List<String> attachmentIds;
+
     /** 明细行 */
     @Data
     public static class Item {

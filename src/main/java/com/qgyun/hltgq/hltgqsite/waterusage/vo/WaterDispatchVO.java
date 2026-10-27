@@ -5,9 +5,11 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 /**
- * 调度方案（列表行 / 详情共用）。
- * <p>行 = 闸口 × 时段的放水载体：计入水量 = 该闸口在 [startTime, endTime] 的实测累计流量（带符号），
- * planAmount 为计划放水量（两者单位对外均为万m³）；amount 为 planAmount 的同值别名（兼容前端字段名）。
+ * 调度指令（列表行 / 详情共用）。
+ * <p>执行时间 execTime 为开闸时刻、完成时间 finishTime 为关闸时刻；
+ * 计入水量 = 该闸口在 [execTime, finishTime]（未完成取当前时间）的实测累计流量（带符号），
+ * 旧数据 execTime 为空时回落到原执行时段 [startTime, endTime]。
+ * <p>planAmount 为计划放水量（选填，对外万m³）；amount 为同值别名（兼容前端字段名）。
  * <p>billed=true 表示已出账（billId 非空）；trail 为调度记录数（动态统计）。
  */
 @Data
@@ -41,16 +43,25 @@ public class WaterDispatchVO {
 
     private String gateName;
 
-    /** 计划放水量（万m³，语义字段） */
+    /** 计划放水量（万m³，选填） */
     private BigDecimal planAmount;
 
     /** 计划放水量（万m³，= planAmount，兼容前端列表字段名） */
     private BigDecimal amount;
 
-    /** 执行时段起（YYYY-MM-DD HH:mm） */
+    /** 执行时间（开闸时刻；YYYY-MM-DD HH:mm） */
+    private String execTime;
+
+    /** 完成时间（关闸时刻；未完成返回空） */
+    private String finishTime;
+
+    /** 指定闸门高度（cm） */
+    private Integer gateHeightCm;
+
+    /** 计量窗口起（= execTime，旧数据为原执行时段起） */
     private String startTime;
 
-    /** 执行时段止（YYYY-MM-DD HH:mm） */
+    /** 计量窗口止（= finishTime，未完成取当前时间；旧数据为原执行时段止） */
     private String endTime;
 
     /** 调度负责人 */

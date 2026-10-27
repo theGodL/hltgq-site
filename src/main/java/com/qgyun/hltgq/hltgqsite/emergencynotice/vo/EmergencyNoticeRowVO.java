@@ -29,4 +29,10 @@ public class EmergencyNoticeRowVO {
 
     /** 上级发布时间（yyyy-MM-dd HH:mm，空值回退录入时间） */
     private String publishTime;
+
+    /** 通知状态编码：已发布 #ucpd# / 已终止 #mevt# */
+    private String noticeStatus;
+
+    /** 灌区落实要求（表单录入原文，可能为空） */
+    private String requirementText;
 }

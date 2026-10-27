@@ -23,7 +23,7 @@ import java.util.Map;
 /**
  * 调度记录管理（灌区用水模块页面四之三）。
  * <p>闸口操作留痕，不参与水量与费用计算；宽进管理（编辑/删除不限状态），
- * 仅校验存在性与关联一致性（填写关联方案时用水户/闸口须与方案一致）。
+ * 仅校验存在性与关联一致性（填写关联指令时用水户/闸口须与指令一致）。
  */
 @RestController
 @RequestMapping("/water-dispatch-record")
@@ -34,13 +34,13 @@ public class WaterDispatchRecordController {
     @Autowired
     private WaterDispatchRecordService recordService;
 
-    /** 表单元数据（操作类型字典 + 操作人建议 + 当天日期） */
+    /** 表单元数据（操作人建议 + 当天日期） */
     @GetMapping("/meta")
     public Map<String, Object> meta() {
         return recordService.meta();
     }
 
-    /** 列表分页（关键字匹配操作人/备注/方案编号；opType 传前端英文码 up/down/adjust 由 Service 映射） */
+    /** 列表分页（关键字匹配操作人/备注/指令编号） */
     @GetMapping("/page")
     public Map<String, Object> page(@RequestParam(defaultValue = "1") int page,
                                     @RequestParam(defaultValue = "20") int size,
@@ -56,20 +56,19 @@ public class WaterDispatchRecordController {
         return recordService.detail(id);
     }
 
-    /** 「关联调度方案」下拉（未取消全部，编号倒序） */
+    /** 「关联调度指令」下拉（未取消全部，编号倒序） */
     @GetMapping("/plans")
     public List<DispatchOptionVO> plans(@RequestParam(required = false) String keyword) {
         return recordService.planOptions(keyword);
     }
 
-    /** 新增（关联方案选填；opType 空按 up，height 0~999 cm 选填） */
+    /** 新增（关联指令选填；操作后闸门高度 0~999 cm 选填） */
     @PostMapping("/create")
     public WaterDispatchRecordVO create(@RequestBody WaterDispatchRecordSaveVO body) {
-        log.info("收到调度记录新增请求：dispatchId={}，userId={}，gateId={}，opType={}",
+        log.info("收到调度记录新增请求：dispatchId={}，userId={}，gateId={}",
                 body == null ? null : body.getDispatchId(),
                 body == null ? null : body.getWaterUserId(),
-                body == null ? null : body.getGateId(),
-                body == null ? null : body.getOpType());
+                body == null ? null : body.getGateId());
         return recordService.create(body);
     }
 

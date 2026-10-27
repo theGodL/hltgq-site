@@ -149,16 +149,19 @@ public interface WaterUserMapper {
             "<foreach collection='planIds' item='pid' open='(' separator=',' close=')'>#{pid}</foreach></script>")
     int deleteUserItemsInPlans(@Param("userId") String userId, @Param("planIds") List<String> planIds);
 
-    /** 闸口下拉（站档 epjutj 含 #4# 闸站；按站点名称升序） */
+    /**
+     * 关联闸口下拉（站档 epjutj 含 #3# 流量站 / #4# 闸站）：渠道量水点 + 闸站，覆盖灌区全部计量节点；
+     * 视频站（#5#）等非计量节点不纳入。按站点名称升序。
+     */
     @Select("<script>SELECT s.id AS id, s.zzkaec AS name FROM " + T_STATION + " s " +
-            "WHERE s.epjutj LIKE '%#4#%' " +
+            "WHERE (s.epjutj LIKE '%#3#%' OR s.epjutj LIKE '%#4#%') " +
             "<if test='keyword != null and keyword != \"\"'>AND s.zzkaec LIKE CONCAT('%', #{keyword}, '%') </if>" +
             "ORDER BY s.zzkaec</script>")
     List<GateOptionVO> selectGates(@Param("keyword") String keyword);
 
-    /** 按 ID 批量回查闸口（保存时固化名称快照 / 户关联闸口下拉补名称） */
+    /** 按 ID 批量回查闸口（保存时固化名称快照 / 户关联闸口下拉补名称）；口径同 {@link #selectGates} */
     @Select("<script>SELECT s.id AS id, s.zzkaec AS name FROM " + T_STATION + " s " +
-            "WHERE s.epjutj LIKE '%#4#%' AND s.id IN " +
+            "WHERE (s.epjutj LIKE '%#3#%' OR s.epjutj LIKE '%#4#%') AND s.id IN " +
             "<foreach collection='ids' item='gid' open='(' separator=',' close=')'>#{gid}</foreach></script>")
     List<GateOptionVO> selectGateNamesByIds(@Param("ids") List<String> ids);
 

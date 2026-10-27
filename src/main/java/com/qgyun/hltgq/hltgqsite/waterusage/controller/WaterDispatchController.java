@@ -91,33 +91,33 @@ public class WaterDispatchController {
     /** 新增（待执行；编号冲突最多重试 3 次） */
     @PostMapping("/create")
     public WaterDispatchVO create(@RequestBody WaterDispatchSaveVO body) {
-        log.info("收到调度方案新增请求：userId={}，gateId={}，planId={}，demandId={}",
+        log.info("收到调度指令新增请求：userId={}，gateId={}，planId={}，demandId={}",
                 body == null ? null : body.getWaterUserId(),
                 body == null ? null : body.getGateId(),
                 body == null ? null : body.getPlanId(),
                 body == null ? null : body.getDemandId());
-        return WaterUsageSupport.retryOnNoConflict("uk_water_dispatch_no", "调度方案",
+        return WaterUsageSupport.retryOnNoConflict("uk_water_dispatch_no", "调度指令",
                 () -> dispatchService.create(body), log);
     }
 
     /** 编辑（仅待执行且未计费：全字段） */
     @PutMapping("/update")
     public WaterDispatchVO update(@RequestParam String id, @RequestBody WaterDispatchSaveVO body) {
-        log.info("收到调度方案编辑请求：id={}", id);
+        log.info("收到调度指令编辑请求：id={}", id);
         return dispatchService.update(id, body);
     }
 
-    /** 调整（水费页「编辑水量」：计划放水量/执行时段/备注；未计费未取消即可） */
+    /** 调整（水费页「编辑水量」：计划放水量/执行时间/指定闸门高度；未计费未取消即可） */
     @PutMapping("/adjust")
     public WaterDispatchVO adjust(@RequestParam String id, @RequestBody WaterDispatchSaveVO body) {
-        log.info("收到调度方案调整请求：id={}", id);
+        log.info("收到调度指令调整请求：id={}", id);
         return dispatchService.adjust(id, body);
     }
 
     /** 状态流转（action = start 开始执行 / done 完成 / cancel 取消） */
     @PostMapping("/status")
     public Map<String, Object> status(@RequestParam String id, @RequestParam String action) {
-        log.info("收到调度方案状态流转请求：id={}，action={}", id, action);
+        log.info("收到调度指令状态流转请求：id={}，action={}", id, action);
         dispatchService.changeStatus(id, action);
         return WaterUsageSupport.ok();
     }
@@ -125,7 +125,7 @@ public class WaterDispatchController {
     /** 删除（未计费即可，不限执行态；记录挂接置空留痕） */
     @DeleteMapping("/delete")
     public Map<String, Object> delete(@RequestParam String id) {
-        log.info("收到调度方案删除请求：id={}", id);
+        log.info("收到调度指令删除请求：id={}", id);
         dispatchService.delete(id);
         return WaterUsageSupport.ok();
     }

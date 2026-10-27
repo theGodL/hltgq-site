@@ -66,6 +66,12 @@ public class WaterBillVO {
     /** 包含方案数 */
     private Integer planCount;
 
+    /** 来源手工台账 ID（方案出账为 null） */
+    private String ledgerId;
+
+    /** 来源手工台账编号（方案出账为 null） */
+    private String ledgerNo;
+
     /** 方案明细（仅详情输出） */
     private java.util.List<BillPlanRowVO> plans;
 }

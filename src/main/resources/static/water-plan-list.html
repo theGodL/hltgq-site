@@ -220,6 +220,17 @@ td.empty:hover{background:transparent}
 .m-sum b{color:var(--el-color-primary);font-weight:600;margin:0 2px}
 .m-sum .sub{font-size:12px;color:var(--el-text-color-secondary)}
 
+/* ===== 附件区（用水计划存档） ===== */
+.att-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.att-row{display:flex;align-items:center;gap:10px;padding:6px 12px;border:1px solid var(--el-border-color-lighter);border-radius:var(--el-radius);background:var(--el-fill-color-light)}
+.att-row .att-name{flex:1;min-width:0;color:var(--el-color-primary);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-row .att-name:hover{text-decoration:underline}
+.att-row .att-size{font-size:12px;color:var(--el-text-color-secondary);flex-shrink:0}
+.att-row .att-del{flex-shrink:0;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--el-radius);color:var(--el-text-color-secondary);cursor:pointer;transition:all .2s}
+.att-row .att-del:hover{color:var(--el-color-danger);background:var(--el-color-danger-light)}
+.att-empty{font-size:13px;color:var(--el-text-color-secondary);padding:2px 0;margin-top:8px}
+.att-hint{margin-top:6px;font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
+
 /* ===== 下拉组件（筛选与表单共用） ===== */
 .sel{position:relative}
 .sel-box{height:var(--el-control-height);border:1px solid var(--el-border-color);border-radius:var(--el-radius-control);background:var(--el-bg-color);padding:0 32px 0 12px;display:flex;align-items:center;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}
@@ -376,6 +387,17 @@ td.empty:hover{background:transparent}
           <label class="f-label">备注</label>
           <input class="field" id="in-remark" maxlength="200" placeholder="选填，最多 200 字（已生效计划仍可修改）" autocomplete="off">
         </div>
+        <div class="f-item span4">
+          <label class="f-label">附件</label>
+          <button class="btn btn-default" id="btn-upload">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 11V3.5M5 6l3-3 3 3M3 12.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            上传附件
+          </button>
+          <div class="att-list" id="att-list"></div>
+          <div class="att-hint" id="att-hint">支持图片、PDF、Word、Excel，单个文件不超过 20MB；保存前可移除</div>
+          <input type="file" id="file-input" multiple hidden
+                 accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.pdf,.doc,.docx,.xls,.xlsx">
+        </div>
       </div>
       <div class="sec-title">用水明细
         <button class="btn btn-default btn-sm" id="btn-add-item">＋ 添加明细</button>
@@ -446,6 +468,8 @@ const S = {
   row: null,                     // 当前编辑/查看的计划
   locked: false,                 // 已生效受限编辑
   items: [],                     // 明细行状态
+  attachments: [],               // 当前表单附件（含新上传）
+  pendingNew: [],                // 本次会话新上传、尚未提交的附件 id（取消时清理）
   userOptions: [], quotaOptions: [], userMap: {}, quotaMap: {},
   saving: false, seq: 0, listSeq: 0, flashKey: null
 };
@@ -464,10 +488,11 @@ function showToast(msg, isErr) {
   showToast.timer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
-/** 统一请求：非 2xx 抛出后端 message（后端 IllegalArgumentException → 400 + message） */
+/** 统一请求：非 2xx 抛出后端 message（后端 IllegalArgumentException → 400 + message）；FormData 不做 JSON 化 */
 async function api(path, opts) {
   const init = Object.assign({ credentials: 'include' }, opts || {});
-  if (init.body && typeof init.body !== 'string') {
+  const isForm = init.body && typeof FormData !== 'undefined' && init.body instanceof FormData;
+  if (init.body && typeof init.body !== 'string' && !isForm) {
     init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
     init.body = JSON.stringify(init.body);
   }
@@ -510,6 +535,43 @@ function fmtNum(v, digits) {
 }
 
 const fmt2 = n => (Math.round(n * 100) / 100).toFixed(2);
+
+/** 文件大小展示（B / KB / MB） */
+function fmtSize(n) {
+  if (n === null || n === undefined || isNaN(n)) return '';
+  const num = Number(n);
+  if (num < 1024) return num + ' B';
+  if (num < 1024 * 1024) return (num / 1024).toFixed(1) + ' KB';
+  return (num / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+/** 附件下载：浏览器直载 URL 带不了会话头，用 fetch + blob（后端 Content-Disposition 带原始文件名） */
+async function downloadAtt(id, name) {
+  try {
+    const res = await fetch(API + '/water-plan/attachment/download?id=' + encodeURIComponent(id), { credentials: 'include' });
+    if (!res.ok) {
+      let msg = '附件下载失败';
+      try {
+        const t = await res.text();
+        const d = JSON.parse(t);
+        msg = (d && (d.message || d.error)) || msg;
+      } catch (e) { /* 非 JSON 错误体，用兜底文案 */ }
+      showToast(msg, true);
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name || '附件';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    showToast('附件下载失败', true);
+  }
+}
 
 /* ============================ 周期推导（与后端 WaterUsageDict.periodOf 同公式） ============================ */
 function daysInMonth(year, month) {
@@ -843,14 +905,32 @@ function showDrawer() {
   $('drawer').setAttribute('aria-hidden', 'false');
 }
 
-function closeDrawer() {
+/** 关闭抽屉；保存请求进行中禁止关闭（附件清理与提交存在竞态），仅保存成功路径显式传 true */
+function closeDrawer(force) {
+  if (S.saving && force !== true) {
+    showToast('保存中，请稍候', true);
+    return;
+  }
   $('drawer-mask').classList.remove('show');
   $('drawer').classList.remove('show');
   $('drawer').setAttribute('aria-hidden', 'true');
   closeAllSelects(null);
+  // 未提交的新上传附件：清理（保存成功路径已先行摘除已提交项）
+  const pending = S.pendingNew.slice();
+  S.pendingNew = [];
+  if (pending.length) cleanupPending(pending);
   S.row = null;
   S.mode = '';
   S.locked = false;
+  S.attachments = [];
+  $('file-input').value = '';
+}
+
+function cleanupPending(ids) {
+  ids.forEach(id => {
+    api('/water-plan/attachment/remove?id=' + encodeURIComponent(id), { method: 'POST' })
+      .catch(() => { /* 清理失败不回显（孤儿文件由后续人工清理） */ });
+  });
 }
 
 function setDrawerMode(mode) {
@@ -876,6 +956,8 @@ function resetForm() {
   S.row = null;
   S.locked = false;
   S.items = [];
+  S.attachments = [];
+  S.pendingNew = [];
   selType.setOptions((S.meta.planTypes || []).map(o => ({ value: o.value, label: o.label })));
   selType.setPlaceholder('请选择计划类型').setValue('').setDisabled(false).setError(false);
   selYear.setOptions(yearOptions());
@@ -888,6 +970,9 @@ function resetForm() {
   $('in-plan-name').disabled = false;
   $('in-plan-name').classList.remove('is-err');
   $('in-remark').value = '';
+  $('btn-upload').hidden = false;
+  $('att-hint').textContent = '支持图片、PDF、Word、Excel，单个文件不超过 20MB；保存前可移除';
+  renderAtt();
   refreshPeriod();
   renderItems();
 }
@@ -970,6 +1055,14 @@ function fillForm(d) {
   $('in-plan-name').value = d.planName || '';
   $('in-plan-name').disabled = locked;
   $('in-remark').value = d.remark || '';
+  S.attachments = (Array.isArray(d.attachments) ? d.attachments : [])
+    .map(a => ({ id: a.id, planId: a.planId, fileName: a.fileName, fileSize: a.fileSize, fileExt: a.fileExt }));
+  S.pendingNew = [];
+  $('btn-upload').hidden = locked;
+  $('att-hint').textContent = locked
+    ? '已生效计划附件不可调整（仅可调整计划水量 / 备注）'
+    : '支持图片、PDF、Word、Excel，单个文件不超过 20MB；保存前可移除';
+  renderAtt();
   refreshPeriod();
   S.items = (d.items || []).map(row => {
     const calc = row.calcWater === null || row.calcWater === undefined ? null : Number(row.calcWater);
@@ -995,6 +1088,92 @@ function fillForm(d) {
     };
   });
   renderItems();
+}
+
+/* ============================ 附件（上传 / 下载 / 移除） ============================ */
+const ATT_EXT = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'];
+const ATT_MAX = 20 * 1024 * 1024;
+
+function renderAtt() {
+  const box = $('att-list');
+  const list = S.attachments || [];
+  if (!list.length) {
+    box.innerHTML = '<div class="att-empty">暂无附件</div>';
+    return;
+  }
+  box.innerHTML = list.map(a =>
+    '<div class="att-row">' +
+    '<span class="att-name" data-att="' + esc(a.id) + '" data-att-name="' + esc(a.fileName || '') + '" title="下载 ' + esc(a.fileName || '') + '">' + esc(a.fileName || '--') + '</span>' +
+    '<span class="att-size">' + esc(fmtSize(a.fileSize)) + '</span>' +
+    (S.locked ? '' : '<button class="att-del" data-att-del="' + esc(a.id) + '" title="移除">' + ICON.trash + '</button>') +
+    '</div>').join('');
+}
+
+async function onUploadFiles(e) {
+  const files = Array.prototype.slice.call(e.target.files || []);
+  e.target.value = '';
+  if (!files.length) return;
+  if (S.saving) { showToast('保存中，请稍候', true); return; }
+  if (S.mode !== 'create' && S.mode !== 'edit') return;
+  const btn = $('btn-upload');
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  let uploaded = 0;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      if (ATT_EXT.indexOf(ext) < 0) { showToast('「' + f.name + '」类型不支持（仅图片/PDF/Word/Excel）', true); continue; }
+      if (f.size > ATT_MAX) { showToast('「' + f.name + '」超过 20MB 上限', true); continue; }
+      const fd = new FormData();
+      fd.append('file', f);
+      const vo = await api('/water-plan/attachment/upload', { method: 'POST', body: fd });
+      if (vo && vo.id) {
+        if (S.mode !== 'create' && S.mode !== 'edit') {
+          // 上传完成时抽屉已关闭：立即服务端清理，避免孤儿附件
+          api('/water-plan/attachment/remove?id=' + encodeURIComponent(vo.id), { method: 'POST' })
+            .catch(() => { /* 清理失败不回显 */ });
+          continue;
+        }
+        S.attachments.push({ id: vo.id, planId: null, fileName: vo.fileName || f.name, fileSize: vo.fileSize || f.size, fileExt: vo.fileExt || ext });
+        S.pendingNew.push(vo.id);
+        uploaded++;
+        renderAtt();
+      }
+    }
+    if (uploaded > 0) showToast('已上传 ' + uploaded + ' 个附件');
+  } catch (err) {
+    showToast(err.message || '附件上传失败', true);
+  } finally {
+    btn.disabled = S.saving;
+    btn.classList.remove('is-loading');
+  }
+}
+
+/** 附件区交互：下载（点击文件名）/ 移除（新上传立即物理删除；已归属附件仅内存移除，保存时由后端按保留集合清理） */
+async function onAttListClick(e) {
+  const del = e.target.closest('[data-att-del]');
+  if (del) {
+    if (S.saving) { showToast('保存中，请稍候', true); return; }
+    if (S.locked) return;
+    const id = del.dataset.attDel;
+    const isNew = S.pendingNew.indexOf(id) >= 0;
+    if (isNew) {
+      try {
+        await api('/water-plan/attachment/remove?id=' + encodeURIComponent(id), { method: 'POST' });
+      } catch (err) {
+        showToast(err.message || '移除失败', true);
+        return;
+      }
+      S.pendingNew = S.pendingNew.filter(x => x !== id);
+    }
+    S.attachments = S.attachments.filter(a => a.id !== id);
+    renderAtt();
+    showToast(isNew ? '附件已移除' : '已标记移除，保存后生效');
+    return;
+  }
+  const name = e.target.closest('[data-att]');
+  if (name) downloadAtt(name.dataset.att, name.dataset.attName);
 }
 
 /* ============================ 明细行 ============================ */
@@ -1275,6 +1454,7 @@ function validateForm() {
     xun: xun,
     planName: strOrNull($('in-plan-name').value),
     remark: strOrNull($('in-remark').value),
+    attachmentIds: S.attachments.map(a => a.id),
     items: S.items.map(it => ({
       waterUserId: it.userId,
       irrigationArea: Number(String(it.area).trim()),
@@ -1292,6 +1472,8 @@ function setSaving(on) {
   const btn = $('btn-save');
   btn.disabled = !!on;
   btn.classList.toggle('is-loading', !!on);
+  // 提交期间冻结上传入口（避免附件绑定竞态）
+  $('btn-upload').disabled = !!on;
 }
 
 async function save() {
@@ -1305,7 +1487,10 @@ async function save() {
       ? await api('/water-plan/update?' + qs({ id: S.row.id }), { method: 'PUT', body })
       : await api('/water-plan/create', { method: 'POST', body });
     S.flashKey = saved && saved.id ? String(saved.id) : null;
-    closeDrawer();
+    // 已提交的附件不再清理；提交快照后新上传的残余（极端时序）留在 pendingNew 由关闭清理
+    const submitted = new Set(body.attachmentIds || []);
+    S.pendingNew = S.pendingNew.filter(id => !submitted.has(id));
+    closeDrawer(true);
     showToast('保存成功');
     if (!isEdit) S.page = 1;
     await loadList();
@@ -1371,8 +1556,15 @@ function renderView(d) {
       '<tbody>' + rows + '</tbody></table>' +
       '<div class="m-sum">计划总水量：<b>' + fmt2(total / 10000) + '</b> 万m³<span class="sub">合计 ' + items.length + ' 行</span></div>'
     : '<div class="empty-box">暂无明细</div>';
+  const atts = Array.isArray(d.attachments) ? d.attachments : [];
+  const attHtml = atts.length
+    ? '<div class="att-list">' + atts.map(a =>
+      '<div class="att-row"><span class="att-name" data-att="' + esc(a.id) + '" data-att-name="' + esc(a.fileName || '') + '" title="下载 ' + esc(a.fileName || '') + '">' + esc(a.fileName || '--') + '</span>' +
+      '<span class="att-size">' + esc(fmtSize(a.fileSize)) + '</span></div>').join('') + '</div>'
+    : '<div class="att-empty">暂无附件</div>';
   $('view-box').innerHTML = '<div class="view-grid">' + pairs.map(p => viewRow(p[0], p[1])).join('') + '</div>' +
-    '<div class="sec-title">用水明细</div>' + itemsHtml;
+    '<div class="sec-title">用水明细</div>' + itemsHtml +
+    '<div class="sec-title">附件</div>' + attHtml;
 }
 
 /* ============================ 确认弹窗与状态机操作 ============================ */
@@ -1543,6 +1735,10 @@ function bindEvents() {
   $('btn-save').addEventListener('click', save);
   $('drawer-mask').addEventListener('click', closeDrawer);
   $('btn-add-item').addEventListener('click', addItem);
+  $('btn-upload').addEventListener('click', () => $('file-input').click());
+  $('file-input').addEventListener('change', onUploadFiles);
+  $('att-list').addEventListener('click', onAttListClick);
+  $('view-box').addEventListener('click', onAttListClick);
   $('in-plan-name').addEventListener('input', () => {
     $('in-plan-name').classList.remove('is-err');
   });

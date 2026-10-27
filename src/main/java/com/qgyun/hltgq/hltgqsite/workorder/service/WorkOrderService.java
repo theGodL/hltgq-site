@@ -4,11 +4,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.mapper.ArchiveLookupMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.LocalFileStorageUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolIssueMapper;
 import com.qgyun.hltgq.hltgqsite.workorder.mapper.WorkOrderMapper;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAssignRequest;
+import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAttachmentDownloadVO;
+import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderAttachmentVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderCreateVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderDetailVO;
 import com.qgyun.hltgq.hltgqsite.workorder.vo.WorkOrderListVO;
@@ -22,10 +25,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,12 +50,17 @@ import java.util.Map;
  * </ul>
  *
  * <p>关联问题：工单表无 azgquf 物理列，统一由问题记录表 work_order_id 反查；
- * 工单附件/图片（file/xdkvyp）无物理列，本期不做上传。
+ * 工单附件/图片（file/xdkvyp）无物理列，处理结果附件改用独立表
+ * t_auto_hltgq_water_work_order_attachment（本地存储 file-dir/work-order/{yyyy-MM}/{uuid}_{原名}）：
+ * 上传时行 order_id 为空，保存处理结果时回填归属，不在保留集合内的行与文件一并清理。
  */
 @Service
 public class WorkOrderService {
 
     private static final Logger log = LoggerFactory.getLogger(WorkOrderService.class);
+
+    /** 附件存储根目录名（file-dir 下的工单专属目录） */
+    private static final String ATTACH_DIR = "work-order";
 
     /** 工单标题长度上限 */
     private static final int TITLE_MAX_LENGTH = 200;
@@ -120,6 +131,10 @@ public class WorkOrderService {
     @Value("${hltgq.created-by}")
     private String fallbackOperator;
 
+    /** 附件本地存储根目录（宿主机挂载 ./file-dir；与用水计划/库存盘点同模式） */
+    @Value("${hltgq.file-dir:./file-dir}")
+    private String fileDir;
+
     // ==================== 字典（跨模块展示复用） ====================
 
     /** 工单类型编码 → 名称（null/未知原样返回）。 */
@@ -187,7 +202,7 @@ public class WorkOrderService {
         return out;
     }
 
-    /** 工单详情（查看弹窗 / 编辑回填）：类型与状态翻译为中文。 */
+    /** 工单详情（查看弹窗 / 编辑回填）：类型与状态翻译为中文，附处理结果附件清单。 */
     public WorkOrderDetailVO detail(String id) {
         String key = CheckUtils.trim(id);
         if (key == null) {
@@ -199,6 +214,7 @@ public class WorkOrderService {
         }
         vo.setType(typeLabel(vo.getTypeCode()));
         vo.setStatus(statusLabel(vo.getStatusCode()));
+        vo.setAttachments(mapper.selectAttachments(key));
         return vo;
     }
 
@@ -268,7 +284,8 @@ public class WorkOrderService {
 
     /**
      * 删除工单（仅待指派）：删除后把关联问题回退为待处理
-     * （问题表 work_order_id 清空、handle_status/status 复位），整单事务。
+     * （问题表 work_order_id 清空、handle_status/status 复位），整单事务；
+     * 若存在处理结果附件，行随事务删除、文件在提交后清理。
      */
     @Transactional(rollbackFor = Exception.class)
     public void remove(String id) {
@@ -279,8 +296,15 @@ public class WorkOrderService {
         if (rows == 0) {
             throw new IllegalArgumentException("仅待指派的工单可删除，状态已变化，请刷新后重试");
         }
+        List<String> removedPaths = new ArrayList<>();
+        for (WorkOrderAttachmentVO att : mapper.selectAttachmentPaths(key)) {
+            removedPaths.add(att.getFilePath());
+        }
+        int attachments = mapper.deleteAttachmentsByOrder(key);
+        LocalFileStorageUtils.deleteAfterCommit(fileDirPath(), removedPaths);
         int reset = issueMapper.resetIssuesByWorkOrder(key, operatorId, now);
-        log.info("[工单] 删除：id={}, 回退关联问题 {} 条, 操作人={}", key, reset, operatorId);
+        log.info("[工单] 删除：id={}, 回退关联问题 {} 条, 清理附件 {} 个, 操作人={}",
+                key, reset, attachments, operatorId);
     }
 
     // ==================== 状态流转 ====================
@@ -324,7 +348,12 @@ public class WorkOrderService {
         log.info("[工单] 取消：id={}, 回退关联问题 {} 条, 操作人={}", key, reset, operatorId);
     }
 
-    /** 填写处理结果（仅处理中）：写 result 与处理时间 pyxcen，可重复保存，不改状态。 */
+    /**
+     * 填写处理结果（仅处理中）：写 result 与处理时间 pyxcen，可重复保存，不改状态。
+     * <p>附件：attachmentIds 为 null 表示不调整；非 null 时以集合为准
+     * （新上传绑定本工单，已绑定本工单但不在集合内的行与文件一并清理）。
+     */
+    @Transactional(rollbackFor = Exception.class)
     public void saveResult(WorkOrderResultRequest req) {
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
@@ -333,11 +362,14 @@ public class WorkOrderService {
         String result = CheckUtils.requireText(req.getResult(), "处理结果不能为空");
         CheckUtils.maxLength(result, RESULT_MAX_LENGTH, "处理结果");
         String operatorId = OperatorUtils.currentOperatorId(fallbackOperator);
-        int rows = mapper.saveResult(id, result, operatorId, LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        int rows = mapper.saveResult(id, result, operatorId, now);
         if (rows == 0) {
             throw new IllegalArgumentException("仅处理中的工单可填写处理结果，状态已变化，请刷新后重试");
         }
-        log.info("[工单] 填写处理结果：id={}, 长度={}, 操作人={}", id, result.length(), operatorId);
+        int kept = bindAttachments(id, req.getAttachmentIds(), now, operatorId);
+        log.info("[工单] 填写处理结果：id={}, 长度={}, 附件={} 个, 操作人={}",
+                id, result.length(), kept, operatorId);
     }
 
     /** 提交验收（仅处理中且已填写处理结果）：置已关闭，并同步关闭关联问题（验收闭环）。 */
@@ -352,6 +384,125 @@ public class WorkOrderService {
         }
         int issues = mapper.closeIssuesByWorkOrder(key, operatorId, now);
         log.info("[工单] 提交验收：id={}, 操作人={}, 同步关闭关联问题={} 条", key, operatorId, issues);
+    }
+
+    // ==================== 处理结果附件（上传 / 下载 / 移除） ====================
+
+    /** 上传附件：白名单 + 落盘（work-order/yyyy-MM/uuid_原名） + 行入库（order_id 为空待回填）。 */
+    public WorkOrderAttachmentVO uploadAttachment(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("上传文件不能为空");
+        }
+        String originalName = LocalFileStorageUtils.sanitizeFileName(file.getOriginalFilename());
+        String ext = LocalFileStorageUtils.extOf(originalName);
+        if (!LocalFileStorageUtils.isAllowedExt(ext)) {
+            throw new IllegalArgumentException("不支持的文件类型（仅支持图片、PDF、Word、Excel）：" + originalName);
+        }
+        String operatorId = OperatorUtils.currentOperatorId(fallbackOperator);
+        LocalDateTime now = LocalDateTime.now();
+        String storedName = shortIdGenerator.nextUUID(null) + "_" + originalName;
+        String relPath = ATTACH_DIR + "/" + now.format(LocalFileStorageUtils.MONTH_DIR) + "/" + storedName;
+        LocalFileStorageUtils.write(fileDirPath(), relPath, file);
+
+        String attachmentId = shortIdGenerator.nextUUID(null);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", attachmentId);
+        row.put("order_id", null);
+        row.put("file_name", originalName);
+        row.put("file_path", relPath);
+        row.put("file_size", file.getSize());
+        row.put("file_ext", ext);
+        row.put("now", now);
+        row.put("operator", operatorId);
+        try {
+            mapper.insertAttachment(row);
+        } catch (RuntimeException e) {
+            // 行写入失败：清理已落盘文件，避免孤儿文件
+            LocalFileStorageUtils.deleteQuietly(fileDirPath(), relPath);
+            throw e;
+        }
+        WorkOrderAttachmentVO vo = new WorkOrderAttachmentVO();
+        vo.setId(attachmentId);
+        vo.setFileName(originalName);
+        vo.setFileSize(file.getSize());
+        vo.setFileExt(ext);
+        log.info("[工单] 附件上传：id={}, 文件={}, 大小={}, 操作人={}",
+                attachmentId, originalName, file.getSize(), operatorId);
+        return vo;
+    }
+
+    /** 下载附件：路径穿越校验 + 文件读取（缺失提示已被清理）。 */
+    public WorkOrderAttachmentDownloadVO downloadAttachment(String id) {
+        WorkOrderAttachmentVO att = mapper.selectAttachmentById(
+                CheckUtils.requireText(id, "附件 id 不能为空"));
+        if (att == null) {
+            throw new IllegalArgumentException("附件不存在或已删除");
+        }
+        byte[] bytes = LocalFileStorageUtils.readBytes(fileDirPath(),
+                CheckUtils.requireText(att.getFilePath(), "附件路径缺失"));
+        WorkOrderAttachmentDownloadVO vo = new WorkOrderAttachmentDownloadVO();
+        vo.setContent(bytes);
+        vo.setFileName(att.getFileName());
+        vo.setFileExt(att.getFileExt());
+        return vo;
+    }
+
+    /** 移除附件（上传后取消清理 / 弹出窗内移除新上传）：原子删行（未归属守卫） + 物理删文件（best-effort）。 */
+    public void removeAttachment(String id) {
+        String key = CheckUtils.requireText(id, "附件 id 不能为空");
+        WorkOrderAttachmentVO att = mapper.selectAttachmentById(key);
+        if (att == null) {
+            throw new IllegalArgumentException("附件不存在或已删除");
+        }
+        // 仅允许删除未归属附件：DELETE 带 order_id IS NULL 守卫，并发绑定后返回 0 行 → 拒绝移除且不删文件
+        if (mapper.deleteUnboundAttachment(key) == 0) {
+            throw new IllegalArgumentException("附件已保存到工单，不能直接移除");
+        }
+        LocalFileStorageUtils.deleteQuietly(fileDirPath(), att.getFilePath());
+    }
+
+    /**
+     * 处理结果附件绑定/清理（保存处理结果时调用）：
+     * attachmentIds 为 null → 不调整（兼容不带附件的旧调用）；
+     * 非 null → 以集合为准：新上传的绑定本工单，现属本工单但不在集合内的删行（文件事务提交后删）。
+     *
+     * @return 保留附件个数（null 入参返回 -1，表示未调整）
+     */
+    private int bindAttachments(String orderId, List<String> attachmentIds, LocalDateTime now, String operator) {
+        if (attachmentIds == null) {
+            return -1;
+        }
+        List<String> keepIds = new ArrayList<>();
+        for (String raw : attachmentIds) {
+            String aid = CheckUtils.trim(raw);
+            if (aid == null || keepIds.contains(aid)) {
+                continue;
+            }
+            WorkOrderAttachmentVO att = mapper.selectAttachmentById(aid);
+            if (att == null) {
+                throw new IllegalArgumentException("附件不存在或已移除：" + aid);
+            }
+            if (att.getOrderId() != null && !att.getOrderId().equals(orderId)) {
+                throw new IllegalArgumentException("附件已被其他工单占用：" + att.getFileName());
+            }
+            if (att.getOrderId() == null && mapper.bindAttachment(aid, orderId, operator, now) == 0) {
+                throw new IllegalArgumentException("附件绑定失败，请刷新后重试：" + att.getFileName());
+            }
+            keepIds.add(aid);
+        }
+        List<String> removedPaths = new ArrayList<>();
+        for (WorkOrderAttachmentVO att : mapper.selectAttachmentPaths(orderId)) {
+            if (!keepIds.contains(att.getId()) && mapper.deleteAttachment(att.getId()) > 0) {
+                removedPaths.add(att.getFilePath());
+            }
+        }
+        LocalFileStorageUtils.deleteAfterCommit(fileDirPath(), removedPaths);
+        return keepIds.size();
+    }
+
+    /** 附件存储根目录（绝对路径归一，用作穿越校验基准；文件操作见 LocalFileStorageUtils）。 */
+    private Path fileDirPath() {
+        return LocalFileStorageUtils.root(fileDir);
     }
 
     // ==================== 转工单（问题记录调用） ====================

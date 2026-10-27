@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_user (
     calc_mode       VARCHAR(16)  NOT NULL,          -- 计算策略：#1# 指定闸口累加 / #2# 闸口差额计量
     gate_config     TEXT         NOT NULL,          -- 关联闸口（JSON，闸站 id + 名称快照）：
                                                     --   累加 {"mode":"SUM","gates":[{"id":"…","name":"…"},…]}
-                                                    --   差额 {"mode":"DIFF","main":{…},"deduct":[{…},…]}
+                                                    --   差额 {"mode":"DIFF","mains":[{…},…],"deduct":[{…},…]}（主闸口可多选，兼容旧版 main）
     settle_cycle    VARCHAR(16)  NOT NULL,          -- 统计周期：#1# 月度结算 / #2# 季度结算 / #3# 年度结算
     status          VARCHAR(16)  NOT NULL DEFAULT '#1#',  -- 状态：#1# 正常 / #2# 停用
     corp_code       VARCHAR(64),

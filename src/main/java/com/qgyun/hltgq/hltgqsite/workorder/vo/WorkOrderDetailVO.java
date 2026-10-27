@@ -2,6 +2,8 @@ package com.qgyun.hltgq.hltgqsite.workorder.vo;
 
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * 工单详情（/work-order/detail，查看弹窗 / 编辑回填）。
  */
@@ -73,4 +75,7 @@ public class WorkOrderDetailVO {
 
     /** 关联问题标题（多条「、」拼接） */
     private String issueTitle;
+
+    /** 处理结果附件清单（按上传时间升序；无附件为空列表） */
+    private List<WorkOrderAttachmentVO> attachments;
 }

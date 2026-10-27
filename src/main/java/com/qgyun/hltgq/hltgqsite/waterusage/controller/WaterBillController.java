@@ -3,6 +3,8 @@ package com.qgyun.hltgq.hltgqsite.waterusage.controller;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport;
 import com.qgyun.hltgq.hltgqsite.waterusage.service.WaterBillService;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterBillVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterLedgerSaveVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterLedgerUserVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,10 +21,12 @@ import java.util.Map;
 
 /**
  * 水费账单管理（灌区用水模块页面四之四）。
- * <p>四个视图：台账 /ledger（按户归集 + 汇总 stat）、户方案明细 /user-plans、
- * 账单列表 /page、账单详情 /detail（含方案快照）。
- * <p>出账 POST /bills/create：请求体为调度方案 id 数组，按 (用水户, 分期 key) 分组拆分多张账单
- * （四个出账入口 genSelected/genPeriod/genSingle/genAll 共用）；账单删除恢复方案未计费。
+ * <p>四个视图：用水台账 /ledger/records（手工台账：新增/编辑/删除/出账）、户方案明细 /user-plans、
+ * 账单列表 /page、账单详情 /detail（方案快照 + 手工台账来源）。
+ * <p>出账两条来源：① POST /ledger/bill（1 手工台账 : 1 账单，金额取台账快照）；
+ * ② POST /bills/create（请求体为调度方案 id 数组，按 (用水户, 分期 key) 分组拆分多张账单，
+ * 方案明细页三个出账入口 genSelected/genPeriod/genSingle 共用）。
+ * 账单删除双向解除挂接：方案恢复未计费、手工台账恢复未出账。
  * 编号 SF + 期间码 + '-' + 户号 + 4 位序号，冲突重试同用水户。
  */
 @RestController
@@ -65,6 +69,51 @@ public class WaterBillController {
     @GetMapping("/ledger")
     public Map<String, Object> ledger(@RequestParam(required = false) String keyword) {
         return billService.ledger(keyword);
+    }
+
+    /** 手工台账列表（视图一：无分页；status 传 pending 待出账 / billed 已出账 / 空全部；含全量 stat） */
+    @GetMapping("/ledger/records")
+    public Map<String, Object> ledgerRecords(@RequestParam(required = false) String keyword,
+                                             @RequestParam(required = false) String status) {
+        return billService.ledgerRecords(keyword, status);
+    }
+
+    /** 手工台账统计条（全量汇总：台账总数/待出账条数/待出账水量/待出账金额/已出账金额） */
+    @GetMapping("/ledger/stat")
+    public Map<String, Object> ledgerStat() {
+        return billService.ledgerStat();
+    }
+
+    /** 手工台账用水户下拉（仅正常状态；带出单价与默认结算周期） */
+    @GetMapping("/ledger/users")
+    public List<WaterLedgerUserVO> ledgerUsers(@RequestParam(required = false) String keyword) {
+        return billService.ledgerUsers(keyword);
+    }
+
+    /** 保存手工台账（id 为空新增、非空编辑；金额由服务端按 用水量×单价 计算） */
+    @PostMapping("/ledger/save")
+    public Map<String, Object> saveLedger(@RequestBody WaterLedgerSaveVO vo) {
+        log.info("收到手工台账保存请求：id={}，用水户={}，期间={}",
+                vo == null ? null : vo.getId(),
+                vo == null ? null : vo.getUserId(),
+                vo == null ? null : vo.getCycleKey());
+        return billService.saveLedger(vo);
+    }
+
+    /** 删除手工台账（仅未出账；已出账需先删除关联账单） */
+    @DeleteMapping("/ledger/delete")
+    public Map<String, Object> deleteLedger(@RequestParam String id) {
+        log.info("收到手工台账删除请求：id={}", id);
+        billService.deleteLedger(id);
+        return WaterUsageSupport.ok();
+    }
+
+    /** 手工台账出账（1 台账 : 1 账单；编号冲突最多重试 3 次） */
+    @PostMapping("/ledger/bill")
+    public WaterBillVO ledgerBill(@RequestParam String id) {
+        log.info("收到手工台账出账请求：id={}", id);
+        return WaterUsageSupport.retryOnNoConflict("uk_water_bill_no", "账单",
+                () -> billService.createBillFromLedger(id), log);
     }
 
     /** 户方案明细（视图二：单户全部未取消方案；未计费实时计量、已计费取快照） */

@@ -79,7 +79,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .pg-jump input{width:52px;height:32px;border:1px solid #d9d9d9;border-radius:6px;text-align:center;font-size:13px;color:#333;background:#fff;outline:none;padding:0 8px}
 .pg-jump input:focus{border-color:#1677ff}
 
-/* 弹窗(居中模态:新增/编辑、审核、编制方案、删除确认共用) */
+/* 弹窗(居中模态:新增/编辑、审核、编制指令、删除确认共用) */
 .ov{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto}
 .ov.show{display:flex}
 /* 弹窗(内容超高时:内容区内部滚动,底部按钮固定在弹窗下方) */
@@ -110,6 +110,16 @@ input[type="number"].ipt::-webkit-outer-spin-button,input[type="number"].ipt::-w
 input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 .f-tip{margin-top:6px;font-size:12px;color:#8c8c8c;line-height:18px}
 
+/* 用水时间:年/月下拉 + 旬多选(标签式复选框) + 派生时段提示 */
+.period-row{display:flex;gap:8px}
+.period-row .ipt{flex:1;min-width:0;cursor:pointer;padding-right:8px}
+.xun-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.xun-item{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border:1px solid #d9d9d9;border-radius:6px;cursor:pointer;font-size:14px;color:#333;transition:all .2s;user-select:none}
+.xun-item:hover{border-color:#1677ff;color:#1677ff}
+.xun-item.checked{border-color:#1677ff;background:#e6f4ff;color:#1677ff}
+.xun-item input{width:14px;height:14px;accent-color:#1677ff;cursor:pointer}
+.period-tip strong{color:#1677ff;font-weight:500}
+
 /* 下拉(统一支持输入模糊搜索) */
 .select-wrap{position:relative}
 .sel-input{width:100%;height:36px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 32px 0 12px;font-size:14px;font-family:inherit;color:#333;outline:none;cursor:pointer;transition:border-color .2s,box-shadow .2s}
@@ -129,7 +139,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 .kv-row .k{color:#8c8c8c;flex-shrink:0}
 .kv-row .v{color:#333;text-align:right;word-break:break-all}
 
-/* 编制方案弹窗:计划配额绿色提示条 */
+/* 编制指令弹窗:计划配额绿色提示条 */
 .plan-tip{display:none;margin-top:10px;padding:9px 12px;border:1px solid #b7eb8f;border-radius:6px;background:#f6ffed;color:#389e0d;font-size:13px;line-height:20px}
 .plan-tip.show{display:flex;align-items:flex-start;gap:8px}
 .plan-tip svg{flex-shrink:0;margin-top:3px}
@@ -172,14 +182,14 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   <!-- 需水上报列表 -->
   <table class="tbl">
     <colgroup>
-      <col style="width:9%"><col style="width:11%"><col style="width:9%"><col style="width:11%">
-      <col style="width:11%"><col style="width:10%"><col style="width:9%"><col style="width:16%">
+      <col style="width:9%"><col style="width:10%"><col style="width:9%"><col style="width:11%">
+      <col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:15%">
       <col style="width:14%">
     </colgroup>
     <thead>
       <tr>
         <th>上报单号</th><th>上报时间</th><th>用水户</th><th>计划水量<br>（万m³）</th>
-        <th>用水时段</th><th>用途</th><th>审核状态</th><th>审核意见</th><th>操作</th>
+        <th>用水时间</th><th>用途</th><th>审核状态</th><th>审核意见</th><th>操作</th>
       </tr>
     </thead>
     <tbody id="tbl-body"></tbody>
@@ -223,12 +233,20 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           </div>
         </div>
         <div class="form-item">
-          <label>用水开始日期 <i class="req">*</i></label>
-          <input type="date" class="ipt" id="f-start">
+          <label>用水时间（年 / 月） <i class="req">*</i></label>
+          <div class="period-row">
+            <select class="ipt" id="f-year" aria-label="用水年份"></select>
+            <select class="ipt" id="f-month" aria-label="用水月份"></select>
+          </div>
         </div>
-        <div class="form-item">
-          <label>用水结束日期 <i class="req">*</i></label>
-          <input type="date" class="ipt" id="f-end">
+        <div class="form-item span2">
+          <label>旬（可多选） <i class="req">*</i></label>
+          <div class="xun-group" id="f-xun-group">
+            <label class="xun-item"><input type="checkbox" value="1">上旬</label>
+            <label class="xun-item"><input type="checkbox" value="2">中旬</label>
+            <label class="xun-item"><input type="checkbox" value="3">下旬</label>
+          </div>
+          <div class="f-tip period-tip" id="period-tip">请选择旬，选择后自动带出用水时段</div>
         </div>
         <div class="form-item span2">
           <label>备注 / 审核意见</label>
@@ -300,16 +318,16 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   </div>
 </div>
 
-<!-- 编制调度方案弹窗(关联用水计划/需水申请,自动带出用水户计划用量) -->
+<!-- 编制调度指令弹窗(关联用水计划/需水申请,自动带出用水户计划用量) -->
 <div class="ov" id="plan-ov">
-  <div class="modal modal-lg" role="dialog" aria-label="编制调度方案">
+  <div class="modal modal-lg" role="dialog" aria-label="编制调度指令">
     <button type="button" class="modal-x" data-close="plan-ov" aria-label="关闭">
       <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
         <path d="M1.5 1.5l11 11M12.5 1.5l-11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
       </svg>
     </button>
     <div class="modal-hd">
-      <div>编制调度方案</div>
+      <div>编制调度指令</div>
     </div>
     <div class="modal-bd">
       <div class="form-item">
@@ -334,12 +352,13 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           </div>
         </div>
         <div class="form-item">
-          <label>用水户 <i class="req">*</i></label>
+          <label>用水户</label>
           <div class="select-wrap">
             <input type="text" class="sel-input" id="f-p-farmer" placeholder="输入名称/编号搜索" autocomplete="off">
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="p-farmer-dd"></div>
           </div>
+          <div class="f-tip">选填；选定后调度闸口收敛为该户关联闸口</div>
         </div>
         <div class="form-item">
           <label>调度闸口 <i class="req">*</i></label>
@@ -348,20 +367,22 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="p-gate-dd"></div>
           </div>
-          <div class="f-tip">闸口候选随用水户收敛：仅该户已配置的关联闸口可选</div>
+          <div class="f-tip">已选用水户时仅该户关联闸口可选；未选户为全量计量闸口池</div>
         </div>
         <div class="form-item">
-          <label>计划放水量（万m³） <i class="req">*</i></label>
-          <input type="number" class="ipt" id="f-p-amount" min="0" step="0.01" placeholder="0" autocomplete="off">
+          <label>计划放水量（万m³）</label>
+          <input type="number" class="ipt" id="f-p-amount" min="0" step="0.01" placeholder="选填" autocomplete="off">
           <div class="f-tip">关联计划时可自动带出；请核对本次调度量。</div>
         </div>
         <div class="form-item">
-          <label>开始时间 <i class="req">*</i></label>
-          <input type="datetime-local" class="ipt" id="f-p-start">
+          <label>执行时间 <i class="req">*</i></label>
+          <input type="datetime-local" class="ipt" id="f-p-exec">
+          <div class="f-tip">执行时间（开闸）；完成时间由指令流转自动记录</div>
         </div>
         <div class="form-item">
-          <label>结束时间 <i class="req">*</i></label>
-          <input type="datetime-local" class="ipt" id="f-p-end">
+          <label>指定闸门高度（cm）</label>
+          <input type="number" class="ipt" id="f-p-height" min="0" max="999" step="1" placeholder="选填，0~999" autocomplete="off">
+          <div class="f-tip">本次指令要求开启的闸门高度（cm）</div>
         </div>
         <div class="form-item">
           <label>调度负责人</label>
@@ -447,9 +468,9 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   /* 下拉/字典数据源(初始化时自接口加载,前端不写死) */
   var USERS = [];      // 用水户 4.5 /water-demand/users: {id,name,userNo,irrigationArea}
-  var GATES = [];      // 调度闸口(按户收敛) 1.4 /water-user/gates?userId: {id,name};该户未配置=空数组
+  var GATES = [];      // 调度闸口(已选户按户收敛;未选户为全量计量池) 1.4 /water-user/gates、/water-user/meta
   var USAGES = [];     // 用途联想 4.1 /water-demand/meta
-  var OWNERS = [];     // 调度负责人 5.1 /water-dispatch/meta owners: {id,name}(平台用户;与调度方案模块同源)
+  var OWNERS = [];     // 调度负责人 5.1 /water-dispatch/meta owners: {id,name}(平台用户;与调度指令模块同源)
   var PLANS = [];      // 已生效计划 5.5 /water-dispatch/plans(选中用水户后带配额字段)
   var APPLIES = [];    // 已通过需水 5.6 /water-dispatch/demands
   var PRICE_CACHE = {}; // 户水价缓存(审核弹窗展示,来源 /water-user/detail)
@@ -501,6 +522,107 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   }
 
+  /** 当前时间 'yyyy-MM-ddTHH:mm'(datetime-local) */
+  function nowInputStr() {
+    var d = new Date();
+    return todayStr() + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  /* ===================== 用水时间(年/月 + 旬多选) ===================== */
+
+  /** 旬编码 → 中文名(顺序即展示顺序) */
+  var XUN_NAMES = { '1': '上旬', '2': '中旬', '3': '下旬' };
+
+  /** 年下拉:当年-2 ~ 当年+1 */
+  function fillYearOptions(selected) {
+    var y = new Date().getFullYear();
+    var html = '';
+    for (var i = y - 2; i <= y + 1; i++) {
+      html += '<option value="' + i + '"' + (i === selected ? ' selected' : '') + '>' + i + ' 年</option>';
+    }
+    $('f-year').innerHTML = html;
+  }
+
+  /** 月下拉:1~12 */
+  function fillMonthOptions(selected) {
+    var html = '';
+    for (var m = 1; m <= 12; m++) {
+      html += '<option value="' + m + '"' + (m === selected ? ' selected' : '') + '>' + m + ' 月</option>';
+    }
+    $('f-month').innerHTML = html;
+  }
+
+  /** 勾选旬(编码数组,兼容中文名) */
+  function setXun(values) {
+    var picked = {};
+    (values || []).forEach(function (v) { picked[String(v)] = true; });
+    Array.prototype.forEach.call($('f-xun-group').querySelectorAll('input'), function (el) {
+      el.checked = !!picked[el.value];
+    });
+  }
+
+  /** 当前勾选的旬编码(升序) */
+  function pickedXuns() {
+    var out = [];
+    Array.prototype.forEach.call($('f-xun-group').querySelectorAll('input'), function (el) {
+      if (el.checked) out.push(Number(el.value));
+    });
+    return out.sort();
+  }
+
+  /** 旬首末日:上旬 1~10 / 中旬 11~20 / 下旬 21~月末 */
+  function xunRange(year, month, xun) {
+    var lastDay = new Date(year, month, 0).getDate(); // month 为 1~12 时,第 0 天即当月最后一天
+    if (xun === 1) return [1, 10];
+    if (xun === 2) return [11, 20];
+    return [21, lastDay];
+  }
+
+  function fmtDate(d) {
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+
+  /** 默认旬:按今天落在哪一旬(新增时保持旧版「默认今天」的习惯) */
+  function currentXun() {
+    var day = new Date().getDate();
+    return day <= 10 ? 1 : (day <= 20 ? 2 : 3);
+  }
+
+  /** 旬勾选变化:同步标签高亮 + 自动带出用水时段(最早旬首日 ~ 最晚旬末日) */
+  function syncPeriod() {
+    Array.prototype.forEach.call($('f-xun-group').querySelectorAll('input'), function (el) {
+      el.parentNode.classList.toggle('checked', el.checked);
+    });
+    var tip = $('period-tip');
+    var xuns = pickedXuns();
+    if (!xuns.length) {
+      tip.textContent = '请选择旬，选择后自动带出用水时段';
+      return;
+    }
+    var year = Number($('f-year').value);
+    var month = Number($('f-month').value);
+    var labels = [];
+    var start = null;
+    var end = null;
+    xuns.forEach(function (xun) {
+      var range = xunRange(year, month, xun);
+      var s = new Date(year, month - 1, range[0]);
+      var e = new Date(year, month - 1, range[1]);
+      if (!start || s < start) start = s;
+      if (!end || e > end) end = e;
+      labels.push(XUN_NAMES[String(xun)]);
+    });
+    tip.innerHTML = '用水时段：<strong>' + fmtDate(start) + ' 至 ' + fmtDate(end) + '</strong>（' + labels.join('、') + '）';
+  }
+
+  /** 行数据用水时间展示:年 + 月 + 旬(可多选) + 派生时段;旧数据无旬列时只显示时段 */
+  function periodText(row) {
+    var range = (row.startDate || '-') + ' 至 ' + (row.endDate || '-');
+    if (!row.periodYear || !row.periodMonth) return range;
+    return row.periodYear + '年' + row.periodMonth + '月'
+      + (row.xunText ? ' ' + row.xunText : '') + '（' + range + '）';
+  }
+
   /** 按 id 从当前页行数据中找(操作列/弹窗用) */
   function findRow(id) {
     for (var i = 0; i < S.rows.length; i++) {
@@ -536,9 +658,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   /** 列表状态:筛选/分页参数 + 最近一次服务端响应(0.1 分页结构) */
   var S = { tab: '', kw: '', page: 1, size: 10, total: 0, pages: 1, rows: [] };
 
-  /** 服务器当天(4.1 meta.today,兜底本地) */
-  var TODAY = todayStr();
-
   /** 拉取列表(服务端筛选+分页,4.3) */
   var listSeq = 0;
   function loadList() {
@@ -568,7 +687,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  /** 操作列:全状态可查看;待审核→审核/编辑/删除;已通过→编制方案/编辑/删除;已驳回→编辑/删除 */
+  /** 操作列:全状态可查看;待审核→审核/编辑/删除;已通过→编制指令/编辑/删除;已驳回→编辑/删除 */
   function actionCell(row) {
     var id = esc(row.id);
     // 查看为只读操作,所有状态均可用
@@ -577,7 +696,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       html += '<span class="act" data-action="audit" data-id="' + id + '">审核</span>';
     }
     if (row.status === 'pass') {
-      html += '<span class="act" data-action="plan" data-id="' + id + '">编制方案</span>';
+      html += '<span class="act" data-action="plan" data-id="' + id + '">编制指令</span>';
     }
     if (row.status !== 'pass') {
       html += '<span class="act" data-action="edit" data-id="' + id + '">编辑</span>';
@@ -597,6 +716,17 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return '<td>' + esc(row.auditOpinion || '-') + '</td>';
   }
 
+  /** 用水时间列:年月 + 旬 + 派生时段(旧数据无旬列时只显示时段) */
+  function periodCell(r) {
+    var html = '';
+    if (r.periodYear && r.periodMonth) {
+      html += '<span class="cell-main">' + esc(r.periodYear) + '年' + esc(r.periodMonth) + '月'
+        + (r.xunText ? ' ' + esc(r.xunText) : '') + '</span>';
+    }
+    html += '<span class="cell-range">' + esc(r.startDate) + ' 至 ' + esc(r.endDate) + '</span>';
+    return '<td>' + html + '</td>';
+  }
+
   function renderRows(records) {
     if (!records.length) {
       $('tbl-body').innerHTML = '<tr><td colspan="9" class="empty-cell">暂无数据</td></tr>';
@@ -608,7 +738,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         + '<td>' + esc(r.applyTime || '-') + '</td>'
         + '<td>' + esc(r.waterUserName || '-') + '</td>'
         + '<td><span class="amt">' + esc(fmtAmount(r.amount)) + '<span class="unit">万m³</span></span></td>'
-        + '<td><span class="cell-range">' + esc(r.startDate) + '</span><span class="cell-range">至 ' + esc(r.endDate) + '</span></td>'
+        + periodCell(r)
         + '<td>' + esc(r.usage || '-') + '</td>'
         + statusCell(r)
         + opinionCell(r)
@@ -742,7 +872,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     for (var i = 0; i < OWNERS.length; i++) { if (OWNERS[i].id === id) return OWNERS[i].name; }
     return '';
   }
-  /** 关联用水计划下拉:首项「不关联」(与调度方案页同口径;选中后提交不传 planId) */
+  /** 关联用水计划下拉:首项「不关联」(与调度指令页同口径;选中后提交不传 planId) */
   var NO_PLAN_LABEL = '— 不关联用水计划 —';
   function planOptions() {
     return [{ value: '', label: NO_PLAN_LABEL }].concat(PLANS.map(function (p) {
@@ -777,22 +907,26 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     formState.id = row ? row.id : null;
     $('form-title').textContent = mode === 'add' ? '新增需水上报' : '编辑需水上报';
 
-    // 默认值:日期取服务器当天(4.1 meta.today),其余清空
+    // 默认值:用水时间取当前年月与今天所在旬,其余清空
+    var now = new Date();
     setSel('f-farmer', '', '');
     $('f-amount').value = '';
     setSel('f-usage', '', '');
-    $('f-start').value = TODAY;
-    $('f-end').value = TODAY;
+    fillYearOptions(now.getFullYear());
+    fillMonthOptions(now.getMonth() + 1);
+    setXun([String(currentXun())]);
     $('f-remark').value = '';
 
     if (mode === 'edit' && row) {
       setSel('f-farmer', rowUserLabel(row), row.waterUserId);
       $('f-amount').value = fmtAmount(row.amount);
       setSel('f-usage', row.usage || '', row.usage || '');
-      $('f-start').value = row.startDate;
-      $('f-end').value = row.endDate;
+      fillYearOptions(row.periodYear || now.getFullYear());
+      fillMonthOptions(row.periodMonth || (now.getMonth() + 1));
+      setXun(row.xunList && row.xunList.length ? row.xunList : []);
       $('f-remark').value = row.remark || '';
     }
+    syncPeriod();
     openModal('form-ov');
   }
 
@@ -801,20 +935,22 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   $('btn-form-save').addEventListener('click', function () {
     var waterUserId = $('f-farmer').dataset.value;
     var amount = $('f-amount').value.trim();
-    var start = $('f-start').value;
-    var end = $('f-end').value;
+    var year = Number($('f-year').value);
+    var month = Number($('f-month').value);
+    var xuns = pickedXuns();
     if (!waterUserId) { toast('请选择「用水户」'); return; }
     if (!amount || !(Number(amount) > 0)) { toast('请填写「计划水量」(大于 0)'); return; }
-    if (!start) { toast('请选择「用水开始日期」'); return; }
-    if (!end) { toast('请选择「用水结束日期」'); return; }
-    if (end < start) { toast('用水结束日期不能早于开始日期'); return; }
+    if (!year) { toast('请选择「用水年份」'); return; }
+    if (!month) { toast('请选择「用水月份」'); return; }
+    if (!xuns.length) { toast('请至少选择一个旬'); return; }
 
-    // 0.3:数量按万m³提交,前端收敛 ≤2 位小数
+    // 0.3:数量按万m³提交,前端收敛 ≤2 位小数;起止日期由后端按旬派生
     var payload = {
       waterUserId: waterUserId,
       amount: Number(Number(amount).toFixed(2)),
-      startDate: start,
-      endDate: end
+      periodYear: year,
+      periodMonth: month,
+      xunList: xuns.map(String)
     };
     if ($('f-usage').value.trim()) payload.usage = $('f-usage').value.trim();
     if ($('f-remark').value.trim()) payload.remark = $('f-remark').value.trim();
@@ -846,7 +982,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return [
       kvRow('用水户', row.waterUserName || '-'),
       kvRow('计划水量', fmtAmount(row.amount) + ' 万m³'),
-      kvRow('用水时段', row.startDate + ' 至 ' + row.endDate),
+      kvRow('用水时间', periodText(row)),
       kvRow('用途', row.usage || '-'),
       kvRow('水价', priceText)
     ].join('');
@@ -906,7 +1042,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return [
       kvRow('用水户', row.waterUserName || '-'),
       kvRow('计划水量', fmtAmount(row.amount) + ' 万m³'),
-      kvRow('用水时段', row.startDate + ' 至 ' + row.endDate),
+      kvRow('用水时间', periodText(row)),
       kvRow('用途', row.usage || '-'),
       kvRow('申请时间', row.applyTime || '-'),
       kvRow('水价', priceText),
@@ -928,7 +1064,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   $('btn-view-close').addEventListener('click', function () { closeModal('view-ov'); });
 
-  /* ===================== 编制方案弹窗(提交 /water-dispatch/create,5.7) ===================== */
+  /* ===================== 编制指令弹窗(提交 /water-dispatch/create,5.7) ===================== */
 
   /** 关联需水申请下拉文案:XS0016 · 县工业园区管委会 · 4.1万m³ */
   function applyLabelOf(r) {
@@ -959,28 +1095,31 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  /** 闸口下拉按户收敛(1.4):仅该户关联闸口组;空数组=该户未配置,提示先去用水户管理配置 */
+  /**
+   * 调度闸口下拉:已选用水户=该户关联闸口组(1.4 收敛);
+   * 未选户=全量可计量闸口池(/water-user/meta gates,渠道量水点/闸站)。
+   */
   var gateSeq = 0;
   function loadFormGates(userId, cb) {
     var seq = ++gateSeq;
-    GATES = [];
-    if (!userId) { if (cb) cb(); return; }
-    api('GET', '/water-user/gates?userId=' + encodeURIComponent(userId), null, function (err, arr) {
+    var url = userId ? '/water-user/gates?userId=' + encodeURIComponent(userId) : '/water-user/meta';
+    api('GET', url, null, function (err, d) {
       if (seq !== gateSeq) return;
-      if (!err) GATES = Array.isArray(arr) ? arr : [];
-      if (!err && !GATES.length) toast('该用水户未配置关联闸口，请先配置');
+      var list = err ? [] : (userId ? d : (d && d.gates));
+      GATES = Array.isArray(list) ? list : [];
+      if (!err && userId && !GATES.length) toast('该用水户未配置关联闸口，请先配置');
       if (cb) cb();
     });
   }
 
-  /** 按需水申请带出用水户/放水量/起止时间,并按户刷新配额下拉与闸口下拉 */
+  /** 按需水申请带出用水户/放水量/执行时间,并按户刷新配额下拉与闸口下拉 */
   function fillPlanByApply(row) {
     setSel('f-plan', '', '');
     setSel('f-p-farmer', rowUserLabel(row), row.waterUserId);
     setSel('f-p-gate', '', '');
     $('f-p-amount').value = fmtAmount(row.amount);
-    $('f-p-start').value = row.startDate + 'T08:00';
-    $('f-p-end').value = row.endDate + 'T18:00';
+    // 需水上报按旬申报,自动带出旬首日 08:00 作为执行时间(可再改)
+    if (row.startDate) $('f-p-exec').value = row.startDate + 'T08:00';
     loadPlansAndApplies(row.waterUserId);
     // 申报闸口落在该户闸口组内才回填,否则留空要求重选(避免带着非法值提交后被 5.8 拦)
     loadFormGates(row.waterUserId, function () {
@@ -1004,7 +1143,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     tip.classList.add('show');
   }
 
-  /** 手动更换弹窗内用水户:刷新下拉,且已选需水单不属于新户时清空(5.7 一致性) */
+  /** 手动更换弹窗内用水户:刷新下拉,且已选需水单不属于新户时清空(5.7 一致性);清空户则恢复全量闸口池 */
   function onPlanFarmerPick(userId) {
     setSel('f-plan', '', '');
     setSel('f-p-gate', '', ''); // 换户:闸口候选按新户收敛,原选择作废重选
@@ -1014,44 +1153,50 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       if (sel && !findApply(sel)) {
         setSel('f-apply', '', '');
         $('f-p-amount').value = '';
-        $('f-p-start').value = '';
-        $('f-p-end').value = '';
+        $('f-p-exec').value = '';
       }
     });
   }
 
   function openPlanModal(row) {
-    // 关联需水申请默认选中当前上报单,并带出用水户/闸口/放水量/时段
+    // 关联需水申请默认选中当前上报单,并带出用水户/闸口/放水量/执行时间
     setSel('f-plan', '', '');
     setSel('f-p-gate', '', '');
     $('plan-tip').classList.remove('show');
     setSel('f-apply', applyLabelOf(row), row.id);
     setSel('f-p-owner', '', '');
+    $('f-p-exec').value = '';
+    $('f-p-height').value = '';
     $('f-p-remark').value = '';
     fillPlanByApply(row);
+    if (!$('f-p-exec').value) $('f-p-exec').value = nowInputStr();
     openModal('plan-ov');
   }
 
   $('btn-plan-cancel').addEventListener('click', function () { closeModal('plan-ov'); });
 
   $('btn-plan-ok').addEventListener('click', function () {
-    if (!$('f-p-farmer').dataset.value) { toast('请选择「用水户」'); return; }
+    var userId = $('f-p-farmer').dataset.value;
     if (!$('f-p-gate').dataset.value) { toast('请选择「调度闸口」'); return; }
     var amount = $('f-p-amount').value.trim();
-    if (!amount || !(Number(amount) > 0)) { toast('请填写「计划放水量」(大于 0)'); return; }
-    var start = $('f-p-start').value;
-    var end = $('f-p-end').value;
-    if (!start) { toast('请选择「开始时间」'); return; }
-    if (!end) { toast('请选择「结束时间」'); return; }
-    if (end <= start) { toast('结束时间需晚于开始时间'); return; }
+    if (amount && !(Number(amount) > 0)) { toast('「计划放水量」须大于 0'); return; }
+    var exec = $('f-p-exec').value;
+    if (!exec) { toast('请选择「执行时间」'); return; }
+    var heightRaw = $('f-p-height').value.trim();
+    var height = null;
+    if (heightRaw !== '') {
+      height = Number(heightRaw);
+      if (!(height >= 0 && height <= 999)) { toast('「指定闸门高度」须在 0~999 cm 之间'); return; }
+      if (Math.floor(height) !== height) { toast('「指定闸门高度」须为整数'); return; }
+    }
 
     var payload = {
-      waterUserId: $('f-p-farmer').dataset.value,
       gateId: $('f-p-gate').dataset.value,
-      planAmount: Number(Number(amount).toFixed(2)), // 万m³,≤2 位小数(0.3)
-      startTime: start,
-      endTime: end
+      execTime: exec
     };
+    if (userId) payload.waterUserId = userId;
+    if (amount) payload.planAmount = Number(Number(amount).toFixed(2)); // 万m³,≤2 位小数(0.3)
+    if (height != null) payload.gateHeightCm = height;
     if ($('f-plan').dataset.value) payload.planId = $('f-plan').dataset.value;
     if ($('f-apply').dataset.value) payload.demandId = $('f-apply').dataset.value;
     // 负责人:下拉选中传 id(后端按 id 回查固化姓名快照,不信任文本);仅手填时按文本入库
@@ -1071,7 +1216,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       btn.disabled = false;
       if (err) return;
       closeModal('plan-ov');
-      toast('调度方案已编制');
+      toast('调度指令已编制');
       renderAll();
     });
   });
@@ -1156,7 +1301,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (e.target.id === 'pg-jump') jumpToPage(e.target.value);
   }, true);
 
-  // 表格操作:查看 / 审核 / 编制方案 / 编辑 / 删除
+  // 表格操作:查看 / 审核 / 编制指令 / 编辑 / 删除
   $('tbl-body').addEventListener('click', function (e) {
     var el = e.target.closest('.act');
     if (!el) return;
@@ -1182,25 +1327,27 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (row) fillPlanByApply(row);
   });
   bindSearchSelect('f-p-farmer', 'p-farmer-dd', userOptions, '无匹配用水户', onPlanFarmerPick);
-  bindSearchSelect('f-p-gate', 'p-gate-dd', gateOptions, '请先选用水户(闸口仅限该户关联闸口组)');
+  bindSearchSelect('f-p-gate', 'p-gate-dd', gateOptions, '请选择调度闸口(已选户仅限该户关联闸口组)');
   bindSearchSelect('f-p-owner', 'p-owner-dd', ownerOptions, '无匹配负责人');
 
-  // 4.1 表单元数据(用途联想 + 服务器当天)
+  // 用水时间:年/月/旬变更后自动带出用水时段
+  $('f-year').addEventListener('change', syncPeriod);
+  $('f-month').addEventListener('change', syncPeriod);
+  $('f-xun-group').addEventListener('change', syncPeriod);
+
+  // 4.1 表单元数据(用途联想)
   api('GET', '/water-demand/meta', null, function (err, d) {
-    if (!err && d) {
-      USAGES = d.usages || [];
-      if (d.today) TODAY = d.today;
-    }
+    if (!err && d) USAGES = d.usages || [];
   });
   // 4.5 用水户下拉(仅正常状态)
   api('GET', '/water-demand/users', null, function (err, d) {
     if (!err) USERS = Array.isArray(d) ? d : [];
   });
-  // 5.1 调度负责人候选(平台用户;与调度方案模块同源同口径)
+  // 5.1 调度负责人候选(平台用户;与调度指令模块同源同口径)
   api('GET', '/water-dispatch/meta', null, function (err, d) {
     if (!err && d) OWNERS = d.owners || [];
   });
-  // 调度闸口不预拉全量池:选用水户后按户收敛(1.4,与保存校验同口径)
+  // 调度闸口:已选户按户收敛,未选户拉全量计量闸口池(见 loadFormGates)
 
   renderAll();
 })();

@@ -371,8 +371,9 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
           <div class="f-err" id="err-gates"></div>
         </div>
         <div class="f-item span3" id="fi-main" hidden>
-          <label class="f-label"><i class="req">*</i>主闸口</label>
+          <label class="f-label"><i class="req">*</i>主闸口（可多选）</label>
           <div class="sel" id="sel-main"></div>
+          <div class="f-hint">主闸口过闸水量相加后，扣除扣减闸口合计</div>
           <div class="f-err" id="err-main"></div>
         </div>
         <div class="f-item span3" id="fi-deduct" hidden>
@@ -891,7 +892,7 @@ function resetForm() {
   selMode.setOptions((S.meta.calcModes || []).map(o => ({ value: o.value, label: o.label })));
   selMode.setPlaceholder('请选择计算策略').setValue('');
   selGates.setOptions(gateOptions()).setPlaceholder('请选择关联闸口（可多选）').setValue([]);
-  selMain.setOptions(gateOptions()).setPlaceholder('请选择主闸口').setValue('');
+  selMain.setOptions(gateOptions()).setPlaceholder('请选择主闸口（可多选）').setValue([]);
   selDeduct.setOptions(gateOptions()).setPlaceholder('请选择扣减闸口（可多选）').setValue([]);
   applyGateRows('');
   clearFormErrors();
@@ -915,7 +916,11 @@ function fillForm(d) {
   if (d.calcMode === '#1#') {
     selGates.setValue(((gc.gates) || []).map(g => g.id));
   } else if (d.calcMode === '#2#') {
-    selMain.setValue(gc.main ? gc.main.id : '');
+    // 主闸口多选：优先 mains 数组，兼容旧数据 main 单对象
+    const mains = Array.isArray(gc.mains) && gc.mains.length
+      ? gc.mains.map(g => g.id)
+      : (gc.main && gc.main.id ? [gc.main.id] : []);
+    selMain.setValue(mains);
     selDeduct.setValue(((gc.deduct) || []).map(g => g.id));
   }
 }
@@ -980,12 +985,18 @@ function validateForm() {
     if (!ids.length) { setFormError('gates', '请至少选择一个关联闸口'); bad = true; }
     gateConfig = { mode: 'SUM', gates: ids.map(id => ({ id })) };
   } else if (mode === '#2#') {
-    const main = selMain.getValue();
+    const mains = selMain.getValue();
     const deducts = selDeduct.getValue();
-    if (!main) { setFormError('main', '请选择主闸口'); bad = true; }
+    if (!mains.length) { setFormError('main', '请至少选择一个主闸口'); bad = true; }
     if (!deducts.length) { setFormError('deduct', '请至少选择一个扣减闸口'); bad = true; }
-    if (main && deducts.indexOf(main) >= 0) { setFormError('deduct', '主闸口不能同时作为扣减闸口'); bad = true; }
-    gateConfig = { mode: 'DIFF', main: { id: main }, deduct: deducts.map(id => ({ id })) };
+    const overlap = mains.filter(id => deducts.indexOf(id) >= 0);
+    if (overlap.length) {
+      const hit = (S.meta.gates || []).filter(g => overlap.indexOf(g.id) >= 0)[0];
+      setFormError('deduct', '主闸口「' + ((hit && hit.name) || overlap[0]) + '」不能同时作为扣减闸口');
+      bad = true;
+    }
+    // 主闸口可多选：过闸水量相加后减扣减闸口合计（mains 数组，兼容旧版 main）
+    gateConfig = { mode: 'DIFF', mains: mains.map(id => ({ id })), deduct: deducts.map(id => ({ id })) };
   }
   if (bad) return null;
   // 年度计划水量 / 经纬度已不在表单录入：编辑时回传原值防止后端清空（新增时为 null）
@@ -1356,7 +1367,7 @@ function bindEvents() {
   selStatus = createSelect($('sel-status'));
   selMode = createSelect($('sel-calc-mode'));
   selGates = createMultiSelect($('sel-gates')).setSearchable(true);
-  selMain = createSelect($('sel-main')).setSearchable(true);
+  selMain = createMultiSelect($('sel-main')).setSearchable(true);
   selDeduct = createMultiSelect($('sel-deduct')).setSearchable(true);
 
   bindEvents();

@@ -33,6 +33,8 @@ public interface WaterBillMapper {
     String T_STATION = "\"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\"";
     String T_PLAN = "\"qixiao-apaas\".\"t_auto_hltgq_water_plan\"";
     String T_FLOW = "\"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\"";
+    /** 手工用水台账（来源反显：账单 ledger_id → 台账编号） */
+    String T_LEDGER = "\"qixiao-apaas\".\"t_auto_hltgq_water_ledger\"";
 
     /** 列表条件（page/count 共用，作用于别名 b；keyword 匹配账单号/户名/户号/分期 key） */
     String LIST_CONDITIONS =
@@ -51,11 +53,13 @@ public interface WaterBillMapper {
             "b.status AS status, " +
             "to_char(b.created_at, 'YYYY-MM-DD HH24:MI') AS createTime, " +
             "to_char(b.pay_time, 'YYYY-MM-DD HH24:MI') AS payTime, " +
+            "b.ledger_id AS ledgerId, l.ledger_no AS ledgerNo, " +
             "(SELECT COUNT(*) FROM " + T_DISPATCH + " d WHERE d.bill_id = b.id) AS planCount";
 
-    /** 基础联表（户；别名 b/u） */
+    /** 基础联表（户 + 来源手工台账；别名 b/u/l） */
     String BASE_JOINS = " FROM " + T_BILL + " b " +
-            "LEFT JOIN " + T_USER + " u ON u.id = b.water_user_id ";
+            "LEFT JOIN " + T_USER + " u ON u.id = b.water_user_id " +
+            "LEFT JOIN " + T_LEDGER + " l ON l.id = b.ledger_id ";
 
     /** 列表分页（编号倒序，最新账单在前） */
     @Select("<script>SELECT " + BASE_COLS + BASE_JOINS + "WHERE b.corp_code = 'hltgq' " + LIST_CONDITIONS +
@@ -79,14 +83,14 @@ public interface WaterBillMapper {
             " WHERE corp_code = 'hltgq' AND bill_no LIKE 'SF%' AND right(bill_no, 4) ~ '^[0-9]+$'")
     int selectMaxBillSeq();
 
-    /** 新增（row key：id/bill_no/water_user_id/settle_cycle/cycle_key/period_start/period_end/quantity/price/amount/now/operator；状态固定 #1# 已生成、paid=0） */
+    /** 新增（row key：id/bill_no/water_user_id/settle_cycle/cycle_key/period_start/period_end/quantity/price/amount/ledger_id/now/operator；状态固定 #1# 已生成、paid=0；ledger_id 缺失按 null） */
     @Insert("INSERT INTO " + T_BILL + " " +
             "(\"id\", \"bill_no\", \"water_user_id\", \"settle_cycle\", \"cycle_key\", \"period_start\", " +
-            "\"period_end\", \"quantity\", \"price\", \"amount\", \"paid\", \"status\", \"corp_code\", " +
+            "\"period_end\", \"quantity\", \"price\", \"amount\", \"paid\", \"status\", \"ledger_id\", \"corp_code\", " +
             "\"created_at\", \"created_by\", \"updated_at\", \"updated_by\") " +
             "VALUES (#{row.id}, #{row.bill_no}, #{row.water_user_id}, #{row.settle_cycle}, #{row.cycle_key}, " +
             "CAST(#{row.period_start} AS date), CAST(#{row.period_end} AS date), #{row.quantity}, #{row.price}, " +
-            "#{row.amount}, 0, '#1#', 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
+            "#{row.amount}, 0, '#1#', #{row.ledger_id}, 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
     int insertBill(@Param("row") Map<String, Object> row);
 
     /** 确认收款（仅已生成 #1#：已缴清 #2#、实收 = 应收、记录收款时间） */
@@ -101,15 +105,21 @@ public interface WaterBillMapper {
     @Delete("DELETE FROM " + T_BILL + " WHERE id = #{id} AND corp_code = 'hltgq'")
     int deleteBill(@Param("id") String id);
 
+    /** 计量窗口起（与 WaterDispatchMapper.WINDOW_START 同口径：执行时间优先，旧数据回落原执行时段起） */
+    String WINDOW_START = "COALESCE(d.exec_time, d.start_time)";
+    /** 计量窗口止（完成时间 → 旧执行时段止 → 当前时间） */
+    String WINDOW_END = "COALESCE(d.finish_time, d.end_time, CURRENT_TIMESTAMP)";
+
     /**
-     * 账单方案明细（详情 plans / 按方案出账后回显共用）：
+     * 账单指令明细（详情 plans / 按指令出账后回显共用）：
      * amount 取 billed_qty 计费快照、sign 由快照符号推导；cycleKey/cycleLabel 由 Service 按账单期填充。
+     * startTime/endTime 为计量窗口（执行时间 ~ 完成时间），旧数据回落原执行时段。
      */
     @Select("SELECT d.id AS dispatchId, d.dispatch_no AS dispatchNo, d.plan_id AS planId, " +
             "p.plan_name AS planName, d.gate_id AS gateId, s.zzkaec AS gateName, " +
             "CASE WHEN d.billed_qty < 0 THEN -1 ELSE 1 END AS sign, " +
-            "to_char(d.start_time, 'YYYY-MM-DD HH24:MI') AS startTime, " +
-            "to_char(d.end_time, 'YYYY-MM-DD HH24:MI') AS endTime, " +
+            "to_char(" + WINDOW_START + ", 'YYYY-MM-DD HH24:MI') AS startTime, " +
+            "to_char(" + WINDOW_END + ", 'YYYY-MM-DD HH24:MI') AS endTime, " +
             "d.plan_amount AS planAmount, d.billed_qty AS amount, b.bill_no AS billNo, TRUE AS billed, " +
             "d.status AS status, " +
             "(SELECT COUNT(*) FROM " + T_RECORD + " r WHERE r.dispatch_id = d.id) AS trail " +
@@ -118,7 +128,7 @@ public interface WaterBillMapper {
             "LEFT JOIN " + T_PLAN + " p ON p.id = d.plan_id " +
             "LEFT JOIN " + T_BILL + " b ON b.id = d.bill_id " +
             "WHERE d.bill_id = #{billId} AND d.corp_code = 'hltgq' " +
-            "ORDER BY d.start_time, d.dispatch_no")
+            "ORDER BY " + WINDOW_START + ", d.dispatch_no")
     List<BillPlanRowVO> selectBillPlanRows(@Param("billId") String billId);
 
     /**

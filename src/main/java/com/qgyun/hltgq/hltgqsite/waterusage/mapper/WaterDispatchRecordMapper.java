@@ -11,9 +11,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 调度记录（t_auto_hltgq_water_dispatch_record）。表结构见 init.sql 灌区用水管理 2.3 / water-dispatch-bill-ddl.sql。
- * <p>闸口操作留痕，不参与水量与费用计算；关联方案可空（方案删除时 dispatch_id 置空保留）。
- * <p>操作类型：#1# 闸门提升 / #2# 闸门下降 / #3# 流量调整（对外映射 up/down/adjust）。
+ * 调度记录（t_auto_hltgq_water_dispatch_record）。表结构见 init.sql 灌区用水管理 2.3 / water-usage-v3-ddl.sql。
+ * <p>闸口操作留痕，不参与水量与费用计算；关联指令可空（指令删除时 dispatch_id 置空保留）。
+ * <p>记录内容 = 操作时间 + 操作后闸门高度（cm）+ 操作人 + 备注；op_type / height 为历史列，
+ * 保留旧数据但不参与读写（op_type 有 DEFAULT 可省略）。
  * <p>宽进策略：记录为留痕数据，编辑/删除不限状态（Service 仅做关联一致性与存在性校验）。
  * <p>写入走 {@code @Param("row") Map}：key 为 snake_case 列名；operator 为业务列（操作人，NOT NULL），
  * 审计列 created_by/updated_by 用独立 key {@code auditor} 传入，避免同名前缀冲突。
@@ -25,7 +26,7 @@ public interface WaterDispatchRecordMapper {
     String T_USER = "\"qixiao-apaas\".\"t_auto_hltgq_water_user\"";
     String T_STATION = "\"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\"";
 
-    /** 列表条件（page/count 共用，作用于别名 r；keyword 匹配操作人/备注/方案编号） */
+    /** 列表条件（page/count 共用，作用于别名 r；keyword 匹配操作人/备注/指令编号） */
     String LIST_CONDITIONS =
             "<if test='keyword != null and keyword != \"\"'>AND (r.operator LIKE CONCAT('%', #{keyword}, '%') " +
             "OR r.remark LIKE CONCAT('%', #{keyword}, '%') " +
@@ -33,15 +34,15 @@ public interface WaterDispatchRecordMapper {
             "<if test='waterUserId != null and waterUserId != \"\"'>AND r.water_user_id = #{waterUserId} </if>" +
             "<if test='gateId != null and gateId != \"\"'>AND r.gate_id = #{gateId} </if>";
 
-    /** 基础列（列表/详情共用；op_time 输出文本；op_type 出口映射英文码） */
+    /** 基础列（列表/详情共用；op_time 输出文本；gate_height_after 为操作后闸门高度 cm） */
     String BASE_COLS = "r.id AS id, r.dispatch_id AS dispatchId, d.dispatch_no AS dispatchNo, " +
             "r.water_user_id AS waterUserId, u.user_no AS waterUserNo, u.name AS waterUserName, " +
             "r.gate_id AS gateId, s.zzkaec AS gateName, " +
-            "to_char(r.op_time, 'YYYY-MM-DD HH24:MI') AS opTime, r.op_type AS opType, r.height AS height, " +
+            "to_char(r.op_time, 'YYYY-MM-DD HH24:MI') AS opTime, r.gate_height_after AS gateHeightAfter, " +
             "r.operator AS operator, r.remark AS remark, " +
             "to_char(r.created_at, 'YYYY-MM-DD HH24:MI') AS createTime";
 
-    /** 基础联表（户/站档/方案；别名 r/d/u/s；方案删除后 d 为空 LEFT JOIN 仍出记录） */
+    /** 基础联表（户/站档/指令；别名 r/d/u/s；指令删除后 d 为空 LEFT JOIN 仍出记录） */
     String BASE_JOINS = " FROM " + T_RECORD + " r " +
             "LEFT JOIN " + T_DISPATCH + " d ON d.id = r.dispatch_id " +
             "LEFT JOIN " + T_USER + " u ON u.id = r.water_user_id " +
@@ -67,21 +68,22 @@ public interface WaterDispatchRecordMapper {
     WaterDispatchRecordVO selectRecordById(@Param("id") String id);
 
     /**
-     * 新增（row key：id/dispatch_id/water_user_id/gate_id/op_time/op_type/height/operator/remark/now/auditor）。
-     * <p>op_time 由 Service 解析为 LocalDateTime；operator 为业务列（操作人）、auditor 为审计列值。
+     * 新增（row key：id/dispatch_id/water_user_id/gate_id/op_time/gate_height_after/operator/remark/now/auditor）。
+     * <p>op_time 由 Service 解析为 LocalDateTime；operator 为业务列（操作人）、auditor 为审计列值；
+     * op_type 走列默认值（历史列，不再写入）。
      */
     @Insert("INSERT INTO " + T_RECORD + " " +
-            "(\"id\", \"dispatch_id\", \"water_user_id\", \"gate_id\", \"op_time\", \"op_type\", \"height\", " +
+            "(\"id\", \"dispatch_id\", \"water_user_id\", \"gate_id\", \"op_time\", \"gate_height_after\", " +
             "\"operator\", \"remark\", \"corp_code\", \"created_at\", \"created_by\", \"updated_at\", \"updated_by\") " +
             "VALUES (#{row.id}, #{row.dispatch_id}, #{row.water_user_id}, #{row.gate_id}, #{row.op_time}, " +
-            "#{row.op_type}, #{row.height}, #{row.operator}, #{row.remark}, 'hltgq', #{row.now}, " +
+            "#{row.gate_height_after}, #{row.operator}, #{row.remark}, 'hltgq', #{row.now}, " +
             "#{row.auditor}, #{row.now}, #{row.auditor})")
     int insertRecord(@Param("row") Map<String, Object> row);
 
-    /** 编辑（全字段；留痕数据宽进，无状态守卫） */
+    /** 编辑（业务字段；op_type/height 历史列不覆盖，保留原值；留痕数据宽进，无状态守卫） */
     @Update("UPDATE " + T_RECORD + " SET \"dispatch_id\" = #{row.dispatch_id}, " +
             "\"water_user_id\" = #{row.water_user_id}, \"gate_id\" = #{row.gate_id}, " +
-            "\"op_time\" = #{row.op_time}, \"op_type\" = #{row.op_type}, \"height\" = #{row.height}, " +
+            "\"op_time\" = #{row.op_time}, \"gate_height_after\" = #{row.gate_height_after}, " +
             "\"operator\" = #{row.operator}, \"remark\" = #{row.remark}, " +
             "\"updated_at\" = #{row.now}, \"updated_by\" = #{row.auditor} " +
             "WHERE \"id\" = #{row.id} AND \"corp_code\" = 'hltgq'")

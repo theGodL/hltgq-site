@@ -1,14 +1,20 @@
 package com.qgyun.hltgq.hltgqsite.waterusage.controller;
 
+import com.qgyun.hltgq.hltgqsite.model.util.DownloadHeaderUtils;
+import com.qgyun.hltgq.hltgqsite.model.util.MediaTypeUtils;
 import com.qgyun.hltgq.hltgqsite.waterusage.WaterUsageSupport;
 import com.qgyun.hltgq.hltgqsite.waterusage.service.WaterPlanService;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.QuotaOptionVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.UserOptionVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanAttachmentVO;
+import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanDownloadVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanSaveVO;
 import com.qgyun.hltgq.hltgqsite.waterusage.vo.WaterPlanVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -146,6 +153,33 @@ public class WaterPlanController {
     public Map<String, Object> voidPlan(@RequestParam String id, @RequestParam String reason) {
         log.info("收到用水计划作废请求：id={}", id);
         planService.voidPlan(id, reason);
+        return WaterUsageSupport.ok();
+    }
+
+    /** 附件上传（multipart 单文件；白名单：图片/PDF/Word/Excel；返回 {id, fileName, fileSize, fileExt}） */
+    @PostMapping("/attachment/upload")
+    public WaterPlanAttachmentVO uploadAttachment(@RequestParam("file") MultipartFile file) {
+        log.info("收到用水计划附件上传请求：{}（{} 字节）",
+                file == null ? null : file.getOriginalFilename(),
+                file == null ? 0 : file.getSize());
+        return planService.uploadAttachment(file);
+    }
+
+    /** 附件下载（Content-Disposition 带原始文件名，前端 fetch + blob 使用） */
+    @GetMapping("/attachment/download")
+    public ResponseEntity<byte[]> downloadAttachment(@RequestParam String id) {
+        WaterPlanDownloadVO file = planService.downloadAttachment(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, DownloadHeaderUtils.attachment(file.getFileName()))
+                .contentType(MediaTypeUtils.of(file.getFileExt()))
+                .body(file.getContent());
+    }
+
+    /** 附件移除（新增取消 / 编辑态移除新上传：未归属附件才可删） */
+    @PostMapping("/attachment/remove")
+    public Map<String, Object> removeAttachment(@RequestParam String id) {
+        log.info("收到用水计划附件移除请求：id={}", id);
+        planService.removeAttachment(id);
         return WaterUsageSupport.ok();
     }
 }

@@ -54,7 +54,7 @@ public class WaterUserSaveVO {
     /**
      * 关联闸口：
      * 累加 {"mode":"SUM","gates":[{"id":"…","name":"…"},…]}
-     * 差额 {"mode":"DIFF","main":{"id":"…","name":"…"},"deduct":[{…},…]}
+     * 差额 {"mode":"DIFF","mains":[{…},…],"deduct":[{…},…]}（主闸口可多选；兼容旧版 main 单对象）
      * （name 不信任前端，后端按 id 回查站档固化）
      */
     private JsonNode gateConfig;
