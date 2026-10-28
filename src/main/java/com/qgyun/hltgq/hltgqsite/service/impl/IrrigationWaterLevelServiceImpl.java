@@ -210,8 +210,8 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
     @Override
     public WaterLevelTrendVO waterLevelTrend(String stcd, LocalDateTime startTime, LocalDateTime endTime,
                                              String granularity) {
-        // 分钟级：按实际采集时刻逐条出点（图表 x 轴为真实时间）
-        if ("minute".equalsIgnoreCase(granularity)) {
+        // 原始采集粒度：raw（语义名）与 minute（历史别名）等价，按实际采集时刻逐条出点
+        if (isRawGranularity(granularity)) {
             return trendByMinute(stcd, startTime, endTime);
         }
         // 1. 默认时间范围：近 7 天（与 FlowMonitorServiceImpl.trend 口径一致，服务内兜底）
@@ -306,8 +306,9 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
     }
 
     /**
-     * 分钟级趋势：按实际采集时刻逐条输出原始记录，不做小时聚合，也不补齐整点。
-     * <p>水位口径与小时级一致（2 位小数、哨兵值过滤）；库容同样只对花凉亭坝上按曲线插值。
+     * 原始采集趋势：按实际采集时刻逐条输出原始记录，不做小时聚合，也不补齐整点。
+     * <p>granularity=raw（语义名）/ minute（历史别名）均进入本分支；
+     * 水位口径与小时级一致（2 位小数、哨兵值过滤）；库容同样只对花凉亭坝上按曲线插值。
      */
     private WaterLevelTrendVO trendByMinute(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
         // 1. 默认时间范围：近 7 天（不截整点，保留当前分钟）
@@ -377,6 +378,11 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         vo.setEndTime(endTime);
         vo.setHours(points);
         return vo;
+    }
+
+    /** 原始采集粒度判断：raw 为语义别名，minute 为历史命名，两者等价 */
+    private static boolean isRawGranularity(String granularity) {
+        return "raw".equalsIgnoreCase(granularity) || "minute".equalsIgnoreCase(granularity);
     }
 
     @Override

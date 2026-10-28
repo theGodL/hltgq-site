@@ -68,7 +68,8 @@ public class IrrigationWaterLevelController {
     /**
      * 水位趋势图表：单站点水位曲线（用于水位监测-详情趋势图、大屏）
      * stcd 必填；startTime/endTime 非必填，默认近 7 天
-     * 默认小时级（整点补齐）；granularity=minute 时按实际采集时刻逐条出点（分钟级精度，x 轴为真实时间）
+     * <p>默认小时级（整点补齐，适合看整体走势）；granularity=raw 时按实际采集时刻逐条出点
+     * （x 轴为真实时间，保留曲线细节，画水位/库容细节曲线用这个）；minute 为 raw 的历史别名，两者等价。
      */
     @GetMapping("/trend")
     public WaterLevelTrendVO trend(
@@ -76,14 +77,20 @@ public class IrrigationWaterLevelController {
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
             @RequestParam(required = false, defaultValue = "hour") String granularity) {
-        // 默认近 7 天：小时级截止到整点，分钟级截止到当前分钟
+        // 默认近 7 天：小时级截止到整点，原始采集粒度（raw/minute）截止到当前分钟
+        boolean raw = isRawGranularity(granularity);
         LocalDateTime now = LocalDateTime.now().withSecond(0).withNano(0);
-        if (!"minute".equalsIgnoreCase(granularity)) {
+        if (!raw) {
             now = now.withMinute(0);
         }
         if (endTime == null) endTime = now;
         if (startTime == null) startTime = endTime.minusDays(7);
         return irrigationWaterLevelService.waterLevelTrend(stcd, startTime, endTime, granularity);
+    }
+
+    /** 原始采集粒度判断：raw 为语义别名，minute 为历史命名，两者等价 */
+    private static boolean isRawGranularity(String granularity) {
+        return "raw".equalsIgnoreCase(granularity) || "minute".equalsIgnoreCase(granularity);
     }
 
     /**

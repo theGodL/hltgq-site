@@ -41,9 +41,10 @@ public interface IrrigationWaterLevelService {
      * 水位趋势图表：单站点水位曲线（用于水位监测-详情趋势图、大屏）
      *
      * @param stcd        站点编号/站点主键（必填）
-     * @param startTime   起始时间（可选，默认 7 天前；小时级截到整点，分钟级保留当前分钟）
+     * @param startTime   起始时间（可选，默认 7 天前；小时级截到整点，原始采集级保留当前分钟）
      * @param endTime     截止时间（可选，默认当前时刻）
-     * @param granularity 统计粒度：hour（默认，每小时取值、整点补齐）/ minute（按实际采集时刻逐条出点）
+     * @param granularity 统计粒度：hour（默认，每小时取值、整点补齐）/ raw（按实际采集时刻逐条出点，
+     *                    保留曲线细节）；minute 为 raw 的历史别名。画库容等细节曲线用 raw，只看整体走势用 hour
      * @return 水位趋势图表数据
      */
     WaterLevelTrendVO waterLevelTrend(String stcd, LocalDateTime startTime, LocalDateTime endTime, String granularity);
