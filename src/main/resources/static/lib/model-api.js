@@ -499,9 +499,28 @@
     short: moduleApi('/water-forecast/short'),
     long: moduleApi('/water-forecast/long'),
     loss: moduleApi('/water-forecast/loss'),
-    demand: moduleApi('/water-forecast/demand'),
+    demand: Object.assign(moduleApi('/water-forecast/demand'), {
+      /** 支渠作物默认配置(82 行六列) */
+      cropConfig: function () {
+        return getJson('/water-forecast/demand/crop-config');
+      },
+      /** 需水预测全量导出(POI 两 Sheet:支渠明细 + 分区汇总) */
+      downloadExcel: function (recordId) {
+        return download(
+          '/water-forecast/demand/download?recordId=' + encodeURIComponent(recordId),
+          '需水预测逐旬明细_' + recordId + '.xlsx'
+        );
+      }
+    }),
     moisture: moduleApi('/water-forecast/moisture'),
-    allocation: moduleApi('/water-allocation'),
+    allocation: Object.assign(moduleApi('/water-allocation'), {
+      downloadExcel: function (recordId) {
+        return download(
+          '/water-allocation/download?recordId=' + encodeURIComponent(recordId),
+          '水资源配置明细_' + recordId + '.xlsx'
+        );
+      }
+    }),
     isStatusRunning: isStatusRunning,
     isStatusCompleted: isStatusCompleted,
     isStatusFailed: isStatusFailed,
@@ -511,6 +530,14 @@
           '/water-decision/download?recordId=' + encodeURIComponent(recordId),
           '配水调度明细_' + recordId + '.xlsx'
         );
+      },
+      /** 灌区面积分配表（只读静态约束表） */
+      areaTable: function () {
+        return getJson('/water-decision/area-table');
+      },
+      /** 支渠限制流量表（只读静态约束表） */
+      flowLimitTable: function () {
+        return getJson('/water-decision/flow-limit-table');
       },
       /** 拓扑按旬支渠（配水决策） */
       branches: function (id, startDate) {

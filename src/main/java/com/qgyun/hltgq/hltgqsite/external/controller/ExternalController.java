@@ -97,7 +97,8 @@ public class ExternalController {
      * name：可选，按站点名称模糊匹配（如「渠首」命中「渠首管理所」）；不传或空白表示不筛选。
      * <p>coreIndicator（核心指标）每行必有，只有水位站与雨量站有：水位类型（1）取档案「核心指标-水位」列 ijzsby、
      * 雨量类型（2）取档案「核心指标-雨量」列 ccnhtm（两列在档案里分列存储），统一输出两位小数文本，
-     * 档案未填按 0.00 输出；其余类型无核心指标固定 null。原始列名 ccnhtm / ijzsby 同时保留。
+     * 档案未填按 0.00 输出；其余类型无核心指标固定为 null。原始列名 ccnhtm / ijzsby 同时保留。
+     * 闸门站（epjutj 含 #4#）恒为 null——闸站普遍同时登记水位类型而出现在 type=1 列表里，不按 ijzsby 输出。
      * 响应信封与原 qx-api 一致（success/status/data/msg/...）。
      */
     @GetMapping("/station-monitor")

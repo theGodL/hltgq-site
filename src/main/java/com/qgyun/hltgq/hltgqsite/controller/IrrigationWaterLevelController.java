@@ -66,15 +66,24 @@ public class IrrigationWaterLevelController {
     }
 
     /**
-     * 水位趋势图表：单站点小时级水位曲线（用于水位监测-详情趋势图）
+     * 水位趋势图表：单站点水位曲线（用于水位监测-详情趋势图、大屏）
      * stcd 必填；startTime/endTime 非必填，默认近 7 天
+     * 默认小时级（整点补齐）；granularity=minute 时按实际采集时刻逐条出点（分钟级精度，x 轴为真实时间）
      */
     @GetMapping("/trend")
     public WaterLevelTrendVO trend(
             @RequestParam String stcd,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
-        return irrigationWaterLevelService.waterLevelTrend(stcd, startTime, endTime);
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "hour") String granularity) {
+        // 默认近 7 天：小时级截止到整点，分钟级截止到当前分钟
+        LocalDateTime now = LocalDateTime.now().withSecond(0).withNano(0);
+        if (!"minute".equalsIgnoreCase(granularity)) {
+            now = now.withMinute(0);
+        }
+        if (endTime == null) endTime = now;
+        if (startTime == null) startTime = endTime.minusDays(7);
+        return irrigationWaterLevelService.waterLevelTrend(stcd, startTime, endTime, granularity);
     }
 
     /**

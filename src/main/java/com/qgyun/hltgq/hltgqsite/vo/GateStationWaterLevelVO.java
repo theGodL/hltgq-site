@@ -26,4 +26,13 @@ public class GateStationWaterLevelVO {
 
     /** 闸后水位（下游） */
     private BigDecimal downZ;
+
+    /**
+     * 闸前水位设计预警值（阈值设置 site + zb=up_z），未配置为 null。
+     * 与水位值同源不同表：预警值是设计值，不受当日有无报文影响，前端照常标出。
+     */
+    private BigDecimal upZThreshold;
+
+    /** 闸后水位设计预警值（阈值设置 site + zb=down_z），未配置为 null */
+    private BigDecimal downZThreshold;
 }

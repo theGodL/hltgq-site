@@ -241,7 +241,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <div class="sel-dd" id="plan-dd"></div>
         </div>
-        <div class="f-tip">关联后将根据计划自动带出用水户的计划用水量</div>
         <div class="plan-tip" id="plan-tip">
           <svg class="tip-ico tip-ico-info" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="2.5" width="9" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 5h9M4 1.5v2M8 1.5v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
           <svg class="tip-ico tip-ico-ok" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2L4.8 9 10 3.4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -264,7 +263,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="p-farmer-dd"></div>
           </div>
-          <div class="f-tip">选填；选定后调度闸口收敛为该户关联闸口</div>
         </div>
         <div class="form-item">
           <label>调度闸口 <i class="req">*</i></label>
@@ -273,21 +271,18 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="p-gate-dd"></div>
           </div>
-          <div class="f-tip">指定闸口：按正位归集</div>
         </div>
         <div class="form-item">
           <label>计划放水量（万m³）</label>
           <input type="number" class="ipt" id="f-p-amount" min="0" step="0.01" placeholder="选填，0" autocomplete="off">
-          <div class="f-tip">选填；关联计划时可自动带出，请核对本次指令放水量。</div>
         </div>
         <div class="form-item">
           <label>执行时间 <i class="req">*</i></label>
           <input type="datetime-local" class="ipt" id="f-p-exec">
-          <div class="f-tip">开闸时刻；状态改为「已完成」时自动记录关闸时刻。</div>
         </div>
         <div class="form-item">
-          <label>指定闸门高度（cm）</label>
-          <input type="number" class="ipt" id="f-p-height" min="0" max="999" step="1" placeholder="选填，0~999" autocomplete="off">
+          <label>指定闸门高度（cm） <i class="req">*</i></label>
+          <input type="number" class="ipt" id="f-p-height" min="0" max="999" step="1" placeholder="0~999" autocomplete="off">
         </div>
         <div class="form-item">
           <label>调度负责人</label>
@@ -296,7 +291,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="p-owner-dd"></div>
           </div>
-          <div class="f-tip">候选为平台用户（5.1 owners），与需水上报页「编制指令」同一池</div>
         </div>
         <div class="form-item span2">
           <label>备注</label>
@@ -957,11 +951,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (!gateId) { toast('请选择「调度闸口」'); return; }
     if (amount && !(Number(amount) > 0)) { toast('「计划放水量」须大于 0'); return; }
     if (!exec) { toast('请选择「执行时间」'); return; }
-    if (height !== '') {
-      var h = Number(height);
-      if (!(h >= 0 && h <= 999)) { toast('「指定闸门高度」须在 0~999 cm 之间'); return; }
-      if (Math.floor(h) !== h) { toast('「指定闸门高度」须为整数'); return; }
-    }
+    if (height === '') { toast('请填写「指定闸门高度」'); return; }
+    var h = Number(height);
+    if (!(h >= 0 && h <= 999)) { toast('「指定闸门高度」须在 0~999 cm 之间'); return; }
+    if (Math.floor(h) !== h) { toast('「指定闸门高度」须为整数'); return; }
 
     var payload = {
       gateId: gateId,
@@ -969,7 +962,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     };
     if (userId) payload.waterUserId = userId;
     if (amount) payload.planAmount = Number(Number(amount).toFixed(2)); // 万m³,≤2 位小数(0.3)
-    if (height !== '') payload.gateHeightCm = Number(height);
+    payload.gateHeightCm = Number(height); // 必填,已在上方校验 0~999 整数
     if (planId) payload.planId = planId;
     if (demandId) payload.demandId = demandId;
     // 负责人:下拉选中传 id(5.8 后端按 id 回查固化姓名快照,不信任文本);仅手填/存量值时按文本入库

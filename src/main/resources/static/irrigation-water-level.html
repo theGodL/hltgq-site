@@ -9,6 +9,7 @@
 <script src="./lib/chart-common.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
 <script src="./lib/monitor-export.js"></script>
+<script src="./lib/reservoir-capacity.js"></script>
 <script src="./lib/station-sort.js"></script>
 <script src="./lib/message-viewer.js"></script>
 <style>
@@ -972,6 +973,38 @@ function renderGateLevels(rows) {
 
 /* ===== 水库站点（勾选控件承载，见 #river-cks / #reservoir-cks） ===== */
 
+/** 库容：水位 → 库容（亿m³）；-9991 设备异常 / -999 设备不存在 / 空值 / 超出曲线范围 → null */
+function capacityOf(z) {
+  const n = chartNum(z);
+  if (n === null) return null;
+  const cap = ReservoirCapacity.at(n);
+  return cap === null ? null : Math.round(cap * 1e6) / 1e6;
+}
+
+/** 库容展示口径：曲线原始精度 4 位小数（fmtAuto 统一 2 位会抹平 0.01 m 水位对应的变化） */
+function fmtCapacity(v) {
+  return (v === null || v === undefined || v === '') ? '--' : (+v).toFixed(4);
+}
+
+/**
+ * 库容右轴量程：库容由水位查「水位-库容」曲线得来，是水位的单值函数，
+ * 曲线形状与水位注定一致（同一份数据的两种计量）。若右轴也按数据自适应、把当次波动拉满全高，
+ * 两条线就会像素级重合（产品反馈的现象）。所以右轴额外留白：
+ * 跨度取「数据跨度 × 1.8」（至少 0.5 亿m³）并以数据中值为中心，
+ * 库容线最多只占图高的 56%，不会与水位线叠在一起。
+ */
+const CAP_AXIS_MIN_SPAN = 0.5;   // 亿m³
+const CAP_AXIS_PAD_RATIO = 0.8;  // 数据跨度两侧合计留白比例
+/** 库容右轴边界：dir = -1 取 min、1 取 max；按 0.1 取整，避免轴标签出现 8.42 这类零碎刻度 */
+function capAxisBound(extent, dir) {
+  const lo = Number(extent && extent.min);
+  const hi = Number(extent && extent.max);
+  if (!isFinite(lo) || !isFinite(hi)) return dir < 0 ? 0 : 1;
+  const span = Math.max((hi - lo) * (1 + CAP_AXIS_PAD_RATIO), CAP_AXIS_MIN_SPAN);
+  const v = (lo + hi) / 2 + dir * span / 2;
+  return dir < 0 ? Math.floor(v * 10) / 10 : Math.ceil(v * 10) / 10;
+}
+
 const RES_META = {
   river: {
     name: '河道水情表',
@@ -983,9 +1016,12 @@ const RES_META = {
   },
   reservoir: {
     name: '水库水情表',
-    // 展示口径：汛限水位（数值取接口 warningLevel）；正常蓄水位不展示
-    headers: ['站点名称', '时间', '水位m', '汛限水位'],
-    rowToArr: r => [r.stnm, fmtTm(r.tm), r.z, r.warningLevel],
+    // 展示口径：汛限水位（数值取接口 warningLevel）；正常蓄水位不展示；
+    // 库容按水位查「水位-库容」曲线（lib/reservoir-capacity.js，写死数据，不走接口）
+    headers: ['站点名称', '时间', '水位m', '库容 亿m³', '汛限水位'],
+    rowToArr: r => [r.stnm, fmtTm(r.tm), r.z, capacityOf(r.z), r.warningLevel],
+    // 仅库容列（索引 3）用 4 位小数，其余列沿用 fmtAuto 的水情表 2 位口径
+    cellFmt: { 3: fmtCapacity },
   },
   period: {
     name: '日时段水情表',
@@ -1343,9 +1379,11 @@ function renderResTable() {
     return;
   }
 
+  // cellFmt：按列覆盖默认格式化（目前仅水库库容列需 4 位小数）
+  const colFmt = meta.cellFmt || {};
   $('res-tbody').innerHTML = rows.map(r => {
     const arr = meta.rowToArr(r);
-    return `<tr>${arr.map((v, i) => `<td${resColAttr(i)}>${fmtAuto(v)}</td>`).join('')}</tr>`;
+    return `<tr>${arr.map((v, i) => `<td${resColAttr(i)}>${colFmt[i] ? colFmt[i](v) : fmtAuto(v)}</td>`).join('')}</tr>`;
   }).join('');
   if (paginated) bindResPagerEvents();
 }
@@ -1761,7 +1799,7 @@ function renderGrHistChart(rows) {
 }
 
 /* ===== 水库三表「水情趋势」：河道/日时段单站曲线（弹窗内切换站点），水库按勾选多站 + 日期区间 ===== */
-const TREND = { stcds: [], inst: null, title: '', single: false, stcd: '' };
+const TREND = { stcds: [], inst: null, title: '', single: false, stcd: '', withCapacity: false };
 const TREND_MAX_SPAN_DAYS = 31;
 const TREND_COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1'];
 
@@ -1823,6 +1861,8 @@ function openResTrend() {
   const stcds = currentTrendStations();
   if (!stcds.length) { alert('请先勾选站点'); return; }
   const single = S.resTab === 'river' || S.resTab === 'period';
+  // 水库水情表只有花凉亭坝上一个站点：图例直接叫「水位」/「库容」，右侧再加一条库容 Y 轴
+  TREND.withCapacity = S.resTab === 'reservoir';
   TREND.stcds = stcds;
   TREND.single = single;
   TREND.stcd = stcds[0];
@@ -1881,6 +1921,7 @@ function renderTrendChart(groups, failed) {
   const chart = TREND.inst;
   const series = [];
   const usedNames = new Set();
+  const withCap = !!TREND.withCapacity;
   let total = 0;
   (groups || []).forEach((g, i) => {
     const all = (g.rows || []).filter(r => r && r.tm);
@@ -1888,13 +1929,34 @@ function renderTrendChart(groups, failed) {
     total += all.length;
     const data = toTimePairs(rows, 'z');
     if (!data.length) return;
-    let name = String(rows[0].stnm || g.stcd || '站点');
+    // 水库水情表只有花凉亭坝上一个站点：图例直接用「水位」，与右侧「库容」成对
+    let name = withCap ? '水位' : String(rows[0].stnm || g.stcd || '站点');
     if (usedNames.has(name)) name += `(${g.stcd})`;
     usedNames.add(name);
     const color = TREND_COLORS[i % TREND_COLORS.length];
     series.push({
       name, type: 'line', data, smooth: true, symbol: 'none', connectNulls: false,
       lineStyle: { width: 1.6, color }, itemStyle: { color },
+    });
+    if (!withCap) return;
+    // 库容曲线：逐点用该时刻水位查「水位-库容」曲线（写死数据），超出曲线范围的点断开
+    const capData = [];
+    rows.forEach(r => {
+      const ts = tsOf(r.tm);
+      const cap = capacityOf(r.z);
+      if (!isFinite(ts) || cap === null) return;
+      capData.push([ts, cap]);
+    });
+    capData.sort((a, b) => a[0] - b[0]);
+    if (!capData.length) return;
+    const capColor = TREND_COLORS[1 % TREND_COLORS.length];
+    series.push({
+      name: '库容', type: 'line', yAxisIndex: 1, data: capData,
+      smooth: true, symbol: 'none', connectNulls: false,
+      // 虚线弱化：库容与水位同形，靠线型 + 右轴留白（见 capAxisBound）区分，避免被当成同一条线
+      lineStyle: { width: 1.4, type: 'dashed', color: capColor }, itemStyle: { color: capColor },
+      // 曲线原始 4 位小数，tooltip 默认只给 3 位
+      tooltip: { valueFormatter: v => fmtCapacity(Array.isArray(v) ? v[v.length - 1] : v) },
     });
   });
   const failTip = (failed && failed.length) ? ` · ${failed.length} 个站点取数失败` : '';
@@ -1912,7 +1974,9 @@ function renderTrendChart(groups, failed) {
   const option = {
     tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
     legend: { top: 4, type: 'scroll', padding: [0, 40, 0, 0], textStyle: { fontSize: 12, color: '#666' } },
-    grid: { left: 20, right: 28, top: 44, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
+    // top 双轴时加高：右轴名称「库容 (亿m³)」在轴线顶端，而右上角是 chart-common 注入的下载图标，
+    // 留白不够两者会叠在一起（库容把下载按钮遮住）
+    grid: { left: 20, right: 28, top: withCap ? 60 : 44, bottom: CHART_DATA_ZOOM_GRID_BOTTOM, containLabel: true },
     dataZoom: buildChartDataZoom(),
     xAxis: {
       type: 'time',
@@ -1921,7 +1985,27 @@ function renderTrendChart(groups, failed) {
       axisTick: { show: false },
       splitLine: { show: false },
     },
-    yAxis: {
+    yAxis: withCap ? [
+      {
+        type: 'value',
+        name: '水位 (m)',
+        scale: true,
+        nameTextStyle: { color: '#999', fontSize: 12 },
+        axisLabel: { fontSize: 12, color: '#888' },
+        splitLine: { lineStyle: { color: '#f0f0f0' } },
+      },
+      {
+        // 右侧库容轴：库容是水位的单值函数，量程不能跟着数据自适应（否则与水位线完全重合），
+        // 统一走 capAxisBound 留白，保证库容线高度不超过图高的一半
+        type: 'value',
+        name: '库容 (亿m³)',
+        min: extent => capAxisBound(extent, -1),
+        max: extent => capAxisBound(extent, 1),
+        nameTextStyle: { color: '#999', fontSize: 12 },
+        axisLabel: { fontSize: 12, color: '#888' },
+        splitLine: { show: false },
+      },
+    ] : {
       type: 'value',
       name: '水位 (m)',
       scale: true,

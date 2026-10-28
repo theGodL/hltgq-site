@@ -211,6 +211,7 @@ th.col-act,td.col-act{white-space:nowrap}
 .stats-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .stats-legend .dot-up i{background:#FA8C16}
 .stats-legend .dot-down i{background:#1677FF}
+.stats-legend .dot-warn i{background:#F5222D;width:14px;height:2px;border-radius:1px}
 .modal-filter select{min-width:160px;height:32px;border:1px solid #d9d9d9;border-radius:6px;padding:0 11px;font-size:14px;background:#fff;cursor:pointer;outline:none}
 .modal-filter select:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
 /* 流量计算参数弹窗 */
@@ -516,6 +517,7 @@ th.col-act,td.col-act{white-space:nowrap}
       <div class="stats-legend">
         <span class="dot-up"><i></i>闸前水位</span>
         <span class="dot-down"><i></i>闸后水位</span>
+        <span class="dot-warn" id="stats-legend-warn" hidden><i></i>设计预警水位</span>
       </div>
       <div id="stats-chart-box" class="chart-box chart-box-lg"></div>
     </div>
@@ -2255,6 +2257,8 @@ function bindDistrictTabs() {
 /* ===== 主要闸站水位统计图 ===== */
 const UP_COLOR = '#FA8C16';
 const DOWN_COLOR = '#1677FF';
+/** 设计预警水位（阈值设置里的闸前/闸后水位警戒值），与曲线上的实测水位区分 */
+const WARN_COLOR = '#F5222D';
 let statsChart = null;
 
 function shortStationName(name) {
@@ -2266,6 +2270,8 @@ function shortStationName(name) {
 function normalizeStationWaterLevel(list) {
   // -9991 设备异常、-999 设备不存在 → 转 null 不绘制（否则 -999 会拉伸 Y 轴、tooltip 显示 -999.00 m）
   const ok = v => v != null && v !== '' && Number.isFinite(+v) && +v !== -999 && +v !== -9991;
+  // 设计预警值来自阈值设置，无哨兵语义，只做数值合法性判断（0 也是合法配置）
+  const num = v => (v != null && v !== '' && Number.isFinite(+v)) ? +v : null;
   return (Array.isArray(list) ? list : []).map(r => ({
     id: r.id,
     stcd: r.stcd,
@@ -2273,6 +2279,8 @@ function normalizeStationWaterLevel(list) {
     shortName: shortStationName(r.name),
     upZ: ok(r.upZ) ? +r.upZ : null,
     downZ: ok(r.downZ) ? +r.downZ : null,
+    upWarn: num(r.upZThreshold),
+    downWarn: num(r.downZThreshold),
   }));
 }
 
@@ -2304,20 +2312,24 @@ function buildStatsChartData(stations) {
   const stationNames = stations.map(st => st.shortName || st.name);
   const lineData = [];
   const pointMeta = [];
+  const warnPoints = [];
 
   stations.forEach((st, xIdx) => {
     const label = st.name;
     if (st.upZ != null) {
       lineData.push([xIdx, st.upZ]);
-      pointMeta.push({ type: 'up', station: label, xIdx });
+      pointMeta.push({ type: 'up', station: label, xIdx, warn: st.upWarn });
     }
     if (st.downZ != null) {
       lineData.push([xIdx, st.downZ]);
-      pointMeta.push({ type: 'down', station: label, xIdx });
+      pointMeta.push({ type: 'down', station: label, xIdx, warn: st.downWarn });
     }
+    // 预警值是设计值，与当日有无报文无关：该站没数据也照常标出
+    if (st.upWarn != null) warnPoints.push({ xIdx, y: st.upWarn, type: 'up', station: label });
+    if (st.downWarn != null) warnPoints.push({ xIdx, y: st.downWarn, type: 'down', station: label });
   });
 
-  return { stationNames, lineData, pointMeta };
+  return { stationNames, lineData, pointMeta, warnPoints };
 }
 
 /** 同站闸前/闸后接近时避免标签重叠：极近合并、较近左右错开、否则上下分开 */
@@ -2391,23 +2403,30 @@ async function fetchMainGateStats() {
 function renderStatsChart(stations) {
   const box = $('stats-chart-box');
   if (!statsChart) statsChart = echarts.init(box);
-  const { stationNames, lineData, pointMeta } = buildStatsChartData(stations);
+  const { stationNames, lineData, pointMeta, warnPoints } = buildStatsChartData(stations);
+  // 顶部 HTML 图例的「设计预警水位」项：有预警配置时才出现
+  const warnLegend = $('stats-legend-warn');
+  if (warnLegend) warnLegend.hidden = warnPoints.length === 0;
   const vals = lineData.map(p => p[1]).filter(v => v != null && Number.isFinite(+v));
-  if (!vals.length) {
+  // Y 轴范围同时纳入设计预警值：预警值普遍高于当前水位 1~3 m，不纳入会被画到轴外看不见
+  const axisVals = vals.concat(warnPoints.map(w => w.y));
+  if (!axisVals.length) {
     statsChart.clear();
     statsChart.setOption({
       title: { text: '暂无数据', left: 'center', top: 'middle', textStyle: { color: '#bbb', fontSize: 14, fontWeight: 'normal' } },
     });
     return;
   }
-  const rawMin = Math.min(...vals);
-  const rawMax = Math.max(...vals);
+  const rawMin = Math.min(...axisVals);
+  const rawMax = Math.max(...axisVals);
   let minV = Math.max(0, +(rawMin - 0.5).toFixed(1));
   let maxV = +(rawMax + 0.5).toFixed(1);
   if (maxV <= minV) maxV = +(minV + 1).toFixed(1);
 
   statsChart.setOption({
     title: { show: false },
+    // 图例统一用弹窗顶部那个 HTML 图例（.stats-legend，紧贴图表上方），图中不再重复画一套
+    legend: { show: false },
     tooltip: {
       trigger: 'item',
       backgroundColor: 'rgba(255,255,255,0.95)',
@@ -2415,14 +2434,31 @@ function renderStatsChart(stations) {
       textStyle: { color: '#333', fontSize: 13 },
       formatter(p) {
         if (!p || !p.value) return '';
+        if (p.seriesName === '设计预警水位') {
+          const w = warnPoints[p.dataIndex];
+          if (!w) return '';
+          return `${w.station}<br/>设计预警水位（${w.type === 'down' ? '闸后' : '闸前'}）：${(+w.y).toFixed(2)} m`;
+        }
+        // 只认真实折线：设计预警已在上面单独处理，其余 series 不产生水位文案
+        if (p.seriesName !== '水位') return '';
         const meta = pointMeta[p.dataIndex];
         if (!meta) return '';
         const y = Array.isArray(p.value) ? p.value[1] : p.value;
         const label = meta.type === 'down' ? '闸后水位' : '闸前水位';
-        return `${meta.station}<br/>${label}：${(+y).toFixed(2)} m`;
+        let html = `${meta.station}<br/>${label}：${(+y).toFixed(2)} m`;
+        // 同点位的预警值余量：预警值高于实测为余量，低于实测即已超限
+        if (meta.warn != null) {
+          const gap = meta.warn - (+y);
+          html += `<br/>设计预警：${(+meta.warn).toFixed(2)} m`;
+          html += gap >= 0
+            ? `（余量 ${gap.toFixed(2)} m）`
+            : `（<span style="color:${WARN_COLOR};font-weight:600">超限 ${(-gap).toFixed(2)} m</span>）`;
+        }
+        return html;
       },
     },
-    grid: { left: 16, right: 24, top: 44, bottom: 24, containLabel: true },
+    // right 留出预警值标签（线段右倒 4px + 文本约 34px），否则最右一站会被容器裁掉
+    grid: { left: 16, right: 56, top: 44, bottom: 24, containLabel: true },
     xAxis: {
       type: 'category',
       data: stationNames,
@@ -2464,6 +2500,24 @@ function renderStatsChart(stations) {
       symbol: 'circle',
       symbolSize: 10,
       lineStyle: { color: DOWN_COLOR, width: 2 },
+    }, {
+      name: '设计预警水位',
+      type: 'scatter',
+      // 短横线（30×2.5px）画在预警值高度，右侧标出配置的数值；未配置预警的站点自然留空
+      symbol: 'rect',
+      symbolSize: [30, 2.5],
+      itemStyle: { color: WARN_COLOR },
+      data: warnPoints.map(w => ({ value: [stationNames[w.xIdx], w.y] })),
+      label: {
+        show: true,
+        position: 'right',
+        distance: 4,
+        color: WARN_COLOR,
+        fontSize: 11,
+        fontWeight: 600,
+        formatter: p => (+p.value[1]).toFixed(2),
+      },
+      z: 5,
     }],
   }, true);
   statsChart.resize();

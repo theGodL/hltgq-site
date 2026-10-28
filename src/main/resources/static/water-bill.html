@@ -50,6 +50,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 /* 工具栏:搜索 + 下拉 + (重置) */
 .toolbar{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.card-hd .toolbar{margin-top:0}
 .search-wrap{position:relative;width:280px}
 .srch-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);display:inline-flex;color:#bfbfbf;pointer-events:none}
 .search-input{width:100%;height:36px;border:1px solid #d9d9d9;border-radius:6px;padding:0 12px 0 32px;font-size:14px;font-family:inherit;color:#333;outline:none;transition:border-color .2s,box-shadow .2s;background:#fff}
@@ -229,32 +230,28 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   <!-- ==================== 视图一:用水台账(手工台账:新增→出账→账单收缴) ==================== -->
   <div id="view-ledger">
-    <!-- 统计条 -->
-    <div class="stat-bar" id="ledger-stat"></div>
     <div class="card">
       <div class="card-hd">
-        <div class="card-title">水费台账<span class="count" id="ledger-count">共 0 条 · 用水量 × 单价自动计费</span></div>
+        <div class="toolbar">
+          <div class="search-wrap">
+            <span class="srch-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+            <input type="text" class="search-input" id="ledger-kw" placeholder="搜索台账编号 / 用水户 / 结算周期" autocomplete="off">
+          </div>
+          <div class="filter-sel">
+            <div class="select-wrap">
+              <input type="text" class="sel-input" id="f-ledger-billed" placeholder="全部出账状态" autocomplete="off">
+              <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <div class="sel-dd" id="ledger-billed-dd"></div>
+            </div>
+          </div>
+        </div>
         <div class="card-hd-right">
-          <button type="button" class="btn btn-default btn-sm" id="btn-plan-bill">调度方案出账</button>
           <button type="button" class="btn btn-default btn-sm" id="btn-export-ledger">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>导出台账
           </button>
           <button type="button" class="btn btn-primary btn-sm" id="btn-ledger-add">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>新增用水台账
           </button>
-        </div>
-      </div>
-      <div class="toolbar">
-        <div class="search-wrap">
-          <span class="srch-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
-          <input type="text" class="search-input" id="ledger-kw" placeholder="搜索台账编号 / 用水户 / 结算周期" autocomplete="off">
-        </div>
-        <div class="filter-sel">
-          <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-ledger-billed" placeholder="全部出账状态" autocomplete="off">
-            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <div class="sel-dd" id="ledger-billed-dd"></div>
-          </div>
         </div>
       </div>
       <!-- 台账列表(宽度只增不减,收窄时容器出横向滚动条) -->
@@ -344,30 +341,28 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   </div>
   <!-- ==================== 视图三:水费账单 ==================== -->
   <div id="view-bills" class="hide">
-    <div class="stat-bar" id="bill-stat"></div>
     <div class="card">
       <div class="card-hd">
-        <div class="card-title">水费账单列表<span class="count">由台账「出账」生成（手工台账 / 调度方案均可），可管理收缴</span></div>
+        <div class="toolbar">
+          <div class="search-wrap">
+            <span class="srch-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+            <input type="text" class="search-input" id="bill-kw" placeholder="搜索账单号 / 用水户 / 周期" autocomplete="off">
+          </div>
+          <div class="filter-sel">
+            <div class="select-wrap">
+              <input type="text" class="sel-input" id="f-bill-status" placeholder="全部状态" autocomplete="off">
+              <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <div class="sel-dd" id="bill-status-dd"></div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-default btn-sm" id="btn-bill-reset">重置</button>
+        </div>
         <div class="card-hd-right">
           <button type="button" class="btn btn-default btn-sm" id="btn-export-bills">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>导出账单
           </button>
           <button type="button" class="btn btn-primary btn-sm" id="btn-go-ledger">去台账出账</button>
         </div>
-      </div>
-      <div class="toolbar">
-        <div class="search-wrap">
-          <span class="srch-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
-          <input type="text" class="search-input" id="bill-kw" placeholder="搜索账单号 / 用水户 / 周期" autocomplete="off">
-        </div>
-        <div class="filter-sel">
-          <div class="select-wrap">
-            <input type="text" class="sel-input" id="f-bill-status" placeholder="全部状态" autocomplete="off">
-            <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <div class="sel-dd" id="bill-status-dd"></div>
-          </div>
-        </div>
-        <button type="button" class="btn btn-default btn-sm" id="btn-bill-reset">重置</button>
       </div>
       <!-- 账单列表(宽度只增不减,收窄时容器出横向滚动条) -->
       <div class="tbl-wrap">
@@ -639,7 +634,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
 
   /* 接口数据缓存(视图渲染与操作复用,前端不写死业务数据) */
   var LEDGERS = [];       // 台账行(视图一) 7.5 /water-bill/ledger records(LedgerRowVO)
-  var LEDGER_STAT = null; // 台账汇总 7.5 stat(视图一统计条)
   var SUM_ROWS = [];      // 汇总行(视图四;同一 7.5 接口全量数据)
   var CUR_USER = null;    // 明细视图用水户 7.6 user
   var CUR_PLANS = [];     // 明细视图方案行 7.6 records(未取消,含 cycleKey/cycleLabel/实时计量)
@@ -856,7 +850,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     api('GET', '/water-bill/ledger/records' + q, null, function (err, data) {
       if (err || !data || seq !== ledgerSeq) return;
       LEDGERS = data.records || [];
-      LEDGER_STAT = data.stat || null;
       renderLedger();
     });
   }
@@ -872,15 +865,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   }
 
   function renderLedger() {
-    var o = LEDGER_STAT || { ledgerCount: 0, pendingCount: 0, pendingVolume: 0, pendingAmount: 0, billedAmount: 0 };
-    $('ledger-stat').innerHTML =
-      statItem('台账总数', o.ledgerCount + ' <span class="stat-unit">条</span>') +
-      statItem('待出账', o.pendingCount + ' <span class="stat-unit">条</span>') +
-      statItem('待出账水量', fmtQty(o.pendingVolume) + ' <span class="stat-unit">m³</span>') +
-      statItem('待出账金额', fmtMoney(o.pendingAmount)) +
-      statItem('已出账金额', fmtMoney(o.billedAmount));
-    $('ledger-count').textContent = '共 ' + LEDGERS.length + ' 条 · 用水量 × 单价自动计费';
-
     if (!LEDGERS.length) {
       $('ledger-body').innerHTML = '<tr><td colspan="9" class="empty-cell">暂无用水台账，请点击右上角「新增用水台账」</td></tr>';
       return;
@@ -1262,19 +1246,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  /** 账单统计条(7.3;全量汇总,不受列表筛选影响) */
-  function loadBillStats() {
-    api('GET', '/water-bill/stats', null, function (err, d) {
-      if (err || !d) return;
-      $('bill-stat').innerHTML =
-        statItem('账单总数', d.billCount + ' <span class="stat-unit">张</span>') +
-        statItem('计费总水量', fmtQty(d.totalQty) + ' <span class="stat-unit">万m³</span>') +
-        statItem('应收总额', fmtMoney(d.totalAmount)) +
-        statItem('已收总额', fmtMoney(d.paidAmount)) +
-        statItem('收缴率', (d.collectRate == null ? 0 : d.collectRate) + ' <span class="stat-unit">%</span>');
-    });
-  }
-
   function renderBills() {
     if (!S2.rows.length) {
       $('bill-body').innerHTML = '<tr><td colspan="10" class="empty-cell">暂无账单，请先到「水费台账」新增台账并点「出账」（或使用「调度方案出账」）</td></tr>';
@@ -1570,7 +1541,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     loadLedger();
     if (curUserId) loadDetail(curUserId);
     loadBills();
-    loadBillStats();
     loadSummary();
   }
 
@@ -1769,7 +1739,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         var v = tab.dataset.view;
         setActiveTab(v);
         if (v === 'ledger') loadLedger();
-        else if (v === 'bills') { loadBills(); loadBillStats(); }
+        else if (v === 'bills') loadBills();
         else if (v === 'summary') loadSummary();
       });
     });
@@ -1808,9 +1778,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       if (vb) { showBillModal(vb.dataset.vbillid); }
     });
     $('btn-export-ledger').addEventListener('click', exportLedger);
-    // 台账:新增 / 调度方案出账入口
+    // 台账:新增
     $('btn-ledger-add').addEventListener('click', function () { openLedgerForm(); });
-    $('btn-plan-bill').addEventListener('click', openPlanPicker);
     $('btn-plan-go').addEventListener('click', goPlanDetail);
     // 台账弹窗:用水户 / 结算周期 / 月份季度(模糊搜索下拉) + 金额自动计算
     bindSearchSelect('ml-user', 'ml-user-dd', function () {
@@ -1961,7 +1930,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   // 首屏:并行拉取各视图数据(接口)
   loadLedger();      // 视图一 台账
   loadBills();       // 视图三 账单分页
-  loadBillStats();   // 视图三 统计条
   loadSummary();     // 视图四 汇总
 })();
 

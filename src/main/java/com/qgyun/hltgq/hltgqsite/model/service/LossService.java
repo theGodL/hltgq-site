@@ -177,7 +177,10 @@ public class LossService {
                         detail.setRecordId(recordId);
                         // 日期或旬标签+年份 → 旬首日期
                         detail.setDataDate(resolveDataDate(textOfAny(item, "日期", "Date"), year));
-                        Double evaporation = doubleOfAny(item, "蒸发损失_万方", "蒸发量_万方");
+                        // 蒸发键名 2026-10-28 实测：模型在手册字段名后追加「（仅展示，不参与水量平衡）」后缀；
+                        // 候选键名按实测优先、手册兜底排列，防模型后续改回不带后缀的键名
+                        Double evaporation = doubleOfAny(item,
+                                "蒸发损失_万方（仅展示，不参与水量平衡）", "蒸发损失_万方", "蒸发量_万方");
                         Double leakage = doubleOfAny(item, "渗漏损失_万方", "渗漏量_万方");
                         detail.setEvaporationVolume(evaporation);
                         detail.setLeakageVolume(leakage);

@@ -106,7 +106,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 /* 结果区 */
 .result-hd{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-.result-hd.is-pending{display:none!important}
 .result-hd h2{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
 .result-hd .history-btn{margin-left:auto}
 .history-btn{color:#1677ff;border-color:#91caff;background:#fff}
@@ -145,8 +144,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .stat-card .label{color:#999;font-size:13px;margin-bottom:8px}
 .stat-card .value{font-size:24px;font-weight:700;color:#1f1f1f;line-height:1.2}
 .stat-card .value .unit{font-size:13px;font-weight:400;color:#999;margin-left:4px}
-.stat-card .value-row{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
-.stat-card .period{color:#999;font-size:12px;padding-bottom:4px;white-space:nowrap;line-height:1.3}
+.stat-card .value-row{display:flex;align-items:flex-end;justify-content:space-between;gap:4px 8px;flex-wrap:wrap}
+.stat-card .value-row .value{white-space:nowrap;flex-shrink:0}
+.stat-card .period{color:#999;font-size:12px;padding-bottom:4px;white-space:nowrap;line-height:1.3;flex-shrink:0;margin-left:auto}
 
 .upload-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .upload-hd .link{background:none;border:none;color:#1677ff;cursor:pointer;font-size:13px;padding:0}
@@ -318,8 +318,8 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="right-panel">
         <div class="right-scroll" id="result-area">
-          <div class="result-hd is-pending" id="short-result-hd">
-            <h2 id="short-result-title">短期来水预报计算结果</h2>
+          <div class="result-hd" id="short-result-hd">
+            <h2 id="short-result-title">短期来水预报</h2>
             <button type="button" class="btn btn-default result-rename-btn" id="short-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
             </button>
@@ -431,8 +431,8 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="right-panel">
         <div class="right-scroll">
-          <div class="result-hd is-pending" id="mid-result-hd">
-            <h2 id="mid-result-title">中长期来水预报计算结果</h2>
+          <div class="result-hd" id="mid-result-hd">
+            <h2 id="mid-result-title">中长期来水预报</h2>
             <button type="button" class="btn btn-default result-rename-btn" id="mid-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
             </button>
@@ -478,7 +478,7 @@ tbody tr:hover td{background:#fafafa}
               <div class="tbl-wrap">
                 <table>
                   <thead>
-                    <tr>
+                    <tr id="mid-thead-row">
                       <th>旬</th>
                       <th>预报水量(万方)</th>
                       <th>实测水量(万方)</th>
@@ -531,8 +531,8 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="right-panel">
         <div class="right-scroll">
-          <div class="result-hd is-pending" id="demand-result-hd">
-            <h2 id="demand-result-title">需水预报计算结果</h2>
+          <div class="result-hd" id="demand-result-hd">
+            <h2 id="demand-result-title">需水预报</h2>
             <button type="button" class="btn btn-default result-rename-btn" id="demand-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
             </button>
@@ -627,8 +627,8 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="right-panel">
         <div class="right-scroll">
-          <div class="result-hd is-pending" id="loss-result-hd">
-            <h2 id="loss-result-title">水量损失预报计算结果</h2>
+          <div class="result-hd" id="loss-result-hd">
+            <h2 id="loss-result-title">水量损失预报</h2>
             <button type="button" class="btn btn-default result-rename-btn" id="loss-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
             </button>
@@ -724,8 +724,8 @@ tbody tr:hover td{background:#fafafa}
 
       <div class="moisture-body">
         <div class="right-scroll">
-          <div class="result-hd is-pending" id="moisture-result-hd">
-            <h2 id="moisture-result-title">墒情预报计算结果</h2>
+          <div class="result-hd" id="moisture-result-hd">
+            <h2 id="moisture-result-title">墒情预报</h2>
             <button type="button" class="btn btn-default" id="moisture-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
             </button>
@@ -1696,6 +1696,8 @@ tbody tr:hover td{background:#fafafa}
       }
     }
     midSeries = {
+      // 历史年份方案展示实测列；情景方案（丰/平/枯/推荐值）不展示
+      showActual: API.isYes(rec.useHistorical) || (rec.useHistorical == null && rec.historicalYear != null),
       summary: {
         annual: rec.annualPredictVolume,
         maxDecade: rec.maxTendayVolume,
@@ -1801,11 +1803,18 @@ tbody tr:hover td{background:#fafafa}
     const rows = buildMidDetailRows();
     const q = midDetailFilter.trim();
     if (!q) return rows;
-    return rows.filter(r => Object.values(r).some(v => String(v).includes(q)));
+    const showActual = !!(midSeries && midSeries.showActual);
+    return rows.filter(r => (showActual ? Object.values(r) : [r.label, r.predict]).some(v => String(v).includes(q)));
   }
   function renderMidDetailTable() {
     const tbody = $('mid-tbody');
     if (!tbody) return;
+    const showActual = !!(midSeries && midSeries.showActual);
+    if ($('mid-thead-row')) {
+      $('mid-thead-row').innerHTML = showActual
+        ? '<th>旬</th><th>预报水量(万方)</th><th>实测水量(万方)</th>'
+        : '<th>旬</th><th>预报水量(万方)</th>';
+    }
     const rows = filteredMidRows();
     const total = rows.length;
     const pages = Math.max(1, Math.ceil(total / DETAIL_PAGE_SIZE));
@@ -1813,8 +1822,10 @@ tbody tr:hover td{background:#fafafa}
     const start = (midDetailPage - 1) * DETAIL_PAGE_SIZE;
     const pageRows = rows.slice(start, start + DETAIL_PAGE_SIZE);
     tbody.innerHTML = pageRows.map(r =>
-      `<tr><td>${r.label}</td><td>${r.predict}</td><td>${r.actual}</td></tr>`
-    ).join('') || `<tr><td colspan="3" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
+      showActual
+        ? `<tr><td>${r.label}</td><td>${r.predict}</td><td>${r.actual}</td></tr>`
+        : `<tr><td>${r.label}</td><td>${r.predict}</td></tr>`
+    ).join('') || `<tr><td colspan="${showActual ? 3 : 2}" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
     const from = total ? start + 1 : 0;
     const to = Math.min(start + DETAIL_PAGE_SIZE, total);
     if ($('mid-pg-info')) $('mid-pg-info').textContent = `共 ${total} 条，本页显示 ${from}-${to} 条`;
@@ -3184,6 +3195,7 @@ tbody tr:hover td{background:#fafafa}
     moistureRowsCache = [];
     moistureCurrentId = null;
     updateMoistureResultTitle('');
+    if ($('moisture-result-title')) $('moisture-result-title').textContent = '墒情预报';
     hideResultHd('moisture-result-hd');
     $('moisture-result-empty').style.display = '';
     $('moisture-result-content').style.display = 'none';
@@ -3509,8 +3521,9 @@ tbody tr:hover td{background:#fafafa}
     $('mid-detail-export').addEventListener('click', () => {
       const rows = filteredMidRows();
       if (!rows.length) return toast('暂无数据可导出');
-      const header = ['旬', '预报水量(万方)', '实测水量(万方)'];
-      const data = rows.map(r => [r.label, r.predict, r.actual]);
+      const showActual = !!(midSeries && midSeries.showActual);
+      const header = showActual ? ['旬', '预报水量(万方)', '实测水量(万方)'] : ['旬', '预报水量(万方)'];
+      const data = rows.map(r => showActual ? [r.label, r.predict, r.actual] : [r.label, r.predict]);
       if (window.XLSX) {
         const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
         ws['!cols'] = MonitorExport.fitCols(header);

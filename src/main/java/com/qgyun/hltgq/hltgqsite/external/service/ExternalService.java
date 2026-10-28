@@ -294,6 +294,8 @@ public class ExternalService {
      * <p>coreIndicator（核心指标）每行必有，只有水位站与雨量站有：水位类型（#1#）取档案「核心指标-水位」列 ijzsby，
      * 雨量类型（#2#）取档案「核心指标-雨量」列 ccnhtm（两列分列存储，互不混用）；
      * 统一输出两位小数文本，档案未填按 0.00 输出；其余类型无核心指标固定为 null。
+     * 闸门站（epjutj 含 #4#）恒为 null——闸站普遍同时登记水位类型而出现在 type=1 列表里，不能因
+     * 「出现在水位列表」就按 ijzsby 输出，否则会把无该指标误报成 0.00。
      * 行上同时保留 ccnhtm / ijzsby 两个原始列名（档案原值），供核对。
      * <p>视频类型（#5#）为站点档案清单、无实时监测值：不查各业务实时接口，行上 isOnline 按档案状态兜底；
      * 关联对象按原 qx-api 补齐 ahieto.zzkaec 与 ywvyds.gfaegg（仅视频类型输出，其余类型结构不变）。
@@ -726,11 +728,18 @@ public class ExternalService {
      * <p>核心指标只属于水位站与雨量站：其余监测类型（流量 #3# / 闸门 #4# / 视频 #5# / 墒情 #7# / 水质 #8#）
      * 档案无对应列，返回 null（与水位/雨量站的 0.00 区分）。
      * 闸门尤其注意：虽有闸前 up_z / 闸后 down_z 两路实测水位，但核心指标不记录，同样返回 null，不要拿实测值顶替。
+     * <p>注意按「站点自身是否闸门」判定而非仅看请求类型：闸站普遍同时登记了水位类型（#1#），会出现在
+     * type=1 列表里，若只看 typeCode 会把闸门的「没有该指标」误报成 0.00，故 epjutj 含 #4# 一律返回 null。
      *
      * @param archive  站点档案行（selectArchiveByType 结果）
      * @param typeCode 监测类型编码（#1# 水位 / #2# 雨量 …）
      */
     private String coreIndicatorOf(Map<String, Object> archive, String typeCode) {
+        // 闸门站恒无核心指标（闸站只有闸前/闸后实测水位，不是人工维护的核心指标）
+        String types = ValueConvertUtils.str(archive.get("epjutj"));
+        if (types != null && types.contains("#4#")) {
+            return null;
+        }
         Object raw;
         if ("#1#".equals(typeCode)) {
             raw = archive.get("ijzsby");

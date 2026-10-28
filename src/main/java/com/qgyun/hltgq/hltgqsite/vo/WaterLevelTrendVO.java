@@ -34,5 +34,12 @@ public class WaterLevelTrendVO {
 
         /** 该小时水位值 (m)。无数据时为 null */
         private BigDecimal waterLevel;
+
+        /**
+         * 该小时库容（亿m³，4 位小数）。
+         * 仅花凉亭坝上（3206400007）有「水位-库容」曲线，其余站点恒为 null；
+         * 该小时无水位数据、或水位超出曲线范围（65.00 ~ 99.49 m）时也为 null
+         */
+        private BigDecimal capacity;
     }
 }

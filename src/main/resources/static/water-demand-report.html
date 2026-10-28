@@ -188,7 +188,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     </colgroup>
     <thead>
       <tr>
-        <th>上报单号</th><th>上报时间</th><th>用水户</th><th>计划水量<br>（万m³）</th>
+        <th>上报单号</th><th>上报时间</th><th>用水户</th><th>需水量<br>（万m³）</th>
         <th>用水时间</th><th>用途</th><th>审核状态</th><th>审核意见</th><th>操作</th>
       </tr>
     </thead>
@@ -221,7 +221,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           </div>
         </div>
         <div class="form-item">
-          <label>计划水量（万m³） <i class="req">*</i></label>
+          <label>需水量（万m³） <i class="req">*</i></label>
           <input type="number" class="ipt" id="f-amount" min="0" step="0.01" placeholder="0" autocomplete="off">
         </div>
         <div class="form-item">
@@ -358,7 +358,6 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="p-farmer-dd"></div>
           </div>
-          <div class="f-tip">选填；选定后调度闸口收敛为该户关联闸口</div>
         </div>
         <div class="form-item">
           <label>调度闸口 <i class="req">*</i></label>
@@ -367,22 +366,18 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
             <span class="chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="#bfbfbf" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <div class="sel-dd" id="p-gate-dd"></div>
           </div>
-          <div class="f-tip">已选用水户时仅该户关联闸口可选；未选户为全量计量闸口池</div>
         </div>
         <div class="form-item">
           <label>计划放水量（万m³）</label>
           <input type="number" class="ipt" id="f-p-amount" min="0" step="0.01" placeholder="选填" autocomplete="off">
-          <div class="f-tip">关联计划时可自动带出；请核对本次调度量。</div>
         </div>
         <div class="form-item">
           <label>执行时间 <i class="req">*</i></label>
           <input type="datetime-local" class="ipt" id="f-p-exec">
-          <div class="f-tip">执行时间（开闸）；完成时间由指令流转自动记录</div>
         </div>
         <div class="form-item">
-          <label>指定闸门高度（cm）</label>
-          <input type="number" class="ipt" id="f-p-height" min="0" max="999" step="1" placeholder="选填，0~999" autocomplete="off">
-          <div class="f-tip">本次指令要求开启的闸门高度（cm）</div>
+          <label>指定闸门高度（cm） <i class="req">*</i></label>
+          <input type="number" class="ipt" id="f-p-height" min="0" max="999" step="1" placeholder="0~999" autocomplete="off">
         </div>
         <div class="form-item">
           <label>调度负责人</label>
@@ -533,11 +528,14 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   /** 旬编码 → 中文名(顺序即展示顺序) */
   var XUN_NAMES = { '1': '上旬', '2': '中旬', '3': '下旬' };
 
-  /** 年下拉:当年-2 ~ 当年+1 */
+  /** 年下拉:当年 ~ 当年+3;编辑历史数据时若原年份不在区间内额外补一项,避免回填被改成当年 */
   function fillYearOptions(selected) {
     var y = new Date().getFullYear();
     var html = '';
-    for (var i = y - 2; i <= y + 1; i++) {
+    if (selected && (selected < y || selected > y + 3)) {
+      html += '<option value="' + selected + '" selected>' + selected + ' 年</option>';
+    }
+    for (var i = y; i <= y + 3; i++) {
       html += '<option value="' + i + '"' + (i === selected ? ' selected' : '') + '>' + i + ' 年</option>';
     }
     $('f-year').innerHTML = html;
@@ -939,7 +937,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var month = Number($('f-month').value);
     var xuns = pickedXuns();
     if (!waterUserId) { toast('请选择「用水户」'); return; }
-    if (!amount || !(Number(amount) > 0)) { toast('请填写「计划水量」(大于 0)'); return; }
+    if (!amount || !(Number(amount) > 0)) { toast('请填写「需水量」(大于 0)'); return; }
     if (!year) { toast('请选择「用水年份」'); return; }
     if (!month) { toast('请选择「用水月份」'); return; }
     if (!xuns.length) { toast('请至少选择一个旬'); return; }
@@ -981,7 +979,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   function auditKvHtml(row, priceText) {
     return [
       kvRow('用水户', row.waterUserName || '-'),
-      kvRow('计划水量', fmtAmount(row.amount) + ' 万m³'),
+      kvRow('需水量', fmtAmount(row.amount) + ' 万m³'),
       kvRow('用水时间', periodText(row)),
       kvRow('用途', row.usage || '-'),
       kvRow('水价', priceText)
@@ -1041,7 +1039,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var meta = STATUS_META[row.status] || { text: row.status };
     return [
       kvRow('用水户', row.waterUserName || '-'),
-      kvRow('计划水量', fmtAmount(row.amount) + ' 万m³'),
+      kvRow('需水量', fmtAmount(row.amount) + ' 万m³'),
       kvRow('用水时间', periodText(row)),
       kvRow('用途', row.usage || '-'),
       kvRow('申请时间', row.applyTime || '-'),
@@ -1183,12 +1181,10 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var exec = $('f-p-exec').value;
     if (!exec) { toast('请选择「执行时间」'); return; }
     var heightRaw = $('f-p-height').value.trim();
-    var height = null;
-    if (heightRaw !== '') {
-      height = Number(heightRaw);
-      if (!(height >= 0 && height <= 999)) { toast('「指定闸门高度」须在 0~999 cm 之间'); return; }
-      if (Math.floor(height) !== height) { toast('「指定闸门高度」须为整数'); return; }
-    }
+    if (heightRaw === '') { toast('请填写「指定闸门高度」'); return; }
+    var height = Number(heightRaw);
+    if (!(height >= 0 && height <= 999)) { toast('「指定闸门高度」须在 0~999 cm 之间'); return; }
+    if (Math.floor(height) !== height) { toast('「指定闸门高度」须为整数'); return; }
 
     var payload = {
       gateId: $('f-p-gate').dataset.value,
@@ -1196,7 +1192,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     };
     if (userId) payload.waterUserId = userId;
     if (amount) payload.planAmount = Number(Number(amount).toFixed(2)); // 万m³,≤2 位小数(0.3)
-    if (height != null) payload.gateHeightCm = height;
+    payload.gateHeightCm = height; // 必填,已在上方校验 0~999 整数
     if ($('f-plan').dataset.value) payload.planId = $('f-plan').dataset.value;
     if ($('f-apply').dataset.value) payload.demandId = $('f-apply').dataset.value;
     // 负责人:下拉选中传 id(后端按 id 回查固化姓名快照,不信任文本);仅手填时按文本入库

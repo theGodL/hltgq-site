@@ -75,7 +75,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .result-hd{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-.result-hd.is-pending{display:none!important}
 .result-hd h2{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
 .result-hd .history-btn{margin-left:auto}
 .history-btn{color:#1677ff;border-color:#91caff;background:#fff}
@@ -310,8 +309,8 @@ tbody tr:hover td{background:#fafafa}
 
     <div class="right-panel">
       <div class="right-scroll">
-        <div class="result-hd is-pending" id="result-hd">
-          <h2 id="result-title">水资源配置预测计算结果</h2>
+        <div class="result-hd" id="result-hd">
+          <h2 id="result-title">水资源配置</h2>
           <button type="button" class="btn btn-default" id="rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
           </button>
@@ -604,7 +603,7 @@ tbody tr:hover td{background:#fafafa}
   let resPage = 1;
 
   function updateResultTitle(name) {
-    const title = name || '水资源配置预测计算结果';
+    const title = name || '水资源配置';
     currentSchemeName = name || '';
     if ($('result-title')) $('result-title').textContent = title;
     if ($('rename-btn')) $('rename-btn').style.display = currentRecordId ? '' : 'none';
@@ -824,6 +823,7 @@ tbody tr:hover td{background:#fafafa}
       yAxis: [
         {
           type: 'value', name: '水位(m)',
+          min: 70, max: 90,
           nameLocation: 'end', nameGap: 12,
           nameTextStyle: { color: '#999', fontSize: 11, align: 'left' },
           axisLabel: { color: '#999' },
@@ -1468,7 +1468,6 @@ tbody tr:hover td{background:#fafafa}
           resultSummary = null;
           resultRows = [];
           updateResultTitle('');
-          if ($('result-hd')) $('result-hd').classList.add('is-pending');
           $('result-empty').style.display = '';
           $('result-content').style.display = 'none';
         }

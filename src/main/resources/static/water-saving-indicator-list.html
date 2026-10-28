@@ -290,7 +290,9 @@ function renderTable() {
     const refs = Number(r.schemeCount) || 0;
     const target = (r.targetValue === null || r.targetValue === undefined)
       ? '<span class="sub">未设置</span>'
-      : esc(fmtNum(r.targetValue)) + ' <span class="sub">' + esc(r.unit || '') + '</span>';
+      // “%”紧贴数值不留空格（与方案页指标结果一致），万m³ 等单位前保留空格
+      : esc(fmtNum(r.targetValue)) + (r.unit && r.unit !== '%' ? ' ' : '') +
+        '<span class="sub">' + esc(r.unit || '') + '</span>';
     const method = esc(r.methodName || '--') +
       '<span class="sub-line">' + esc((r.formula || '') + (r.unit ? ' · ' + r.unit : '')) + '</span>';
     return '<tr data-key="' + esc(r.id) + '">' +
@@ -404,7 +406,7 @@ function renderView(r) {
   const refs = Number(r.schemeCount) || 0;
   const target = (r.targetValue === null || r.targetValue === undefined)
     ? '未设置'
-    : fmtNum(r.targetValue) + (r.unit ? ' ' + r.unit : '');
+    : fmtNum(r.targetValue) + (r.unit ? (r.unit === '%' ? r.unit : ' ' + r.unit) : '');
   const pairs = [
     ['指标名称', r.name],
     ['计算方式', r.methodName],

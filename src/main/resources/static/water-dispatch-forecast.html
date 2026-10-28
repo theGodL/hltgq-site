@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>配水调度预测</title>
+<title>配水调度</title>
 <script src="./lib/echarts.min.js"></script>
 <script src="./lib/chart-common.js"></script>
 <script src="./lib/chart-data-zoom.js"></script>
@@ -166,11 +166,11 @@ tbody tr:hover td{background:#fafafa}
         </div>
         <div class="form-item">
           <label class="form-label">灌区面积分配表</label>
-          <button type="button" class="btn btn-default btn-block" id="area-table-btn">查看面积分配（只读）</button>
+          <button type="button" class="btn btn-default btn-block" id="area-table-btn">查看面积分配</button>
         </div>
         <div class="form-item">
           <label class="form-label">支渠限制流量表</label>
-          <button type="button" class="btn btn-default btn-block" id="flow-limit-btn">查看限制流量（只读）</button>
+          <button type="button" class="btn btn-default btn-block" id="flow-limit-btn">查看限制流量</button>
         </div>
       </div>
       <div class="left-actions">
@@ -181,7 +181,7 @@ tbody tr:hover td{background:#fafafa}
     <div class="right-panel">
       <div class="right-scroll">
         <div class="result-hd" id="result-hd">
-          <h2 id="result-title">配水调度预测计算结果</h2>
+          <h2 id="result-title">配水调度</h2>
           <button type="button" class="btn btn-default" id="rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
           </button>
@@ -232,7 +232,6 @@ tbody tr:hover td{background:#fafafa}
           </div>
           <div class="sub-tabs" id="dec-tabs">
             <button type="button" class="sub-tab active" data-key="branch">支渠明细</button>
-            <button type="button" class="sub-tab" data-key="scale">缩放系数</button>
             <button type="button" class="sub-tab" data-key="adminMonth">行政区月汇总</button>
             <button type="button" class="sub-tab" data-key="adminYear">行政区年汇总</button>
             <button type="button" class="sub-tab" data-key="supplyAlloc">供水分配汇总</button>
@@ -271,7 +270,7 @@ tbody tr:hover td{background:#fafafa}
 <div class="overlay" id="view-overlay">
   <div class="modal">
     <div class="modal-hd">
-      <span id="view-title">配水调度预测（对应模型）</span>
+      <span id="view-title">配水调度（对应模型）</span>
       <button class="modal-close" id="view-close" type="button">×</button>
     </div>
     <div class="modal-bd view-bd">
@@ -296,7 +295,6 @@ tbody tr:hover td{background:#fafafa}
         </div>
         <div class="sub-tabs" id="view-dec-tabs">
           <button type="button" class="sub-tab active" data-key="branch">支渠明细</button>
-          <button type="button" class="sub-tab" data-key="scale">缩放系数</button>
           <button type="button" class="sub-tab" data-key="adminMonth">行政区月汇总</button>
           <button type="button" class="sub-tab" data-key="adminYear">行政区年汇总</button>
           <button type="button" class="sub-tab" data-key="supplyAlloc">供水分配汇总</button>
@@ -529,15 +527,6 @@ tbody tr:hover td{background:#fafafa}
       extraTables: extraTables
     };
     const key = c.key;
-    if (key === 'scale') {
-      return {
-        title: '缩放系数',
-        headers: ['旬', '缩放系数'],
-        rows: c.scaleRows,
-        htmlCells: function (r) { return [r.tendayLabel, API.fmtNum(r.scaleFactor, 4)]; },
-        textCells: function (r) { return [r.tendayLabel, r.scaleFactor]; }
-      };
-    }
     if (key === 'adminMonth') {
       return {
         title: '行政区月汇总',
@@ -698,7 +687,7 @@ tbody tr:hover td{background:#fafafa}
 
 
   function updateResultTitle(name) {
-    const title = name || '配水调度预测计算结果';
+    const title = name || '配水调度';
     currentSchemeName = name || '';
     if ($('result-title')) $('result-title').textContent = title;
     if ($('rename-btn')) $('rename-btn').style.display = currentRecordId ? '' : 'none';
@@ -709,7 +698,7 @@ tbody tr:hover td{background:#fafafa}
     detailRecord = rec;
     currentRecordId = rec.id || currentRecordId;
     currentSchemeName = rec.schemeName || currentSchemeName || '';
-    updateResultTitle(currentSchemeName || '配水调度预测计算结果');
+    updateResultTitle(currentSchemeName || '配水调度计算结果');
     branchRows = mapBranchRows(detail && detail.branchDetails);
     scaleRows = mapScaleRows(detail && detail.scaleFactors);
     adminMonthRows = mapAdminMonthRows(detail && detail.adminMonthSummary);
@@ -945,7 +934,7 @@ tbody tr:hover td{background:#fafafa}
     viewPage = 1;
     viewFilter = '';
     if ($('view-filter')) $('view-filter').value = '';
-    $('view-title').textContent = rec.schemeName || '配水调度预测（对应模型）';
+    $('view-title').textContent = rec.schemeName || '配水调度（对应模型）';
     renderViewStats(rec);
     syncViewDecTabs();
     renderViewTable();
@@ -1335,11 +1324,11 @@ tbody tr:hover td{background:#fafafa}
     $('rename-btn').addEventListener('click', () => {
       if (!currentRecordId) return toast('请先完成一次计算');
       editingId = currentRecordId;
-      $('edit-name').value = currentSchemeName || '配水调度预测计算结果';
+      $('edit-name').value = currentSchemeName || '配水调度计算结果';
       if (!histList.find(h => h.id === currentRecordId)) {
         histList.push({
           id: currentRecordId,
-          schemeName: currentSchemeName || '配水调度预测计算结果',
+          schemeName: currentSchemeName || '配水调度计算结果',
           status: 'completed'
         });
       }
@@ -1392,7 +1381,7 @@ tbody tr:hover td{background:#fafafa}
       const data = await API.decision.areaTable();
       const districts = data.districts || [];
       const counties = data.counties || [];
-      openTableOverlay('灌区面积分配表（只读）',
+      openTableOverlay('灌区面积分配表',
         '<div class="table-sub-title">按干渠/片区（万亩）</div>' +
         tableHtml(['片区', '面积'], districts.map(d => [d.district, API.fmtNum(d.area, 4)])) +
         '<div class="table-sub-title" style="margin-top:16px">按行政区（万亩）</div>' +
@@ -1411,7 +1400,7 @@ tbody tr:hover td{background:#fafafa}
       const data = await API.decision.flowLimitTable();
       const branches = data.branches || [];
       const districts = data.districts || [];
-      openTableOverlay('支渠限制流量表（只读）',
+      openTableOverlay('支渠限制流量表',
         '<div class="table-sub-title">支渠明细（m³/s）</div>' +
         tableHtml(['片区', '分灌区', '支渠', '行政区', '限制流量'],
           branches.map(b => [b.district, b.subDistrict, b.branchName, b.county, b.limitFlow == null ? '—' : API.fmtNum(b.limitFlow, 3)])) +

@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import com.qgyun.hltgq.hltgqsite.model.util.ReservoirCapacityCurve;
 import com.qgyun.hltgq.hltgqsite.model.util.StationStatusUtils;
 
 /**
@@ -27,6 +28,9 @@ import com.qgyun.hltgq.hltgqsite.model.util.StationStatusUtils;
  */
 @Service
 public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelService {
+
+    /** 花凉亭水库坝上站：唯一有「水位-库容」曲线的站点，其余站点库容恒为 null */
+    private static final String RESERVOIR_STATION_STCD = "3206400007";
 
     @Autowired
     private IrrigationWaterLevelMapper irrigationWaterLevelMapper;
@@ -204,7 +208,12 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
     }
 
     @Override
-    public WaterLevelTrendVO waterLevelTrend(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+    public WaterLevelTrendVO waterLevelTrend(String stcd, LocalDateTime startTime, LocalDateTime endTime,
+                                             String granularity) {
+        // 分钟级：按实际采集时刻逐条出点（图表 x 轴为真实时间）
+        if ("minute".equalsIgnoreCase(granularity)) {
+            return trendByMinute(stcd, startTime, endTime);
+        }
         // 1. 默认时间范围：近 7 天（与 FlowMonitorServiceImpl.trend 口径一致，服务内兜底）
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.HOURS);
         if (endTime == null) {
@@ -271,6 +280,8 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         List<WaterLevelTrendVO.HourPoint> hours = new ArrayList<>();
         LocalDateTime hour = startTime.truncatedTo(ChronoUnit.HOURS);
         LocalDateTime endHour = endTime.truncatedTo(ChronoUnit.HOURS);
+        // 库容：曲线只覆盖花凉亭坝上，其余站点不查表（容量恒为 null）
+        boolean withCapacity = RESERVOIR_STATION_STCD.equals(stcd);
 
         while (!hour.isAfter(endHour)) {
             String key = hour.format(fmt);
@@ -278,6 +289,8 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
             WaterLevelTrendVO.HourPoint point = new WaterLevelTrendVO.HourPoint();
             point.setHour(key);
             point.setWaterLevel(level != null ? level.setScale(2, RoundingMode.DOWN) : null);
+            // 库容按原始水位查曲线（与前端趋势图取数口径一致）；无水位或超出 65.00~99.49 m 时为 null
+            point.setCapacity(withCapacity ? ReservoirCapacityCurve.at(level) : null);
             hours.add(point);
             hour = hour.plusHours(1);
         }
@@ -289,6 +302,80 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         vo.setStartTime(startTime);
         vo.setEndTime(endTime);
         vo.setHours(hours);
+        return vo;
+    }
+
+    /**
+     * 分钟级趋势：按实际采集时刻逐条输出原始记录，不做小时聚合，也不补齐整点。
+     * <p>水位口径与小时级一致（2 位小数、哨兵值过滤）；库容同样只对花凉亭坝上按曲线插值。
+     */
+    private WaterLevelTrendVO trendByMinute(String stcd, LocalDateTime startTime, LocalDateTime endTime) {
+        // 1. 默认时间范围：近 7 天（不截整点，保留当前分钟）
+        if (endTime == null) {
+            endTime = LocalDateTime.now().withSecond(0).withNano(0);
+        }
+        if (startTime == null) {
+            startTime = endTime.minusDays(7);
+        }
+
+        // 2. 查询站点名称（站点表主键 = stcd，查不到时回退为 stcd）
+        String stnm = stcd;
+        StStinfo site = stStinfoMapper.selectById(stcd);
+        if (site != null && site.getStnm() != null) {
+            stnm = site.getStnm();
+        }
+
+        // 3. 查询原始记录（河道数据源无记录时，回退闸站闸前水位）
+        String startStr = startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String endStr = endTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        List<Map<String, Object>> rawRecords = irrigationWaterLevelMapper.selectHistoryRaw(stcd, startStr, endStr);
+        if (rawRecords.isEmpty()) {
+            rawRecords = irrigationWaterLevelMapper.selectGateUpZRaw(stcd, startStr, endStr);
+        }
+
+        // 4. 逐条输出（SQL 已按 TM 升序，同一时刻只有一条记录）
+        boolean withCapacity = RESERVOIR_STATION_STCD.equals(stcd);
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        List<WaterLevelTrendVO.HourPoint> points = new ArrayList<>();
+        for (Map<String, Object> row : rawRecords) {
+            Object tmObj = row.get("TM");
+            Object zObj = row.get("Z");
+            if (tmObj == null || zObj == null) continue;
+
+            LocalDateTime tm;
+            if (tmObj instanceof Timestamp) {
+                tm = ((Timestamp) tmObj).toLocalDateTime();
+            } else if (tmObj instanceof LocalDateTime) {
+                tm = (LocalDateTime) tmObj;
+            } else {
+                continue;
+            }
+
+            BigDecimal z;
+            if (zObj instanceof BigDecimal) {
+                z = (BigDecimal) zObj;
+            } else {
+                z = new BigDecimal(zObj.toString());
+            }
+            // -9991 设备异常、-999 设备不存在，均视为缺失不输出
+            if (z.compareTo(new BigDecimal("-9991")) == 0
+                    || z.compareTo(new BigDecimal("-999")) == 0) continue;
+
+            WaterLevelTrendVO.HourPoint point = new WaterLevelTrendVO.HourPoint();
+            point.setHour(tm.format(fmt));
+            point.setWaterLevel(z.setScale(2, RoundingMode.DOWN));
+            // 库容口径与小时级一致：仅花凉亭坝上查曲线；超出 65.00~99.49 m 时为 null
+            point.setCapacity(withCapacity ? ReservoirCapacityCurve.at(z) : null);
+            points.add(point);
+        }
+
+        // 5. 组装结果
+        WaterLevelTrendVO vo = new WaterLevelTrendVO();
+        vo.setStcd(stcd);
+        vo.setStnm(stnm);
+        vo.setStartTime(startTime);
+        vo.setEndTime(endTime);
+        vo.setHours(points);
         return vo;
     }
 

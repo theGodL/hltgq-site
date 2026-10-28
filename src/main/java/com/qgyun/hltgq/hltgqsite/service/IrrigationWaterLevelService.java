@@ -38,14 +38,15 @@ public interface IrrigationWaterLevelService {
     IrrigationWaterLevelChartVO waterLevelChart(String stcd, LocalDateTime startTime, LocalDateTime endTime);
 
     /**
-     * 水位趋势图表：单站点小时级水位曲线（用于水位监测-详情趋势图）
+     * 水位趋势图表：单站点水位曲线（用于水位监测-详情趋势图、大屏）
      *
-     * @param stcd      站点编号/站点主键（必填）
-     * @param startTime 起始时间（可选，默认 7 天前整点）
-     * @param endTime   截止时间（可选，默认当前整点）
+     * @param stcd        站点编号/站点主键（必填）
+     * @param startTime   起始时间（可选，默认 7 天前；小时级截到整点，分钟级保留当前分钟）
+     * @param endTime     截止时间（可选，默认当前时刻）
+     * @param granularity 统计粒度：hour（默认，每小时取值、整点补齐）/ minute（按实际采集时刻逐条出点）
      * @return 水位趋势图表数据
      */
-    WaterLevelTrendVO waterLevelTrend(String stcd, LocalDateTime startTime, LocalDateTime endTime);
+    WaterLevelTrendVO waterLevelTrend(String stcd, LocalDateTime startTime, LocalDateTime endTime, String granularity);
 
     /**
      * 水位历史数据（分页）：单站点小时级水位值 + 1h涨幅

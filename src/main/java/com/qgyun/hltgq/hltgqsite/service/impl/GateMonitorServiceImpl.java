@@ -1,11 +1,14 @@
 package com.qgyun.hltgq.hltgqsite.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
+import com.qgyun.hltgq.hltgqsite.entity.WaterThreshold;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
+import com.qgyun.hltgq.hltgqsite.mapper.WaterThresholdMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.service.CanalService;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
@@ -137,6 +140,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     @Autowired
     private StStinfoMapper stStinfoMapper;
+
+    @Autowired
+    private WaterThresholdMapper waterThresholdMapper;
 
     @Autowired
     private StationSortService stationSortService;
@@ -575,6 +581,26 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                 .filter(r -> r.get("site") != null)
                 .collect(Collectors.toMap(r -> String.valueOf(r.get("site")), r -> r, (a, b) -> a));
 
+        // 2.1 设计预警值：阈值设置同一配置源（site + zb=up_z/down_z），与水位值同表不同源，
+        //     设计值不受当日有无报文影响；未配置的站不返回，前端不画预警线
+        Map<String, BigDecimal> upWarnBySite = new HashMap<>();
+        Map<String, BigDecimal> downWarnBySite = new HashMap<>();
+        if (!siteIds.isEmpty()) {
+            QueryWrapper<WaterThreshold> warnQuery = new QueryWrapper<>();
+            warnQuery.in("\"site\"", siteIds);
+            // 类型列口径与阈值设置页一致：新配置写 zvieyb，历史列 type 兜底
+            warnQuery.apply("COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') LIKE '%#1#%'");
+            warnQuery.in("\"zb\"", "up_z", "down_z");
+            warnQuery.isNotNull("threshold");
+            for (WaterThreshold t : waterThresholdMapper.selectList(warnQuery)) {
+                if ("up_z".equals(t.getZb())) {
+                    upWarnBySite.put(t.getSite(), t.getThreshold());
+                } else if ("down_z".equals(t.getZb())) {
+                    downWarnBySite.put(t.getSite(), t.getThreshold());
+                }
+            }
+        }
+
         // 3. 按固定顺序组装；半小时内无入库数据的水位为 null（该时间点无报文）
         List<GateStationWaterLevelVO> result = new ArrayList<>();
         for (String stcd : GATE_STATION_STCDS) {
@@ -584,6 +610,8 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             if (info != null) {
                 vo.setId(info.getId());
                 vo.setName(info.getStnm());
+                vo.setUpZThreshold(upWarnBySite.get(info.getId()));
+                vo.setDownZThreshold(downWarnBySite.get(info.getId()));
             }
             Map<String, Object> row = info != null && info.getId() != null ? rowBySite.get(info.getId()) : null;
             if (row != null) {
