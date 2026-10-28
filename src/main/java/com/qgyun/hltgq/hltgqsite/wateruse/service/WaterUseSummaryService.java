@@ -72,6 +72,9 @@ public class WaterUseSummaryService {
     /** 月度收缴趋势固定出桶数（全年 12 个月） */
     private static final int MONTHS_OF_YEAR = 12;
 
+    /** 年度收缴趋势固定出桶数（含统计年在内的近 N 年；产品 2026-10-28 要求 x 轴为近三年） */
+    private static final int TREND_YEARS = 3;
+
     /** 金额展示小数位（万元，截断） */
     private static final int WAN_SCALE = 2;
 
@@ -141,8 +144,8 @@ public class WaterUseSummaryService {
     }
 
     /**
-     * 征收/收缴统计：一次返回大屏「用水缴费」Tab 所需的三段数据——
-     * 顶部四卡片（应缴 / 已收 / 收费率 / 欠收）+「各区域征收情况」+「月度收缴趋势」。
+     * 征收/收缴统计：一次返回大屏「用水缴费」Tab 所需的四段数据——
+     * 顶部四卡片（应缴 / 已收 / 收费率 / 欠收）+「各区域征收情况」+「月度收缴趋势」+「年度收缴趋势」。
      *
      * <p>数据源（2026-10-27 变更）：新版水费账单 t_auto_hltgq_water_bill
      * （调度方案出账与手工台账出账统一沉淀），不再读旧水费计算表单。
@@ -151,30 +154,33 @@ public class WaterUseSummaryService {
      *   <li>区间 = 统计年整年，按账期终点 period_end 落点判定（月/季/年账单统一按账期止落月，
      *       与旧表单「统计周期区间终点归桶」一致）</li>
      *   <li>区域 = 用水户名称（业务口径：一县即一个用水户，户名即行政区名）；
-     *       无区域的账单不计入区域图、仍计入月度趋势</li>
+     *       无区域的账单不计入区域图、仍计入月度与年度趋势</li>
      *   <li>应缴/已收 = amount / paid 桶内求和（库内元 → 出参万元，按展示精度 2 位截断）；桶内无账单 → null（不补 0）</li>
      *   <li>收费率 = 已收合计 ÷ 应缴合计 × 100（1 位截断）；应缴缺失或 ≤ 0 为 null</li>
      *   <li>欠收 = 应缴 − 已收（万元，2 位截断）；任一侧缺失为 null</li>
      *   <li>月度 1~12 月固定出桶（无账单月份字段为 null）；区域按应缴水费降序出参</li>
+     *   <li>年度趋势（2026-10-28 新增，产品要求）固定出近 {@link #TREND_YEARS} 年（含统计年、升序）；
+     *       取数与月度同一次完成——区间一次性扩到近三年首年 1 月 1 日，四卡片 / 区域 / 月度仍只算统计年</li>
      * </ul>
      *
      * @param year 统计年份（缺省 = 当年；超出 2000 ~ 2100 返回 400）
-     * @return 四卡片合计 + 区域段 + 月度段（同一次取数聚合而来，口径一致）
+     * @return 四卡片合计 + 区域段 + 月度段 + 近三年年度段（同一次取数聚合而来，口径一致）
      */
     public WaterUseFeeCollectionVO feeCollection(Integer year) {
         int targetYear = (year == null) ? LocalDate.now().getYear() : year;
         if (targetYear < MIN_YEAR || targetYear > MAX_YEAR) {
             throw new IllegalArgumentException("year 取值范围 " + MIN_YEAR + " ~ " + MAX_YEAR + "（缺省=当年）");
         }
-        LocalDate startDate = LocalDate.of(targetYear, 1, 1);
-        LocalDate endDate = LocalDate.of(targetYear, 12, 31);
-
-        List<WaterBillFeeRecordVO> records =
-                waterUseSummaryMapper.selectBillCollectionRecords(startDate, endDate);
+        int trendStartYear = targetYear - (TREND_YEARS - 1);
+        // 一次取数覆盖近三年（年度趋势 + 统计年明细）：账单表是按户按期的汇总行，扩两年不增加性能压力
+        List<WaterBillFeeRecordVO> records = waterUseSummaryMapper.selectBillCollectionRecords(
+                LocalDate.of(trendStartYear, 1, 1), LocalDate.of(targetYear, 12, 31));
 
         Map<String, FeeSum> regionSums = new LinkedHashMap<>();
         FeeSum[] monthSums = new FeeSum[MONTHS_OF_YEAR];
-        FeeSum yearSum = new FeeSum();
+        // 年度桶：下标 0 = 最早一年，末位 = 统计年（前初始化末位，保证统计年无账单时合计仍为 null 而非 NPE）
+        FeeSum[] yearSums = new FeeSum[TREND_YEARS];
+        yearSums[TREND_YEARS - 1] = new FeeSum();
         int noRegion = 0;
         int sampleLogged = 0;
         for (WaterBillFeeRecordVO record : records) {
@@ -184,33 +190,49 @@ public class WaterUseSummaryService {
                         record.getReceivableRaw(), record.getReceivedRaw());
                 sampleLogged++;
             }
-            yearSum.accumulate(record.getReceivableRaw(), record.getReceivedRaw());
+            if (record.getAnchorTime() == null) {
+                // 账期终点库内 NOT NULL，此处仅兜底脏数据：不落入任何桶
+                continue;
+            }
+            LocalDate anchorDate = record.getAnchorTime().toLocalDate();
+            int trendIndex = anchorDate.getYear() - trendStartYear;
+            if (trendIndex < 0 || trendIndex >= TREND_YEARS) {
+                continue;
+            }
+            if (yearSums[trendIndex] == null) {
+                yearSums[trendIndex] = new FeeSum();
+            }
+            yearSums[trendIndex].accumulate(record.getReceivableRaw(), record.getReceivedRaw());
+            if (trendIndex != TREND_YEARS - 1) {
+                // 往年账单只进年度趋势，不进统计年的四卡片 / 区域 / 月度
+                continue;
+            }
             String region = record.getUserName();
             if (region == null || region.trim().isEmpty()) {
-                // 无区域账单：区域图无法归属（用水户未挂接/已删/名称为空），月度趋势不受影响（仍累计）
+                // 无区域账单：区域图无法归属（用水户未挂接/已删/名称为空），月度与年度趋势不受影响（仍累计）
                 noRegion++;
             } else {
                 regionSums.computeIfAbsent(region.trim(), key -> new FeeSum())
                         .accumulate(record.getReceivableRaw(), record.getReceivedRaw());
             }
-            if (record.getAnchorTime() != null) {
-                int index = record.getAnchorTime().getMonthValue() - 1;
-                if (monthSums[index] == null) {
-                    monthSums[index] = new FeeSum();
-                }
-                monthSums[index].accumulate(record.getReceivableRaw(), record.getReceivedRaw());
+            int monthIndex = anchorDate.getMonthValue() - 1;
+            if (monthSums[monthIndex] == null) {
+                monthSums[monthIndex] = new FeeSum();
             }
+            monthSums[monthIndex].accumulate(record.getReceivableRaw(), record.getReceivedRaw());
         }
 
+        FeeSum yearSum = yearSums[TREND_YEARS - 1];
         WaterUseFeeCollectionVO result = new WaterUseFeeCollectionVO();
         result.setYear(targetYear);
         result.setTotal(buildTotalItem(yearSum));
         result.setRegions(buildRegionItems(regionSums));
         result.setMonths(buildMonthItems(targetYear, monthSums));
+        result.setYears(buildYearItems(trendStartYear, yearSums));
 
-        log.info("[用水总结] 征收统计 year={} 账单={} 条 区域={} 个 无区域账单={} 条 年度合计 应缴(万元)={} 已收(万元)={} "
+        log.info("[用水总结] 征收统计 year={} 取数账单={} 条（近三年窗口 {} ~ {}）区域={} 个 统计年无区域账单={} 条 年度合计 应缴(万元)={} 已收(万元)={} "
                         + "收费率(%)={} 欠收(万元)={}（账单原值合计 应缴={} 已收={} 元，未截断，便于与库中 SUM(amount) / SUM(paid) 对账）",
-                targetYear, records.size(), regionSums.size(), noRegion,
+                targetYear, records.size(), trendStartYear, targetYear, regionSums.size(), noRegion,
                 result.getTotal().getReceivable(), result.getTotal().getReceived(),
                 result.getTotal().getCollectionRate(), result.getTotal().getArrears(),
                 yearSum.receivableRaw, yearSum.receivedRaw);
@@ -225,6 +247,8 @@ public class WaterUseSummaryService {
         }
         log.info("[用水总结] 征收统计 year={} 月度出桶={} 个月：{}",
                 targetYear, result.getMonths().size(), joinMonths(result.getMonths()));
+        log.info("[用水总结] 征收统计 year={} 年度出桶={} 年：{}",
+                targetYear, result.getYears().size(), joinYears(result.getYears()));
         return result;
     }
 
@@ -281,6 +305,24 @@ public class WaterUseSummaryService {
         return items;
     }
 
+    /**
+     * 年度段出数（2026-10-28 新增，产品要求将大屏「月度收缴趋势」改为「年度收缴趋势」）：
+     * 近三年固定出桶、升序（早 → 晚，x 轴从左到右）；无账单年份字段为 null（不补 0）。
+     */
+    private List<WaterUseFeeCollectionVO.YearItem> buildYearItems(int startYear, FeeSum[] yearSums) {
+        List<WaterUseFeeCollectionVO.YearItem> items = new ArrayList<>(yearSums.length);
+        for (int index = 0; index < yearSums.length; index++) {
+            WaterUseFeeCollectionVO.YearItem item = new WaterUseFeeCollectionVO.YearItem();
+            item.setYear(startYear + index);
+            item.setReceivable(receivableOf(yearSums[index]));
+            item.setReceived(receivedOf(yearSums[index]));
+            item.setCollectionRate(collectionRateOf(yearSums[index]));
+            item.setArrears(arrearsOf(yearSums[index]));
+            items.add(item);
+        }
+        return items;
+    }
+
     /** 应收水费(万元)：账单 amount（元）→ 换算为万元并按展示精度 2 位截断；该桶无账单为 null（不补 0） */
     private BigDecimal receivableOf(FeeSum sum) {
         return sum == null ? null : yuanToWan(sum.receivableRaw);
@@ -320,6 +362,16 @@ public class WaterUseSummaryService {
         List<String> parts = new ArrayList<>(months.size());
         for (WaterUseFeeCollectionVO.MonthItem item : months) {
             parts.add(item.getMonth() + "=" + logText(item.getReceivable()) + "/"
+                    + logText(item.getReceived()) + "/" + logText(item.getCollectionRate()));
+        }
+        return String.join(", ", parts);
+    }
+
+    /** 年度段联调日志串：2024=应收/已收/收缴率（无数据用「无」），便于与趋势图逐年核对 */
+    private String joinYears(List<WaterUseFeeCollectionVO.YearItem> years) {
+        List<String> parts = new ArrayList<>(years.size());
+        for (WaterUseFeeCollectionVO.YearItem item : years) {
+            parts.add(item.getYear() + "=" + logText(item.getReceivable()) + "/"
                     + logText(item.getReceived()) + "/" + logText(item.getCollectionRate()));
         }
         return String.join(", ", parts);

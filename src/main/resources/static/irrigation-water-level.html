@@ -987,22 +987,69 @@ function fmtCapacity(v) {
 }
 
 /**
- * 库容右轴量程：库容由水位查「水位-库容」曲线得来，是水位的单值函数，
- * 曲线形状与水位注定一致（同一份数据的两种计量）。若右轴也按数据自适应、把当次波动拉满全高，
- * 两条线就会像素级重合（产品反馈的现象）。所以右轴额外留白：
- * 跨度取「数据跨度 × 1.8」（至少 0.5 亿m³）并以数据中值为中心，
- * 库容线最多只占图高的 56%，不会与水位线叠在一起。
+ * 库容右轴量程（产品 2026-10-28 要求）：
+ * 库容数据往往集中在很窄的区间（一天只差 0.0x 亿m³），轴跨度取大了线条会被压平成直线。
+ * 所以量程紧贴数据——上下各留 8% 数据跨度，再把边界对齐到「好看」的刻度步长，
+ * 保证刻度线 5~10 根、能读出细节。库容是水位的单值函数、形状天然一致，靠虚线线型区分，不靠轴留白。
  */
-const CAP_AXIS_MIN_SPAN = 0.5;   // 亿m³
-const CAP_AXIS_PAD_RATIO = 0.8;  // 数据跨度两侧合计留白比例
-/** 库容右轴边界：dir = -1 取 min、1 取 max；按 0.1 取整，避免轴标签出现 8.42 这类零碎刻度 */
-function capAxisBound(extent, dir) {
-  const lo = Number(extent && extent.min);
-  const hi = Number(extent && extent.max);
-  if (!isFinite(lo) || !isFinite(hi)) return dir < 0 ? 0 : 1;
-  const span = Math.max((hi - lo) * (1 + CAP_AXIS_PAD_RATIO), CAP_AXIS_MIN_SPAN);
-  const v = (lo + hi) / 2 + dir * span / 2;
-  return dir < 0 ? Math.floor(v * 10) / 10 : Math.ceil(v * 10) / 10;
+const CAP_AXIS_PAD_RATIO = 0.08;  // 数据跨度单侧留白比例
+const CAP_AXIS_SPLIT_TARGET = 6;  // 期望的刻度段数（刻度线 = 段数 + 1）
+// 刻度步长候选系数：只用 1/2/5 三档时，窄区间会被放大 2~3 倍（线条又被压平），故用更细的档位
+const CAP_AXIS_STEP_COEFS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+
+/** 去掉浮点尾差（8.199999999999999 → 8.2），避免轴标签出现长小数 */
+function roundAxis(v) {
+  return Math.round(v * 1e6) / 1e6;
+}
+
+/** 步长的小数位数（0.012 → 3 位、0.4 → 1 位）：直接数数字文本，避免 log10 在 0.012 这类步长上算错 */
+function axisDecimals(step) {
+  const text = String(step);
+  if (text.indexOf('e') >= 0) return Math.max(0, -Math.floor(Math.log10(step)));
+  const dot = text.indexOf('.');
+  return dot < 0 ? 0 : text.length - dot - 1;
+}
+
+/**
+ * 库容右轴：紧贴数据的 min / max + 对齐后的刻度间隔 interval + 轴标签小数位。
+ * 在候选步长里挑一个「数据占轴高最高、刻度数最接近目标」的方案，保证线条起伏不被压平、刻度线 5~10 根。
+ * 无数据时退回 0~1（实际只有存在库容点才会画右轴）。
+ */
+function capAxisScale(values) {
+  const nums = (values || []).filter(v => typeof v === 'number' && isFinite(v));
+  if (!nums.length) return { min: 0, max: 1, interval: 0.2, decimals: 1 };
+  const lo = Math.min.apply(null, nums);
+  const hi = Math.max.apply(null, nums);
+  let span = hi - lo;
+  // 单点或完全水平：给一个极小跨度，避免轴高度为 0
+  if (!(span > 0)) span = Math.max(Math.abs(hi) * 0.01, 0.02);
+  const pad = span * CAP_AXIS_PAD_RATIO;
+  const base = Math.pow(10, Math.floor(Math.log10((span + pad * 2) / CAP_AXIS_SPLIT_TARGET)));
+  let best = null;
+  CAP_AXIS_STEP_COEFS.forEach(coef => {
+    const step = base * coef;
+    const min = Math.floor((lo - pad) / step) * step;
+    const max = Math.ceil((hi + pad) / step) * step;
+    const splits = Math.round((max - min) / step);
+    if (splits < 4 || splits > 9) return;  // 刻度线固定 5~10 根
+    const cover = span / (max - min);     // 数据占轴高比例：越高线条起伏越明显
+    const score = cover - Math.abs(splits - CAP_AXIS_SPLIT_TARGET) * 0.03;
+    if (!best || score > best.score) best = { step, min, max, score };
+  });
+  if (!best) {
+    // 兜底（数据几乎水平时常见）：用目标步长对齐后两侧补步长，保证刻度线 5~10 根
+    const step = base;
+    let min = Math.floor((lo - pad) / step) * step;
+    let max = Math.ceil((hi + pad) / step) * step;
+    while (Math.round((max - min) / step) < 4) {
+      min -= step;
+      max += step;
+    }
+    best = { step, min, max };
+  }
+  // 步长决定标签小数位：0.01 → 2 位，0.4 → 1 位，0.012 → 3 位
+  const decimals = axisDecimals(roundAxis(best.step));
+  return { min: roundAxis(best.min), max: roundAxis(best.max), interval: roundAxis(best.step), decimals };
 }
 
 const RES_META = {
@@ -1921,6 +1968,8 @@ function renderTrendChart(groups, failed) {
   const chart = TREND.inst;
   const series = [];
   const usedNames = new Set();
+  // 库容点集：右轴量程要按实际数据算（见 capAxisScale），不能交给 ECharts 自适应
+  const capValues = [];
   const withCap = !!TREND.withCapacity;
   let total = 0;
   (groups || []).forEach((g, i) => {
@@ -1949,16 +1998,19 @@ function renderTrendChart(groups, failed) {
     });
     capData.sort((a, b) => a[0] - b[0]);
     if (!capData.length) return;
+    capData.forEach(p => capValues.push(p[1]));
     const capColor = TREND_COLORS[1 % TREND_COLORS.length];
     series.push({
       name: '库容', type: 'line', yAxisIndex: 1, data: capData,
       smooth: true, symbol: 'none', connectNulls: false,
-      // 虚线弱化：库容与水位同形，靠线型 + 右轴留白（见 capAxisBound）区分，避免被当成同一条线
+      // 虚线线型：库容与水位形状天然一致（同一份数据的两种计量），靠线型区分；右轴量程见 capAxisScale
       lineStyle: { width: 1.4, type: 'dashed', color: capColor }, itemStyle: { color: capColor },
       // 曲线原始 4 位小数，tooltip 默认只给 3 位
       tooltip: { valueFormatter: v => fmtCapacity(Array.isArray(v) ? v[v.length - 1] : v) },
     });
   });
+  // 右轴量程按实际库容点集计算（紧贴数据 + 细刻度），左轴水位仍由 ECharts 自适应
+  const capAxis = capAxisScale(capValues);
   const failTip = (failed && failed.length) ? ` · ${failed.length} 个站点取数失败` : '';
   const scopeTip = TREND.single
     ? `${trendStationName(TREND.stcd)} · 共 ${total} 条记录（曲线最多 2000 点/站）`
@@ -1995,14 +2047,15 @@ function renderTrendChart(groups, failed) {
         splitLine: { lineStyle: { color: '#f0f0f0' } },
       },
       {
-        // 右侧库容轴：库容是水位的单值函数，量程不能跟着数据自适应（否则与水位线完全重合），
-        // 统一走 capAxisBound 留白，保证库容线高度不超过图高的一半
+        // 右侧库容轴（产品 2026-10-28）：量程紧贴数据 + 细刻度，避免窄区间波动被压平；
+        // 只改这一条轴，左轴水位与 x 轴不动
         type: 'value',
         name: '库容 (亿m³)',
-        min: extent => capAxisBound(extent, -1),
-        max: extent => capAxisBound(extent, 1),
+        min: capAxis.min,
+        max: capAxis.max,
+        interval: capAxis.interval,
         nameTextStyle: { color: '#999', fontSize: 12 },
-        axisLabel: { fontSize: 12, color: '#888' },
+        axisLabel: { fontSize: 12, color: '#888', formatter: v => v.toFixed(capAxis.decimals) },
         splitLine: { show: false },
       },
     ] : {

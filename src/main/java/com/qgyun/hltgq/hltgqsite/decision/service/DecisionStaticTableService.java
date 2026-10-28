@@ -5,6 +5,8 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
@@ -23,9 +25,13 @@ import java.util.Map;
  * branch-flow-limit.xlsx（支渠约束流量 sheet：片区/分灌区/支渠/行政区/限制流量，空限制流量返回 null；
  * 片区约束流量 sheet：片区×限制流量）。
  * <p>按表头定位 sheet（不依赖 sheet 顺序），表头列缺省时抛异常（静态表为部署资源，缺失即配置错误）。
+ * <p>2026-10-28 用户定稿：按行政区面积（含全灌区合计行）与片区约束流量改为代码写死，不再读 Excel，
+ * 其余（片区面积、支渠约束流量明细）仍读 Excel。
  */
 @Service
 public class DecisionStaticTableService {
+
+    private static final Logger log = LoggerFactory.getLogger(DecisionStaticTableService.class);
 
     /** 面积分配表（片区面积 + 行政区面积） */
     private static final String AREA_ALLOCATION = "classpath:data/tables/area-allocation.xlsx";
@@ -56,17 +62,12 @@ public class DecisionStaticTableService {
             districts.add(item);
         }
         List<Map<String, Object>> counties = new ArrayList<>();
-        for (Map<String, String> row : readSheet(AREA_ALLOCATION, new String[]{"自流", "提灌"}, null)) {
-            if (blank(row.get("片区"))) {
-                continue;
-            }
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("county", row.get("片区"));
-            item.put("selfFlow", parseDouble(row.get("自流")));
-            item.put("lift", parseDouble(row.get("提灌")));
-            item.put("total", parseDouble(row.get("总计")));
-            counties.add(item);
-        }
+        // 按行政区面积（含全灌区合计行）2026-10-28 用户定稿写死，不再读 Excel
+        counties.add(countyItem("太湖县", 16.45, 0.88, 17.33));
+        counties.add(countyItem("望江县", 37.21, 1.40, 38.61));
+        counties.add(countyItem("宿松县", 19.92, 17.08, 37.00));
+        counties.add(countyItem("怀宁县", 10.72, 2.17, 12.89));
+        counties.add(countyItem("全灌区", 84.30, 21.53, 105.83));
         result.put("districts", districts);
         result.put("counties", counties);
         return result;
@@ -87,22 +88,18 @@ public class DecisionStaticTableService {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("district", row.get("片区"));
             item.put("subDistrict", row.get("分灌区"));
-            item.put("branch", row.get("支渠"));
+            item.put("branchName", row.get("支渠"));
             item.put("county", row.get("行政区"));
-            item.put("flowLimit", parseDouble(row.get("限制流量")));
+            item.put("limitFlow", parseDouble(row.get("限制流量")));
             branches.add(item);
         }
         List<Map<String, Object>> districts = new ArrayList<>();
-        for (Map<String, String> row : readSheet(FLOW_LIMIT,
-                new String[]{"片区", "限制流量"}, new String[]{"分灌区"})) {
-            if (blank(row.get("片区"))) {
-                continue;
-            }
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("district", row.get("片区"));
-            item.put("flowLimit", parseDouble(row.get("限制流量")));
-            districts.add(item);
-        }
+        // 片区约束流量 2026-10-28 用户定稿写死，不再读 Excel
+        districts.add(flowLimitItem("总干渠", 70));
+        districts.add(flowLimitItem("太怀干渠", 8.33));
+        districts.add(flowLimitItem("太宿干渠", 22.6));
+        districts.add(flowLimitItem("北干渠", 11.08));
+        districts.add(flowLimitItem("南干渠", 12.2));
         result.put("branches", branches);
         result.put("districts", districts);
         return result;
@@ -130,6 +127,7 @@ public class DecisionStaticTableService {
                 if (!headers.containsAll(Arrays.asList(requiredHeaders))) {
                     continue;
                 }
+                log.info("调度静态表匹配：{} → sheet「{}」表头={}", location, sheet.getSheetName(), headers);
                 if (forbiddenHeaders != null) {
                     boolean hit = false;
                     for (String forbidden : forbiddenHeaders) {
@@ -167,6 +165,24 @@ public class DecisionStaticTableService {
             throw new IllegalStateException("调度静态表解析失败：" + location + "，原因：" + e.getMessage(), e);
         }
         throw new IllegalStateException("调度静态表缺少必需列 " + Arrays.toString(requiredHeaders) + "：" + location);
+    }
+
+    /** 行政区面积行（自流/提灌/总计） */
+    private Map<String, Object> countyItem(String county, double gravityArea, double pumpArea, double totalArea) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("county", county);
+        item.put("gravityArea", gravityArea);
+        item.put("pumpArea", pumpArea);
+        item.put("totalArea", totalArea);
+        return item;
+    }
+
+    /** 片区约束流量行 */
+    private Map<String, Object> flowLimitItem(String district, double limitFlow) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("district", district);
+        item.put("limitFlow", limitFlow);
+        return item;
     }
 
     /** 显示值转数值；空/非数值返回 null */

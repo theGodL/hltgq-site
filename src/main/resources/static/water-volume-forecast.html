@@ -555,13 +555,9 @@ tbody tr:hover td{background:#fafafa}
             <div class="map-toolbar">
               <div class="chart-title">需水预报</div>
               <div class="map-filters">
-                <span class="map-period-label" id="demand-map-period-label" title="当前拓扑图对应旬区间">5月上旬</span>
-                <select class="field" id="demand-map-start" style="width:120px" title="起始旬"></select>
-                <span class="date-sep">—</span>
-                <select class="field" id="demand-map-end" style="width:120px" title="截止旬"></select>
-                <div class="tenday-slider-wrap" title="拖动选择旬区间">
+                <select class="field" id="demand-map-start" style="width:120px" title="选择旬"></select>
+                <div class="tenday-slider-wrap" title="拖动选择旬">
                   <input type="range" id="demand-range-start" min="0" max="17" value="0" step="1">
-                  <input type="range" id="demand-range-end" min="0" max="17" value="17" step="1">
                 </div>
                 <button type="button" class="btn btn-default topo-fullscreen" id="topo-full-btn" title="全屏">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -2053,60 +2049,25 @@ tbody tr:hover td{background:#fafafa}
     return (demandPeriods && demandPeriods.length) ? demandPeriods : DEMAND_PERIODS_DEFAULT;
   }
 
-  function updateDemandMapPeriodLabel() {
-    const el = $('demand-map-period-label');
-    if (!el) return;
-    const start = ($('demand-map-start') && $('demand-map-start').value) || '';
-    const end = ($('demand-map-end') && $('demand-map-end').value) || '';
-    if (!start && !end) {
-      el.textContent = '—';
-      return;
-    }
-    if (!start || !end || start === end) {
-      el.textContent = start || end;
-      return;
-    }
-    el.textContent = start + '—' + end;
-  }
-
   function fillDemandTendaySelects(keepValue) {
     const list = demandMapPeriodList();
-    const startEl = $('demand-map-start');
-    const endEl = $('demand-map-end');
+    const sel = $('demand-map-start');
     const rs = $('demand-range-start');
-    const re = $('demand-range-end');
-    if (!startEl || !endEl) return;
-    const prevStart = keepValue ? startEl.value : '';
-    const prevEnd = keepValue ? endEl.value : '';
-    const opts = list.map(p => `<option value="${p}">${p}</option>`).join('');
-    startEl.innerHTML = opts;
-    endEl.innerHTML = opts;
-    const max = Math.max(0, list.length - 1);
-    if (rs) rs.max = max;
-    if (re) re.max = max;
-    let si = list.indexOf(prevStart);
-    let ei = list.indexOf(prevEnd);
+    if (!sel) return;
+    const prev = keepValue ? sel.value : '';
+    sel.innerHTML = list.map(p => `<option value="${p}">${p}</option>`).join('');
+    if (rs) rs.max = Math.max(0, list.length - 1);
+    let si = list.indexOf(prev);
     if (si < 0) si = 0;
-    if (ei < 0) ei = max;
-    if (ei < si) ei = si;
-    startEl.value = list[si] || '';
-    endEl.value = list[ei] || '';
+    sel.value = list[si] || '';
     if (rs) rs.value = si;
-    if (re) re.value = ei;
-    updateDemandMapPeriodLabel();
   }
 
-  /** 按所选上/中/下旬区间过滤拓扑标签 */
+  /** 拓扑标签按所选单旬精确匹配 */
   function tendayInSelectedRange(label) {
-    const start = ($('demand-map-start') && $('demand-map-start').value) || '';
-    const end = ($('demand-map-end') && $('demand-map-end').value) || '';
-    if (!start || !end) return true;
-    const list = demandMapPeriodList();
-    const i = list.indexOf(label);
-    const a = list.indexOf(start);
-    const b = list.indexOf(end);
-    if (i < 0 || a < 0 || b < 0) return true;
-    return i >= Math.min(a, b) && i <= Math.max(a, b);
+    const picked = ($('demand-map-start') && $('demand-map-start').value) || '';
+    if (!picked) return true;
+    return label === picked;
   }
 
   function rebuildDemandTopoMap() {
@@ -2124,18 +2085,10 @@ tbody tr:hover td{background:#fafafa}
   }
 
   function onDemandMapDateChange() {
-    const start = $('demand-map-start') && $('demand-map-start').value;
-    const end = $('demand-map-end') && $('demand-map-end').value;
     const list = demandMapPeriodList();
-    if (start && end && list.indexOf(end) < list.indexOf(start)) {
-      toast('截止旬不能早于起始旬');
-      return;
-    }
-    const si = list.indexOf(start);
-    const ei = list.indexOf(end);
+    const picked = $('demand-map-start') && $('demand-map-start').value;
+    const si = list.indexOf(picked);
     if ($('demand-range-start') && si >= 0) $('demand-range-start').value = si;
-    if ($('demand-range-end') && ei >= 0) $('demand-range-end').value = ei;
-    updateDemandMapPeriodLabel();
     if (!demandDetail) return;
     rebuildDemandTopoMap();
     renderTopoTags();
@@ -2144,11 +2097,9 @@ tbody tr:hover td{background:#fafafa}
   function onDemandRangeSlider() {
     const list = demandMapPeriodList();
     let si = Number($('demand-range-start').value) || 0;
-    let ei = Number($('demand-range-end').value) || 0;
-    if (ei < si) { const t = si; si = ei; ei = t; }
+    if (si < 0) si = 0;
+    if (si > list.length - 1) si = list.length - 1;
     if (list[si]) $('demand-map-start').value = list[si];
-    if (list[ei]) $('demand-map-end').value = list[ei];
-    updateDemandMapPeriodLabel();
     if (!demandDetail) return;
     rebuildDemandTopoMap();
     renderTopoTags();
@@ -2163,8 +2114,8 @@ tbody tr:hover td{background:#fafafa}
 
   function renderDemandStats(containerId) {
     const rec = (demandDetail && demandDetail.record) || {};
-    // 灌溉面积取接口返回（万亩）
-    const areaWan = rec.irrigatedArea != null ? Number(rec.irrigatedArea) : 105.83;
+    // 灌溉面积固定展示 105.83 万亩，不读取模型返回值
+    const areaWan = 105.83;
     const peak = formatTendayPeriod(rec.peakTenday || '—', resolveDemandYear(rec));
     $(containerId).innerHTML = [
       { label: '全灌区总需水', value: numOrDash(rec.totalDemand, 2), unit: '万m³' },
@@ -2260,7 +2211,6 @@ tbody tr:hover td{background:#fafafa}
     const cols = [{ key: 'area', label: demandTab === 'county' ? '行政区' : '片区' }];
     if (demandTab === 'canal' || demandTab === 'district') cols.push({ key: 'district', label: '分灌区' });
     if (demandTab === 'canal') cols.push({ key: 'canal', label: '支渠' });
-    if (demandTab !== 'county') cols.push({ key: 'size', label: '灌区面积' });
     if (demandTab === 'canal') cols.push({ key: 'crop', label: '种植作物种类' });
     periods.forEach((label, i) => cols.push({ key: 'v' + i, label, periodIndex: i }));
     return cols;
@@ -2525,7 +2475,7 @@ tbody tr:hover td{background:#fafafa}
         `<td>${r.subDistrict || '—'}</td>` +
         `<td>${r.branchName || '—'}</td>` +
         `<td>${r.county || '—'}</td>` +
-        `<td>${r.area == null ? '—' : r.area}</td>` +
+        `<td>${r.area == null ? '—' : Number(r.area).toFixed(3)}</td>` +
         `<td><select class="field" data-crop-idx="${i}" style="width:110px;height:30px">` +
           CROP_TYPES.map(t => `<option value="${t}"${t === r.cropType ? ' selected' : ''}>${t}</option>`).join('') +
         '</select></td>' +
@@ -2707,9 +2657,7 @@ tbody tr:hover td{background:#fafafa}
   });
 
   $('demand-map-start').addEventListener('change', onDemandMapDateChange);
-  $('demand-map-end').addEventListener('change', onDemandMapDateChange);
   if ($('demand-range-start')) $('demand-range-start').addEventListener('input', onDemandRangeSlider);
-  if ($('demand-range-end')) $('demand-range-end').addEventListener('input', onDemandRangeSlider);
 
   $('topo-full-btn').addEventListener('click', () => {
     const el = $('topo-wrap');

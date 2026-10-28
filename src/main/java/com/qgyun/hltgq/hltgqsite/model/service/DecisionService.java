@@ -3,6 +3,7 @@ package com.qgyun.hltgq.hltgqsite.model.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.qgyun.hltgq.hltgqsite.entity.AllocateRecord;
 import com.qgyun.hltgq.hltgqsite.entity.BaseWaterEntity;
 import com.qgyun.hltgq.hltgqsite.entity.DecisionAdminMonth;
@@ -41,8 +42,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -435,7 +439,7 @@ public class DecisionService {
         }
     }
 
-    /** 单行快照写入：row_json 原样归档模型键值，序列化失败仅告警跳过 */
+    /** 单行快照写入：row_json 时间列（旬/月）按时间顺序重排后归档（模型返回键序乱序：10月在5月前） */
     private void insertExtraRow(String recordId, String tableKey, String rowKey, JsonNode rowJson,
                                 int sortOrder, LocalDateTime now) {
         DecisionExtraTable row = new DecisionExtraTable();
@@ -443,7 +447,7 @@ public class DecisionService {
         row.setTableKey(tableKey);
         row.setRowKey(rowKey);
         try {
-            row.setRowJson(objectMapper.writeValueAsString(rowJson));
+            row.setRowJson(objectMapper.writeValueAsString(reorderTimeColumns(rowJson)));
         } catch (Exception e) {
             log.warn("扩展表行序列化失败，跳过：recordId={}, tableKey={}, rowKey={}, error={}",
                     recordId, tableKey, rowKey, e.getMessage());
@@ -452,6 +456,47 @@ public class DecisionService {
         row.setSortOrder((double) sortOrder);
         fillBase(row, now);
         extraTableMapper.insert(row);
+    }
+
+    /**
+     * 时间列重排：字段名可映射为旬序（TenDayMapUtils）或月序（N月）的列按时间升序排到末尾，
+     * 其余字段保持模型原序在前（行标识/合计列等）；无时间列的节点原样返回。
+     */
+    private JsonNode reorderTimeColumns(JsonNode rowJson) {
+        if (!(rowJson instanceof ObjectNode) || rowJson.size() <= 1) {
+            return rowJson;
+        }
+        ObjectNode source = (ObjectNode) rowJson;
+        ObjectNode result = objectMapper.createObjectNode();
+        List<Map.Entry<String, JsonNode>> timeFields = new ArrayList<>();
+        source.fields().forEachRemaining(entry -> {
+            if (timeOrderOf(entry.getKey()) != null) {
+                timeFields.add(entry);
+            } else {
+                result.set(entry.getKey(), entry.getValue());
+            }
+        });
+        timeFields.sort(Comparator.comparingInt(entry -> timeOrderOf(entry.getKey())));
+        for (Map.Entry<String, JsonNode> entry : timeFields) {
+            result.set(entry.getKey(), entry.getValue());
+        }
+        return result;
+    }
+
+    /** 字段名时间序：旬标签→旬序（1~18）；「N月」→月份序（1~12）；其他返回 null */
+    private Integer timeOrderOf(String field) {
+        Integer order = TenDayMapUtils.sortOrderOf(field);
+        if (order != null) {
+            return order;
+        }
+        if (field != null && field.endsWith("月")) {
+            try {
+                return Integer.parseInt(field.substring(0, field.length() - 1));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     /** 审计五连写（委托 AuditUtils） */

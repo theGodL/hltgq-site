@@ -201,13 +201,9 @@ tbody tr:hover td{background:#fafafa}
           <div class="map-toolbar">
             <div class="chart-title">配水调度</div>
             <div class="map-filters">
-              <span class="map-period-label" id="map-period-label" title="当前拓扑图对应旬区间">5月上旬—10月下旬</span>
-              <select class="field" id="map-start" style="width:120px" title="起始旬"></select>
-              <span class="date-sep">—</span>
-              <select class="field" id="map-end" style="width:120px" title="截止旬"></select>
-              <div class="tenday-slider-wrap" title="拖动选择旬区间">
+              <select class="field" id="map-start" style="width:120px" title="选择旬"></select>
+              <div class="tenday-slider-wrap" title="拖动选择旬">
                 <input type="range" id="map-range-start" min="0" max="17" value="0" step="1">
-                <input type="range" id="map-range-end" min="0" max="17" value="17" step="1">
               </div>
               <button type="button" class="btn btn-default topo-fullscreen" id="topo-full-btn" title="全屏">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -601,87 +597,42 @@ tbody tr:hover td{background:#fafafa}
   }
   let dispatchTendayLabels = DEFAULT_TENDAY_LABELS.slice();
 
-  function updateMapPeriodLabel() {
-    const el = $('map-period-label');
-    if (!el) return;
-    const start = ($('map-start') && $('map-start').value) || '';
-    const end = ($('map-end') && $('map-end').value) || '';
-    if (!start && !end) {
-      el.textContent = '—';
-      return;
-    }
-    if (!start || !end || start === end) {
-      el.textContent = start || end;
-      return;
-    }
-    el.textContent = start + '—' + end;
-  }
-
   function fillDispatchTendayControls(keep) {
-    // 拓扑旬筛选固定 5月上旬～10月下旬（与需水预报一致）
+    // 拓扑旬筛选固定 5月上旬～10月下旬（与需水预报一致），单旬单选
     dispatchTendayLabels = DEFAULT_TENDAY_LABELS.slice();
-    const startEl = $('map-start');
-    const endEl = $('map-end');
+    const sel = $('map-start');
     const rs = $('map-range-start');
-    const re = $('map-range-end');
-    if (!startEl || !endEl) return;
-    const prevS = keep ? startEl.value : '';
-    const prevE = keep ? endEl.value : '';
-    const opts = dispatchTendayLabels.map(p => `<option value="${p}">${p}</option>`).join('');
-    startEl.innerHTML = opts;
-    endEl.innerHTML = opts;
-    const max = Math.max(0, dispatchTendayLabels.length - 1);
-    if (rs) { rs.max = max; }
-    if (re) { re.max = max; }
-    let si = dispatchTendayLabels.indexOf(prevS);
-    let ei = dispatchTendayLabels.indexOf(prevE);
+    if (!sel) return;
+    const prev = keep ? sel.value : '';
+    sel.innerHTML = dispatchTendayLabels.map(p => `<option value="${p}">${p}</option>`).join('');
+    if (rs) rs.max = Math.max(0, dispatchTendayLabels.length - 1);
+    let si = dispatchTendayLabels.indexOf(prev);
     if (si < 0) si = 0;
-    if (ei < 0) ei = max;
-    if (ei < si) ei = si;
-    startEl.value = dispatchTendayLabels[si];
-    endEl.value = dispatchTendayLabels[ei];
+    sel.value = dispatchTendayLabels[si] || '';
     if (rs) rs.value = si;
-    if (re) re.value = ei;
-    updateMapPeriodLabel();
   }
 
+  /** 拓扑标签按所选单旬精确匹配 */
   function tendayInMapRange(label) {
-    const start = ($('map-start') && $('map-start').value) || '';
-    const end = ($('map-end') && $('map-end').value) || '';
-    if (!start || !end) return true;
-    const a = dispatchTendayLabels.indexOf(start);
-    const b = dispatchTendayLabels.indexOf(end);
-    const i = dispatchTendayLabels.indexOf(label);
-    if (i < 0 || a < 0 || b < 0) return true;
-    return i >= Math.min(a, b) && i <= Math.max(a, b);
+    const picked = ($('map-start') && $('map-start').value) || '';
+    if (!picked) return true;
+    return label === picked;
   }
 
-  function syncMapRangeFromSelects() {
-    const si = dispatchTendayLabels.indexOf($('map-start').value);
-    const ei = dispatchTendayLabels.indexOf($('map-end').value);
-    if ($('map-range-start') && si >= 0) $('map-range-start').value = si;
-    if ($('map-range-end') && ei >= 0) $('map-range-end').value = ei;
-    updateMapPeriodLabel();
-  }
-
-  function syncMapSelectsFromRange() {
-    let si = Number($('map-range-start').value) || 0;
-    let ei = Number($('map-range-end').value) || 0;
-    if (ei < si) { const t = si; si = ei; ei = t; }
-    if (dispatchTendayLabels[si]) $('map-start').value = dispatchTendayLabels[si];
-    if (dispatchTendayLabels[ei]) $('map-end').value = dispatchTendayLabels[ei];
-    updateMapPeriodLabel();
-  }
-
-  function onDispatchMapRangeChange() {
+  function onDispatchMapSelectChange() {
     const list = dispatchTendayLabels;
-    const a = list.indexOf($('map-start').value);
-    const b = list.indexOf($('map-end').value);
-    if (a >= 0 && b >= 0 && b < a) {
-      toast('截止旬不能早于起始旬');
-      return;
-    }
-    syncMapRangeFromSelects();
+    const picked = $('map-start') && $('map-start').value;
+    const si = list.indexOf(picked);
+    if ($('map-range-start') && si >= 0) $('map-range-start').value = si;
+    renderTopoTags();
+  }
+
+  function onDispatchRangeSlider() {
+    const list = dispatchTendayLabels;
+    let si = Number($('map-range-start').value) || 0;
+    if (si < 0) si = 0;
+    if (si > list.length - 1) si = list.length - 1;
+    if (list[si]) $('map-start').value = list[si];
     renderTopoTags();
   }
 
@@ -1303,16 +1254,8 @@ tbody tr:hover td{background:#fafafa}
     }
   });
 
-  $('map-start').addEventListener('change', onDispatchMapRangeChange);
-  $('map-end').addEventListener('change', onDispatchMapRangeChange);
-  $('map-range-start').addEventListener('input', () => {
-    syncMapSelectsFromRange();
-    renderTopoTags();
-  });
-  $('map-range-end').addEventListener('input', () => {
-    syncMapSelectsFromRange();
-    renderTopoTags();
-  });
+  $('map-start').addEventListener('change', onDispatchMapSelectChange);
+  $('map-range-start').addEventListener('input', onDispatchRangeSlider);
 
   $('topo-full-btn').addEventListener('click', () => {
     const wrap = $('topo-wrap');

@@ -196,7 +196,6 @@ public class DemandService {
 
                     // 2.1 支渠明细纵向展开 18 旬（每支渠 1 条 → 18 条），同时聚行政区×旬透视
                     Map<String, Double> tendayTotal = new HashMap<>();
-                    Map<String, Double> branchArea = new HashMap<>();
                     Map<String, Map<String, Double>> countyTenday = new HashMap<>();
                     boolean countyKeyChecked = false;
                     for (JsonNode item : response.path("支渠明细")) {
@@ -216,9 +215,6 @@ public class DemandService {
                         }
                         String cropTypes = textOf(item, "种植作物种类");
                         Double area = doubleOf(item, "灌区面积");
-                        if (branchName != null && area != null) {
-                            branchArea.putIfAbsent(branchName, area);
-                        }
                         for (String label : TenDayMapUtils.TEN_DAY_MAP.keySet()) {
                             DemandBranchDetail detail = new DemandBranchDetail();
                             detail.setRecordId(recordId);
@@ -249,12 +245,8 @@ public class DemandService {
                     writeAreaSummary(recordId, response.path("分灌区汇总"), "分灌区", "分灌区", now);
                     writeCountySummary(recordId, countyTenday, now);
 
-                    // 2.3 回写预计算字段：irrigated_area（支渠去重求和）、peak_tenday（argmax）
-                    double irrigatedArea = 0;
-                    for (Double area : branchArea.values()) {
-                        irrigatedArea += area;
-                    }
-                    record.setIrrigatedArea(round2(irrigatedArea));
+                    // 2.3 回写预计算字段：irrigated_area 固定 105.83（全灌区面积，模型方 2026-10-28 定稿），peak_tenday（argmax）
+                    record.setIrrigatedArea(105.83);
                     record.setPeakTenday(argmax(tendayTotal));
                     record.setStatus(ModelRecordCommonService.STATUS_COMPLETED);
                     record.setUpdatedAt(LocalDateTime.now());
@@ -474,7 +466,8 @@ public class DemandService {
                     row.put("subDistrict", textOf(item, "分灌区"));
                     row.put("branchName", textOf(item, "支渠"));
                     row.put("county", textOf(item, "行政区"));
-                    row.put("area", doubleOf(item, "灌区面积"));
+                    // 灌区面积保留三位小数，多余直接丢弃（截断非四舍五入，模型方 2026-10-28 要求）
+                    row.put("area", truncate3(doubleOf(item, "灌区面积")));
                     row.put("cropType", textOf(item, "种植作物种类"));
                     rows.add(row);
                 }
@@ -483,6 +476,14 @@ public class DemandService {
         } catch (IOException e) {
             throw new IllegalStateException("内置默认需水预测表解析失败：" + e.getMessage(), e);
         }
+    }
+
+    /** 截断到三位小数（多余直接丢弃，非四舍五入）；null 返回 null */
+    private Double truncate3(Double value) {
+        if (value == null) {
+            return null;
+        }
+        return Math.floor(value * 1000.0) / 1000.0;
     }
 
     /** 审计五连写（委托 AuditUtils） */

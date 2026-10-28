@@ -48,13 +48,15 @@ public interface WaterUseSummaryMapper {
     /**
      * 征收/收缴统计取数（新版水费账单）：账期终点 period_end 落在 [startDate, endDate] 内的账单（按终点升序），
      * 左连用水户表取名称作为区域（一县一户，户名即行政区名）。
+     * <p>窗口由服务层给成「近三年首年 1 月 1 日 ~ 统计年 12 月 31 日」，一次取数同时供年度趋势（近三年）
+     * 与统计年明细（四卡片 / 区域 / 月度）聚合。
      * <p>只取应收/已收两个金额与归桶锚点，不取计费水量（征收图不展示用水量）。
      * <p>账期终点必填（NOT NULL），不存在锚点缺失；用水户缺失（water_user_id 悬空 / 名称为空）时
      * userName 为 null，此类账单不计入区域图、仍计入月度趋势（服务层输出计数日志）。
      * <p>账单表体量为按户按期的汇总行（每户每月/季/年至多一条），单次全量取数后由服务层聚合，无性能风险。
      *
-     * @param startDate 窗口起点（统计年 1月1日，必填）
-     * @param endDate   窗口终点（统计年 12月31日，必填）
+     * @param startDate 窗口起点（近三年首年 1 月 1 日，必填）
+     * @param endDate   窗口终点（统计年 12 月 31 日，必填）
      * @return 账单记录（区域/月度聚合在服务层处理）
      */
     @Select("SELECT b.bill_no AS \"billNo\", u.name AS \"userName\", " +
