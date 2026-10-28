@@ -282,6 +282,8 @@
    */
   function button(opt) {
     opt = opt || {};
+    // 渲染即注入样式：样式不能只等 open() 才注入，否则首屏行内按钮是浏览器默认样式
+    injectStyle();
     return '<button type="button" class="mv-act"'
       + ' data-msg-key="' + esc(opt.key) + '"'
       + ' data-msg-tm="' + esc(opt.tm) + '"'
@@ -292,4 +294,7 @@
   }
 
   global.MessageViewer = { open: open, close: close, button: button };
+
+  // 立即注入样式：兼容页面直接手写 .mv-act 按钮（不经过 button()）的场景
+  injectStyle();
 })(window);
