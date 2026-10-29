@@ -30,10 +30,13 @@ public class ThresholdVO {
     /** 阈值类型名称（水位 / 雨量 / ...） */
     private String typeName;
 
-    /** 监测指标编码（水质/墒情如 nh3n / mten；水位闸站为 up_z/down_z；通用水位与单指标类型为空） */
+    /**
+     * 监测指标编码（水质/墒情如 nh3n / mten；水位闸门站为 gate_z；通用水位与单指标类型为空）。
+     * <p>闸门上下游在库内仍是 up_z / down_z 两行（告警引擎按列取数），接口层合并为一条 gate_z 记录。
+     */
     private String indicator;
 
-    /** 监测指标名称（氨氮 / 闸前水位（上游） …；通用水位补「通用水位」，字典外编码为空） */
+    /** 监测指标名称（氨氮 / 闸门上下游水位 …；通用水位补「通用水位」，字典外编码为空） */
     private String indicatorName;
 
     /** 警戒值单位（多指标类型按指标单位，其余按类型单位） */
@@ -48,8 +51,14 @@ public class ThresholdVO {
     /** 告警方向是否为类型默认值（存量行未落方向时后端按类型补默认值，界面加「默认」标记） */
     private Boolean alarmDirDefault;
 
-    /** 警戒值 */
+    /** 警戒值（闸门上下游记录为上游/闸前值） */
     private BigDecimal threshold;
+
+    /**
+     * 下游警戒值（闸后，仅闸门上下游合并记录有值）。
+     * <p>库内对应 zb=down_z 的 threshold；上游未配置时 threshold 为空、本字段有值。
+     */
+    private BigDecimal thresholdDown;
 
     /** 描述 */
     private String description;

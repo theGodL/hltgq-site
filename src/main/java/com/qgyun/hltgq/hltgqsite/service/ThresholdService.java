@@ -11,11 +11,13 @@ import java.util.Map;
 /**
  * 阈值设置：对监测站点按「站点 + 阈值类型（+ 监测指标）」维护单级警戒值。
  * <p>类型与站点的对应关系由站点档案维护（档案监测类型 epjutj 含该类型编码即支持）；
- * 水位闸前/闸后指标例外：闸门站档案多不含 #1#，按闸门表有效水位数据判定。
+ * 水位闸门上下游指标例外：闸门站档案多不含 #1#，按闸门表有效水位数据判定。
  * 类型字典（编码/名称/单位/默认方向/适用站点说明/监测指标清单）由后端统一提供，前端不写死。
  * <p>多指标类型（水质 #8#、墒情 #7#、水位 #1#）一个站一个类型可配多条（每指标一条），
  * 指标编码即监测数据表字段名，告警比对接该列到数据表取数；水位通用水位落库为空，
  * 雨量/流量/开度指标恒为空。
+ * <p>水位闸门上下游为**一条逻辑记录**（指标 gate_z）：接口层把库内 up_z/down_z 两行合并为
+ * threshold（上游/闸前）/ thresholdDown（下游/闸后）两个值，页面一次设置两侧。
  * <p>保存即时生效：告警引擎每次比对实时读库，无需刷新缓存或重启（写入不做本地缓存）。
  */
 public interface ThresholdService {
@@ -31,7 +33,7 @@ public interface ThresholdService {
      * @param type      阈值类型编码（必填，如 #1#）
      * @param keyword   站点名称/编号关键字（可选）
      * @param indicator 监测指标编码（可选）：传值时「已配置」标记按「类型 + 指标」判定
-     *                  （水位通用水位传 general，闸前/闸后传 up_z/down_z）
+     *                  （水位通用水位传 general，闸门上下游传 gate_z，任一侧已配置即算已配置）
      */
     List<ThresholdSiteVO> sites(String type, String keyword, String indicator);
 
@@ -56,15 +58,18 @@ public interface ThresholdService {
     ThresholdVO detail(String id);
 
     /**
-     * 新增阈值：站点必须支持该类型；多指标类型必选指标；同站点同类型同指标唯一（含多值行，如 #1#|#3#）
+     * 新增阈值：站点必须支持该类型；多指标类型必选指标；同站点同类型同指标唯一（含多值行，如 #1#|#3#）。
+     * <p>闸门上下游（indicator=gate_z）：threshold=上游、thresholdDown=下游，至少填一项，
+     * 落库拆成 up_z/down_z 两行（留空的一侧不落库）。
      *
-     * @return 保存后的记录
+     * @return 保存后的记录（闸门上下游返回合并后的一条记录）
      */
     ThresholdVO create(ThresholdSaveVO req);
 
     /**
      * 编辑阈值：仅可改告警方向、警戒值、描述；站点、类型与指标以库中行为准
      * （换站点/换类型/换指标 = 删除后新增）。
+     * <p>闸门上下游：按侧 upsert，留空的一侧删除，至少保留一侧；返回值仍为合并后的一条记录。
      * <p>若库中类型仍在旧列 type（zvieyb 为空），保存时一并规范化到 zvieyb，保证告警引擎单一读取口径。
      *
      * @return 保存后的记录

@@ -38,7 +38,7 @@ public class ThresholdMetaVO {
         private String siteScopeDesc;
 
         /**
-         * 监测指标清单：多指标类型 #8# 水质、#7# 墒情；#1# 水位含通用水位/闸前/闸后。
+         * 监测指标清单：多指标类型 #8# 水质、#7# 墒情；#1# 水位含通用水位/闸门上下游水位。
          * 雨量/流量/开度为单指标类型，本清单为空（界面不展示指标字段）。
          */
         private List<IndicatorItem> indicators;
@@ -48,7 +48,7 @@ public class ThresholdMetaVO {
     @Data
     public static class IndicatorItem {
 
-        /** 指标编码（= 监测数据表字段名，如 nh3n / mten / up_z / down_z） */
+        /** 指标编码（= 监测数据表字段名，如 nh3n / mten；闸门上下游为逻辑编码 gate_z） */
         private String code;
 
         /** 指标名称（氨氮 / 10cm含水量 …） */

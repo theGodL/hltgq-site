@@ -2,8 +2,6 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.auth.UserContext;
 import com.qgyun.hltgq.hltgqsite.auth.UserContextHolder;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
@@ -23,11 +21,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,11 +44,14 @@ import java.util.regex.Pattern;
  * （见 {@link #sortScope}），未配置过顺序时保持按站名；列表筛选下拉只列已配置阈值的站点。
  * <p>唯一性：表无数据库唯一约束，判重由本类按「站点 + 类型 + 指标」在应用层完成（多值行如 #1#|#3# 也算已配置），
  * 与全库监测类型 LIKE 子串匹配规范一致；雨量/流量/开度指标恒为空（「站点 + 类型」唯一），
- * 水位普通站指标为空、闸站按 up_z/down_z 各存一行。
+ * 水位普通站指标为空、闸站上下游合并为一条 gate_z 记录。
  * <p>监测指标（{@code zb}）：墒情 #7#、水质 #8# 一个类型下含多个指标，按「站点 + 类型 + 指标」各存一行；
  * 指标清单**按监测页实际展示口径开放**（墒情三层、水质七项，见 {@link #TYPES}），
- * 指标编码即监测数据表字段名，告警比对接该列到数据表取数。水位类型的闸前/闸后指标
- * 对应闸门表 {@code up_z}/{@code down_z}（闸门站档案多不含 #1#，候选站点按闸门表有效数据判定）。
+ * 指标编码即监测数据表字段名，告警比对接该列到数据表取数。
+ * <p>水位闸门上下游（逻辑指标 {@code gate_z}）：外部告警引擎按 {@code zb} 当闸门表列名逐列取数比对，
+ * 库内**必须保持 up_z / down_z 两行**，不能合并存储；本类在接口层把同站点两行合并为一条
+ * {@code gate_z} 记录（threshold=上游/闸前、thresholdDown=下游/闸后），页面一次设置两侧；
+ * 保存时按侧 upsert（留空的一侧删除，至少保留一侧），删除整组一起删。
  * <p>字段口径：类型写 {@code zvieyb}（历史列 {@code type} 仅读取兜底），指标写 {@code zb}，方向写 {@code alarmdir}，
  * 警戒值写 {@code threshold}，描述写 {@code remark}；{@code guarantee}/{@code num} 不写。
  * <p>告警方向：类型/指标级默认值只作新增时的初始选中与 {@code alarmdir} 空值兜底，**业主可自行切换**；
@@ -71,10 +74,17 @@ public class ThresholdServiceImpl implements ThresholdService {
     /** 水位指标：通用水位（普通水位站，zb 落空，与存量口径一致） */
     private static final String IND_GENERAL = "general";
 
-    /** 水位指标：闸前水位（上游，闸门表 up_z） */
+    /**
+     * 水位指标：闸门上下游水位（逻辑指标，不落库）。
+     * <p>库内仍按闸门表列名拆成 up_z / down_z 两行（外围告警引擎按 zb 取列比对），
+     * 接口层合并为一条记录：threshold=上游（闸前）、thresholdDown=下游（闸后）。
+     */
+    private static final String IND_GATE = "gate_z";
+
+    /** 水位指标：闸前水位（上游，落库编码 = 闸门表 up_z） */
     private static final String IND_UP_Z = "up_z";
 
-    /** 水位指标：闸后水位（下游，闸门表 down_z） */
+    /** 水位指标：闸后水位（下游，落库编码 = 闸门表 down_z） */
     private static final String IND_DOWN_Z = "down_z";
 
     /** 类型编码提取（多值形如 #1#|#3#） */
@@ -85,11 +95,11 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     static {
         // 水位：普通水位站用「通用水位」（zb 空，与存量「站点+类型」判重口径一致）；
-        // 闸门站按闸前/闸后分别配置，指标编码取闸门表列名 up_z/down_z 供告警比对直接取列
-        put(TYPE_WATER_LEVEL, "水位", "m", DIR_ABOVE, "河道站、水库站（通用水位）；闸站（闸前/闸后水位）",
+        // 闸门站用「闸门上下游水位」一条记录同时设置上游（闸前）/下游（闸后），
+        // 保存时拆成 up_z/down_z 两行入库，供告警引擎按列取数比对
+        put(TYPE_WATER_LEVEL, "水位", "m", DIR_ABOVE, "河道站、水库站（通用水位）；闸站（闸门上下游水位）",
                 indicator(IND_GENERAL, "通用水位", "m", DIR_ABOVE),
-                indicator(IND_UP_Z, "闸前水位（上游）", "m", DIR_ABOVE),
-                indicator(IND_DOWN_Z, "闸后水位（下游）", "m", DIR_ABOVE));
+                indicator(IND_GATE, "闸门上下游水位", "m", DIR_ABOVE));
         put("#2#", "雨量", "mm", DIR_ABOVE, "雨量站");
         put("#3#", "流量", "m³/s", DIR_ABOVE, "测流闸、河道站");
         put("#4#", "开度", "m", DIR_ABOVE, "泄洪闸、节制闸、进水闸");
@@ -162,27 +172,36 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     @Override
     public Map<String, Object> page(int page, int size, String siteId, String type, String keyword) {
-        Page<ThresholdVO> pager = new Page<>(page < 1 ? 1 : page, normalizeSize(size));
-        IPage<ThresholdVO> result = thresholdMapper.selectPageWithSite(
-                pager, trim(siteId), optionalType(type), trim(keyword));
-        for (ThresholdVO row : result.getRecords()) {
-            decorate(row);
-        }
+        int current = page < 1 ? 1 : page;
+        int pageSize = normalizeSize(size);
+        // 先查全量行并合并闸门上下游（同站点 up_z/down_z 两行 → 一条 gate_z 记录），再内存分页，
+        // 避免两行被拆到相邻两页、也保证 total 与列表条数一致
+        List<ThresholdVO> merged = mergeRows(thresholdMapper.selectFilteredRows(
+                trim(siteId), optionalType(type), trim(keyword)));
+        int total = merged.size();
+        int pages = total == 0 ? 0 : (total + pageSize - 1) / pageSize;
+        int from = Math.min((current - 1) * pageSize, total);
+        int to = Math.min(from + pageSize, total);
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("total", result.getTotal());
-        out.put("page", result.getCurrent());
-        out.put("size", result.getSize());
-        out.put("pages", result.getPages());
-        out.put("records", result.getRecords());
+        out.put("total", total);
+        out.put("page", current);
+        out.put("size", pageSize);
+        out.put("pages", pages);
+        out.put("records", new ArrayList<>(merged.subList(from, to)));
         return out;
     }
 
     @Override
     public ThresholdVO detail(String id) {
-        return toVO(requireRow(id));
+        WaterThreshold row = requireRow(id);
+        if (isGateMember(row)) {
+            return gatePairVO(gateMembers(row.getSite()));
+        }
+        return toVO(row);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public ThresholdVO create(ThresholdSaveVO req) {
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
@@ -190,9 +209,30 @@ public class ThresholdServiceImpl implements ThresholdService {
         String type = requireType(req.getType());
         String indicator = normalizeIndicator(type, req.getIndicator());
         StStinfo site = requireSupportedSite(req.getSite(), type, indicator);
-        BigDecimal value = requireThreshold(req.getThreshold());
-        String alarmDir = requireAlarmDir(req.getAlarmDir(), type, indicator);
+        String alarmDir = requireAlarmDir(req.getAlarmDir(), type,
+                IND_GATE.equals(indicator) ? IND_GATE : indicator);
         String desc = normalizeDesc(req.getDescription());
+
+        if (IND_GATE.equals(indicator)) {
+            // 闸门上下游：一条记录同时设置两侧，至少填一侧；落库仍拆成 up_z/down_z 两行
+            BigDecimal up = optionalThreshold(req.getThreshold());
+            BigDecimal down = optionalThreshold(req.getThresholdDown());
+            if (up == null && down == null) {
+                throw new IllegalArgumentException("请至少填写上游（闸前）或下游（闸后）警戒值");
+            }
+            if (countBySiteAndType(site.getId(), type, indicator) > 0) {
+                throw new IllegalArgumentException("该站点已配置【" + displayName(type, indicator)
+                        + "】阈值，请直接编辑");
+            }
+            WaterThreshold upRow = insertRow(site.getId(), type, IND_UP_Z, up, alarmDir, desc);
+            WaterThreshold downRow = insertRow(site.getId(), type, IND_DOWN_Z, down, alarmDir, desc);
+            log.info("[阈值设置] 新增（闸门上下游）：站点={}（{}），上游={}，下游={}，方向={}，操作人={}",
+                    trim(site.getStnm()), site.getId(), up, down, alarmDir,
+                    upRow != null ? upRow.getUpdatedBy() : downRow.getUpdatedBy());
+            return gatePairVO(gateMembers(site.getId()));
+        }
+
+        BigDecimal value = requireThreshold(req.getThreshold());
 
         if (countBySiteAndType(site.getId(), type, indicator) > 0) {
             throw new IllegalArgumentException("该站点已配置【" + displayName(type, indicator) + "】阈值，请直接编辑");
@@ -214,6 +254,7 @@ public class ThresholdServiceImpl implements ThresholdService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public ThresholdVO update(String id, ThresholdSaveVO req) {
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
@@ -222,12 +263,19 @@ public class ThresholdServiceImpl implements ThresholdService {
         // 站点、类型与指标锁定：换类型 / 换站点 / 换指标 = 删除后重新新增，故只取库中值
         String type = effectiveType(row.getZvieyb(), row.getType());
         String indicator = trim(row.getZb());
+        String operator = currentOperatorId();
+
+        if (isGateMember(row)) {
+            String alarmDir = requireAlarmDir(req.getAlarmDir(), type, IND_GATE);
+            String desc = normalizeDesc(req.getDescription());
+            return updateGatePair(row, type, req, alarmDir, desc, operator);
+        }
+
         BigDecimal value = requireThreshold(req.getThreshold());
         String alarmDir = requireAlarmDir(req.getAlarmDir(), type, indicator);
         String desc = normalizeDesc(req.getDescription());
 
         LocalDateTime now = LocalDateTime.now();
-        String operator = currentOperatorId();
         UpdateWrapper<WaterThreshold> wrapper = new UpdateWrapper<>();
         wrapper.eq("\"id\"", row.getId());
         wrapper.set("\"alarmdir\"", alarmDir);
@@ -251,8 +299,20 @@ public class ThresholdServiceImpl implements ThresholdService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
         WaterThreshold row = requireRow(id);
+        if (isGateMember(row)) {
+            // 闸门上下游是一条逻辑记录：上游/下游两行一起删，避免留下只有一侧的“半条”配置
+            QueryWrapper<WaterThreshold> wrapper = new QueryWrapper<>();
+            wrapper.eq("\"site\"", row.getSite());
+            wrapper.apply("COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') LIKE {0}", "%" + TYPE_WATER_LEVEL + "%");
+            wrapper.in("\"zb\"", Arrays.asList(IND_UP_Z, IND_DOWN_Z));
+            int removed = thresholdMapper.delete(wrapper);
+            log.info("[阈值设置] 删除（闸门上下游）：站点={}，删除行数={}，操作人={}",
+                    row.getSite(), removed, currentOperatorId());
+            return;
+        }
         thresholdMapper.deleteById(row.getId());
         log.info("[阈值设置] 删除：id={}，站点={}，类型={}，指标={}，操作人={}",
                 row.getId(), row.getSite(), effectiveType(row.getZvieyb(), row.getType()), trim(row.getZb()),
@@ -260,6 +320,181 @@ public class ThresholdServiceImpl implements ThresholdService {
     }
 
     // ==================== 校验与组装 ====================
+
+    /**
+     * 闸门上下游单侧保存：有值→更新已有行（无行则补插）；为空→删除该侧行。
+     * <p>两侧共用同一告警方向与描述；类型仍在旧列 type 的历史行一并规范化到 zvieyb。
+     */
+    private void saveGateSide(String siteId, String type, String indicator, WaterThreshold existing,
+                              BigDecimal value, String alarmDir, String desc, String operator) {
+        if (value == null) {
+            if (existing != null) {
+                thresholdMapper.deleteById(existing.getId());
+            }
+            return;
+        }
+        if (existing == null) {
+            insertRow(siteId, type, indicator, value, alarmDir, desc);
+            return;
+        }
+        UpdateWrapper<WaterThreshold> wrapper = new UpdateWrapper<>();
+        wrapper.eq("\"id\"", existing.getId());
+        wrapper.set("\"alarmdir\"", alarmDir);
+        wrapper.set("\"threshold\"", value);
+        // 描述允许清空，显式 set null（MyBatis-Plus 默认忽略 null 字段）
+        wrapper.set("\"remark\"", desc);
+        wrapper.set("\"updated_at\"", LocalDateTime.now());
+        wrapper.set("\"updated_by\"", operator);
+        if (trim(existing.getZvieyb()) == null) {
+            wrapper.set("\"zvieyb\"", type);
+        }
+        thresholdMapper.update(null, wrapper);
+    }
+
+    /**
+     * 编辑闸门上下游记录：请求的 threshold=上游（闸前）、thresholdDown=下游（闸后）。
+     * <p>按侧 upsert：有值则更新（无行则补插），留空则删除该侧，两侧不能同时留空。
+     */
+    private ThresholdVO updateGatePair(WaterThreshold row, String type, ThresholdSaveVO req,
+                                       String alarmDir, String desc, String operator) {
+        BigDecimal up = optionalThreshold(req.getThreshold());
+        BigDecimal down = optionalThreshold(req.getThresholdDown());
+        if (up == null && down == null) {
+            throw new IllegalArgumentException("请至少填写上游（闸前）或下游（闸后）警戒值");
+        }
+        WaterThreshold upRow = null;
+        WaterThreshold downRow = null;
+        for (WaterThreshold member : gateMembers(row.getSite())) {
+            if (IND_UP_Z.equals(trim(member.getZb()))) {
+                upRow = member;
+            } else if (IND_DOWN_Z.equals(trim(member.getZb()))) {
+                downRow = member;
+            }
+        }
+        saveGateSide(row.getSite(), type, IND_UP_Z, upRow, up, alarmDir, desc, operator);
+        saveGateSide(row.getSite(), type, IND_DOWN_Z, downRow, down, alarmDir, desc, operator);
+        log.info("[阈值设置] 编辑（闸门上下游）：站点={}，上游={}，下游={}，方向={}，操作人={}",
+                row.getSite(), up, down, alarmDir, operator);
+        return gatePairVO(gateMembers(row.getSite()));
+    }
+
+    /** 插入一行阈值；value 为空表示该侧不配置，直接返回 null */
+    private WaterThreshold insertRow(String siteId, String type, String indicator,
+                                     BigDecimal value, String alarmDir, String desc) {
+        if (value == null) {
+            return null;
+        }
+        WaterThreshold entity = new WaterThreshold();
+        entity.setSite(siteId);
+        entity.setZvieyb(type);
+        entity.setZb(indicator);
+        entity.setAlarmdir(alarmDir);
+        entity.setThreshold(value);
+        entity.setRemark(desc);
+        applyCreateAudit(entity);
+        thresholdMapper.insert(entity);
+        return entity;
+    }
+
+    /** 该站点的闸门上下游成员行（up_z/down_z，按更新时间倒序，首行为最新）；可能只有一侧 */
+    private List<WaterThreshold> gateMembers(String siteId) {
+        QueryWrapper<WaterThreshold> wrapper = new QueryWrapper<>();
+        wrapper.eq("\"site\"", siteId);
+        wrapper.apply("COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') LIKE {0}", "%" + TYPE_WATER_LEVEL + "%");
+        wrapper.in("\"zb\"", Arrays.asList(IND_UP_Z, IND_DOWN_Z));
+        wrapper.orderByDesc("\"updated_at\"").orderByAsc("\"id\"");
+        return thresholdMapper.selectList(wrapper);
+    }
+
+    /** 是否闸门上下游成员行（水位类型且 zb=up_z/down_z）：库内是两行，接口层按一条记录处理 */
+    private static boolean isGateMember(WaterThreshold row) {
+        if (row == null || parseCodes(effectiveType(row.getZvieyb(), row.getType()))
+                .indexOf(TYPE_WATER_LEVEL) < 0) {
+            return false;
+        }
+        String zb = trim(row.getZb());
+        return IND_UP_Z.equals(zb) || IND_DOWN_Z.equals(zb);
+    }
+
+    /** 列表行是否闸门上下游成员（口径同 {@link #isGateMember(WaterThreshold)}） */
+    private static boolean isGateMember(ThresholdVO row) {
+        if (row == null || parseCodes(row.getThresholdType()).indexOf(TYPE_WATER_LEVEL) < 0) {
+            return false;
+        }
+        String zb = trim(row.getIndicator());
+        return IND_UP_Z.equals(zb) || IND_DOWN_Z.equals(zb);
+    }
+
+    /**
+     * 列表行合并：同站点的闸门上下游两行合并为一条 gate_z 记录，其余行原样翻译。
+     * <p>入参按 updated_at 倒序（组内首行为最新行），合并记录位置即组内最新行的位置；
+     * id 取下游行优先（列表与详情同一规则，保存后高亮能命中）。
+     */
+    private List<ThresholdVO> mergeRows(List<ThresholdVO> rows) {
+        Map<String, ThresholdVO> grouped = new LinkedHashMap<>();
+        for (ThresholdVO row : rows) {
+            if (!isGateMember(row)) {
+                decorate(row);
+                grouped.put("id:" + row.getId(), row);
+                continue;
+            }
+            String key = "gate:" + trim(row.getSite());
+            ThresholdVO pair = grouped.get(key);
+            if (pair == null) {
+                // 组内首行为最新行：描述/方向/更新时间以它为准，警戒值随后按侧填充
+                pair = new ThresholdVO();
+                pair.setId(row.getId());
+                pair.setSite(row.getSite());
+                pair.setSiteName(row.getSiteName());
+                pair.setSiteCode(row.getSiteCode());
+                pair.setThresholdType(row.getThresholdType());
+                pair.setDescription(row.getDescription());
+                pair.setAlarmDir(row.getAlarmDir());
+                pair.setUpdatedAt(row.getUpdatedAt());
+                pair.setIndicator(IND_GATE);
+                grouped.put(key, pair);
+            }
+            String zb = trim(row.getIndicator());
+            if (IND_DOWN_Z.equals(zb)) {
+                pair.setThresholdDown(row.getThreshold());
+                pair.setId(row.getId());
+            } else {
+                pair.setThreshold(row.getThreshold());
+            }
+        }
+        for (ThresholdVO vo : grouped.values()) {
+            if (IND_GATE.equals(vo.getIndicator())) {
+                decorate(vo);
+            }
+        }
+        return new ArrayList<>(grouped.values());
+    }
+
+    /**
+     * 闸门上下游成员行 → 合并视图（一条记录）：指标统一为 gate_z，
+     * threshold=上游（闸前）、thresholdDown=下游（闸后）；
+     * id 取下游行优先（无下游取上游），描述/方向/更新时间取组内最新成员（入参按 updated_at 倒序）。
+     */
+    private ThresholdVO gatePairVO(List<WaterThreshold> members) {
+        if (members == null || members.isEmpty()) {
+            throw new IllegalArgumentException("阈值记录不存在或已删除");
+        }
+        ThresholdVO vo = toVO(members.get(0));
+        vo.setIndicator(IND_GATE);
+        vo.setThreshold(null);
+        vo.setThresholdDown(null);
+        for (WaterThreshold member : members) {
+            String zb = trim(member.getZb());
+            if (IND_DOWN_Z.equals(zb)) {
+                vo.setThresholdDown(member.getThreshold());
+                vo.setId(member.getId());
+            } else if (IND_UP_Z.equals(zb)) {
+                vo.setThreshold(member.getThreshold());
+            }
+        }
+        decorate(vo);
+        return vo;
+    }
 
     /** 阈值行存在性校验 */
     private WaterThreshold requireRow(String id) {
@@ -277,13 +512,15 @@ public class ThresholdServiceImpl implements ThresholdService {
     /**
      * 同站点同类型同指标是否已配置（多值行如 #1#|#3# 同样视为已配置）。
      * <p>雨量/流量/开度与水位通用水位指标为空，判重退化为「站点 + 类型」；
-     * 水位闸前/闸后按 zb 各存一行，可分别配置。
+     * 水位闸门上下游（gate_z）任一侧已落库（up_z 或 down_z）即算已配置，保证一条逻辑记录。
      */
     private long countBySiteAndType(String siteId, String type, String indicator) {
         QueryWrapper<WaterThreshold> wrapper = new QueryWrapper<>();
         wrapper.eq("\"site\"", siteId);
         wrapper.apply("COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') LIKE {0}", "%" + type + "%");
-        if (indicator == null) {
+        if (IND_GATE.equals(indicator)) {
+            wrapper.in("\"zb\"", Arrays.asList(IND_UP_Z, IND_DOWN_Z));
+        } else if (indicator == null) {
             wrapper.apply("COALESCE(\"zb\", '') = ''");
         } else {
             wrapper.eq("\"zb\"", indicator);
@@ -294,9 +531,9 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     /**
      * 站点校验：必须存在于站点档案且档案监测类型含该阈值类型。
-     * <p>水位闸前/闸后指标例外：闸门站档案多不含 #1#（多为 #3#|#4#|#5#），
-     * 以闸门表是否存在该列有效数据为准；通用水位仍要求档案含 #1# 且闸门表无有效水位数据，
-     * 避免同一闸站出现「通用」与「闸前/闸后」两套取数口径（含 #5# 但无闸门水位的支渠不受影响）。
+     * <p>水位闸门上下游（gate_z）例外：闸门站档案多不含 #1#（多为 #3#|#4#|#5#），
+     * 以闸门表 up_z/down_z 是否存在有效数据为准；通用水位仍要求档案含 #1# 且闸门表无有效水位数据，
+     * 避免同一闸站出现「通用」与「闸门上下游」两套取数口径（含 #5# 但无闸门水位的支渠不受影响）。
      */
     private StStinfo requireSupportedSite(String siteId, String type, String indicator) {
         String key = trim(siteId);
@@ -311,13 +548,9 @@ public class ThresholdServiceImpl implements ThresholdService {
             throw new IllegalArgumentException("站点不存在或未在站点档案登记");
         }
         if (TYPE_WATER_LEVEL.equals(type)) {
-            if (IND_UP_Z.equals(indicator) || IND_DOWN_Z.equals(indicator)) {
-                int count = IND_UP_Z.equals(indicator)
-                        ? thresholdMapper.countEffectiveUpZ(key)
-                        : thresholdMapper.countEffectiveDownZ(key);
-                if (count <= 0) {
-                    throw new IllegalArgumentException("该站点无【"
-                            + (IND_UP_Z.equals(indicator) ? "闸前" : "闸后") + "水位】监测数据，不能配置该指标");
+            if (IND_GATE.equals(indicator)) {
+                if (thresholdMapper.countEffectiveUpZ(key) <= 0 && thresholdMapper.countEffectiveDownZ(key) <= 0) {
+                    throw new IllegalArgumentException("该站点无【闸门上下游水位】监测数据，不能配置该指标");
                 }
                 return site;
             }
@@ -326,7 +559,7 @@ public class ThresholdServiceImpl implements ThresholdService {
             }
             // 以闸门表实际水位数据判定闸门站：含 #5# 但无闸门水位的支渠/渡槽仍可配通用水位
             if (thresholdMapper.countEffectiveUpZ(key) > 0 || thresholdMapper.countEffectiveDownZ(key) > 0) {
-                throw new IllegalArgumentException("闸门站请选择【闸前水位】或【闸后水位】配置");
+                throw new IllegalArgumentException("闸门站请选择【闸门上下游水位】配置");
             }
             return site;
         }
@@ -356,10 +589,11 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     /**
      * 监测指标校验：多指标类型（墒情 #7#、水质 #8#）必填且必须在字典内；
-     * 水位 #1# 的「通用水位」（空/general）落空，闸前/闸后落到 zb（up_z/down_z）；
+     * 水位 #1# 的「通用水位」（空/general）落空，闸门上下游统一归一化为逻辑指标 gate_z
+     * （兼容旧参数 up_z/down_z，落库时再拆回两行）；
      * 雨量/流量/开度类型本身已唯一确定指标，请求带值也归一化为空。
      *
-     * @return 落库的指标编码（通用水位与单指标类型为 null）
+     * @return 落库/接口使用的指标编码（通用水位与单指标类型为 null）
      */
     private static String normalizeIndicator(String typeCode, String indicator) {
         ThresholdMetaVO.TypeItem item = TYPES.get(typeCode);
@@ -368,8 +602,8 @@ public class ThresholdServiceImpl implements ThresholdService {
             if (code == null || IND_GENERAL.equals(code)) {
                 return null;
             }
-            if (IND_UP_Z.equals(code) || IND_DOWN_Z.equals(code)) {
-                return code;
+            if (IND_GATE.equals(code) || IND_UP_Z.equals(code) || IND_DOWN_Z.equals(code)) {
+                return IND_GATE;
             }
             throw new IllegalArgumentException("【" + (item == null ? "水位" : item.getName())
                     + "】不支持监测指标：" + indicator);
@@ -472,6 +706,11 @@ public class ThresholdServiceImpl implements ThresholdService {
             throw new IllegalArgumentException("请输入大于 0 的数字");
         }
         return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** 可选警戒值（闸门上下游按侧选填）：为空返回 null；非空按 {@link #requireThreshold} 校验 */
+    private static BigDecimal optionalThreshold(BigDecimal value) {
+        return value == null ? null : requireThreshold(value);
     }
 
     /** 描述：去首尾空白，空串按 null 落库，超长报错 */

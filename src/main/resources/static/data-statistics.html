@@ -194,28 +194,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
       </div>
     </div>
 
-    <div class="card section-card">
-      <div class="section-bd" style="padding-top:8px">
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th class="left">服务名称</th>
-                <th>运行状态</th>
-                <th>启动时间</th>
-                <th>运行时长</th>
-                <th>CPU</th>
-                <th>内存</th>
-                <th>今日请求</th>
-                <th>成功率</th>
-              </tr>
-            </thead>
-            <tbody id="service-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
     <div class="bottom-row">
       <div class="card section-card">
         <div class="section-hd">
@@ -283,8 +261,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     kpi: null,
     arrival: { page: 1, size: DEFAULT_PAGE_SIZE, list: [] },
     missing: { page: 1, size: DEFAULT_PAGE_SIZE, list: [], loaded: false },
-    services: [],
-    process: null,
     collect: [],
     publish: [],
     range: { mode: 'today', start: null, end: null, missClamped: false }
@@ -446,32 +422,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     if (r === 0) return h + '小时';
     return h + '小时' + r + '分';
   }
-  function fmtUptime(mins) {
-    var m = Math.max(0, Math.round(Number(mins) || 0));
-    var d = Math.floor(m / (60 * 24));
-    var h = Math.floor((m % (60 * 24)) / 60);
-    var r = m % 60;
-    if (d > 0) return d + '天' + h + '时';
-    if (h > 0) return h + '时' + (r ? r + '分' : '');
-    return r + '分钟';
-  }
-  function fmtStart(tm) {
-    var s = String(tm || '').replace('T', ' ').slice(0, 16);
-    if (!s) return '-';
-    // MM-DD HH:mm
-    if (s.length >= 16) return s.slice(5, 16);
-    return s;
-  }
-  function fmtMem(process) {
-    if (!process) return '-';
-    var used = Number(process.memoryUsedMB);
-    var max = Number(process.memoryMaxMB);
-    if (Number.isFinite(used) && Number.isFinite(max) && max > 0) {
-      return Math.round(used / max * 100) + '%';
-    }
-    if (Number.isFinite(used)) return used + 'MB';
-    return '-';
-  }
 
   async function fetchApi(path) {
     var res = await fetch(API + path, { credentials: 'include' });
@@ -530,26 +480,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
         status: r.status || '-'
       };
     });
-  }
-
-  function mapServices(data) {
-    var process = (data && data.process) || null;
-    var services = (data && Array.isArray(data.services)) ? data.services : [];
-    return {
-      process: process,
-      services: services.map(function (s) {
-        return {
-          name: s.name || '-',
-          status: s.status || '-',
-          start: fmtStart(process && process.startTime),
-          uptime: fmtUptime(process && process.uptimeMinutes),
-          cpu: process && process.cpu != null ? Number(process.cpu) : null,
-          memText: fmtMem(process),
-          requests: s.todayRequests,
-          success: s.successRate
-        };
-      })
-    };
   }
 
   function mapCollect(list) {
@@ -689,6 +619,35 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  /** 分页表格实测尺寸缓存：按 tbody 分别缓存行高/表头高（两张表行高不同，不能共用） */
+  var tableMetric = {};
+
+  /**
+   * 分页表格高度锁定：min-height = 表头 + min(每页条数, 总条数) × 数据行高。
+   * 末页条数不足一页时表格不再随数据行数收缩，页面高度保持稳定；
+   * 总条数不足一页时按实际条数锁高（单页无翻页，不留整页空白）；空列表不锁定，空态保持紧凑。
+   */
+  function lockTableHeight(tbodyId, size, hasData, total) {
+    var tbody = document.getElementById(tbodyId);
+    var wrap = tbody && tbody.closest ? tbody.closest('.table-wrap') : null;
+    if (!wrap) return;
+    if (!hasData) { wrap.style.minHeight = ''; return; }
+    var table = wrap.querySelector('table');
+    if (!table) return;
+    var m = tableMetric[tbodyId] || (tableMetric[tbodyId] = { headH: 0, rowH: 0 });
+    var headRow = table.tHead && table.tHead.rows[0];
+    var headH = headRow ? headRow.getBoundingClientRect().height : 0;
+    if (headH > 0) m.headH = headH;
+    var firstRow = tbody.querySelector('tr');
+    if (firstRow && !firstRow.querySelector('td.empty')) {
+      var rowH = firstRow.getBoundingClientRect().height;
+      if (rowH > 0) m.rowH = rowH;
+    }
+    var rows = Math.min(size, total || size);
+    var h = (m.headH || 40) + (m.rowH || 42) * rows;
+    wrap.style.minHeight = Math.round(h) + 'px';
+  }
+
   /**
    * 分页器：共 N 条 + 每页条数 + 首页/上一页/页码窗口/下一页/末页 + 跳页输入。
    * 数据已全量在前端内存，翻页只重渲染当前表，不重新请求接口。
@@ -793,6 +752,7 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
           '</tr>';
       }).join('');
     }
+    lockTableHeight('arrival-tbody', size, list.length > 0, list.length);
     renderPager('arrival-pg-info', 'arrival-pg-btns', list, page, size, {
       onPage: function (p) {
         state.arrival.page = p;
@@ -831,6 +791,7 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
           '</tr>';
       }).join('');
     }
+    lockTableHeight('missing-tbody', size, list.length > 0, list.length);
     renderPager('missing-pg-info', 'missing-pg-btns', list, page, size, {
       onPage: function (p) {
         state.missing.page = p;
@@ -844,28 +805,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
         scrollSectionTop('missing-tbody');
       }
     });
-  }
-
-  function renderServices() {
-    var list = state.services;
-    var tbody = document.getElementById('service-tbody');
-    if (!list.length) {
-      tbody.innerHTML = emptyRow(8, '暂无数据');
-      return;
-    }
-    tbody.innerHTML = list.map(function (s) {
-      var cls = s.status === '运行中' ? 'ok' : 'warn';
-      return '<tr>' +
-        '<td class="left">' + esc(s.name) + '</td>' +
-        '<td><span class="status-text ' + cls + '">' + esc(s.status) + '</span></td>' +
-        '<td>' + esc(s.start) + '</td>' +
-        '<td>' + esc(s.uptime) + '</td>' +
-        '<td>' + (s.cpu == null ? '-' : fmtNum(s.cpu) + '%') + '</td>' +
-        '<td>' + esc(s.memText) + '</td>' +
-        '<td>' + fmtInt(s.requests) + '</td>' +
-        '<td>' + fmtRate(s.success) + '</td>' +
-        '</tr>';
-    }).join('');
   }
 
   function renderCollect() {
@@ -921,7 +860,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
   function setLoadingTables(text) {
     document.getElementById('arrival-tbody').innerHTML = emptyRow(8, text);
     document.getElementById('missing-tbody').innerHTML = emptyRow(6, text);
-    document.getElementById('service-tbody').innerHTML = emptyRow(8, text);
     document.getElementById('collect-tbody').innerHTML = emptyRow(7, text);
     document.getElementById('publish-tbody').innerHTML = emptyRow(7, text);
   }
@@ -935,7 +873,7 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     document.getElementById(btnsId).innerHTML = '';
   }
 
-  // 先到先渲染：各接口独立返回后立即渲染对应区块，页面不再等 7 个请求全部完成（整页耗时曾被最慢接口拖到 8s+）
+  // 先到先渲染：各接口独立返回后立即渲染对应区块，页面不再等全部请求完成（整页耗时曾被最慢接口拖到 8s+）
   async function loadAll(showToast) {
     var range = resolveRange();
     if (!range.ok) {
@@ -956,7 +894,7 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
     setLoadingTables('加载中...');
 
     var errors = [];
-    var HARD_TOTAL = 6;
+    var HARD_TOTAL = 5;
     function failBlock(tbodyId, colspan, infoId, btnsId) {
       return function (e) {
         errors.push(e && e.message ? e.message : '接口失败');
@@ -1005,12 +943,6 @@ table.data-table td.empty{color:#bbb;padding:36px 10px}
           failBlock('missing-tbody', 6, 'missing-pg-info', 'missing-pg-btns')(e);
           renderKpi();
         }),
-        fetchApi('/data-statistics/service-status' + q).then(function (d) {
-          var svc = mapServices(d);
-          state.process = svc.process;
-          state.services = svc.services;
-          renderServices();
-        }).catch(failBlock('service-tbody', 8)),
         fetchApi('/data-statistics/collect-stats' + q).then(function (d) {
           collectMqReady = true;
           collectMqList = d || [];

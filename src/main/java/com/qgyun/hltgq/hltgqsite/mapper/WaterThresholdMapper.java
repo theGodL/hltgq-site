@@ -1,7 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.qgyun.hltgq.hltgqsite.entity.WaterThreshold;
 import com.qgyun.hltgq.hltgqsite.vo.ThresholdSiteVO;
 import com.qgyun.hltgq.hltgqsite.vo.ThresholdVO;
@@ -24,12 +23,16 @@ import java.util.List;
  * 全库既有 SQL 亦统一使用 CONCAT 写法。
  * <p>监测指标列 {@code zb}：多指标类型（水质 #8# / 墒情 #7#）一个类型下含多个指标，
  * 列表如实输出该列，站点候选的「已配置」标记在传入指标时按「类型 + 指标」判定。
+ * 水位闸门上下游在库内仍是 {@code up_z}/{@code down_z} 两行（告警引擎按列取数），
+ * 接口层以逻辑指标 {@code gate_z} 合并为一条记录，站点候选按「任一侧有有效水位」筛选。
  */
 @Mapper
 public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
 
     /**
-     * 阈值列表分页（站点名称/编号由站点档案一次补齐，档案缺失时站名回退站点主键）。
+     * 阈值列表全量行查询（站点名称/编号由站点档案一次补齐，档案缺失时站名回退站点主键）。
+     * <p>不做 SQL 分页：闸门上下游在库内是 up_z/down_z 两行，需在应用层合并为一条 gate_z 记录后再分页，
+     * 否则同一站点的两行可能被拆到相邻两页。阈值表数据量小（几十行），全量查询无压力。
      *
      * @param siteId   站点档案主键过滤（可选）
      * @param typeCode 阈值类型编码过滤（可选，如 #1#）
@@ -65,24 +68,24 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
             @Result(column = "site_name", property = "siteName"),
             @Result(column = "site_code", property = "siteCode")
     })
-    IPage<ThresholdVO> selectPageWithSite(IPage<ThresholdVO> page,
-                                          @Param("siteId") String siteId,
-                                          @Param("typeCode") String typeCode,
-                                          @Param("keyword") String keyword);
+    List<ThresholdVO> selectFilteredRows(@Param("siteId") String siteId,
+                                         @Param("typeCode") String typeCode,
+                                         @Param("keyword") String keyword);
 
     /**
      * 阈值类型下的站点候选：站点档案中监测类型（epjutj）含该编码的站点，
      * 并标记该站点在该类型下是否已配置阈值（界面提示"已配置，请直接编辑"）。
      * <p>水位指标特判：general（通用水位）只列闸门表无有效上下游水位的水位站
      * （渠道/河道/水库站，含 #5# 但无闸门水位的支渠、渡槽不误伤）；
-     * up_z/down_z（闸前/闸后水位）不要求档案含 #1#（闸门站多为 #3#|#4#|#5#），
-     * 按闸门表该列是否存在有效数据筛选。
+     * gate_z（闸门上下游水位，库内对应 up_z/down_z 两行）不要求档案含 #1#（闸门站多为 #3#|#4#|#5#），
+     * 按闸门表是否存在任一有效水位筛选；up_z/down_z 为兼容旧前端的单侧口径，同样保留。
      *
      * @param typeCode  阈值类型编码（必填，如 #1#）
      * @param keyword   站点名称/编号关键字过滤（可选）
      * @param indicator 监测指标编码（可选）：传值时「已配置」标记按「类型 + 指标」判定
      *                  （多指标类型如水质/墒情必须传，否则一个类型下的多个指标会互相误标；
-     *                  水位通用水位传 general，与 zb 为空等价）；不传时按类型判定
+     *                  水位通用水位传 general，与 zb 为空等价；闸门上下游传 gate_z，任一侧已配置即算已配置）；
+     *                  不传时按类型判定
      */
     @Select("<script>" +
             "SELECT s.id AS site_id, s.zzkaec AS name, s.iofhpi AS site_code, " +
@@ -92,11 +95,18 @@ public interface WaterThresholdMapper extends BaseMapper<WaterThreshold> {
             "  SELECT DISTINCT \"site\" FROM \"qixiao-apaas\".t_auto_hltgq_water_threshold " +
             "  WHERE COALESCE(NULLIF(\"zvieyb\", ''), \"type\", '') LIKE CONCAT('%', #{typeCode}, '%') " +
             "  <choose>" +
+            "    <when test='\"gate_z\".equals(indicator)'>AND \"zb\" IN ('up_z', 'down_z') </when>" +
             "    <when test='\"general\".equals(indicator)'>AND COALESCE(\"zb\", '') = '' </when>" +
             "    <when test='indicator != null'>AND \"zb\" = #{indicator} </when>" +
             "  </choose>" +
             ") x ON x.\"site\" = s.id " +
             "<choose>" +
+            "  <when test='\"gate_z\".equals(indicator)'>" +
+            "  WHERE EXISTS (SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
+            "    WHERE g.\"site\" = s.id " +
+            "    AND ((g.\"up_z\" IS NOT NULL AND g.\"up_z\" NOT IN (-999, -9991)) " +
+            "      OR (g.\"down_z\" IS NOT NULL AND g.\"down_z\" NOT IN (-999, -9991)))) " +
+            "  </when>" +
             "  <when test='\"up_z\".equals(indicator)'>" +
             "  WHERE EXISTS (SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
             "    WHERE g.\"site\" = s.id AND g.\"up_z\" IS NOT NULL AND g.\"up_z\" NOT IN (-999, -9991)) " +

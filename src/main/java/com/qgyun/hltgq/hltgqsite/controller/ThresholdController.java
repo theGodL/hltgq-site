@@ -24,8 +24,10 @@ import java.util.Map;
 
 /**
  * 阈值设置：对监测站点按「站点 + 阈值类型（+ 监测指标）」维护单级警戒值（表 t_auto_hltgq_water_threshold）。
- * <p>字段口径：阈值类型写 zvieyb（历史列 type 仅读取兜底）、监测指标写 zb（多指标类型：水质/墒情）、
+ * <p>字段口径：阈值类型写 zvieyb（历史列 type 仅读取兜底）、监测指标写 zb（多指标类型：水质/墒情；水位闸门上下游为 up_z/down_z）、
  * 告警方向写 alarmdir、警戒值写 threshold、描述写 remark；保证值/设计值本期预留，接口不返回也不改写。
+ * <p>水位闸门上下游：接口按一条 gate_z 记录收发（threshold=上游、thresholdDown=下游），库内拆两行存储，
+ * 告警引擎按 zb 取列比对的口径不变。
  * <p>权限：查询与增删改对所有登录用户开放（本期不做权限细分，删除不再限管理员）。
  * <p>保存即时生效：告警引擎每次比对实时读库，无需刷新缓存或重启服务。
  */
@@ -99,22 +101,24 @@ public class ThresholdController {
      */
     @PostMapping
     public ThresholdVO create(@RequestBody ThresholdSaveVO body) {
-        log.info("收到阈值新增请求：site={}，type={}，indicator={}，alarmDir={}，threshold={}",
+        log.info("收到阈值新增请求：site={}，type={}，indicator={}，alarmDir={}，threshold={}，thresholdDown={}",
                 body == null ? null : body.getSite(), body == null ? null : body.getType(),
                 body == null ? null : body.getIndicator(), body == null ? null : body.getAlarmDir(),
-                body == null ? null : body.getThreshold());
+                body == null ? null : body.getThreshold(), body == null ? null : body.getThresholdDown());
         return thresholdService.create(body);
     }
 
     /**
      * 编辑阈值：仅可改告警方向 / 警戒值 / 描述（站点、类型与指标锁定，换指标=删除后新增）。
+     * <p>闸门上下游：threshold=上游（闸前）、thresholdDown=下游（闸后），留空的一侧删除。
      *
      * @return 保存后的记录
      */
     @PutMapping("/{id}")
     public ThresholdVO update(@PathVariable String id, @RequestBody ThresholdSaveVO body) {
-        log.info("收到阈值编辑请求：id={}，alarmDir={}，threshold={}",
-                id, body == null ? null : body.getAlarmDir(), body == null ? null : body.getThreshold());
+        log.info("收到阈值编辑请求：id={}，alarmDir={}，threshold={}，thresholdDown={}",
+                id, body == null ? null : body.getAlarmDir(), body == null ? null : body.getThreshold(),
+                body == null ? null : body.getThresholdDown());
         return thresholdService.update(id, body);
     }
 

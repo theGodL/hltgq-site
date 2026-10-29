@@ -162,6 +162,7 @@ td.empty:hover{background:transparent}
 .f-item[hidden]{display:none}
 .f-label{display:block;font-size:14px;font-weight:400;color:var(--el-text-color-primary);margin-bottom:8px}
 .f-label .req{color:var(--el-color-danger);font-style:normal;margin-right:4px}
+.f-label .req[hidden]{display:none}
 .f-hint{margin-top:6px;font-size:12px;color:var(--el-text-color-secondary);line-height:18px}
 .f-err{display:none;margin-top:4px;font-size:12px;color:var(--el-color-danger);align-items:center;gap:4px;line-height:16px}
 .f-err.show{display:flex}
@@ -304,13 +305,23 @@ td.empty:hover{background:transparent}
         <div class="sel" id="sel-dir"></div>
       </div>
       <div class="f-item" id="fi-value">
-        <label class="f-label"><i class="req">*</i>警戒值</label>
+        <label class="f-label"><i class="req" id="req-value">*</i><span id="lb-value">警戒值</span></label>
         <div class="num-wrap">
           <input class="field" id="in-value" inputmode="decimal" autocomplete="off" placeholder="请输入警戒值">
           <span class="unit" id="in-unit" hidden></span>
         </div>
         <div class="f-err" id="err-value"></div>
       </div>
+      <!-- 下游警戒值：仅「闸门上下游水位」展示，上游/下游在一条记录里同时设置 -->
+      <div class="f-item" id="fi-value-down" hidden>
+        <label class="f-label"><span id="lb-value-down">下游警戒值（闸后）</span></label>
+        <div class="num-wrap">
+          <input class="field" id="in-value-down" inputmode="decimal" autocomplete="off" placeholder="请输入下游警戒值">
+          <span class="unit" id="in-unit-down" hidden></span>
+        </div>
+        <div class="f-err" id="err-value-down"></div>
+      </div>
+      <div class="f-hint" id="gate-hint" hidden>上游（闸前）、下游（闸后）至少填写一项；留空的一侧不配置、不告警。</div>
       <div class="f-item" id="fi-desc">
         <label class="f-label">描述</label>
         <textarea class="field" id="in-desc" maxlength="500" placeholder="请输入描述（选填）"></textarea>
@@ -562,6 +573,35 @@ function actBtn(act, tip, icon, id, danger) {
     ' data-tip="' + esc(tip) + '" aria-label="' + esc(tip) + '">' + icon + '</button>';
 }
 
+/** 阈值是否为空 */
+function hasVal(v) {
+  return !(v === null || v === undefined || v === '');
+}
+
+/** 警戒值纯文本：闸门上下游一条记录显示「上游 x / 下游 y（单位）」，其余类型单值 */
+function valueText(r) {
+  const unit = r.unit ? ' ' + r.unit : '';
+  if (r.indicator === 'gate_z') {
+    const parts = [];
+    if (hasVal(r.threshold)) parts.push('上游 ' + r.threshold + unit);
+    if (hasVal(r.thresholdDown)) parts.push('下游 ' + r.thresholdDown + unit);
+    return parts.join(' / ');
+  }
+  return hasVal(r.threshold) ? String(r.threshold) + unit : '';
+}
+
+/** 警戒值单元格 HTML（列表用）：闸门上下游两侧带「上游/下游」前缀 */
+function valueHtml(r) {
+  const unit = r.unit ? '<span class="sub">' + esc(r.unit) + '</span>' : '';
+  if (r.indicator === 'gate_z') {
+    const parts = [];
+    if (hasVal(r.threshold)) parts.push('上游 ' + esc(String(r.threshold)) + unit);
+    if (hasVal(r.thresholdDown)) parts.push('下游 ' + esc(String(r.thresholdDown)) + unit);
+    return parts.join(' / ') || '--';
+  }
+  return hasVal(r.threshold) ? esc(String(r.threshold)) + unit : '--';
+}
+
 function renderTable() {
   const tb = $('tbl-body');
   if (!S.records.length) {
@@ -569,8 +609,7 @@ function renderTable() {
     return;
   }
   tb.innerHTML = S.records.map(r => {
-    const val = (r.threshold === null || r.threshold === undefined || r.threshold === '')
-      ? '--' : esc(String(r.threshold)) + (r.unit ? '<span class="sub">' + esc(r.unit) + '</span>' : '');
+    const val = valueHtml(r);
     // 告警方向整列标签化；是否取类型默认方向只在编辑抽屉里体现（列表无对比对象）
     const dir = r.alarmDirName ? '<span class="tag">' + esc(r.alarmDirName) + '</span>' : '--';
     const acts = actBtn('view', '查看阈值', ICON.eye, r.id) +
@@ -798,9 +837,11 @@ function resetForm() {
   selSite.setDisabled(false).setOptions([]).setValue('');
   selSite.setPlaceholder('请先选择阈值类型').setEmptyText('请先选择阈值类型').setSearchable(true);
   selDir.setOptions(metaDirOptions()).setValue('');
+  applyValueLayout(false);
   syncUnit('');
   $('in-value').value = '';
-  $('in-value').placeholder = '请输入警戒值';
+  $('in-value-down').value = '';
+  updateValuePlaceholder();
   $('in-desc').value = '';
   updateCounter();
   clearErrors();
@@ -833,9 +874,14 @@ function fillForm(row) {
     hint.hidden = true;
   }
   // 指标：多指标类型展示并锁定（换指标 = 删除后重新新增，与站点/类型同口径）
-  // 水位存量行 indicator 为空 = 通用水位，回显 general（保存时后端归一回空）
+  // 水位存量行 indicator 为空 = 通用水位，回显 general（保存时后端归一回空）；
+  // gate_z（闸门上下游）是一条记录，上游/下游值同时回显
   const inds = indicatorsOf(type);
-  const indCode = row.indicator || (type === '#1#' ? 'general' : '');
+  const rawInd = row.indicator || '';
+  const indCode = (rawInd === 'up_z' || rawInd === 'down_z')
+    ? 'gate_z'
+    : (rawInd || (type === '#1#' ? 'general' : ''));
+  const isGate = indCode === 'gate_z';
   $('fi-indicator').hidden = !inds.length;
   if (inds.length) {
     selIndicator.setOptions(inds.map(i => ({ value: i.code, label: i.name, sub: i.unit || '' })));
@@ -851,9 +897,9 @@ function fillForm(row) {
     .setDisabled(true);
   syncUnit(row.unit || unitOf(type, row.indicator));
   selDir.setOptions(metaDirOptions()).setValue(row.alarmDir || defaultDirOf(type, row.indicator));
-  updateValuePlaceholder();
-  $('in-value').value = (row.threshold === null || row.threshold === undefined || row.threshold === '')
-    ? '' : String(row.threshold);
+  applyValueLayout(isGate);
+  $('in-value').value = hasVal(row.threshold) ? String(row.threshold) : '';
+  $('in-value-down').value = isGate && hasVal(row.thresholdDown) ? String(row.thresholdDown) : '';
   $('in-desc').value = row.description || '';
   updateCounter();
   clearErrors();
@@ -866,8 +912,7 @@ function renderView(row) {
     ['站点', joinName(row.siteName, row.siteCode)],
     ['阈值类型', row.typeName || row.thresholdType || ''],
     ['监测指标', row.indicatorName || ''],
-    ['警戒值', (row.threshold === null || row.threshold === undefined || row.threshold === '')
-      ? '' : String(row.threshold) + (row.unit ? ' ' + row.unit : '')],
+    ['警戒值', valueText(row)],
     ['告警方向', row.alarmDirName ? row.alarmDirName + (row.alarmDirDefault ? '（默认）' : '') : ''],
     ['描述', row.description || ''],
     ['更新时间', fmtTm(row.updatedAt)]
@@ -877,12 +922,41 @@ function renderView(row) {
     '<div class="v">' + (pair[1] ? esc(pair[1]) : '--') + '</div></div>').join('');
 }
 
+/** 当前指标是否为闸门上下游（gate_z）：一条记录同时设置上游（闸前）与下游（闸后） */
+function isGateIndicator() {
+  return selIndicator.getValue() === 'gate_z';
+}
+
+/**
+ * 警戒值表单布局：闸门上下游切换为「上游 + 下游」双输入（两侧至少填一项）；
+ * 其余指标保持单值输入并隐藏下游块。
+ */
+function applyValueLayout(isGate) {
+  $('fi-value-down').hidden = !isGate;
+  $('gate-hint').hidden = !isGate;
+  $('req-value').hidden = !!isGate;
+  $('lb-value').textContent = isGate ? '上游警戒值（闸前）' : '警戒值';
+  if (!isGate) {
+    $('in-value-down').value = '';
+    clearFieldError('valueDown');
+  }
+  updateValuePlaceholder();
+}
+
 function syncUnit(unit) {
-  $('in-unit').textContent = unit || '';
-  $('in-unit').hidden = !unit;
+  const text = unit || '';
+  $('in-unit').textContent = text;
+  $('in-unit').hidden = !text;
+  $('in-unit-down').textContent = text;
+  $('in-unit-down').hidden = !text;
 }
 
 function updateValuePlaceholder() {
+  if (isGateIndicator()) {
+    $('in-value').placeholder = '请输入上游警戒值';
+    $('in-value-down').placeholder = '请输入下游警戒值';
+    return;
+  }
   const dir = selDir.getValue();
   const name = dir ? S.dirNameMap[dir] : '';
   $('in-value').placeholder = name ? name + '告警' : '请输入警戒值';
@@ -916,6 +990,7 @@ async function onTypePick(code) {
   }
   const needIndicator = inds.length > 0 && !defaultIndicator;
   $('fi-site').hidden = !code || needIndicator;
+  applyValueLayout(defaultIndicator === 'gate_z');
   syncUnit(unitOf(code, defaultIndicator));
   selDir.setValue(defaultDirOf(code, defaultIndicator));
   updateValuePlaceholder();
@@ -939,6 +1014,7 @@ async function onTypePick(code) {
 /** 指标选中联动：站点候选（「已配置」按类型 + 指标判定）+ 单位 + 方向默认值 + placeholder */
 async function onIndicatorPick(code) {
   const type = selType.getValue();
+  applyValueLayout(code === 'gate_z');
   syncUnit(unitOf(type, code));
   selDir.setValue(defaultDirOf(type, code));
   updateValuePlaceholder();
@@ -986,14 +1062,15 @@ const FIELD_MAP = {
   type: { sel: () => selType, err: 'err-type' },
   indicator: { sel: () => selIndicator, err: 'err-indicator' },
   site: { sel: () => selSite, err: 'err-site' },
-  value: { sel: null, err: 'err-value' }
+  value: { sel: null, err: 'err-value', input: 'in-value' },
+  valueDown: { sel: null, err: 'err-value-down', input: 'in-value-down' }
 };
 
 function setFieldError(field, msg) {
   const cfg = FIELD_MAP[field];
   if (!cfg) return;
   if (cfg.sel) cfg.sel().setError(!!msg);
-  else $('in-value').classList.toggle('is-err', !!msg);
+  else $(cfg.input).classList.toggle('is-err', !!msg);
   const box = $(cfg.err);
   box.innerHTML = msg ? ICON.err + '<span>' + esc(msg) + '</span>' : '';
   box.classList.toggle('show', !!msg);
@@ -1002,20 +1079,24 @@ function setFieldError(field, msg) {
 const clearFieldError = field => setFieldError(field, '');
 const clearErrors = () => Object.keys(FIELD_MAP).forEach(clearFieldError);
 
-/** 警戒值：仅允许数字与小数点、最多两位小数、禁止负号与字母 */
-function onValueInput() {
-  const el = $('in-value');
+/** 警戒值输入清洗（上游/下游共用）：仅允许数字与小数点、最多两位小数、禁止负号与字母 */
+function sanitizeValue(el) {
   let v = el.value.replace(/[^\d.]/g, '');
   if (v.charAt(0) === '.') v = '0' + v;
   const i = v.indexOf('.');
   if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '').slice(0, 2);
   el.value = v;
-  clearFieldError('value');
+}
+
+function onValueInput(e) {
+  const el = e.target;
+  sanitizeValue(el);
+  clearFieldError(el.id === 'in-value-down' ? 'valueDown' : 'value');
 }
 
 /** 失焦保留两位小数（非法输入留给校验提示） */
-function onValueBlur() {
-  const el = $('in-value');
+function onValueBlur(e) {
+  const el = e.target;
   let v = el.value.trim();
   if (/^\d+\.$/.test(v)) {            // 收尾小数点：98. → 98.00
     v = v.slice(0, -1);
@@ -1031,7 +1112,16 @@ function updateCounter() {
   $('desc-count').textContent = Math.min(len, DESC_MAX);
 }
 
-/** 校验通过返回 {threshold:'98.00'}，失败返回 null 并已渲染错误提示 */
+/** 合法警戒值：> 0，最多两位小数 */
+function isValidValue(raw) {
+  return !!raw && /^\d+(\.\d{1,2})?$/.test(raw) && Number(raw) > 0;
+}
+
+/**
+ * 校验通过返回 {threshold, thresholdDown}（数值字符串；闸门上下游某侧留空为 null），
+ * 失败返回 null 并已渲染错误提示。
+ * 闸门上下游：两侧至少填一项，填了的那侧必须为大于 0 的数字。
+ */
 function validate() {
   clearErrors();
   let bad = false;
@@ -1055,12 +1145,26 @@ function validate() {
       bad = true;
     }
   }
-  const raw = $('in-value').value.trim();
-  if (!raw || !/^\d+(\.\d{1,2})?$/.test(raw) || !(Number(raw) > 0)) {
+  const isGate = isGateIndicator();
+  const upRaw = $('in-value').value.trim();
+  const downRaw = isGate ? $('in-value-down').value.trim() : '';
+  if (isGate) {
+    if (!upRaw && !downRaw) {
+      setFieldError('value', '请至少填写上游或下游警戒值');
+      setFieldError('valueDown', '请至少填写上游或下游警戒值');
+      bad = true;
+    } else {
+      if (upRaw && !isValidValue(upRaw)) { setFieldError('value', '请输入大于 0 的数字'); bad = true; }
+      if (downRaw && !isValidValue(downRaw)) { setFieldError('valueDown', '请输入大于 0 的数字'); bad = true; }
+    }
+  } else if (!isValidValue(upRaw)) {
     setFieldError('value', '请输入大于 0 的数字');
     bad = true;
   }
-  return bad ? null : { threshold: Number(raw).toFixed(2) };
+  return bad ? null : {
+    threshold: isValidValue(upRaw) ? Number(upRaw).toFixed(2) : null,
+    thresholdDown: isValidValue(downRaw) ? Number(downRaw).toFixed(2) : null
+  };
 }
 
 /* ============================ 保存 ============================ */
@@ -1090,13 +1194,21 @@ async function save() {
         method: 'POST',
         body: {
           site: site, type: type, indicator: indicator || null,
-          alarmDir: dir || null, threshold: Number(checked.threshold), description: desc || null
+          alarmDir: dir || null,
+          threshold: checked.threshold === null ? null : Number(checked.threshold),
+          thresholdDown: checked.thresholdDown === null ? null : Number(checked.thresholdDown),
+          description: desc || null
         }
       });
     } else {
       saved = await api('/threshold/' + encodeURIComponent(S.row.id), {
         method: 'PUT',
-        body: { alarmDir: dir || null, threshold: Number(checked.threshold), description: desc || null }
+        body: {
+          alarmDir: dir || null,
+          threshold: checked.threshold === null ? null : Number(checked.threshold),
+          thresholdDown: checked.thresholdDown === null ? null : Number(checked.thresholdDown),
+          description: desc || null
+        }
       });
     }
     S.flashId = saved && saved.id ? saved.id : null;
@@ -1116,8 +1228,10 @@ async function save() {
 /* ============================ 删除（登录用户均可操作，本期不做权限细分） ============================ */
 function askDelete(row) {
   pendingDelete = row;
+  // 闸门上下游是一条记录、库内两行：提示删除会同时清掉上游与下游
+  const scope = row.indicator === 'gate_z' ? '（上游与下游）' : (row.indicatorName ? '·' + row.indicatorName : '');
   $('confirm-text').textContent = '删除后该站点【' + (row.typeName || row.thresholdType || '该类型') +
-    (row.indicatorName ? '·' + row.indicatorName : '') + '】阈值将不再告警，是否继续？';
+    scope + '】阈值将不再告警，是否继续？';
   $('confirm-mask').classList.add('show');
 }
 
@@ -1187,10 +1301,13 @@ function bindEvents() {
   selSite.onChange(() => clearFieldError('site'));
   selDir.onChange(updateValuePlaceholder);
 
-  $('in-value').addEventListener('input', onValueInput);
-  $('in-value').addEventListener('blur', onValueBlur);
-  $('in-value').addEventListener('keydown', e => {
-    if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+  // 上游/下游警戒值输入框共用清洗、失焦格式化与负号/科学计数拦截
+  ['in-value', 'in-value-down'].forEach(id => {
+    $(id).addEventListener('input', onValueInput);
+    $(id).addEventListener('blur', onValueBlur);
+    $(id).addEventListener('keydown', e => {
+      if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+    });
   });
   $('in-desc').addEventListener('input', updateCounter);
   $('confirm-cancel').addEventListener('click', () => {

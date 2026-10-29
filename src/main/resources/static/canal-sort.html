@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>渠系排序</title>
+<style>
+/* ===== 平台变量：与阈值设置 / 站点排序等管理页同口径 ===== */
+:root{
+  --el-color-primary:#1677FF;
+  --el-color-primary-hover:#4096ff;
+  --el-color-primary-light:rgba(22,119,255,.08);
+  --el-color-primary-ring:rgba(22,119,255,.2);
+  --el-text-color-title:#333;
+  --el-text-color-primary:#333;
+  --el-text-color-regular:#595959;
+  --el-text-color-secondary:#909399;
+  --el-text-color-placeholder:#bfbfbf;
+  --el-border-color:#d9d9d9;
+  --el-border-color-light:#e4e7ed;
+  --el-border-color-lighter:#f0f0f0;
+  --el-fill-color-light:#f5f7fa;
+  --el-bg-color:#fff;
+  --el-bg-page:#f0f2f5;
+  --el-radius:4px;
+  --el-radius-control:8px;
+  --el-control-height-sm:36px;
+  --el-shadow-card:0 1px 2px rgba(0,0,0,.03);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;min-height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--el-bg-page);color:var(--el-text-color-primary);font-size:14px}
+.page-wrap{padding:16px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%}
+.panel{background:var(--el-bg-color);border-radius:8px;box-shadow:var(--el-shadow-card);display:flex;flex-direction:column;overflow:hidden}
+.panel-hd{display:flex;align-items:center;gap:12px;padding:16px 24px;border-bottom:1px solid var(--el-border-color-lighter)}
+.panel-title{font-size:16px;font-weight:500;color:var(--el-text-color-title)}
+.panel-acts{margin-left:auto;display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--el-control-height-sm);padding:0 16px;border:1px solid transparent;border-radius:var(--el-radius-control);cursor:pointer;font-size:14px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative}
+.btn-primary{background:var(--el-color-primary);border-color:var(--el-color-primary);color:#fff}
+.btn-primary:hover{background:var(--el-color-primary-hover);border-color:var(--el-color-primary-hover)}
+.btn-default{background:var(--el-bg-color);border-color:var(--el-border-color);color:var(--el-text-color-regular)}
+.btn-default:hover{color:var(--el-color-primary);border-color:var(--el-color-primary)}
+.btn:disabled,.btn.is-loading{opacity:.6;cursor:not-allowed;pointer-events:none}
+.btn[hidden]{display:none}
+.btn.is-loading{color:transparent !important}
+.btn.is-loading::after{content:'';box-sizing:border-box;position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.state{padding:64px 0;text-align:center;font-size:14px;color:var(--el-text-color-secondary)}
+.state.is-error{color:#f56c6c}
+.state .retry{color:var(--el-color-primary);cursor:pointer}
+
+/* ===== 渠系树：层级缩进 + 折叠 + 同级拖动排序 ===== */
+.tree-box{padding:8px 24px 16px}
+.tree,.kids{list-style:none}
+.node.collapsed > .kids{display:none}
+.row{position:relative;display:flex;align-items:center;gap:8px;height:44px;padding-right:16px;border-radius:6px;transition:background .15s}
+.row:hover{background:#fafcff}
+/* 拖动中：被拖行淡出；同组（可放置）行淡蓝底，提示"只能在这一组内排序" */
+.node.is-dragging > .row{opacity:.45;background:transparent}
+.node.sib > .row{background:var(--el-color-primary-light)}
+.caret{flex:0 0 16px;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;color:var(--el-text-color-secondary);cursor:pointer}
+.caret::before{content:'';width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;border-left:5px solid currentColor;transition:transform .15s}
+.caret:hover{color:var(--el-text-color-primary)}
+.node:not(.collapsed) > .row > .caret::before{transform:rotate(90deg)}
+.caret.is-leaf{cursor:default}
+.caret.is-leaf::before{display:none}
+.handle{flex:0 0 auto;display:inline-flex;color:#c0c4cc;cursor:grab}
+.row:hover .handle{color:var(--el-text-color-secondary)}
+.handle:active{cursor:grabbing}
+.name{flex:1;min-width:0;font-size:14px;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.no{flex:0 0 auto;min-width:18px;text-align:right;font-size:12px;color:var(--el-text-color-secondary)}
+/* 插入位置指示线（只出现在同层级行上） */
+.row.drop-before::before,.row.drop-after::after{content:'';position:absolute;left:8px;right:8px;height:2px;background:var(--el-color-primary);border-radius:1px;pointer-events:none}
+.row.drop-before::before{top:-1px}
+.row.drop-after::after{bottom:-1px}
+
+.toast{position:fixed;top:24px;left:50%;z-index:2200;padding:9px 18px;border:1px solid var(--el-border-color);border-radius:6px;background:var(--el-bg-color);box-shadow:0 6px 16px rgba(0,0,0,.12);font-size:14px;color:var(--el-text-color-primary);opacity:0;transform:translate(-50%,-16px);transition:opacity .25s,transform .25s;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.is-error{color:#f56c6c;border-color:#ffccc7;background:#fff2f0}
+.dirty-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#fa8c16;vertical-align:middle;margin-right:6px}
+.dirty-dot[hidden]{display:none}
+
+/* ===== 抽屉内嵌模式（?embed=1）：去掉页面留白与卡片外壳，标题由抽屉提供，树区独立滚动、操作按钮常驻 ===== */
+body.embed{height:100vh;overflow:hidden}
+body.embed .page-wrap{height:100%;padding:0;gap:0}
+body.embed .panel{flex:1;min-height:0;border-radius:0;box-shadow:none}
+body.embed .panel-hd{padding:10px 16px}
+body.embed .panel-title{display:none}
+body.embed .tree-box{flex:1;min-height:0;overflow-y:auto;padding:8px 16px 16px}
+body.embed .toast{top:12px}
+
+@media (max-width:768px){.tree-box{padding:8px 12px 16px}.panel-hd{padding:12px 16px;flex-wrap:wrap}}
+@media (max-width:640px){.row{padding-right:12px;gap:6px}}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="panel">
+    <div class="panel-hd">
+      <span class="panel-title">渠系排序</span>
+      <span id="dirty" class="dirty-dot" title="有未保存的排序调整" hidden></span>
+      <div class="panel-acts">
+        <button type="button" class="btn btn-default" id="btn-reload">重新加载</button>
+        <button type="button" class="btn btn-primary" id="btn-save">保存排序</button>
+      </div>
+    </div>
+    <div class="tree-box">
+      <ul class="tree" id="tree" hidden></ul>
+      <div class="state" id="state">加载中...</div>
+    </div>
+  </div>
+</div>
+<script>
+const API = '/hltgq-site';
+const GRIP = '<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2.5" cy="3" r="1.25"/><circle cx="7.5" cy="3" r="1.25"/><circle cx="2.5" cy="7" r="1.25"/><circle cx="7.5" cy="7" r="1.25"/><circle cx="2.5" cy="11" r="1.25"/><circle cx="7.5" cy="11" r="1.25"/></svg>';
+
+let isAdmin = false;
+let dirty = false;
+/** 拖拽状态：被拖节点 li 与当前放置目标 {li, after} */
+let dragLi = null;
+let dropTarget = null;
+/** 抽屉内嵌模式：平台按钮以右侧抽屉打开时在 URL 追加 ?embed=1（与巡检新增页同约定） */
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+if (EMBED) document.body.classList.add('embed');
+
+const treeEl = document.getElementById('tree');
+const stateEl = document.getElementById('state');
+
+function $(id) { return document.getElementById(id); }
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function toast(message, isError) {
+  const bar = document.createElement('div');
+  bar.className = 'toast' + (isError ? ' is-error' : '');
+  bar.textContent = message;
+  document.body.appendChild(bar);
+  requestAnimationFrame(() => bar.classList.add('show'));
+  setTimeout(() => {
+    bar.classList.remove('show');
+    setTimeout(() => bar.parentNode && bar.parentNode.removeChild(bar), 300);
+  }, 2200);
+}
+
+function markDirty() {
+  dirty = true;
+  $('dirty').hidden = false;
+}
+
+function clearDirty() {
+  dirty = false;
+  $('dirty').hidden = true;
+}
+
+/** 管理员判定：与保存接口 @RequireAdmin 同口径，非管理员禁用保存 */
+async function loadAdmin() {
+  try {
+    const res = await fetch(API + '/auth/current-user', { credentials: 'include' });
+    const user = res.ok ? await res.json() : null;
+    isAdmin = !!(user && user.admin === true);
+  } catch (e) {
+    isAdmin = false;
+  }
+  if (!isAdmin) {
+    $('btn-save').disabled = true;
+    $('btn-save').title = '仅系统管理员可调整排序';
+  }
+}
+
+function showState(text, onRetry) {
+  treeEl.hidden = true;
+  treeEl.innerHTML = '';
+  stateEl.className = 'state' + (onRetry ? ' is-error' : '');
+  stateEl.textContent = text;
+  if (onRetry) {
+    const retry = document.createElement('span');
+    retry.className = 'retry';
+    retry.textContent = '点击重试';
+    stateEl.appendChild(document.createElement('br'));
+    stateEl.appendChild(retry);
+    retry.addEventListener('click', onRetry);
+  }
+  stateEl.hidden = false;
+}
+
+/**
+ * 树节点渲染：children 递归；parentId 指向不存在记录的脏数据按顶级展示（与后端建树口径一致），
+ * data-parent 用于拖拽时判定是否同级
+ */
+function nodeHtml(node, depth, ids, step) {
+  const kids = node.children || [];
+  const parent = node.parentId == null || !ids.has(node.parentId) ? '' : node.parentId;
+  const pad = 8 + Math.min(depth, 8) * step;
+  return `<li class="node" data-id="${esc(node.id)}" data-parent="${esc(parent)}">
+      <div class="row" draggable="true" style="padding-left:${pad}px">
+        <span class="caret${kids.length ? '' : ' is-leaf'}"></span>
+        <span class="handle" aria-hidden="true">${GRIP}</span>
+        <span class="name" title="${esc(node.name)}">${esc(node.name)}</span>
+        <span class="no"></span>
+      </div>
+      ${kids.length ? `<ul class="kids">${kids.map(k => nodeHtml(k, depth + 1, ids, step)).join('')}</ul>` : ''}
+    </li>`;
+}
+
+/** 同层级行编号（每个上下级列表各自从 1 开始） */
+function refreshNos() {
+  const lists = [treeEl, ...treeEl.querySelectorAll('.kids')];
+  lists.forEach(ul => {
+    [...ul.children].forEach((li, i) => {
+      const no = li.querySelector(':scope > .row > .no');
+      if (no) no.textContent = i + 1;
+    });
+  });
+}
+
+function render(tree) {
+  cleanupDrag();
+  const nodes = Array.isArray(tree) ? tree : [];
+  if (!nodes.length) {
+    showState('暂无渠系数据');
+    return;
+  }
+  const ids = new Set();
+  (function walk(list) {
+    list.forEach(n => {
+      ids.add(n.id);
+      walk(n.children || []);
+    });
+  })(nodes);
+  const step = window.innerWidth <= 640 ? 14 : 18;
+  treeEl.innerHTML = nodes.map(n => nodeHtml(n, 0, ids, step)).join('');
+  treeEl.hidden = false;
+  stateEl.hidden = true;
+  refreshNos();
+  clearDirty();
+}
+
+async function loadTree() {
+  showState('加载中...');
+  try {
+    const res = await fetch(API + '/canal/tree', { credentials: 'include', headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    render(Array.isArray(json) ? json : (json && Array.isArray(json.data) ? json.data : []));
+  } catch (e) {
+    showState('渠系数据加载失败', loadTree);
+  }
+}
+
+function clearIndicators() {
+  treeEl.querySelectorAll('.drop-before,.drop-after')
+    .forEach(el => el.classList.remove('drop-before', 'drop-after'));
+}
+
+function cleanupDrag() {
+  clearIndicators();
+  if (dragLi) dragLi.classList.remove('is-dragging');
+  treeEl.querySelectorAll('.node.sib').forEach(li => li.classList.remove('sib'));
+  dragLi = null;
+  dropTarget = null;
+}
+
+function onDragStart(e) {
+  const row = e.target.closest && e.target.closest('.row');
+  if (!row || !row.draggable) return;
+  dragLi = row.parentNode;
+  dragLi.classList.add('is-dragging');
+  dropTarget = null;
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragLi.dataset.id || '');
+  }
+  // 同组兄弟行高亮：提示只能在当前这一组内排序
+  [...dragLi.parentNode.children].forEach(li => {
+    if (li !== dragLi) li.classList.add('sib');
+  });
+}
+
+function onDragOver(e) {
+  if (!dragLi) return;
+  const row = e.target.closest && e.target.closest('.row');
+  const li = row && row.parentNode;
+  // 只接受同一父级列表内的行：跨层级拖动不生效
+  if (!li || li === dragLi || li.parentNode !== dragLi.parentNode || li.dataset.parent !== dragLi.dataset.parent) {
+    clearIndicators();
+    dropTarget = null;
+    return;
+  }
+  const rect = row.getBoundingClientRect();
+  const after = e.clientY > rect.top + rect.height / 2;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  if (!dropTarget || dropTarget.li !== li || dropTarget.after !== after) {
+    clearIndicators();
+    row.classList.add(after ? 'drop-after' : 'drop-before');
+    dropTarget = { li, after };
+  }
+}
+
+function onDragLeave(e) {
+  if (e.relatedTarget && treeEl.contains(e.relatedTarget)) return;
+  clearIndicators();
+  dropTarget = null;
+}
+
+/** 同级顺序快照：用于判断本次拖动是否真的改变了顺序（原地落下不标脏） */
+function orderKey(list) {
+  return [...list.children].map(li => li.dataset.id).join(',');
+}
+
+function onDrop(e) {
+  if (!dragLi || !dropTarget) return;
+  e.preventDefault();
+  const target = dropTarget;
+  if (target.li !== dragLi && target.li.parentNode === dragLi.parentNode) {
+    const list = target.li.parentNode;
+    const before = orderKey(list);
+    list.insertBefore(dragLi, target.after ? target.li.nextElementSibling : target.li);
+    refreshNos();
+    if (orderKey(list) !== before) markDirty();
+  }
+  cleanupDrag();
+}
+
+/** 按父级收集同级顺序：DOM 顺序即保存后的展示顺序（折叠的节点同样参与） */
+function collectGroups() {
+  const map = new Map();
+  treeEl.querySelectorAll('.node').forEach(li => {
+    const parentId = li.dataset.parent || null;
+    if (!map.has(parentId)) map.set(parentId, []);
+    map.get(parentId).push(li.dataset.id);
+  });
+  return [...map.entries()].map(([parentId, canalIds]) => ({ parentId, canalIds }));
+}
+
+function bindEvents() {
+  // 折叠 / 展开
+  treeEl.addEventListener('click', e => {
+    const caret = e.target.closest('.caret');
+    if (!caret || caret.classList.contains('is-leaf')) return;
+    caret.parentNode.parentNode.classList.toggle('collapsed');
+  });
+
+  treeEl.addEventListener('dragstart', onDragStart);
+  treeEl.addEventListener('dragover', onDragOver);
+  treeEl.addEventListener('dragleave', onDragLeave);
+  treeEl.addEventListener('drop', onDrop);
+  treeEl.addEventListener('dragend', cleanupDrag);
+
+  $('btn-reload').addEventListener('click', () => {
+    if (dirty && !confirm('有未保存的排序调整，确定放弃并重新加载吗？')) return;
+    loadTree();
+  });
+
+  $('btn-save').addEventListener('click', saveOrder);
+}
+
+async function saveOrder() {
+  if (!isAdmin) {
+    toast('仅系统管理员可调整排序', true);
+    return;
+  }
+  const groups = collectGroups();
+  if (!groups.length) return;
+  const btn = $('btn-save');
+  btn.classList.add('is-loading');
+  try {
+    const res = await fetch(API + '/canal/sort', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json;charset=UTF-8', 'Accept': 'application/json' },
+      body: JSON.stringify({ groups }),
+    });
+    let json = null;
+    try { json = await res.json(); } catch (e) { json = null; }
+    if (!res.ok) {
+      throw new Error((json && json.message) || ('保存失败（HTTP ' + res.status + '）'));
+    }
+    toast('保存成功' + (json && typeof json.count === 'number' ? '（改写 ' + json.count + ' 条）' : ''));
+    await loadTree();
+  } catch (e) {
+    toast(e.message || '保存失败，请稍后重试', true);
+  } finally {
+    btn.classList.remove('is-loading');
+  }
+}
+
+window.addEventListener('beforeunload', e => {
+  if (!dirty) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+(async function init() {
+  bindEvents();
+  await loadAdmin();
+  await loadTree();
+})();
+</script>
+</body>
+</html>
