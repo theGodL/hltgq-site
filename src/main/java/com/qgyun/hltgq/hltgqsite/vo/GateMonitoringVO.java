@@ -59,6 +59,24 @@ public class GateMonitoringVO {
     /** 在线状态：断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线），与监测页面标红规则一致 */
     private Boolean isOnline;
 
+    /**
+     * 最近一次开闸动作的闸孔号（仅该站存在开度>0 的闸孔且有动作记录时返回，否则 null）。
+     * 动作数据来自 DZJL 动作表 t_auto_hltgq_water_gate_action，仅 MQTT 四站有记录。
+     */
+    private String actionGateNo;
+
+    /** 最近一次开闸时间（设备时标 action_time，非入库时间；可能比采集时间快约 30 秒，属设备时钟偏差） */
+    private LocalDateTime actionStartTime;
+
+    /** 该次开闸对应的关闸时间（设备时标）；null = 尚未收到关闸动作（开启中） */
+    private LocalDateTime actionEndTime;
+
+    /**
+     * 各闸孔最近一次开闸区间（仅开度>0 的闸孔，按孔号升序；无动作记录时为空列表）。
+     * 首页开度列汇聚多孔，前端按孔逐行展示；上方单值字段取开闸时间最新的一条，兼容旧前端。
+     */
+    private List<GateActionVO> actions;
+
     /** 各闸孔数据（按闸孔号排序） */
     private List<GateHoleData> holes;
 }

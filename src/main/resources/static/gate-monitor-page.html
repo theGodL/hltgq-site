@@ -1101,6 +1101,74 @@ function fmtHolesOpen(holes) {
   return shown.map(h => fmtOpen(h.openDegree)).join('+');
 }
 
+/**
+ * 闸门动作区间文案（单行，列表导出与详情导出用；页面小字拆成两行展示）：
+ * 已关闸 `开始~关闭 2026-10-29 18:00:00~2026-10-30 09:00:00`；
+ * 未收到关闸动作 `开始 2026-10-30 09:32:28~进行中`。时间取动作表 action_time（设备时标）。
+ */
+function fmtActionRange(start, end) {
+  const s = fmtTm(start);
+  if (s === '-') return '';
+  const e = fmtTm(end);
+  return e === '-' ? `开始 ${s}~进行中` : `开始~关闭 ${s}~${e}`;
+}
+
+/** 动作标签行：已关闸「开始~关闭」，未收到关闸动作「开始」 */
+function actionLabel(end) {
+  return fmtTm(end) === '-' ? '开始' : '开始~关闭';
+}
+
+/** 动作时间行：`开始时间~结束时间` / `开始时间~进行中`（标签下方单独一行） */
+function actionTimes(start, end) {
+  const s = fmtTm(start);
+  if (s === '-') return '';
+  const e = fmtTm(end);
+  return e === '-' ? `${s}~进行中` : `${s}~${e}`;
+}
+
+/** 主列表开度单元格下方：各闸孔最近一次开闸区间（仅开度>0；标签一行、各孔时间逐行，旧接口单值兼容） */
+function gateActionSub(r) {
+  if (!r) return '';
+  const holes = Array.isArray(r.holes) ? r.holes : [];
+  if (!holes.some(h => h && h.openDegree != null && h.openDegree !== '' && +h.openDegree > 0)) return '';
+  const list = Array.isArray(r.actions) ? r.actions : [];
+  let items = list.map(a => ({ start: a && a.startTime, end: a && a.endTime }))
+    .filter(x => actionTimes(x.start, x.end) !== '');
+  // 旧接口兼容：仅单值字段（取开闸时间最新的孔）
+  if (!items.length && actionTimes(r.actionStartTime, r.actionEndTime) !== '') {
+    items = [{ start: r.actionStartTime, end: r.actionEndTime }];
+  }
+  if (!items.length) return '';
+  const title = '闸门动作时间（设备时标）';
+  const line = tm => `<div class="td-tm" title="${title}">${esc(tm)}</div>`;
+  // 各孔标签一致（如同时开闸）时标签只标一次，下面逐孔一行时间；进行中与已关闸混合时逐条输出标签+时间
+  const labels = Array.from(new Set(items.map(x => actionLabel(x.end))));
+  if (labels.length === 1) {
+    return line(labels[0]) + items.map(x => line(actionTimes(x.start, x.end))).join('');
+  }
+  return items.map(x => line(actionLabel(x.end)) + line(actionTimes(x.start, x.end))).join('');
+}
+
+/** 开度统计单元格下方：该闸孔覆盖该监测时刻的开闸区间（标签一行、时间一行；无动作记录或开度为 0 时不展示） */
+function actionCellSub(start, end) {
+  const times = actionTimes(start, end);
+  if (!times) return '';
+  const title = '闸门动作时间（设备时标）';
+  return `<div class="td-tm" title="${title}">${actionLabel(end)}</div>`
+    + `<div class="td-tm" title="${title}">${esc(times)}</div>`;
+}
+
+/** 开度操作时间纯文本（列表导出用；页面小字两行合并为一格，多孔用分号分隔） */
+function gateActionText(r) {
+  if (!r) return '';
+  const holes = Array.isArray(r.holes) ? r.holes : [];
+  if (!holes.some(h => h && h.openDegree != null && h.openDegree !== '' && +h.openDegree > 0)) return '';
+  const list = Array.isArray(r.actions) ? r.actions : [];
+  const parts = list.map(a => fmtActionRange(a && a.startTime, a && a.endTime)).filter(Boolean);
+  if (parts.length) return parts.join('; ');
+  return fmtActionRange(r.actionStartTime, r.actionEndTime);
+}
+
 /** 需要标注的累计截止时间：仅当累计记录时间与闸门采集时间相差超过同批次窗口（20 分钟）时返回，
  *  提示该累计为最后一次成功计算的历史值（流量计已断联或与闸门报文不同批次）；
  *  与后端 FLOW_ALIGN_MINUTES=20 口径一致。无需要标注时返回 null */
@@ -1127,7 +1195,7 @@ function renderTable() {
   tbody.innerHTML = S.rows.map((r, i) => `
     <tr>
       <td class="col-name">${esc(fmtN(r.siteName))}</td>
-      <td>${esc(fmtHolesOpen(r.holes))}</td>
+      <td>${esc(fmtHolesOpen(r.holes))}${gateActionSub(r)}</td>
       <td>${fmtN2(r.upZ)}</td>
       <td>${fmtN2(r.downZ)}</td>
       <td>${fmtN3(r.q)}</td>
@@ -1570,7 +1638,7 @@ function renderHistory() {
     tbody.innerHTML = HIST.rows.map((r, i) => `
       <tr>
         <td>${fmtTm(r.tm)}</td>
-        ${cols.map(n => `<td>${fmtOpen(r['open' + n])}</td>`).join('')}
+        ${cols.map(n => `<td>${fmtOpen(r['open' + n])}${actionCellSub(r['action' + n + 'Start'], r['action' + n + 'End'])}</td>`).join('')}
         ${opTd(i)}
       </tr>
     `).join('');
@@ -1820,6 +1888,7 @@ async function reloadDetail() {
 const GATE_EXPORT_FIELDS = [
   { key: 'siteName', label: '名称' },
   { key: 'opening', label: '闸门开度 (m)' },
+  { key: 'actionTm', label: '闸门操作时间' },
   { key: 'upZ', label: '闸前水位 (m)' },
   { key: 'downZ', label: '闸后水位 (m)' },
   { key: 'q', label: '瞬时流量 (m³/s)' },
@@ -1836,7 +1905,7 @@ function exportGateList() {
     rows: list.map(r => {
       const cutoffTm = cumulativeCutoffTm(r);
       return {
-        siteName: r.siteName, opening: fmtHolesOpen(r.holes),
+        siteName: r.siteName, opening: fmtHolesOpen(r.holes), actionTm: gateActionText(r),
         upZ: fmtN2(r.upZ), downZ: fmtN2(r.downZ), q: fmtN3(r.q), tf: fmtN3(r.cumulativeFlow),
         tfTm: cutoffTm ? fmtTm(cutoffTm) : '',
         tm: fmtTm(r.tm),
@@ -1878,6 +1947,7 @@ async function fetchAllGateHistory(type) {
 function mergeGateHistoryRows(byType, checked) {
   const keys = new Set(checked.map(f => f.key));
   const openKeys = [...keys].filter(k => /^open\d+$/.test(k));
+  const actionKeys = [...keys].filter(k => /^action\d+$/.test(k));
   const map = new Map();
   const slot = tm => {
     const key = String(tm);
@@ -1891,11 +1961,16 @@ function mergeGateHistoryRows(byType, checked) {
       o.downZ = fmtN2(r.downZ);
     });
   }
-  if (openKeys.length) {
+  if (openKeys.length || actionKeys.length) {
     (byType.opening || []).forEach(r => {
       const o = slot(r.tm);
       openKeys.forEach(k => {
         if (r[k] !== undefined) o[k] = fmtOpen(r[k]);
+      });
+      // 闸门操作时间：仅开度>0 时有值（后端按“覆盖优先，无覆盖取 24h 内最近一次开闸”注入，与统计表小字一致）
+      actionKeys.forEach(k => {
+        const range = fmtActionRange(r['action' + k.slice(6) + 'Start'], r['action' + k.slice(6) + 'End']);
+        if (range) o[k] = range;
       });
     });
   }
@@ -1914,7 +1989,10 @@ function exportGateHistory() {
   if (!S.current || !S.current.siteId) return;
   const cols = (HIST.openCols && HIST.openCols.length) ? HIST.openCols : collectOpenColsFromHoles(S.current.holes);
   const fields = [{ key: 'tm', label: '监测时间' }];
-  cols.forEach(n => fields.push({ key: 'open' + n, label: `开度${n} (m)` }));
+  cols.forEach(n => {
+    fields.push({ key: 'open' + n, label: `开度${n} (m)` });
+    fields.push({ key: 'action' + n, label: `开度${n}操作时间` });
+  });
   fields.push({ key: 'upZ', label: '闸前水位 (m)' });
   fields.push({ key: 'downZ', label: '闸后水位 (m)' });
   fields.push({ key: 'q', label: '瞬时流量 (m³/s)' });
@@ -1930,9 +2008,10 @@ function exportGateHistory() {
     fetchRows: async (checked) => {
       const keys = new Set(checked.map(f => f.key));
       const openKeys = [...keys].filter(k => /^open\d+$/.test(k));
+      const actionKeys = [...keys].filter(k => /^action\d+$/.test(k));
       const byType = {};
       if (keys.has('upZ') || keys.has('downZ')) byType.waterLevel = await fetchAllGateHistory('waterLevel');
-      if (openKeys.length) byType.opening = await fetchAllGateHistory('opening');
+      if (openKeys.length || actionKeys.length) byType.opening = await fetchAllGateHistory('opening');
       if (keys.has('q') || keys.has('tf')) byType.flow = await fetchAllGateHistory('flow');
       return mergeGateHistoryRows(byType, checked);
     },

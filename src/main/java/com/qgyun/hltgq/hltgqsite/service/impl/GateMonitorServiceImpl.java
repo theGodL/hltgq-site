@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.entity.WaterThreshold;
+import com.qgyun.hltgq.hltgqsite.mapper.GateActionMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
@@ -15,6 +16,7 @@ import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
 import com.qgyun.hltgq.hltgqsite.service.StationSiteService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateActionVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
@@ -35,6 +37,7 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,6 +67,12 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     /** 报文查询条数上限：单时刻入库报文最多 8 条（RabbitMQ 站原始帧 + 各标签），留足余量 */
     private static final int MESSAGE_QUERY_LIMIT = 60;
+
+    /** 闸门动作区间回溯天数：历史开度匹配只加载查询起点前 180 天的 open（一次开闸通常数小时至数天） */
+    private static final long ACTION_LOOKBACK_DAYS = 180;
+
+    /** 统计开度页动作挂接窗口（小时）：监测时刻无覆盖区间时，向前取最近一次开闸，超出该窗口不展示 */
+    private static final long ACTION_ATTACH_HOURS = 24;
 
     /** 召测四站（stcd → 站名）：仅 RabbitMQ 四站支持召测，报文 1 小时一次 */
     private static final Map<String, String> RECALL_STATIONS = new LinkedHashMap<>();
@@ -131,6 +140,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     private static boolean isEffective(BigDecimal v) {
         return v != null && v.signum() != 0 && !DeviceValueUtils.isMissing(v) && !DeviceValueUtils.isError(v);
     }
+
+    @Autowired
+    private GateActionMapper gateActionMapper;
 
     @Autowired
     private GateMonitorMapper gateMonitorMapper;
@@ -233,6 +245,26 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                         cumulativeBySite.put(String.valueOf(row.get("site")), row);
                     }
                 }
+            }
+        }
+
+        // 3.1 闸门动作：批量取各站各孔最近一次开闸及其配对关闸（只读 DZJL 动作表，
+        // 仅 MQTT 四站有记录），供列表开度单元格下方展示操作起止；未配到 close = 仍在开启中。
+        // 一次批量查询，无逐站 N+1；动作表不可用时降级为空态，不阻塞开度/水位/流量主功能
+        Map<String, Map<String, Map<String, Object>>> actionBySiteHole = new HashMap<>();
+        if (!holesBySite.isEmpty()) {
+            try {
+                for (Map<String, Object> row : gateActionMapper.selectLatestOpenBySiteHoles(
+                        new ArrayList<>(holesBySite.keySet()), endTime)) {
+                    String actSite = ValueConvertUtils.str(row.get("site"));
+                    String actGateNo = normGateNo(ValueConvertUtils.str(row.get("gate_no")));
+                    if (actSite != null && actGateNo != null) {
+                        actionBySiteHole.computeIfAbsent(actSite, k -> new HashMap<>()).put(actGateNo, row);
+                    }
+                }
+            } catch (Exception ex) {
+                // 动作表未建/无权限等异常只影响动作时间展示，不影响闸门监测主链路
+                log.warn("闸门动作区间取数失败，按空态展示：{}", ex.toString());
             }
         }
 
@@ -348,6 +380,54 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             vo.setLat(holes.stream().map(GateMonitor::getLat).filter(Objects::nonNull).findFirst().orElse(null));
             // 在线状态：最新采集时间断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）
             vo.setIsOnline(!StationStatusUtils.isStale(latestTm, siteName));
+            // 最近一次开闸动作：只取开度>0 的闸孔（闸门开着才展示操作起止），按孔组装列表供首页逐行展示；
+            // 单值字段取开闸时间最新者，兼容旧前端；无动作记录（非 MQTT 四站）不返回
+            Map<String, Map<String, Object>> actionByHole = actionBySiteHole.get(siteId);
+            Map<String, GateActionVO> actionsByGate = new LinkedHashMap<>();
+            LocalDateTime latestActionOpen = null;
+            String latestActionGateNo = null;
+            LocalDateTime latestActionEnd = null;
+            for (GateMonitor h : holes) {
+                if (h.getOpenDegree() == null || h.getOpenDegree().compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                Map<String, Object> act = actionByHole == null ? null : actionByHole.get(h.getGateNo());
+                LocalDateTime openTm = act == null ? null : parseActionTime(act.get("open_time"));
+                if (openTm == null) {
+                    continue;
+                }
+                String actGateNo = normGateNo(ValueConvertUtils.str(act.get("gate_no")));
+                LocalDateTime closeTm = parseActionTime(act.get("close_time"));
+                GateActionVO item = new GateActionVO();
+                item.setGateNo(actGateNo);
+                item.setStartTime(openTm);
+                item.setEndTime(closeTm);
+                // 同一闸孔多条时保留开闸最新的一条（正常每孔一条，防御重复行）
+                GateActionVO prev = actionsByGate.get(actGateNo);
+                if (prev == null || openTm.isAfter(prev.getStartTime())) {
+                    actionsByGate.put(actGateNo, item);
+                }
+                if (latestActionOpen == null || openTm.isAfter(latestActionOpen)) {
+                    latestActionOpen = openTm;
+                    latestActionGateNo = actGateNo;
+                    latestActionEnd = closeTm;
+                }
+            }
+            List<GateActionVO> actions = new ArrayList<>(actionsByGate.values());
+            // 孔号按数值升序（1、2、…、10）；非数字孔号排最后
+            actions.sort(Comparator.comparingInt((GateActionVO a) -> {
+                try {
+                    return Integer.parseInt(a.getGateNo());
+                } catch (Exception e) {
+                    return Integer.MAX_VALUE;
+                }
+            }));
+            vo.setActions(actions);
+            if (latestActionOpen != null) {
+                vo.setActionGateNo(latestActionGateNo);
+                vo.setActionStartTime(latestActionOpen);
+                vo.setActionEndTime(latestActionEnd);
+            }
             vo.setHoles(holeDataList);
             result.add(vo);
         }
@@ -445,7 +525,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         List<GateMonitor> rows = gateMonitorMapper.selectHistoryDetail(siteId, tms);
 
         if ("opening".equals(type)) {
-            result.setRecords(pivotOpening(rows));
+            // 开度统计行内附带该闸孔覆盖该监测时刻的开闸区间（仅开度>0 的行），
+            // 用于在开度值下方展示闸门操作起止；非 MQTT 四站无动作记录，不带时间
+            result.setRecords(pivotOpening(rows, loadGateActionIntervals(siteId, startTime, endTime)));
         } else if ("waterLevel".equals(type)) {
             result.setRecords(extractWaterLevel(rows));
         } else {
@@ -510,9 +592,13 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     }
 
     /**
-     * 开度透视：按监测时间分组，每个闸孔号作为独立列（open1, open2, open3...），q 为站点流量
+     * 开度透视：按监测时间分组，每个闸孔号作为独立列（open1, open2, open3...），q 为站点流量；
+     * 开度>0 时附加该孔的动作区间：优先覆盖该监测时刻的区间 [open, close)，无覆盖
+     *（快照间隔大于单次开闸时长）时取该时刻前 24 小时内最近一次开闸，附加
+     * action{N}Start / action{N}End（结束为空 = 尚未关闸/进行中），供页面在开度值下方展示操作起止。
      */
-    private List<Map<String, Object>> pivotOpening(List<GateMonitor> rows) {
+    private List<Map<String, Object>> pivotOpening(List<GateMonitor> rows,
+                                                   Map<String, List<ActionInterval>> intervalsByGateNo) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         Map<LocalDateTime, Map<String, Object>> grouped = new LinkedHashMap<>();
         for (GateMonitor r : rows) {
@@ -525,6 +611,15 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             BigDecimal od = r.getOpenDegree();
             if (od == null || !DeviceValueUtils.isMissing(od)) {
                 record.put("open" + r.getGateNo(), od);
+                // 闸门开着（开度>0）才展示操作区间；关闭状态不展示
+                if (od != null && od.signum() > 0) {
+                    ActionInterval interval = findActionInterval(intervalsByGateNo.get(r.getGateNo()), r.getTm());
+                    if (interval != null) {
+                        record.put("action" + r.getGateNo() + "Start", interval.open.format(fmt));
+                        record.put("action" + r.getGateNo() + "End",
+                                interval.close == null ? null : interval.close.format(fmt));
+                    }
+                }
             }
             // 流量为站点级数据，同一时刻各孔相同，仅放入一次（-999 设备不存在跳过）
             if (!record.containsKey("q") && r.getQ() != null && !DeviceValueUtils.isMissing(r.getQ())) {
@@ -532,6 +627,114 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             }
         }
         return new ArrayList<>(grouped.values());
+    }
+
+    /** 载入单站开闸区间（按闸孔分组）：history 开度统计每行按监测时刻匹配 */
+    private Map<String, List<ActionInterval>> loadGateActionIntervals(String siteId, LocalDateTime startTime,
+                                                                      LocalDateTime endTime) {
+        Map<String, List<ActionInterval>> result = new HashMap<>();
+        if (siteId == null || siteId.trim().isEmpty()) {
+            return result;
+        }
+        // 开闸下界 = 查询起点（无起点用终点）前 180 天：一次开闸通常数小时至数天，半年前的
+        // “进行中”属异常数据；设下界避免每次翻页/导出都把该站全部历史 open 连同逐行配对拉回内存
+        LocalDateTime bound = startTime != null ? startTime : endTime;
+        LocalDateTime minOpenTime = bound == null ? null : bound.minusDays(ACTION_LOOKBACK_DAYS);
+        try {
+            for (Map<String, Object> row : gateActionMapper.selectOpenIntervalsBySite(
+                    siteId.trim(), minOpenTime, endTime)) {
+                String gateNo = normGateNo(ValueConvertUtils.str(row.get("gate_no")));
+                LocalDateTime open = parseActionTime(row.get("open_time"));
+                if (gateNo == null || open == null) {
+                    continue;
+                }
+                result.computeIfAbsent(gateNo, k -> new ArrayList<>())
+                        .add(new ActionInterval(open, parseActionTime(row.get("close_time"))));
+            }
+        } catch (Exception ex) {
+            // 动作表不可用（未建表/无权限等）时降级：开度统计照常返回，只是不展示操作时间
+            log.warn("闸门动作区间取数失败（站点 {}），历史开度按无动作时间展示：{}", siteId, ex.toString());
+            result.clear();
+        }
+        return result;
+    }
+
+    /**
+     * 找监测时刻对应的开闸区间：优先返回覆盖 tm 的区间（open ≤ tm 且（进行中 或 tm < close））；
+     * 无覆盖时返回 tm 之前 24 小时内最近一次开闸。
+     * 快照间隔通常 5~20 分钟、单次开闸常仅数十秒，仅按“覆盖”匹配会使统计页几乎不可见。
+     */
+    private static ActionInterval findActionInterval(List<ActionInterval> intervals, LocalDateTime tm) {
+        if (intervals == null || tm == null) {
+            return null;
+        }
+        LocalDateTime attachFrom = tm.minusHours(ACTION_ATTACH_HOURS);
+        ActionInterval nearestClosed = null;
+        // 区间按开闸时间升序倒序扫描：open ≤ tm 的最近区间优先；若其已关闭则记为候选，
+        // 继续向前找仍覆盖 tm 的区间，兼容入库交错（如 open 9:00 / close 12:00 / open 10:00 / close 10:30）
+        for (int i = intervals.size() - 1; i >= 0; i--) {
+            ActionInterval interval = intervals.get(i);
+            if (tm.isBefore(interval.open)) {
+                continue;
+            }
+            if (interval.close == null || tm.isBefore(interval.close)) {
+                return interval;
+            }
+            if (nearestClosed == null && !interval.open.isBefore(attachFrom)) {
+                nearestClosed = interval;
+            }
+        }
+        return nearestClosed;
+    }
+
+    /**
+     * 闸孔号归一：闸门快照表占位行 '0' 在 SQL 中归一为 '1'，动作表同口径处理，
+     * 避免两侧 key（'0' vs '1'）不一致导致动作时间静默不展示。
+     */
+    private static String normGateNo(String gateNo) {
+        if (gateNo == null) {
+            return null;
+        }
+        String n = gateNo.trim();
+        if (n.isEmpty()) {
+            return null;
+        }
+        return "0".equals(n) ? "1" : n;
+    }
+
+    /**
+     * 动作时间解析：Timestamp/LocalDateTime 直接取（ValueConvertUtils.dateTime）；
+     * 驱动对未知 OID 返回文本时（Kingbase 自有 timestamp OID 场景）按文本兜底解析，避免静默为空。
+     */
+    private static LocalDateTime parseActionTime(Object value) {
+        LocalDateTime dt = ValueConvertUtils.dateTime(value);
+        if (dt != null || value == null) {
+            return dt;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.isEmpty() || "null".equalsIgnoreCase(text)) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(text.replace(' ', 'T'));
+        } catch (DateTimeParseException ex) {
+            try {
+                return Timestamp.valueOf(text).toLocalDateTime();
+            } catch (IllegalArgumentException ignore) {
+                return null;
+            }
+        }
+    }
+
+    /** 闸门开闸区间（open → close；close 为 null = 尚未收到关闸动作） */
+    private static final class ActionInterval {
+        private final LocalDateTime open;
+        private final LocalDateTime close;
+
+        private ActionInterval(LocalDateTime open, LocalDateTime close) {
+            this.open = open;
+            this.close = close;
+        }
     }
 
     /**
