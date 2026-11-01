@@ -63,4 +63,10 @@ public class PatrolScheduleVO {
 
     /** 巡查范围站点数 */
     private Integer siteCount;
+
+    /**
+     * 是否已完成考核（仅已完成计划有意义）：
+     * false → 行操作显示「考核」；true → 显示「查看考核」
+     */
+    private Boolean assessed;
 }

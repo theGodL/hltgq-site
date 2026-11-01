@@ -216,6 +216,12 @@ td.empty:hover{background:transparent}
 .f-hint{margin-top:4px;font-size:12px;color:var(--el-text-color-secondary)}
 /* 只读展示（设备型号：选设备后自动带出） */
 .readonly-box{min-height:var(--el-control-height);border:1px solid var(--el-border-color-light);border-radius:var(--el-radius-control);background:var(--el-fill-color-light);padding:0 12px;display:flex;align-items:center;font-size:14px;color:var(--el-text-color-regular);line-height:20px}
+/* 巡查考核弹窗：单列布局；自动统计项只读（右侧单位）；hidden 统一强制隐藏（覆盖 .btn/.assess-box 的 display） */
+.form-grid.single{grid-template-columns:1fr}
+#assess-mask [hidden]{display:none!important}
+.assess-box{min-height:var(--el-control-height);border:1px solid var(--el-border-color-light);border-radius:var(--el-radius-control);background:var(--el-fill-color-light);padding:0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;color:var(--el-text-color-regular);line-height:20px;word-break:break-word}
+.assess-box .unit{flex-shrink:0;font-size:12px;color:var(--el-text-color-secondary)}
+#assess-mask .form-grid{gap:12px}
 .confirm-text{font-size:14px;line-height:22px;color:var(--el-text-color-primary);white-space:pre-wrap}
 /* 巡检记录弹窗内表格 */
 .rec-wrap{border:1px solid var(--el-table-border);border-radius:var(--el-radius)}
@@ -300,7 +306,7 @@ td.empty:hover{background:transparent}
         <table>
           <colgroup>
             <col style="width:48px"><col style="width:10%"><col style="width:14%"><col style="width:8%">
-            <col style="width:14%"><col style="width:12%"><col style="width:9%"><col style="width:9%"><col style="width:260px">
+            <col style="width:14%"><col style="width:12%"><col style="width:9%"><col style="width:9%"><col style="width:300px">
           </colgroup>
           <thead>
             <tr>
@@ -463,6 +469,60 @@ td.empty:hover{background:transparent}
   </div>
 </div>
 
+<!-- 巡查考核（编辑 / 查看共用：编辑态 3 项手工 + 7 项只读；查看态全只读） -->
+<div class="mask" id="assess-mask">
+  <div class="dlg dlg-sm">
+    <div class="dlg-hd">
+      <h3 id="assess-title">巡查考核</h3>
+      <button class="icon-btn" data-close="assess" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="dlg-bd">
+      <div class="form-grid single">
+        <div class="f-item"><label class="f-label">计划巡查站点</label>
+          <div class="assess-box"><span id="a-plan-site">0</span><span class="unit">个</span></div></div>
+        <div class="f-item"><label class="f-label">已巡查站点</label>
+          <div class="assess-box"><span id="a-patrolled-site">0</span><span class="unit">个</span></div></div>
+        <div class="f-item"><label class="f-label">巡查记录</label>
+          <div class="assess-box"><span id="a-record-count">0</span><span class="unit">条</span></div></div>
+        <div class="f-item"><label class="f-label">发现问题</label>
+          <div class="assess-box"><span id="a-issue-total">0</span><span class="unit">项</span></div></div>
+        <div class="f-item"><label class="f-label">已整改</label>
+          <div class="assess-box"><span id="a-issue-fixed">0</span><span class="unit">项</span></div></div>
+        <div class="f-item"><label class="f-label">整改中</label>
+          <div class="assess-box"><span id="a-issue-fixing">0</span><span class="unit">项</span></div></div>
+        <div class="f-item"><label class="f-label">未整改</label>
+          <div class="assess-box"><span id="a-issue-open">0</span><span class="unit">项</span></div></div>
+        <div class="f-item">
+          <label class="f-label"><i class="req">*</i>考核得分</label>
+          <input class="field" id="a-score" inputmode="decimal" maxlength="5" placeholder="请输入" autocomplete="off">
+          <div class="assess-box" id="a-score-view"><span id="a-score-text">--</span><span class="unit">分</span></div>
+          <div class="f-err" id="a-score-err"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">考核等级</label>
+          <div class="sel" id="a-grade"></div>
+          <div class="assess-box" id="a-grade-view"><span id="a-grade-text">--</span></div>
+          <div class="f-hint" id="a-grade-hint">按得分自动生成：≥90 优秀 / 80~89 良好 / 60~79 及格 / &lt;60 不及格</div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">考核结论</label>
+          <textarea class="field" id="a-conclusion" maxlength="1000" placeholder="请输入"></textarea>
+          <div class="assess-box" id="a-conclusion-view"><span id="a-conclusion-text">--</span></div>
+        </div>
+        <div class="f-item" id="a-meta" hidden>
+          <div class="f-hint" id="a-meta-text"></div>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-ft">
+      <button class="btn btn-default" id="a-cancel" data-close="assess">取消</button>
+      <button class="btn btn-primary" id="a-save">确定</button>
+    </div>
+  </div>
+</div>
+
 <!-- 通用确认（删除 / 完成 / 取消） -->
 <div class="mask" id="cfm-mask">
   <div class="dlg dlg-sm">
@@ -508,7 +568,8 @@ const S = {
   rec: { planId: '', title: '', page: 1, size: 10, total: 0, seq: 0, rows: [] },
   add: { planId: '', title: '', sites: [], devices: [], siteSeq: 0, deviceSeq: 0, photos: [] },
   currentUser: null,
-  confirmFn: null
+  confirmFn: null,
+  assess: { planId: '', seq: 0, lastScore: '' },   // 考核弹窗：当前计划 id、请求序号（防串行返回）、上次合法得分（越界回退）
 };
 
 const $ = id => document.getElementById(id);
@@ -674,7 +735,8 @@ function emptyRow(text, plain, colspan) {
 
 /**
  * 计划行操作（文字按钮）：
- * 草稿可查看/巡检记录/编辑/发布；已完成/已取消禁用完成/取消/添加记录。
+ * 草稿可查看/巡检记录/编辑/发布；已完成/已取消禁用完成/取消/添加记录；
+ * 已完成才出现考核入口（未考核=「考核」，已考核=「查看考核」），已取消不可考核。
  */
 function rowActs(r) {
   const id = esc(r.id);
@@ -689,9 +751,14 @@ function rowActs(r) {
   }
   const done = r.statusCode === '#3#' || r.statusCode === '#4#';
   const dis = done ? ' disabled' : '';
+  const assessBtn = r.statusCode !== '#3#' ? ''
+    : (r.assessed
+      ? '<button class="act-txt" data-act="assessview" data-id="' + id + '">查看考核</button>'
+      : '<button class="act-txt" data-act="assess" data-id="' + id + '">考核</button>');
   return '<div class="acts">' +
     '<button class="act-txt" data-act="view" data-id="' + id + '">查看</button>' +
     '<button class="act-txt" data-act="records" data-id="' + id + '">巡检记录</button>' +
+    assessBtn +
     '<button class="act-txt ok" data-act="complete" data-id="' + id + '"' + dis + '>完成</button>' +
     '<button class="act-txt danger" data-act="cancel" data-id="' + id + '"' + dis + '>取消</button>' +
     '<button class="act-txt" data-act="addrec" data-id="' + id + '" data-title="' + title + '"' + dis + '>添加记录</button>' +
@@ -797,10 +864,93 @@ function renderPager() {
 }
 
 /* ============================ 弹窗基础 ============================ */
-const MASKS = { view: 'view-mask', rec: 'rec-mask', add: 'add-mask', cfm: 'cfm-mask' };
+const MASKS = { view: 'view-mask', rec: 'rec-mask', add: 'add-mask', assess: 'assess-mask', cfm: 'cfm-mask' };
 /* 巡检结果：正常=绿 / 异常·故障=红 / 隐患·缺陷=橙 */
 const RESULT_TAG_CLASS = { '#2#': 'green', '#3#': 'red', '#4#': 'orange', '#5#': 'orange', '#6#': 'red' };
 const REC_STATUS_TAG_CLASS = { '#1#': '', '#2#': 'blue' };
+/* 考核等级：由得分分档自动生成（与后端 PatrolAssessService.resolveGrade 一致），下拉只读展示 */
+const GRADE_OPTIONS = [
+  { value: '#1#', label: '不及格' },
+  { value: '#2#', label: '及格' },
+  { value: '#3#', label: '良好' },
+  { value: '#4#', label: '优秀' }
+];
+/* 分档：≥90 优秀 / 80~89 良好 / 60~79 及格 / <60 不及格（按 min 从高到低匹配） */
+const GRADE_RULES = [
+  { min: 90, value: '#4#' },
+  { min: 80, value: '#3#' },
+  { min: 60, value: '#2#' },
+  { min: 0, value: '#1#' }
+];
+/* 得分格式：0~100，最多 1 位小数（与后端 SCORE_PATTERN 一致） */
+const SCORE_RE = /^(\d{1,2}(\.\d)?|100(\.0)?)$/;
+
+/** 得分 → 等级编码；格式不合法返回空（与后端同一套校验规则） */
+function gradeByScore(score) {
+  const s = String(score === null || score === undefined ? '' : score).trim();
+  if (!SCORE_RE.test(s)) return '';
+  const n = Number(s);
+  for (let i = 0; i < GRADE_RULES.length; i++) {
+    if (n >= GRADE_RULES[i].min) return GRADE_RULES[i].value;
+  }
+  return '';
+}
+
+/** 输入得分时同步等级（只读展示；提交时后端按同一分档重算落库） */
+function syncGradeByScore() {
+  UI.gradeSel.setValue(gradeByScore($('a-score').value)).setError(false);
+}
+
+/**
+ * 得分输入规范化：不合理的字符直接丢弃，不进输入框。
+ * <p>规则：只留数字与一个小数点；小数最多 1 位；去前导零；整数部分到 100 即封顶（不再接小数）。
+ * <p>整数部分大于 100 的情况由 {@link onScoreInput} 回退到上次合法值。
+ */
+function normalizeScoreInput(raw) {
+  let s = String(raw === null || raw === undefined ? '' : raw).replace(/[^\d.]/g, '');
+  const dot = s.indexOf('.');
+  if (dot >= 0) {
+    // 只保留第一个小数点，且小数点后最多 1 位
+    s = s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, '');
+    s = s.slice(0, dot + 2);
+  }
+  s = s.replace(/^0+(?=\d)/, '');          // 007 → 7；0.5 不受影响
+  if (s.charAt(0) === '.') s = '0' + s;    // .5 → 0.5
+  if (s.split('.')[0] === '100') return '100';  // 100 已是上限，吃掉后面的一切
+  return s;
+}
+
+/** 写回输入框并尽量保住光标位置（值未变化时不动，避免打断输入） */
+function setInputValue(el, next) {
+  if (el.value === next) return;
+  const prevLen = el.value.length;
+  const pos = el.selectionStart;
+  el.value = next;
+  const p = Math.max(0, Math.min(pos + (next.length - prevLen), next.length));
+  try { el.setSelectionRange(p, p); } catch (e) { /* 忽略 */ }
+}
+
+/** 输入事件：先规范化，再判断上限（超出 100 的输入不生效，回退上次合法值），最后联动等级 */
+function onScoreInput() {
+  const el = $('a-score');
+  let next = normalizeScoreInput(el.value);
+  if (next !== '' && Number(next) > 100) next = S.assess.lastScore || '';
+  setInputValue(el, next);
+  S.assess.lastScore = next;
+  markErr('a-score-err', false);
+  syncGradeByScore();
+}
+
+/** 失焦：补全残缺值（89. → 89、. → 0.  → 0），避免因尾随小数点被拦下 */
+function onScoreBlur() {
+  const el = $('a-score');
+  const v = normalizeScoreInput(el.value).replace(/\.$/, '');
+  if (v !== el.value) {
+    el.value = v;
+    S.assess.lastScore = v;
+    syncGradeByScore();
+  }
+}
 
 function openMask(key) {
   closeAllSelects();
@@ -814,6 +964,7 @@ function closeMask(key) {
   closeAllSelects();
   if (key === 'cfm') S.confirmFn = null;
   if (key === 'add') clearAddPhotos();
+  if (key === 'assess') S.assess.seq++;
   // 记录弹窗关闭时同步收起其上的问题抽屉，避免残留
   if (key === 'rec') closeIssueDrawer();
 }
@@ -1147,6 +1298,141 @@ async function saveRecord() {
   }
 }
 
+/* ============================ 巡查考核 ============================ */
+/** 整数文本（空值显示 0） */
+function numText(v) {
+  return (v === null || v === undefined || v === '') ? '0' : String(v);
+}
+
+/** 得分文本：整数不带小数，一位小数保留 */
+function scoreText(v) {
+  if (v === null || v === undefined || v === '') return '--';
+  const n = Number(v);
+  if (isNaN(n)) return String(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+/** 弹窗形态切换：编辑（仅得分/结论可填）/ 查看（全只读 + 考核人留痕） */
+function setAssessMode(view) {
+  $('a-score').hidden = view;
+  $('a-grade').hidden = view;
+  $('a-conclusion').hidden = view;
+  $('a-score-view').hidden = !view;
+  $('a-grade-view').hidden = !view;
+  $('a-conclusion-view').hidden = !view;
+  $('a-grade-hint').hidden = view;
+  $('a-meta').hidden = true;
+  $('a-save').hidden = view;
+  $('a-cancel').textContent = view ? '关闭' : '取消';
+  document.querySelectorAll('#assess-mask .f-label .req').forEach(el => {
+    el.style.display = view ? 'none' : '';
+  });
+}
+
+/** 填充自动统计项（预览与查看共用；全部只读） */
+function fillAssessStat(d) {
+  const v = d || {};
+  $('a-plan-site').textContent = numText(v.planSite);
+  $('a-patrolled-site').textContent = numText(v.patrolledSite);
+  $('a-record-count').textContent = numText(v.recordCount);
+  $('a-issue-total').textContent = numText(v.issueTotal);
+  $('a-issue-fixed').textContent = numText(v.issueFixed);
+  $('a-issue-fixing').textContent = numText(v.issueFixing);
+  $('a-issue-open').textContent = numText(v.issueOpen);
+}
+
+/** 打开考核（仅已完成计划）：自动项实时统计，得分/等级/结论手填 */
+async function openAssess(id) {
+  const seq = ++S.assess.seq;
+  S.assess.planId = id;
+  setAssessMode(false);
+  $('assess-title').textContent = '巡查考核';
+  $('a-score').value = '';
+  $('a-conclusion').value = '';
+  S.assess.lastScore = '';
+  UI.gradeSel.setValue('').setError(false);
+  clearErrs(['a-score-err']);
+  fillAssessStat(null);
+  openMask('assess');
+  try {
+    const d = await api('/patrol-schedule/assess-preview?scheduleId=' + encodeURIComponent(id));
+    if (seq !== S.assess.seq) return;
+    // 已被他人考核：直接切到查看，避免重复提交
+    if (d && d.assessed) {
+      showToast('该计划已完成考核');
+      openAssessView(id);
+      return;
+    }
+    fillAssessStat(d);
+  } catch (e) {
+    if (seq !== S.assess.seq) return;
+    closeMask('assess');
+    showToast(e.message || '考核数据加载失败', true);
+  }
+}
+
+/** 查看考核：读提交时快照（考核后问题再流转不影响已考核数据） */
+async function openAssessView(id) {
+  const seq = ++S.assess.seq;
+  S.assess.planId = id;
+  setAssessMode(true);
+  $('assess-title').textContent = '考核详情';
+  clearErrs(['a-score-err']);
+  fillAssessStat(null);
+  $('a-score-text').textContent = '--';
+  $('a-grade-text').textContent = '--';
+  $('a-conclusion-text').textContent = '--';
+  openMask('assess');
+  try {
+    const d = await api('/patrol-schedule/assess?scheduleId=' + encodeURIComponent(id));
+    if (seq !== S.assess.seq) return;
+    fillAssessStat(d);
+    $('a-score-text').textContent = scoreText(d.score);
+    $('a-grade-text').textContent = d.gradeLabel || '--';
+    $('a-conclusion-text').textContent = d.conclusion || '--';
+    $('a-meta').hidden = false;
+    $('a-meta-text').textContent = '考核人：' + (d.assessorName || '--') + '　考核时间：' + fmtDateTime(d.assessAt);
+  } catch (e) {
+    if (seq !== S.assess.seq) return;
+    closeMask('assess');
+    showToast(e.message || '考核详情加载失败', true);
+  }
+}
+
+/** 提交考核：仅得分/结论上送（等级由后端按得分分档重算），其余自动项由后端重算并落快照 */
+async function saveAssess() {
+  // 输入阶段已限制字符；这里再补一次（兜住尾随小数点等残缺值）并回写，保证上送值必过后端正则
+  const score = normalizeScoreInput($('a-score').value).replace(/\.$/, '');
+  $('a-score').value = score;
+  S.assess.lastScore = score;
+  const conclusion = $('a-conclusion').value.trim();
+  let bad = false;
+  bad = markErr('a-score-err', !score, '请输入考核得分') || bad;
+  if (score && !SCORE_RE.test(score)) {
+    bad = markErr('a-score-err', true, '得分应为 0~100，最多 1 位小数') || bad;
+  }
+  if (bad) return;
+  const grade = gradeByScore(score);
+  const btn = $('a-save');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  try {
+    await api('/patrol-schedule/assess', {
+      method: 'POST',
+      body: { scheduleId: S.assess.planId, score: score, grade: grade, conclusion: conclusion }
+    });
+    closeMask('assess');
+    showToast('考核已完成');
+    await loadList();
+  } catch (e) {
+    showToast(e.message || '考核提交失败', true);
+  } finally {
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+  }
+}
+
 /* ============================ 通用确认弹窗 ============================ */
 function openConfirm(opt) {
   $('cfm-title').textContent = opt.title || '提示';
@@ -1440,6 +1726,8 @@ function bindEvents() {
     else if (act === 'complete') askStatus(id, 'complete');
     else if (act === 'cancel') askStatus(id, 'cancel');
     else if (act === 'addrec') openAddRecord(id, el.dataset.title || row.title);
+    else if (act === 'assess') openAssess(id);
+    else if (act === 'assessview') openAssessView(id);
   });
 
   // 巡检记录行：新增问题（右侧问题抽屉）
@@ -1506,6 +1794,11 @@ function bindEvents() {
   UI.statusSel.onChange(() => markErr('r-photo-err', false));
   $('r-save').addEventListener('click', saveRecord);
 
+  // 巡查考核：得分输入即限制（只允许 0~100、最多 1 位小数）并联动等级（等级只读）、提交
+  $('a-score').addEventListener('input', onScoreInput);
+  $('a-score').addEventListener('blur', onScoreBlur);
+  $('a-save').addEventListener('click', saveAssess);
+
   // 确认弹窗
   $('cfm-ok').addEventListener('click', onConfirmOk);
 
@@ -1530,7 +1823,7 @@ function bindEvents() {
     if ($('is-drawer').classList.contains('show')) { closeIssueDrawer(); return; }
     if ($('ap-drawer').classList.contains('show')) { closeAddPlan(); return; }
     if ($('imp-drawer').classList.contains('show')) { closeImport(); return; }
-    const order = ['cfm', 'add', 'rec', 'view'];
+    const order = ['cfm', 'add', 'assess', 'rec', 'view'];
     for (let i = 0; i < order.length; i++) {
       if ($(MASKS[order[i]]).classList.contains('show')) { closeMask(order[i]); return; }
     }
@@ -1545,6 +1838,7 @@ function init() {
   UI.resultSel = createSelect($('r-result')).setPlaceholder('请选择巡检结果');
   UI.userSel = createSelect($('r-user')).setPlaceholder('默认当前登录人').setSearchable(true);
   UI.statusSel = createSelect($('r-status')).setPlaceholder('已提交');
+  UI.gradeSel = createSelect($('a-grade')).setPlaceholder('输入得分后自动生成').setDisabled(true);
 
   UI.creatorSel.setOptions([{ value: '', label: '全部' }]);
   UI.resultSel.setOptions([
@@ -1558,6 +1852,7 @@ function init() {
     { value: '#2#', label: '已提交' },
     { value: '#1#', label: '草稿' }
   ]).setValue('#2#');
+  UI.gradeSel.setOptions(GRADE_OPTIONS);
 
   // 从新增页返回时保持原 Tab
   const presetType = new URLSearchParams(location.search).get('type');

@@ -7,6 +7,7 @@ import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.DictUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.OperatorUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ShortIdGenerator;
+import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolAssessMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolPlanMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolRecordMapper;
 import com.qgyun.hltgq.hltgqsite.patrol.mapper.PatrolScheduleMapper;
@@ -129,6 +130,10 @@ public class PatrolPlanService {
 
     @Autowired
     private PatrolPlanMapper mapper;
+
+    /** 考核状态批量判断（列表已完成行的「考核 / 查看考核」按钮） */
+    @Autowired
+    private PatrolAssessMapper assessMapper;
 
     /** 站点/设备/人员档案存在性校验（跨模块唯一实现） */
     @Autowired
@@ -527,19 +532,41 @@ public class PatrolPlanService {
         return updated;
     }
 
-    /** 列表行编码翻译（计划类型 / 状态）；展示态按巡检记录批量推导（一次 IN 查询，避免逐行）。 */
+    /** 列表行编码翻译（计划类型 / 状态）；展示态按巡检记录批量推导、考核状态按考核表批量判断（各一次 IN 查询）。 */
     private void fillLabels(List<PatrolScheduleVO> rows) {
         List<String> publishedIds = new ArrayList<>();
+        List<String> completedIds = new ArrayList<>();
         for (PatrolScheduleVO row : rows) {
             if ("#2#".equals(row.getStatusCode())) {
                 publishedIds.add(row.getId());
             }
+            if ("#3#".equals(row.getStatusCode())) {
+                completedIds.add(row.getId());
+            }
         }
         Set<String> startedIds = publishedIds.isEmpty() ? Collections.emptySet()
                 : new HashSet<>(mapper.selectStartedScheduleIds(publishedIds));
+        Set<String> assessedIds = queryAssessedIds(completedIds);
         for (PatrolScheduleVO row : rows) {
             row.setPlanTypeLabel(DictUtils.label(PLAN_TYPE_LABELS, row.getPlanType()));
+            row.setAssessed(assessedIds.contains(row.getId()));
             applyDisplayStatus(row, startedIds.contains(row.getId()));
+        }
+    }
+
+    /**
+     * 已完成计划的考核状态（一次 IN 查询）；查询失败降级为全部未考核。
+     * <p>考核表为新增自建表：DDL 尚未执行时不得影响计划列表本身。
+     */
+    private Set<String> queryAssessedIds(List<String> completedIds) {
+        if (completedIds.isEmpty()) {
+            return Collections.emptySet();
+        }
+        try {
+            return new HashSet<>(assessMapper.selectAssessedScheduleIds(completedIds));
+        } catch (Exception e) {
+            log.warn("[巡检计划] 考核状态批量查询失败，按未考核展示：{}", e.getMessage());
+            return Collections.emptySet();
         }
     }
 
