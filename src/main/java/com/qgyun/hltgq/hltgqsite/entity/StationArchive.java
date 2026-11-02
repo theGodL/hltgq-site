@@ -11,8 +11,8 @@ import java.math.BigDecimal;
  * 站点档案实体（t_auto_hltgq_5nw74_vnqqef）。
  * <p>用于站点信息 Excel 导入入库（POST /station-data/import）；仅映射导入所需业务列：
  * 渠系类别 ywvyds（存渠系管理表 id）、管理单位 ahieto（档案表自关联 id）、坐标拆分列
- * bviiio_x/bviiio_y（geohash 不写入）；devicecode、核心指标（ccnhtm/ijzsby）及 _c_ 历史
- * 副本列不映射不写入。
+ * bviiio_x/bviiio_y（geohash 不写入）；devicecode、核心指标（ccnhtm/ijzsby 及其实时列
+ * ccnhtm1/ijzsby1）及 _c_ 历史副本列不映射不写入（核心指标由平台侧 mq 维护）。
  * <p>监测类型 epjutj / 监测方法 nxtggq 为多选，库中以 | 分隔、每项形如 #N#（如 #1#|#5#）。
  * <p>与旧实体 {@link StStinfo}（仅映射 5 列、以 iofhpi 为主键）并存：本实体继承
  * {@link BaseWaterEntity}（id 短 ID 主键 + 审计字段），供导入写入使用。

@@ -9,7 +9,7 @@
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#fff;color:#333;font-size:14px;-webkit-font-smoothing:antialiased}
 .page-wrap{padding:20px 20px 48px}
 
-/* 页头:左侧视图切换,右侧「导入/新增」 */
+/* 页头:左侧视图切换,右侧「模板下载/导入/新增」 */
 .page-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap}
 .head-actions{display:flex;align-items:center;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border:1px solid transparent;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .2s}
@@ -191,8 +191,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .imp-modal{width:660px;max-width:96vw;margin-top:8vh;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 6px 22px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.08);display:flex;flex-direction:column;max-height:80vh}
 .imp-bd{flex:1;min-height:0;overflow:auto;padding:20px 24px 8px}
 .imp-tip{font-size:13px;color:#8c8c8c;line-height:20px;margin-bottom:14px}
-.imp-tip a{color:#1677ff;cursor:pointer;text-decoration:none}
-.imp-tip a:hover{opacity:.85}
 .imp-drop{min-height:150px;border:1px dashed #d0d5dd;border-radius:8px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px 16px;color:#8c8c8c;cursor:pointer;transition:border-color .2s,background .2s}
 .imp-drop:hover,.imp-drop.drag{border-color:#1677ff;background:#f0f7ff;color:#1677ff}
 .imp-name{color:#262626;font-size:14px;font-weight:500}
@@ -212,13 +210,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 </head>
 <body>
 <div class="page-wrap">
-  <!-- 页头:左侧视图切换,右侧「导入/新增」 -->
+  <!-- 页头:左侧视图切换,右侧「模板下载/导入/新增」 -->
   <div class="page-head">
     <div class="seg" id="view-seg" role="tablist" aria-label="视图切换">
       <button type="button" class="seg-btn active" data-view="calendar">日历视图</button>
       <button type="button" class="seg-btn" data-view="list">列表视图</button>
     </div>
     <div class="head-actions">
+      <!-- 模板下载:与「导入」并列,免进导入弹窗 -->
+      <button type="button" class="btn btn-default" id="btn-tpl">
+        <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M7 1.5v7m0 0L4.2 5.7M7 8.5l2.8-2.8M2 11.6h10" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>下载模板
+      </button>
       <button type="button" class="btn btn-default" id="btn-import">
         <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
           <path d="M7 12.5v-7m0 0L4.2 8.3M7 5.5l2.8 2.8M2 3.8V2.4a.9.9 0 01.9-.9h8.2a.9.9 0 01.9.9v1.4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -428,7 +432,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       </button>
     </div>
     <div class="imp-bd">
-      <p class="imp-tip">请先<a id="imp-tpl">下载导入模板</a>，按模板填写后上传（.xlsx，单次一个文件，最多 300 行）。</p>
+      <p class="imp-tip">请先点击页面右上角「下载模板」，按模板填写后上传（.xlsx，单次一个文件，最多 300 行）。</p>
       <div class="imp-drop" id="imp-drop">
         <div>点击或拖拽文件到此处</div>
         <div class="imp-name" id="imp-name"></div>
@@ -1473,15 +1477,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
       .then(function () { btn.disabled = false; });
   }
 
+  $('btn-tpl').addEventListener('click', function () {
+    downloadDutyTemplate().catch(function (err) { toast((err && err.message) || '模板下载失败'); });
+  });
   $('btn-import').addEventListener('click', openImport);
   $('imp-close').addEventListener('click', closeImport);
   $('imp-overlay').addEventListener('click', function (e) { if (e.target === impOverlay) closeImport(); });
   $('imp-reset').addEventListener('click', impClear);
   $('imp-submit').addEventListener('click', submitImport);
-  $('imp-tpl').addEventListener('click', function (e) {
-    e.preventDefault();
-    downloadDutyTemplate().catch(function (err) { toast((err && err.message) || '模板下载失败'); });
-  });
   $('imp-drop').addEventListener('click', function () { $('imp-file').click(); });
   $('imp-drop').addEventListener('dragover', function (e) { e.preventDefault(); this.classList.add('drag'); });
   $('imp-drop').addEventListener('dragleave', function () { this.classList.remove('drag'); });

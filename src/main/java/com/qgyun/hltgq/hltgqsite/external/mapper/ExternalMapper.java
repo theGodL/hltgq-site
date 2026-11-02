@@ -51,6 +51,11 @@ public interface ExternalMapper {
      * <p>供监测站点列表接口按档案口径输出（与原 qx-api 列表同口径：含当前无数据的站点）；
      * 关联名称列：管理单位 = ahieto 自关联本表 zzkaec、渠系 = ywvyds 关联渠系管理表 gfaegg、
      * 创建/更新人 = created_by/updated_by 关联平台用户表 name。
+     * <p>核心指标：查 ccnhtm1 / ijzsby1（mq 实时写入的字符串列），别名回 ccnhtm / ijzsby 对外输出；
+     * 同表的 ccnhtm / ijzsby（double）是 2026-09-11 前旧程序写入的历史快照，已停止维护，不得再查。
+     * <p>水位类型（typeCode = '#1#'）只返回通用水位站：含 #1# 但排除闸站（epjutj 含 #4#）。
+     * 闸站的水位是闸前 / 闸后实测值，统一由 type=4 闸门列表提供，同一个站不在两个页面重复展示；
+     * 其余类型不受影响（同时登记 #3# / #5# 等类型的闸站在对应类型列表里照常出现）。
      */
     @Select("<script>" +
             "SELECT s.id AS id, s.iofhpi AS iofhpi, s.zzkaec AS zzkaec, " +
@@ -61,7 +66,7 @@ public interface ExternalMapper {
             "s.ywvyds AS ywvyds, c.gfaegg AS ywvyds_title, " +
             "s.waljdn AS waljdn, s.bhsqxd AS bhsqxd, s.lhwhuc AS lhwhuc, " +
             "s.cbitue AS cbitue, s.viwmmc AS viwmmc, s.discharge_type AS discharge_type, " +
-            "s.badfhe AS badfhe, s.nwbzla AS nwbzla, s.ccnhtm AS ccnhtm, s.ijzsby AS ijzsby, " +
+            "s.badfhe AS badfhe, s.nwbzla AS nwbzla, s.ccnhtm1 AS ccnhtm, s.ijzsby1 AS ijzsby, " +
             "s.corp_code AS corp_code, s.created_at AS created_at, " +
             "s.created_by AS created_by, cu.name AS created_by_title, " +
             "s.updated_at AS updated_at, s.updated_by AS updated_by, uu.name AS updated_by_title " +
@@ -71,6 +76,7 @@ public interface ExternalMapper {
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" cu ON s.created_by = cu.id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" uu ON s.updated_by = uu.id " +
             "WHERE s.epjutj LIKE CONCAT('%', #{typeCode}, '%') " +
+            "<if test='typeCode != null and typeCode.equals(\"#1#\")'>AND s.epjutj NOT LIKE '%#4#%' </if>" +
             "<if test='name != null and name != \"\"'>AND s.zzkaec LIKE CONCAT('%', #{name}, '%') </if>" +
             "ORDER BY s.iofhpi" +
             "</script>")
@@ -82,12 +88,14 @@ public interface ExternalMapper {
      * <p>total = 档案全量行数；typed_total = epjutj 含 #1#/#2#/#3#/#4#/#5#/#7#/#8# 任一（7 类
      * 监测类型，按站去重；与 selectArchiveByType 的 LIKE 口径完全同源，#6# 模型类型不计入）；
      * type_1..type_8 = 各类型单计，多类型站重复计。
+     * <p>type_1 与 station-monitor?type=1 同口径：含 #1# 且不含 #4#（闸站不计入水位站数，
+     * 其闸前 / 闸后水位单计于 type_4），保证卡片数字与水位列表行数一致。
      */
     @Select("SELECT COUNT(*) AS total, " +
             "COUNT(*) FILTER (WHERE epjutj LIKE '%#1#%' OR epjutj LIKE '%#2#%' OR epjutj LIKE '%#3#%' " +
             "OR epjutj LIKE '%#4#%' OR epjutj LIKE '%#5#%' OR epjutj LIKE '%#7#%' OR epjutj LIKE '%#8#%') " +
             "AS typed_total, " +
-            "COUNT(*) FILTER (WHERE epjutj LIKE '%#1#%') AS type_1, " +
+            "COUNT(*) FILTER (WHERE epjutj LIKE '%#1#%' AND epjutj NOT LIKE '%#4#%') AS type_1, " +
             "COUNT(*) FILTER (WHERE epjutj LIKE '%#2#%') AS type_2, " +
             "COUNT(*) FILTER (WHERE epjutj LIKE '%#3#%') AS type_3, " +
             "COUNT(*) FILTER (WHERE epjutj LIKE '%#4#%') AS type_4, " +
@@ -102,6 +110,8 @@ public interface ExternalMapper {
      * 站点下拉选项（轻量：仅 id/站名/编号）：站点集合与 selectStationCount 的 typed_total 同口径
      * （7 类监测类型任一，按站去重）；typeCode 非空时再限定该类型（如 '#4#' 仅闸门站）。
      * <p>供告警筛选等下拉框一次拉取，不返回档案全量字段；按站点编号 iofhpi 升序（无编号排在最后）。
+     * <p>typeCode = '#1#' 时排除闸站（#4#），与 station-monitor?type=1 / type_1 同口径，
+     * 避免下拉选中闸站后按水位类型筛选命中 0 条。
      */
     @Select("<script>" +
             "SELECT s.id AS id, s.zzkaec AS name, s.iofhpi AS stcd " +
@@ -110,6 +120,7 @@ public interface ExternalMapper {
             "OR s.epjutj LIKE '%#4#%' OR s.epjutj LIKE '%#5#%' OR s.epjutj LIKE '%#7#%' " +
             "OR s.epjutj LIKE '%#8#%') " +
             "<if test='typeCode != null'>AND s.epjutj LIKE CONCAT('%', #{typeCode}, '%') </if>" +
+            "<if test='typeCode != null and typeCode.equals(\"#1#\")'>AND s.epjutj NOT LIKE '%#4#%' </if>" +
             "ORDER BY s.iofhpi NULLS LAST" +
             "</script>")
     List<Map<String, Object>> selectStationOptions(@Param("typeCode") String typeCode);

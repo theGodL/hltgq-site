@@ -8,7 +8,7 @@ import java.math.BigDecimal;
  * 站点数据查询列表行（站点档案表 t_auto_hltgq_5nw74_vnqqef）。
  * <p>枚举字段返回中文（监测类型/站点状态/监测方法/是否接通市电）并附编码原文（权威值）；
  * 监测类型/监测方法为多选，库中以 | 分隔，译文以「、」拼接；
- * 经纬度分列返回（lon/lat），核心指标（ccnhtm/ijzsby）类型未确认，原样文本返回。
+ * 经纬度分列返回（lon/lat），核心指标取 mq 实时写入的 ccnhtm1/ijzsby1，按字符串原样返回。
  */
 @Data
 public class StationDataVO {
@@ -43,10 +43,10 @@ public class StationDataVO {
     /** 站点状态编码原文（zebpsu，权威值） */
     private String statusCode;
 
-    /** 核心指标-水位（ccnhtm，原样文本） */
+    /** 核心指标-水位（mq 实时列 ccnhtm1，原样字符串；'0.00' 表示当前无新数据） */
     private String waterIndicator;
 
-    /** 核心指标-雨量（ijzsby，原样文本） */
+    /** 核心指标-雨量（mq 实时列 ijzsby1，原样字符串；'0.00' 表示当前无新数据） */
     private String rainIndicator;
 
     /** 监测方法翻译（nxtggq，多值「、」分隔） */

@@ -15,11 +15,13 @@ public interface StationDataMapper {
     /**
      * 站点列表：按编号升序（id 兜底）。
      * <p>列别名与 VO 属性同名自动映射（map-underscore-to-camel-case=false）。
+     * <p>核心指标取 ccnhtm1 / ijzsby1（mq 实时写入的字符串列）；同表的 ccnhtm / ijzsby（double）
+     * 是 2026-09-11 前旧程序的历史快照，已停止维护，不得再查。
      */
     @Select("<script>" +
             "SELECT s.id AS id, s.zzkaec AS name, s.iofhpi AS code, s.mivbcz AS location, " +
             "s.bviiio_x AS lon, s.bviiio_y AS lat, s.epjutj AS typeCodes, s.zebpsu AS statusCode, " +
-            "s.ccnhtm AS waterIndicator, s.ijzsby AS rainIndicator, s.nxtggq AS methodCodes, " +
+            "s.ccnhtm1 AS waterIndicator, s.ijzsby1 AS rainIndicator, s.nxtggq AS methodCodes, " +
             "s.lhwhuc AS owner, s.cbitue AS phone, s.waljdn AS mainsPowerCode, s.bhsqxd AS comm, " +
             "s.viwmmc AS intro, s.badfhe AS operationNote " +
             "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s " +

@@ -23,6 +23,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -285,17 +286,20 @@ public class ExternalService {
     /**
      * 监测站点列表（按监测类型合并）：type 与站点档案监测类型编码同口径
      * （1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 5 视频 / 7 墒情 / 8 水质，另兼容 #N# 编码与语义串便于联调）。
-     * <p>站点集合取站点档案（含当前无数据的站点，与原 qx-api 列表一致），name 非空时按站名模糊过滤
+     * <p>站点集合取站点档案（含当前无数据的站点，与原 qx-api 列表一致）；水位类型（type=1）只取通用水位站，
+     * 排除闸站（epjutj 含 #4#）——闸站水位是闸前 / 闸后实测值，统一由 type=4 闸门列表提供，
+     * 同一个站不在两个页面重复展示。name 非空时按站名模糊过滤
      * （先筛档案再查实时值，未命中站点时不触发实时值查询）；实时值按类型批量查一次（无逐站 N+1）；
      * 站点顺序按「站点排序」配置输出（已配置站点以配置序号为准，不按在线状态调整）；未配置排序的站点
-     * 保持档案默认顺序、在线优先（在线/未设置在前、离线站在后，组内保持默认顺序）。
+     * 水位类型（type=1）有实时水位值（z 非空）优先，其余保持档案默认顺序；再按在线优先
+     * （在线/未设置在前、离线站在后），组内保持默认顺序。
      * <p>isOnline 与 hasData 每行必有：有实时值站点按实时值字段输出；无实时值站点按档案状态兜底
      * （zebpsu 1=在线 / 2=离线 / 未设置按在线），保证人工设为离线的站点不会因字段缺失被误当作在线。
-     * <p>coreIndicator（核心指标）每行必有，只有水位站与雨量站有：水位类型（#1#）取档案「核心指标-水位」列 ijzsby，
-     * 雨量类型（#2#）取档案「核心指标-雨量」列 ccnhtm（两列分列存储，互不混用）；
-     * 统一输出两位小数文本，档案未填按 0.00 输出；其余类型无核心指标固定为 null。
-     * 闸门站（epjutj 含 #4#）恒为 null——闸站普遍同时登记水位类型而出现在 type=1 列表里，不能因
-     * 「出现在水位列表」就按 ijzsby 输出，否则会把无该指标误报成 0.00。
+     * <p>coreIndicator（核心指标）每行必有，只有水位站与雨量站有：水位类型（#1#）取档案「核心指标-水位」列 ccnhtm，
+     * 雨量类型（#2#）取档案「核心指标-雨量」列 ijzsby（两列分列存储，互不混用；列名以平台字段元数据为准）；
+     * 统一输出两位小数文本，没有该指标时返回 null（由前端决定不展示）；其余类型无核心指标固定为 null。
+     * 闸门站（epjutj 含 #4#）恒为 null——闸门水位是闸前 / 闸后实测值（见 type=4 的 upZ / downZ），
+     * 不属于通用水位指标，不要拿实测值顶替。
      * 行上同时保留 ccnhtm / ijzsby 两个原始列名（档案原值），供核对。
      * <p>视频类型（#5#）为站点档案清单、无实时监测值：不查各业务实时接口，行上 isOnline 按档案状态兜底；
      * 关联对象按原 qx-api 补齐 ahieto.zzkaec 与 ywvyds.gfaegg（仅视频类型输出，其余类型结构不变）。
@@ -319,7 +323,7 @@ public class ExternalService {
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Map<String, Object> archive : archives) {
             Map<String, Object> row = toArchiveRow(archive);
-            // 核心指标：水位与雨量在档案里分列存储，按当前监测类型取各自列后统一字段名输出
+            // 核心指标：按当前监测类型取档案对应实时列；无该指标（含 *1 列的 '0.00'）输出 null，与档案字段一起随行返回
             row.put("coreIndicator", coreIndicatorOf(archive, typeCode));
             if ("#5#".equals(typeCode)) {
                 // 视频站点对齐原 qx-api：关联对象附带简称列（ahieto.zzkaec / ywvyds.gfaegg，与 dataTitle 同值）
@@ -357,22 +361,25 @@ public class ExternalService {
         String sortType = monitorSortType(typeCode);
         List<Map<String, Object>> ordered = sortType == null ? rows
                 : stationSortService.applyOrder(sortType, rows, item -> (String) item.get("id"));
-        // 在线优先仅作用于未配置排序的站点（已配置站点以排序配置为准，不按在线状态调整）：
-        // 未配置站点中在线（含未设置）在前、离线在后，组内保持默认顺序
+        // 已配置排序的站点以配置为准，不参与下面的调整；其余站点分两级稳定排序：
+        // 水位（#1#）有实时值（z 非空）优先，其次在线（含未设置）优先，组内保持默认顺序
         Set<String> configuredIds = sortType == null ? new HashSet<>()
                 : new HashSet<>(stationSortService.configuredSiteIds(sortType));
         List<Map<String, Object>> result = new ArrayList<>(ordered.size());
-        List<Map<String, Object>> unconfiguredOffline = new ArrayList<>();
+        List<Map<String, Object>> unconfigured = new ArrayList<>();
         for (Map<String, Object> row : ordered) {
             if (configuredIds.contains(row.get("id"))) {
                 result.add(row);
-            } else if (Boolean.FALSE.equals(row.get("isOnline"))) {
-                unconfiguredOffline.add(row);
             } else {
-                result.add(row);
+                unconfigured.add(row);
             }
         }
-        result.addAll(unconfiguredOffline);
+        // 「有水位值优先」仅对水位类型生效：其他类型行上无 z 字段，该级恒为 0，排序结果与原来一致
+        boolean levelType = "#1#".equals(typeCode);
+        unconfigured.sort(Comparator
+                .comparingInt((Map<String, Object> r) -> levelType && r.get("z") == null ? 1 : 0)
+                .thenComparingInt(r -> Boolean.FALSE.equals(r.get("isOnline")) ? 1 : 0));
+        result.addAll(unconfigured);
         vo.setData(result);
         return vo;
     }
@@ -384,6 +391,8 @@ public class ExternalService {
      * 与「7 个类型分别调 station-monitor 后按 id 去重」完全一致；
      * #6#（模型类型，10 条，其中 7 条只带 #6#）不在 station-monitor 类型清单内，不计入 typedTotal，
      * 但仍出现在 byType 中供核对（byType 固定 1..8 八项，多类型站重复计）。
+     * <p>byType["1"]（水位站数）与 station-monitor?type=1 同口径，不含闸站（#4#）——闸站单计于
+     * byType["4"]，避免卡片数字比水位列表行数多。
      * <p>传 type 时只统计该类型：total/typedTotal 均为该类型站数、byType 仅含该类型一项；
      * 非法 type 抛 IllegalArgumentException → 全局 400。
      *
@@ -417,7 +426,8 @@ public class ExternalService {
     /**
      * 站点下拉选项（轻量：id/名称/编号）：供告警筛选等下拉框一次拉取，前端无需按类型并发多次。
      * <p>站点集合与 {@link #stationCount(String)} 的 typedTotal 同口径（#1#/#2#/#3#/#4#/#5#/#7#/#8# 任一，
-     * 按站去重）；传 type 时只返回该类型站点；非法 type 抛 IllegalArgumentException → 全局 400。
+     * 按站去重）；传 type 时只返回该类型站点（type=1 与列表同口径排除闸站 #4#）；
+     * 非法 type 抛 IllegalArgumentException → 全局 400。
      *
      * @param type 监测类型，可选：1..8 / #N# / 语义串；null/空白 = 全类型并集
      */
@@ -720,38 +730,44 @@ public class ExternalService {
     }
 
     /**
-     * 核心指标：平台站点档案把水位与雨量分列存储，按当前监测类型取对应列。
-     * <p>列与业务对应关系：ijzsby =「核心指标-水位」、ccnhtm =「核心指标-雨量」
-     * （注意与平台字段定义表的标题顺序相反，以业务核实结果为准）。
-     * <p>输出统一为两位小数的文本（如 27.30 / 79.08），档案未填或空值按 0.00 输出——
-     * 核心指标是人工维护的指标值而非采集读数，缺省即表示 0，调用方无需再判空。
-     * <p>核心指标只属于水位站与雨量站：其余监测类型（流量 #3# / 闸门 #4# / 视频 #5# / 墒情 #7# / 水质 #8#）
-     * 档案无对应列，返回 null（与水位/雨量站的 0.00 区分）。
-     * 闸门尤其注意：虽有闸前 up_z / 闸后 down_z 两路实测水位，但核心指标不记录，同样返回 null，不要拿实测值顶替。
-     * <p>注意按「站点自身是否闸门」判定而非仅看请求类型：闸站普遍同时登记了水位类型（#1#），会出现在
-     * type=1 列表里，若只看 typeCode 会把闸门的「没有该指标」误报成 0.00，故 epjutj 含 #4# 一律返回 null。
+     * 核心指标：站点档案的核心指标由平台侧（mq）实时写入，水位与雨量分列存放，按当前监测类型取对应列。
+     * <p>物理列为 ccnhtm1 / ijzsby1（varchar，两位小数字符串）：ccnhtm1 = 最新 riverInfo 水位（基准高程修正后）、
+     * ijzsby1 = 当前降雨量（最新 DYP − 水文日 8:00 基线 DYP）。ExternalMapper 已把两列别名成 ccnhtm / ijzsby。
+     * <p>同表的 ccnhtm / ijzsby（double）是 2026-09-11 前旧程序写入的历史快照（如坝上 79.08、坝下 42.48），
+     * 此后不再更新，不得读取。
+     * <p>输出为两位小数文本；没有该指标时返回 null，由前端决定不展示。*1 列写 '0.00' 表示「当前无新数据」
+     * （超过实测上报周期 + 5 分钟、24h 断连或从未上报），不是 0 读数，与空值同样按无指标处理，不再输出 0.00——
+     * 否则前端会把「没数据」展示成 0。
+     * <p>闸门站恒为 null：本字段业务上表示站点的「通用水位 / 雨量」核心指标；闸门虽然在分类上登记了水位类型
+     * （#1#），但其水位是闸前 / 闸后实测值（另由 type=4 的 upZ / downZ 提供），不属于通用水位指标，
+     * 故 epjutj 含 #4# 一律返回 null，不要拿实测值顶替（该判断属防御：type=1 列表已在档案层排除闸站）。
+     * <p>核心指标只属于水位站与雨量站：其余监测类型（流量 #3# / 视频 #5# / 墒情 #7# / 水质 #8#）
+     * 档案无对应列，返回 null。
      *
      * @param archive  站点档案行（selectArchiveByType 结果）
      * @param typeCode 监测类型编码（#1# 水位 / #2# 雨量 …）
      */
     private String coreIndicatorOf(Map<String, Object> archive, String typeCode) {
-        // 闸门站恒无核心指标（闸站只有闸前/闸后实测水位，不是人工维护的核心指标）
+        // 闸门站恒无通用核心指标（闸前/闸后实测水位另由 type=4 的 upZ/downZ 提供）
         String types = ValueConvertUtils.str(archive.get("epjutj"));
         if (types != null && types.contains("#4#")) {
             return null;
         }
         Object raw;
+        // archive 的 ccnhtm / ijzsby 由 ExternalMapper 映射自物理列 ccnhtm1 / ijzsby1（mq 实时写入）
         if ("#1#".equals(typeCode)) {
-            raw = archive.get("ijzsby");
-        } else if ("#2#".equals(typeCode)) {
             raw = archive.get("ccnhtm");
+        } else if ("#2#".equals(typeCode)) {
+            raw = archive.get("ijzsby");
         } else {
             return null;
         }
         BigDecimal value = ValueConvertUtils.decimal(raw);
-        return (value == null ? BigDecimal.ZERO : value)
-                .setScale(2, RoundingMode.HALF_UP)
-                .toPlainString();
+        // 无值或 '0.00'（当前无新数据）都属「没有该指标」，返回 null 让前端不展示
+        if (value == null || value.compareTo(BigDecimal.ZERO) == 0) {
+            return null;
+        }
+        return value.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     /** 经纬度 → bviiio 对象（x/y/geohash，与原 qx-api 一致）；经纬度均空返回 null */

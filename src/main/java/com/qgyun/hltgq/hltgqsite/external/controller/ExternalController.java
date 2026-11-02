@@ -92,13 +92,18 @@ public class ExternalController {
      * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
      * 每行 = 档案字段（原字段名）+ 该站实时监测值（平铺 + data 子对象）；站点顺序按「站点排序」配置输出。
      * <p>type：1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 5 视频 / 7 墒情 / 8 水质（兼容 #N# 编码与语义串）；非法值返回 400。
+     * 水位类型（1）只返回通用水位站：档案含 #1# 但排除闸站（#4#）——闸站水位是闸前 / 闸后实测值，
+     * 只由 type=4 提供，同一个站不在两个列表重复展示；其余类型不受影响。
      * 视频类型（5）为站点档案清单、无实时值，用于替代原 qx-api 视频站点列表
      * （/qx-api/qx-apaas-run/ar/4idWo4GcvCd8fWPQSif/kjximffu?type=5）。
      * name：可选，按站点名称模糊匹配（如「渠首」命中「渠首管理所」）；不传或空白表示不筛选。
-     * <p>coreIndicator（核心指标）每行必有，只有水位站与雨量站有：水位类型（1）取档案「核心指标-水位」列 ijzsby、
-     * 雨量类型（2）取档案「核心指标-雨量」列 ccnhtm（两列在档案里分列存储），统一输出两位小数文本，
-     * 档案未填按 0.00 输出；其余类型无核心指标固定为 null。原始列名 ccnhtm / ijzsby 同时保留。
-     * 闸门站（epjutj 含 #4#）恒为 null——闸站普遍同时登记水位类型而出现在 type=1 列表里，不按 ijzsby 输出。
+     * <p>coreIndicator（核心指标）业务上是站点的「通用水位 / 雨量」指标：水位类型（1）取档案实时列 ccnhtm1、
+     * 雨量类型（2）取档案实时列 ijzsby1（mq 实时写入的两位小数字符串），输出两位小数文本。
+     * **没有该指标时返回 null**（前端不展示）：*1 列的 '0.00' 表示当前无新数据（超过上报周期 + 5 分钟、
+     * 24h 断连或从未上报），不是 0 读数，按无指标处理；其余类型同样为 null。
+     * 闸门站（epjutj 含 #4#）恒为 null——闸门水位是闸前 / 闸后实测值（type=4 的 upZ / downZ），
+     * 不属于通用水位指标（type=1 列表已在档案层排除闸站，此判断为防御）。
+     * 对外字段名仍为 ccnhtm / ijzsby，值取实时列原样（同表的 double 列为 2026-09 停更的历史快照，不读）。
      * 响应信封与原 qx-api 一致（success/status/data/msg/...）。
      */
     @GetMapping("/station-monitor")
@@ -113,7 +118,8 @@ public class ExternalController {
      * 传则只统计该类型（1..8 / #N# / 语义串），非法值返回 400。
      * <p>data.total = 档案全量；data.typedTotal = 可进入 station-monitor 列表的站点并集
      * （#1#/#2#/#3#/#4#/#5#/#7#/#8# 七类按站去重，与各类型列表按 id 去重结果一致；#6# 模型类型不计入）；
-     * data.byType = 按类型计数（键 1..8，含 #6#，多类型站重复计）。
+     * data.byType = 按类型计数（键 1..8，含 #6#，多类型站重复计）；其中 type_1 与 station-monitor?type=1
+     * 同口径（不含闸站 #4#），闸站单计于 type_4。
      * <p>响应信封与 /external/* 其它接口一致（success/status/data/...）。
      */
     @GetMapping("/station-count")
@@ -124,7 +130,7 @@ public class ExternalController {
     /**
      * 站点下拉选项（轻量：仅 id/名称/编号，供告警筛选等下拉框一次拉取）。
      * <p>type：可选。不传 = 全类型并集（与 station-count 的 typedTotal 同口径，按站去重）；
-     * 传则只返回该类型站点（1..8 / #N# / 语义串），非法值 400。
+     * 传则只返回该类型站点（1..8 / #N# / 语义串，type=1 与列表同口径排除闸站 #4#），非法值 400。
      * <p>响应信封与 /external/* 其它接口一致，data 为站点数组：[{id, name, stcd}]。
      */
     @GetMapping("/station-options")
