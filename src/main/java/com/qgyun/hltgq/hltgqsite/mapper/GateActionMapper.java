@@ -72,12 +72,14 @@ public interface GateActionMapper {
      * @param siteId     站点 UUID
      * @param minOpenTime 开闸时间下界（含）；null = 不限制
      * @param endTime    截止时间（含）；null = 不限制
-     * @return gate_no / open_time / close_time（close_time 为 null = 仍在开启中），按开闸时间升序
+     * @return gate_no / open_time / close_time（close_time 为 null = 仍在开启中）/ open_raw / close_raw
+     *         （raw = MQTT 点位增量原始报文，如 {"names":["QSDZ_ZM1_KQ.PV"],"vals":["1"],...}），按开闸时间升序
      */
     @Select("<script>" +
-            "SELECT o.gate_no, o.action_time AS open_time, c.action_time AS close_time " +
+            "SELECT o.gate_no, o.action_time AS open_time, o.raw AS open_raw, " +
+            "       c.action_time AS close_time, c.raw AS close_raw " +
             "FROM ( " +
-            "  SELECT a.gate_no, a.action_time " +
+            "  SELECT a.gate_no, a.action_time, a.raw " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_gate_action a " +
             "  WHERE a.site = #{siteId} " +
             "    AND a.action_type = 'open' " +
@@ -87,7 +89,7 @@ public interface GateActionMapper {
             "    <if test='endTime != null'>AND a.action_time &lt;= #{endTime} </if>" +
             ") o " +
             "LEFT JOIN LATERAL ( " +
-            "  SELECT c.action_time " +
+            "  SELECT c.action_time, c.raw " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_gate_action c " +
             "  WHERE c.site = #{siteId} " +
             "    AND c.gate_no = o.gate_no " +

@@ -329,4 +329,36 @@ public interface GateMonitorMapper extends BaseMapper<GateMonitor> {
                                                          @Param("startTime") LocalDateTime startTime,
                                                          @Param("endTime") LocalDateTime endTime,
                                                          @Param("limit") int limit);
+
+    /**
+     * 闸门监测页各闸孔最新一条记录（流量监测「采集时间」对齐用）
+     * <p>取数结构与 {@link #selectLatestPerHole} 的全站分支逐层一致：m 子查询按 (site, gate_no) 求 MAX(tm)
+     * 取各闸孔最新时刻（过滤 gate_no='0' 且开度为空的采集占位行），回表取整行后 DISTINCT ON (site, 归一化闸孔号)
+     * 兜底去重；站点范围同样限定为监测类型含闸门 #4# 的站点。仅少取坐标、电压、流量、渠系等展示列。
+     * <p>开度 -999（闸孔不存在）整孔剔除、按站取最大 tm 两步由 Service 用与闸门监测列表相同的
+     * DeviceValueUtils 判定完成——不能压成「按站 MAX(tm)」：多孔站若最新时刻恰好落在 -999 孔上，
+     * 闸门页取的是该孔被剔除后其余孔的最新时刻，压平后会比闸门页更晚。
+     * <p>开度同样 TRUNC 到两位后再交给 Service 判定，与 {@link #selectLatestPerHole} 的输出列保持一致。
+     */
+    @Select("SELECT DISTINCT ON (t.site, t.gn) t.site, t.gn AS gate_no, t.tm, t.open_degree " +
+            "FROM ( " +
+            "  SELECT g.site, CASE WHEN g.gate_no = '0' THEN '1' ELSE g.gate_no END AS gn, g.tm, " +
+            "  TRUNC(g.open_degree, 2) AS open_degree " +
+            "  FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g " +
+            "  JOIN ( " +
+            "    SELECT g2.site, g2.gate_no, MAX(g2.tm) AS tm " +
+            "    FROM \"qixiao-apaas\".\"t_auto_hltgq_water_gate\" g2 " +
+            "    WHERE NOT (g2.gate_no = '0' AND g2.open_degree IS NULL) " +
+            "    GROUP BY g2.site, g2.gate_no " +
+            "  ) m ON g.site = m.site AND g.gate_no = m.gate_no AND g.tm = m.tm " +
+            "  INNER JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON g.site = s.id " +
+            "  WHERE NOT (g.gate_no = '0' AND g.open_degree IS NULL) AND s.epjutj LIKE '%#4#%' " +
+            ") t ORDER BY t.site, t.gn, t.tm DESC")
+    @Results({
+            @Result(column = "site", property = "site"),
+            @Result(column = "gate_no", property = "gateNo"),
+            @Result(column = "tm", property = "tm"),
+            @Result(column = "open_degree", property = "openDegree")
+    })
+    List<GateMonitor> selectLatestHoleTm();
 }

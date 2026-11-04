@@ -130,6 +130,8 @@ tbody tr:hover td{background:#fafafa}
 .empty{text-align:center;color:#bbb;padding:48px;font-size:14px}
 /* 站报文中断：最新采集时间滞后超过阈值时红色标识 */
 .tm-stale{color:#ff4d4f;font-weight:600}
+/* 累计水量截止时间小字：采集时间对齐闸门监测页、且流量表停更时，标注累计值实际统计到的时刻 */
+.td-sub{font-size:12px;color:#999;line-height:1.4;margin-top:2px;white-space:nowrap}
 .act-btn{background:none;border:none;cursor:pointer;padding:0;font-size:14px;color:#1677ff;transition:opacity .2s}
 .act-btn:hover{opacity:.7}
 
@@ -825,11 +827,12 @@ async function loadList() {
     const qs = buildListParams().toString();
     const data = await fetchJson(`${API}/flow-monitor/monitoring${qs ? `?${qs}` : ''}`);
     const list = Array.isArray(data) ? data : [];
-    // 最新流量已中断的站点（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新）：瞬时流量不再展示，
-    // 避免历史残留值被当成当前值（后端 monitoring 已按同一在线口径置空，此处按页面时间规则兜底）；
-    // 累计流量为最后一次成功计算的历史值，保留展示，同行采集时间即累计截止时间
+    // 瞬时流量是否展示只看后端下发的 isOnline（流量数据是否在线，按流量表时间判定）：
+    // 采集时间 tm 已对齐闸门监测页，闸门停更时 tm 会变旧，不能再用 tm 反过来判流量断联，
+    // 否则闸门表停更而流量正常的站点会被误置空。累计流量为最后一次成功计算的历史值，保留展示；
+    // 采集时间被后端对齐到闸门监测页时，该行累计水量下方的小字「截至 …」即累计值实际统计到的时刻
     list.forEach(r => {
-      if (r.isOnline === false || isStaleTm(r.tm, r.stnm)) {
+      if (r.isOnline === false) {
         r.q = null;
       }
     });
@@ -865,7 +868,9 @@ async function reset() {
   await loadList();
 }
 
-/** 列表渲染：采集时间列标红已暂停（后续可能恢复），恢复时还原 isStaleTm(r.tm, r.stnm) → class="tm-stale" 判定 */
+/** 列表渲染：采集时间列标红已暂停（后续可能恢复；tm 为设备最近上报时间，恢复时按 isStaleTm(r.tm, r.stnm)
+ *  → class="tm-stale" 判定）。闸站采集时间由后端对齐闸门监测页（同口径最新时刻）并下发 flowTm（流量数据截止时间），
+ *  此时累计水量下方标注「截至 …」，避免把历史累计值当成当前值 */
 function renderTable() {
   const tbody = $('tbl-body');
   if (!S.rows.length) {
@@ -877,8 +882,8 @@ function renderTable() {
       <td>${fmtN(r.stnm)}</td>
       <td>${r.stcd ? fmtN(r.stcd) : '--'}</td>
       <td>${fmtN3(r.q)}</td>
-      <td>${fmtN3(r.cumulativeFlow)}</td>
-      <td>${fmtTm(r.tm)}</td>
+      <td>${fmtN3(r.cumulativeFlow)}${r.flowTm && r.cumulativeFlow != null ? `<div class="td-sub" title="累计水量统计截止时间 ${esc(fmtTm(r.flowTm))}">截至 ${esc(fmtAxisTm(r.flowTm))}</div>` : ''}</td>
+      <td${r.flowTm ? ` title="设备最近上报时间（流量数据截止 ${esc(fmtTm(r.flowTm))}）"` : ''}>${fmtTm(r.tm)}</td>
       <td class="col-vol">${fmtN2(r.vol)}</td>
       <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
     </tr>
@@ -1154,6 +1159,8 @@ const FLOW_EXPORT_FIELDS = [
   { key: 'stcd', label: '站点编号' },
   { key: 'q', label: '瞬时流量 (m³/s)' },
   { key: 'tf', label: '累计水量 (万m³)' },
+  // 采集时间对齐闸门监测页、且流量表停更时，累计水量实际统计到的时刻（无需要时留空）
+  { key: 'flowTm', label: '累计截止时间' },
   { key: 'tm', label: '采集时间' },
 ];
 
@@ -1164,6 +1171,7 @@ function exportFlowList() {
     fields: FLOW_EXPORT_FIELDS,
     rows: list.map(r => ({
       stnm: r.stnm, stcd: r.stcd, q: fmtN3(r.q), tf: fmtN3(r.cumulativeFlow),
+      flowTm: r.flowTm ? fmtTm(r.flowTm) : '',
       tm: fmtTm(r.tm),
     })),
     filename: () => `流量监测_${fmtDate(new Date())}`,

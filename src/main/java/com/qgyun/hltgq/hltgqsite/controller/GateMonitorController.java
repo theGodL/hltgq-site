@@ -104,7 +104,8 @@ public class GateMonitorController {
      * 闸门历史数据
      * <p>按监测时间分页，根据 type 返回不同结构的数据。
      * <ul>
-     *   <li>开度：每行包含 tm + 各闸孔开度（open1, open2...）</li>
+     *   <li>开度：每行包含 tm + 各闸孔开度（open1, open2...）；开度>0 的孔附带动作区间
+     *       action{N}Start / action{N}End（End 为空 = 尚未关闸）与原始报文 action{N}Raw（开闸/关闸各一段）</li>
      *   <li>水位：每行包含 tm + 闸前水位（upZ）、闸后水位（downZ）</li>
      *   <li>流量：每行包含 tm + 瞬时流量（q，单位 m³/s）+ 累计流量（tf，单位 万m³，3 位小数截断），数据来自流量表 t_auto_hltgq_water_wt_nfo</li>
      * </ul>

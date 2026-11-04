@@ -1103,50 +1103,71 @@ function fmtHolesOpen(holes) {
 
 /**
  * 闸门动作区间文案（单行，列表导出与详情导出用；页面小字拆成两行展示）：
- * 已关闸 `开始~关闭 2026-10-29 18:00:00~2026-10-30 09:00:00`；
- * 未收到关闸动作 `开始 2026-10-30 09:32:28~进行中`。时间取动作表 action_time（设备时标）。
+ * 已关闸 `2026-11-04 11:03:49~2026-11-04 11:04:05`；
+ * 关闭报文未入库 `2026-11-04 11:03:49~暂无`。时间取动作表 action_time（设备时标）。
  */
 function fmtActionRange(start, end) {
   const s = fmtTm(start);
   if (s === '-') return '';
   const e = fmtTm(end);
-  return e === '-' ? `开始 ${s}~进行中` : `开始~关闭 ${s}~${e}`;
+  return `${s}~${e === '-' ? '暂无' : e}`;
 }
 
-/** 动作标签行：已关闸「开始~关闭」，未收到关闸动作「开始」 */
-function actionLabel(end) {
-  return fmtTm(end) === '-' ? '开始' : '开始~关闭';
+/**
+ * 动作标签行：固定「开启时间~关闭时间」。
+ * 动作表只记两个时刻——开启报文（_KQ 置 1）落库时间为开启时间，关闭报文（_GB 置 1）落库时间为关闭时间，
+ * 不存在“进行中”状态；关闭报文尚未入库时，时间行后半段显示「暂无」。
+ */
+function actionLabel() {
+  return '开启时间~关闭时间';
 }
 
-/** 动作时间行：`开始时间~结束时间` / `开始时间~进行中`（标签下方单独一行） */
+/** 动作时间行：`开启时间~关闭时间`，关闭报文未入库时后半段为「暂无」 */
 function actionTimes(start, end) {
   const s = fmtTm(start);
   if (s === '-') return '';
   const e = fmtTm(end);
-  return e === '-' ? `${s}~进行中` : `${s}~${e}`;
+  return `${s}~${e === '-' ? '暂无' : e}`;
 }
 
-/** 主列表开度单元格下方：各闸孔最近一次开闸区间（仅开度>0；标签一行、各孔时间逐行，旧接口单值兼容） */
+/**
+ * 主列表开度单元格下方：各闸孔最近一次开闸区间（仅开度>0；标签一行、各孔时间逐行，旧接口单值兼容）。
+ * 时间行不写“闸孔N”前缀，但与开度列孔位逐行一一对应：没有开度或没有动作记录的孔输出「-」占位，
+ * 开度列几个值下面就几行，客户不会把第二个孔的时间错当成第一个孔的。
+ * 标签固定一行「开启时间~关闭时间」，关闭报文未入库的孔由时间行末尾「暂无」体现。
+ */
 function gateActionSub(r) {
   if (!r) return '';
-  const holes = Array.isArray(r.holes) ? r.holes : [];
+  // 与 fmtHolesOpen 同口径：开度为 -999（闸孔不存在）的孔不参与，保证行数与开度列一致
+  const holes = (Array.isArray(r.holes) ? r.holes : [])
+    .filter(h => !(h != null && h.openDegree != null && h.openDegree !== '' && +h.openDegree === -999));
   if (!holes.some(h => h && h.openDegree != null && h.openDegree !== '' && +h.openDegree > 0)) return '';
-  const list = Array.isArray(r.actions) ? r.actions : [];
-  let items = list.map(a => ({ start: a && a.startTime, end: a && a.endTime }))
-    .filter(x => actionTimes(x.start, x.end) !== '');
-  // 旧接口兼容：仅单值字段（取开闸时间最新的孔）
-  if (!items.length && actionTimes(r.actionStartTime, r.actionEndTime) !== '') {
-    items = [{ start: r.actionStartTime, end: r.actionEndTime }];
-  }
-  if (!items.length) return '';
   const title = '闸门动作时间（设备时标）';
   const line = tm => `<div class="td-tm" title="${title}">${esc(tm)}</div>`;
-  // 各孔标签一致（如同时开闸）时标签只标一次，下面逐孔一行时间；进行中与已关闸混合时逐条输出标签+时间
-  const labels = Array.from(new Set(items.map(x => actionLabel(x.end))));
-  if (labels.length === 1) {
-    return line(labels[0]) + items.map(x => line(actionTimes(x.start, x.end))).join('');
+  const label = line('开启时间~关闭时间');
+
+  const byGate = new Map();
+  (Array.isArray(r.actions) ? r.actions : []).forEach(a => {
+    if (!a || a.gateNo == null) return;
+    const t = actionTimes(a.startTime, a.endTime);
+    if (t) byGate.set(String(a.gateNo), t);
+  });
+  // 旧接口兼容：只有单值字段（无孔号），无法定位孔位，单独展示一行
+  if (!byGate.size) {
+    const single = actionTimes(r.actionStartTime, r.actionEndTime);
+    return single ? label + line(single) : '';
   }
-  return items.map(x => line(actionLabel(x.end)) + line(actionTimes(x.start, x.end))).join('');
+
+  const used = new Set();
+  const rows = holes.map(h => {
+    const key = String(h && h.gateNo);
+    const t = byGate.get(key);
+    if (t) used.add(key);
+    return t || '-';
+  });
+  // 开度列没有对应孔位的动作（孔号归一差异等）追加在末尾，避免数据丢失
+  byGate.forEach((t, key) => { if (!used.has(key)) rows.push(t); });
+  return label + rows.map(line).join('');
 }
 
 /** 开度统计单元格下方：该闸孔覆盖该监测时刻的开闸区间（标签一行、时间一行；无动作记录或开度为 0 时不展示） */
@@ -1154,7 +1175,7 @@ function actionCellSub(start, end) {
   const times = actionTimes(start, end);
   if (!times) return '';
   const title = '闸门动作时间（设备时标）';
-  return `<div class="td-tm" title="${title}">${actionLabel(end)}</div>`
+  return `<div class="td-tm" title="${title}">${actionLabel()}</div>`
     + `<div class="td-tm" title="${title}">${esc(times)}</div>`;
 }
 
@@ -1782,13 +1803,66 @@ async function copyMsgText(text) {
   return ok;
 }
 
+/**
+ * 闸门动作原始报文：动作表 raw，按“开闸 / 关闸”拆成两条独立条目，
+ * 时间分别取动作表 action_time（开闸时刻 / 关闸时刻），方便直接对照。
+ * 动作时刻与 10 分钟快照不同频、常落在报文表窗口外，因此不依赖窗口，直接插入报文列表。
+ */
+function msgActionRaws(row) {
+  if (!row) return [];
+  const out = [];
+  Object.keys(row).forEach(k => {
+    const m = /^action(\d+)Raw$/.exec(k);
+    if (!m || !row[k]) return;
+    const n = m[1];
+    // 后端拼装格式：`开闸：{...}；关闸：{...}`（未收到关闸动作时只有开闸一段）
+    String(row[k]).split(/[；;](?=\s*(?:开闸|关闸)：)/).forEach((seg, seq) => {
+      const mm = /^\s*(开闸|关闸)：([\s\S]*)$/.exec(seg);
+      const isOpen = !mm || mm[1] !== '关闸';
+      const body = mm ? mm[2] : seg;
+      out.push({
+        gateNo: +n || 0,
+        seq,
+        item: {
+          type: 'raw',
+          tag: `闸门${isOpen ? '开启' : '关闭'}报文 · ${n}#孔`,
+          frame: null, tm: null,
+          sendtm: (isOpen ? row['action' + n + 'Start'] : row['action' + n + 'End']) || null,
+          timeLabel: isOpen ? '开启时间' : '关闭时间',
+          afn: null,
+          msgText: body.trim(),
+        },
+      });
+    });
+  });
+  return out.sort((a, b) => a.gateNo - b.gateNo || a.seq - b.seq).map(x => x.item);
+}
+
+/**
+ * 按监测时刻回查开度统计行：水位/流量类型的统计行不带 action{N}Raw，
+ * 点开报文时补查一次，使弹窗里的动作原始报文与页面「闸门动作时间」同源同口径
+ * （闸门关着时开度统计行本就不带动作信息，这里同样不补）。
+ */
+async function fetchActionRawRow(siteId, tm) {
+  if (!siteId || !tm) return null;
+  const p = new URLSearchParams({
+    siteId, type: 'opening', page: '1', size: '10',
+    startTime: String(tm), endTime: String(tm),
+  });
+  const res = await fetch(`${API}/gate-monitor/history?${p}`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const recs = Array.isArray(data?.records) ? data.records : [];
+  return recs.find(r => String(r.tm) === String(tm)) || null;
+}
+
 function renderMsgList(list, row) {
   const box = $('msg-body');
   if (!list.length) {
     box.innerHTML = `<div class="msg-empty">监测时间 ${esc(fmtTm(row.tm))} 前后窗口内无报文入库</div>`;
     return;
   }
-  box.innerHTML = `<div class="msg-tip">共 ${list.length} 条。以下为数据库中该时刻入库的原始报文（查询窗口：监测时间前 1 分钟 ~ 后 2 分钟），可复制提供给设备厂家核对。
+  box.innerHTML = `<div class="msg-tip">共 ${list.length} 条。含该时刻窗口内入库的报文，以及闸门开启/关闭动作的原始报文（动作时刻与监测快照不同频，不受窗口限制），可复制提供给设备厂家核对。
       <button type="button" class="msg-copy" data-copy-all style="margin-left:8px;vertical-align:middle">复制全部</button></div>
     <div class="msg-list">` + list.map((m, i) => {
     const isFrame = m.type === 'frame';
@@ -1796,8 +1870,8 @@ function renderMsgList(list, row) {
     return `<div class="msg-item">
         <div class="msg-item-hd">
           <span class="msg-tag${isFrame ? ' frame' : ''}">${esc(isFrame ? '原始帧' : (m.tag || '报文'))}</span>
-          <span class="msg-meta">入库 ${esc(fmtTm(m.tm))}</span>
-          ${m.sendtm ? `<span class="msg-meta">设备时间 ${esc(fmtTm(m.sendtm))}</span>` : ''}
+          ${m.tm ? `<span class="msg-meta">入库 ${esc(fmtTm(m.tm))}</span>` : ''}
+          ${m.sendtm ? `<span class="msg-meta">${esc(m.timeLabel || '设备时间')} ${esc(fmtTm(m.sendtm))}</span>` : ''}
           ${m.afn !== null && m.afn !== undefined ? `<span class="msg-meta">AFN ${esc(m.afn)}</span>` : ''}
           <button type="button" class="msg-copy" data-copy="${i}">复制</button>
         </div>
@@ -1817,8 +1891,9 @@ function renderMsgList(list, row) {
     copyAll.addEventListener('click', async () => {
       const text = list.map(m => {
         const isFrame = m.type === 'frame';
-        const head = `[${isFrame ? '原始帧' : (m.tag || '报文')}] 入库 ${fmtTm(m.tm)}`
-          + (m.sendtm ? ` 设备时间 ${fmtTm(m.sendtm)}` : '')
+        const head = `[${isFrame ? '原始帧' : (m.tag || '报文')}]`
+          + (m.tm ? ` 入库 ${fmtTm(m.tm)}` : '')
+          + (m.sendtm ? ` ${m.timeLabel || '设备时间'} ${fmtTm(m.sendtm)}` : '')
           + (m.afn !== null && m.afn !== undefined ? ` AFN ${m.afn}` : '');
         return head + '\n' + (isFrame ? (m.frame || '') : prettyMsgText(m.msgText));
       }).join('\n\n');
@@ -1838,7 +1913,13 @@ async function openMsgModal(idx) {
     const res = await fetch(`${API}/gate-monitor/messages?${p}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    renderMsgList(Array.isArray(data) ? data : [], row);
+    // 闸门动作原始报文排在前面：动作时刻与快照不同频、常落在报文窗口外，
+    // 直接取该时刻开度统计行的 action{N}Raw；当前行不是开度类型时回查一次
+    let raws = msgActionRaws(row);
+    if (!raws.length) {
+      raws = msgActionRaws(await fetchActionRawRow(S.current.siteId, row.tm));
+    }
+    renderMsgList(raws.concat(Array.isArray(data) ? data : []), row);
   } catch (e) {
     console.error(e);
     $('msg-body').innerHTML = '<div class="msg-empty">报文加载失败，请重试</div>';
@@ -1948,6 +2029,7 @@ function mergeGateHistoryRows(byType, checked) {
   const keys = new Set(checked.map(f => f.key));
   const openKeys = [...keys].filter(k => /^open\d+$/.test(k));
   const actionKeys = [...keys].filter(k => /^action\d+$/.test(k));
+  const rawKeys = [...keys].filter(k => /^action\d+Raw$/.test(k));
   const map = new Map();
   const slot = tm => {
     const key = String(tm);
@@ -1961,7 +2043,7 @@ function mergeGateHistoryRows(byType, checked) {
       o.downZ = fmtN2(r.downZ);
     });
   }
-  if (openKeys.length || actionKeys.length) {
+  if (openKeys.length || actionKeys.length || rawKeys.length) {
     (byType.opening || []).forEach(r => {
       const o = slot(r.tm);
       openKeys.forEach(k => {
@@ -1971,6 +2053,10 @@ function mergeGateHistoryRows(byType, checked) {
       actionKeys.forEach(k => {
         const range = fmtActionRange(r['action' + k.slice(6) + 'Start'], r['action' + k.slice(6) + 'End']);
         if (range) o[k] = range;
+      });
+      // 原始报文：与操作时间同源的 action{N}Raw（动作表 raw，开闸/关闸各一段）
+      rawKeys.forEach(k => {
+        if (r[k]) o[k] = r[k];
       });
     });
   }
@@ -1992,6 +2078,7 @@ function exportGateHistory() {
   cols.forEach(n => {
     fields.push({ key: 'open' + n, label: `开度${n} (m)` });
     fields.push({ key: 'action' + n, label: `开度${n}操作时间` });
+    fields.push({ key: 'action' + n + 'Raw', label: `开度${n}原始报文`, checked: false });
   });
   fields.push({ key: 'upZ', label: '闸前水位 (m)' });
   fields.push({ key: 'downZ', label: '闸后水位 (m)' });
@@ -2009,9 +2096,10 @@ function exportGateHistory() {
       const keys = new Set(checked.map(f => f.key));
       const openKeys = [...keys].filter(k => /^open\d+$/.test(k));
       const actionKeys = [...keys].filter(k => /^action\d+$/.test(k));
+      const rawKeys = [...keys].filter(k => /^action\d+Raw$/.test(k));
       const byType = {};
       if (keys.has('upZ') || keys.has('downZ')) byType.waterLevel = await fetchAllGateHistory('waterLevel');
-      if (openKeys.length || actionKeys.length) byType.opening = await fetchAllGateHistory('opening');
+      if (openKeys.length || actionKeys.length || rawKeys.length) byType.opening = await fetchAllGateHistory('opening');
       if (keys.has('q') || keys.has('tf')) byType.flow = await fetchAllGateHistory('flow');
       return mergeGateHistoryRows(byType, checked);
     },

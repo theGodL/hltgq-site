@@ -37,8 +37,14 @@ public class FlowMonitoringVO {
     /** 站点纬度（站点表 bviiio_y），档案缺失为 null */
     private BigDecimal lat;
 
-    /** 监测时间 */
+    /** 监测时间（实时列表口径：闸门监测页同时展示的站点取闸门页同一口径的最新采集时刻，
+     *  纯流量站取流量表最新记录时间） */
     private LocalDateTime tm;
+
+    /** 流量数据截止时间：仅当 tm 已对齐为闸门采集时间、且流量表停更（已断联）时输出，
+     *  为流量表最后一条记录的时间，即累计水量的统计截止时刻（历史值不能冒充当前值） */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private LocalDateTime flowTm;
 
     /** 流量 (m³/s) */
     private BigDecimal q;
@@ -52,8 +58,11 @@ public class FlowMonitoringVO {
     /** 电压 (V)，取关联电压表 t_auto_hltgq_water_vol_info 最新值 */
     private BigDecimal vol;
 
-    /** 在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）。
-     *  仅实时列表接口（monitoring）评估，历史查询等场景不输出 */
+    /** 流量在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则按流量表最新记录时间断联判定
+     *  （MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）。
+     *  <p>注意：判定依据是流量表时间，不是 tm——tm 对闸站已对齐为闸门监测页的采集时间，
+     *  闸门正常而流量停摆的站点仍为 false。前端瞬时流量是否展示只看本字段。
+     *  <p>仅实时列表接口（monitoring）评估，历史查询等场景不输出 */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Boolean isOnline;
 

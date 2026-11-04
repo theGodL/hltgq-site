@@ -594,8 +594,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     /**
      * 开度透视：按监测时间分组，每个闸孔号作为独立列（open1, open2, open3...），q 为站点流量；
      * 开度>0 时附加该孔的动作区间：优先覆盖该监测时刻的区间 [open, close)，无覆盖
-     *（快照间隔大于单次开闸时长）时取该时刻前 24 小时内最近一次开闸，附加
-     * action{N}Start / action{N}End（结束为空 = 尚未关闸/进行中），供页面在开度值下方展示操作起止。
+     * （快照间隔大于单次开闸时长）时取该时刻前 24 小时内最近一次开闸，附加
+     * action{N}Start / action{N}End（结束为空 = 尚未关闸/进行中），供页面在开度值下方展示操作起止；
+     * 同时输出 action{N}Raw = 该区间对应的动作表原始报文（开闸/关闸各一段），供导出核对。
      */
     private List<Map<String, Object>> pivotOpening(List<GateMonitor> rows,
                                                    Map<String, List<ActionInterval>> intervalsByGateNo) {
@@ -618,6 +619,10 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                         record.put("action" + r.getGateNo() + "Start", interval.open.format(fmt));
                         record.put("action" + r.getGateNo() + "End",
                                 interval.close == null ? null : interval.close.format(fmt));
+                        String raw = joinActionRaw(interval);
+                        if (raw != null) {
+                            record.put("action" + r.getGateNo() + "Raw", raw);
+                        }
                     }
                 }
             }
@@ -649,7 +654,9 @@ public class GateMonitorServiceImpl implements GateMonitorService {
                     continue;
                 }
                 result.computeIfAbsent(gateNo, k -> new ArrayList<>())
-                        .add(new ActionInterval(open, parseActionTime(row.get("close_time"))));
+                        .add(new ActionInterval(open, parseActionTime(row.get("close_time")),
+                                ValueConvertUtils.str(row.get("open_raw")),
+                                ValueConvertUtils.str(row.get("close_raw"))));
             }
         } catch (Exception ex) {
             // 动作表不可用（未建表/无权限等）时降级：开度统计照常返回，只是不展示操作时间
@@ -726,14 +733,37 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         }
     }
 
+    /**
+     * 开闸区间对应的原始报文（动作表 raw：MQTT 点位增量，如
+     * {"names":["QSDZ_ZM1_KQ.PV"],"vals":["1"],"updatetime":[...]}）：
+     * 开闸、关闸各一段；未收到关闸动作时只有开闸一段。两段都为空返回 null（该行不输出该键）。
+     */
+    private static String joinActionRaw(ActionInterval interval) {
+        StringBuilder sb = new StringBuilder();
+        if (interval.openRaw != null && !interval.openRaw.trim().isEmpty()) {
+            sb.append("开闸：").append(interval.openRaw.trim());
+        }
+        if (interval.closeRaw != null && !interval.closeRaw.trim().isEmpty()) {
+            if (sb.length() > 0) {
+                sb.append('；');
+            }
+            sb.append("关闸：").append(interval.closeRaw.trim());
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
     /** 闸门开闸区间（open → close；close 为 null = 尚未收到关闸动作） */
     private static final class ActionInterval {
         private final LocalDateTime open;
         private final LocalDateTime close;
+        private final String openRaw;
+        private final String closeRaw;
 
-        private ActionInterval(LocalDateTime open, LocalDateTime close) {
+        private ActionInterval(LocalDateTime open, LocalDateTime close, String openRaw, String closeRaw) {
             this.open = open;
             this.close = close;
+            this.openRaw = openRaw;
+            this.closeRaw = closeRaw;
         }
     }
 

@@ -2,7 +2,9 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qgyun.hltgq.hltgqsite.entity.GateMonitor;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
+import com.qgyun.hltgq.hltgqsite.mapper.GateMonitorMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
@@ -48,6 +50,9 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
     @Autowired
     private StStinfoMapper stStinfoMapper;
+
+    @Autowired
+    private GateMonitorMapper gateMonitorMapper;
 
     @Autowired
     private StationSortService stationSortService;
@@ -184,15 +189,127 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
             boolean online = StationStatusUtils.isZebpsuOnline(r.getZebpsu())
                     && !StationStatusUtils.isStale(r.getTm(), r.getStnm());
             r.setIsOnline(online);
-            // 断联站点瞬时流量不展示（历史值不能冒充当前值）；累计保留，tm 即截止时间。
+            // 断联站点瞬时流量不展示（历史值不能冒充当前值）；累计保留，其统计截止时间由 flowTm 承载
+            // （采集时间对齐闸门监测页时，见下方）。
             // 三维等外部接口复用本方法，口径统一收在后端，避免各消费方自行判断
             if (!online) {
                 r.setQ(null);
             }
         });
+        // 闸站采集时间对齐闸门监测页：仅「各站最新一条」口径（未传时间范围）适用；
+        // 带时间范围时 tm 是区间内末条，两页所选区间未必相同，不做替换
+        if (startTime == null && endTime == null) {
+            applyGateSiteCollectTime(rows);
+        }
         // 站点排序配置（流量监测类型）：已配置站点按配置顺序，未配置站点保持 SQL 默认顺序排在其后；
         // 站点标识 = 站点管理主键（档案缺失时为 null，该行保持默认位置）
         return stationSortService.applyOrder("flow", rows, FlowMonitoringVO::getSiteId);
+    }
+
+    /**
+     * 闸站采集时间对齐：在闸门监测页同时出现的站点（档案监测类型含闸门 #4# 且闸孔最新记录未被
+     * -999 全部剔除），采集时间直接取闸门监测页同一口径的最新时刻，保证两个页面显示一致。
+     * <p>背景：平台侧流量计算停摆时（如双庙湖节制闸、南山寺节制闸），流量表不再新增而设备仍在正常上报，
+     * 采集时间会长期停在最后一次成功计算的时刻，与闸门监测页明显不一致，容易被误读为站点离线。
+     * <p>纯流量站（闸门监测页不显示）保持流量表时间不变。
+     * <p>代价：闸门表停更时采集时间会跟随闸门页回退到更早的时刻（例如闸门 11:56:46、流量 11:57:00，
+     * 显示 11:56:46），不做「只向前对齐」——两页一致优先，且该列已作为设备最近上报时间展示。
+     * <p>流量表已停更时，原流量时间转入 flowTm，供前端标注累计水量的统计截止时刻；
+     * 流量正常时两表时间通常相同或仅差几十秒，累计仍是当前值，不标注。
+     */
+    private void applyGateSiteCollectTime(List<FlowMonitoringVO> rows) {
+        Map<String, LocalDateTime> gateTm = gateCollectTm();
+        if (gateTm.isEmpty()) {
+            return;
+        }
+        rows.forEach(r -> {
+            String siteId = r.getSiteId();
+            if (siteId == null || siteId.trim().isEmpty()) {
+                return;
+            }
+            LocalDateTime tm = gateTm.get(siteId);
+            if (tm == null || tm.equals(r.getTm())) {
+                return;
+            }
+            // 断联判定基于替换前的流量表时间（r.tm 此时仍是流量时间；isOnline 已在更早处按同一时间算过）
+            if (StationStatusUtils.isStale(r.getTm(), r.getStnm())) {
+                r.setFlowTm(r.getTm());
+            }
+            r.setTm(tm);
+        });
+    }
+
+    /**
+     * 闸门采集时间缓存快照：取数结果与本次取数时刻整体替换（volatile 安全发布，读侧只会看到
+     * 「旧结果+旧时间」或「新结果+新时间」），避免 Map 与时间戳分两个 volatile 更新被并发读到不一致的组合。
+     */
+    private static final class GateCollectTmSnapshot {
+        static final GateCollectTmSnapshot EMPTY =
+                new GateCollectTmSnapshot(Collections.emptyMap(), 0L);
+
+        final Map<String, LocalDateTime> tmBySite;
+        final long fetchedAt;
+
+        GateCollectTmSnapshot(Map<String, LocalDateTime> tmBySite, long fetchedAt) {
+            this.tmBySite = tmBySite;
+            this.fetchedAt = fetchedAt;
+        }
+    }
+
+    /** 闸门数据按 10 分钟批次入库，60 秒缓存不影响展示时效；避免每次列表请求都全量聚合闸门表 33 万行（单次约 0.5s） */
+    private static final long GATE_COLLECT_TM_CACHE_MS = 60_000L;
+
+    private volatile GateCollectTmSnapshot gateCollectTmSnapshot = GateCollectTmSnapshot.EMPTY;
+
+    /** 刷新锁：缓存过期时只放一个请求回源，其余请求等锁后直接复用新快照（避免并发峰值同时全表聚合） */
+    private final Object gateCollectTmLock = new Object();
+
+    /**
+     * 闸门监测页各站最新采集时间（60 秒缓存，过期后单线程回源）。
+     * <p>取数口径与闸门监测列表完全同构：各闸孔最新一条 → 整孔剔除开度 -999（设备不存在）→ 取各站最大 tm；
+     * 全部闸孔都被剔除的站点与闸门页一样不返回（该站在流量页保持流量表时间）。
+     * <p>回源异常时发布空快照并同样缓存 60 秒：故障期间采集时间保持流量表时间、列表照常返回，
+     * 且不会每个请求都重试一次失败的全表聚合（WARN 每 60 秒最多一条）。
+     */
+    private Map<String, LocalDateTime> gateCollectTm() {
+        long now = System.currentTimeMillis();
+        GateCollectTmSnapshot snapshot = gateCollectTmSnapshot;
+        if (now - snapshot.fetchedAt < GATE_COLLECT_TM_CACHE_MS) {
+            return snapshot.tmBySite;
+        }
+        synchronized (gateCollectTmLock) {
+            now = System.currentTimeMillis();
+            snapshot = gateCollectTmSnapshot;
+            if (now - snapshot.fetchedAt < GATE_COLLECT_TM_CACHE_MS) {
+                return snapshot.tmBySite;
+            }
+            Map<String, LocalDateTime> latest = new HashMap<>();
+            try {
+                for (GateMonitor hole : gateMonitorMapper.selectLatestHoleTm()) {
+                    // -999 = 闸孔不存在：整孔剔除（与闸门监测列表同一判定）
+                    if (hole.getTm() == null || DeviceValueUtils.isMissing(hole.getOpenDegree())) {
+                        continue;
+                    }
+                    String site = hole.getSite();
+                    if (site == null) {
+                        continue;
+                    }
+                    LocalDateTime prev = latest.get(site);
+                    if (prev == null || hole.getTm().isAfter(prev)) {
+                        latest.put(site, hole.getTm());
+                    }
+                }
+            } catch (Exception ex) {
+                // 闸门表不可用（未建表/无权限/类型差异）时降级：采集时间保持流量表时间，列表照常返回
+                log.warn("闸门采集时间取数失败，采集时间保持流量表时间：{}", ex.toString());
+                gateCollectTmSnapshot = new GateCollectTmSnapshot(Collections.emptyMap(), now);
+                return Collections.emptyMap();
+            }
+            // 空结果同样发布：闸门表确实无数据时不必每个请求都重查一遍
+            Map<String, LocalDateTime> result = Collections.unmodifiableMap(latest);
+            gateCollectTmSnapshot = new GateCollectTmSnapshot(result, now);
+            return result;
+        }
     }
 
     @Override
