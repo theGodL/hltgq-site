@@ -56,6 +56,8 @@ public interface ExternalMapper {
      * <p>水位类型（typeCode = '#1#'）只返回通用水位站：含 #1# 但排除闸站（epjutj 含 #4#）。
      * 闸站的水位是闸前 / 闸后实测值，统一由 type=4 闸门列表提供，同一个站不在两个页面重复展示；
      * 其余类型不受影响（同时登记 #3# / #5# 等类型的闸站在对应类型列表里照常出现）。
+     * <p>typeCode 为 null = 全量档案清单（与平台 kjximffu 无参数同口径，不做监测类型过滤；
+     * 仅排除 epjutj 为空的管理所/单位等非监测站记录）。
      */
     @Select("<script>" +
             "SELECT s.id AS id, s.iofhpi AS iofhpi, s.zzkaec AS zzkaec, " +
@@ -75,9 +77,13 @@ public interface ExternalMapper {
             "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_knc3g_egvnhw\" c ON s.ywvyds = c.id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" cu ON s.created_by = cu.id " +
             "LEFT JOIN \"qixiao-apaas\".\"t_apaas_uc_user\" uu ON s.updated_by = uu.id " +
-            "WHERE s.epjutj LIKE CONCAT('%', #{typeCode}, '%') " +
+            "<where>" +
+            "<if test='typeCode != null'>AND s.epjutj LIKE CONCAT('%', #{typeCode}, '%') </if>" +
+            // 全量模式排除未登记监测类型的档案行（管理所/单位等组织记录，epjutj 为空；与平台全量 220 条同口径）
+            "<if test='typeCode == null'>AND s.epjutj IS NOT NULL </if>" +
             "<if test='typeCode != null and typeCode.equals(\"#1#\")'>AND s.epjutj NOT LIKE '%#4#%' </if>" +
             "<if test='name != null and name != \"\"'>AND s.zzkaec LIKE CONCAT('%', #{name}, '%') </if>" +
+            "</where>" +
             "ORDER BY s.iofhpi" +
             "</script>")
     List<Map<String, Object>> selectArchiveByType(@Param("typeCode") String typeCode,

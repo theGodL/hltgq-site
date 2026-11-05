@@ -18,6 +18,7 @@ import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateActionVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateCumulativeFlowVO;
+import com.qgyun.hltgq.hltgqsite.vo.GateFlowHistoryPage;
 import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
@@ -563,15 +564,18 @@ public class GateMonitorServiceImpl implements GateMonitorService {
 
     /**
      * 流量历史：数据来自流量表 t_auto_hltgq_water_wt_nfo（site=闸站UUID，stcd 或 site 匹配）
-     * 每行返回 tm（监测日期）+ q（瞬时流量 m³/s）+ tf（累计流量 万m³，3 位小数截断）
+     * 每行返回 tm（监测日期）+ q（瞬时流量 m³/s）+ tf（累计流量 万m³，3 位小数截断）。
+     * <p>查询区间无数据时附带 latestFlowTm（该站最近一条流量数据时间）：流量表由平台侧计算写入，
+     * 停更期内按当天查询必然为空，页面据此提示“之后未再更新”，避免被误判为系统故障。
      */
     private Page<Map<String, Object>> flowHistory(String siteId, LocalDateTime startTime, LocalDateTime endTime,
                                                   long page, long size) {
-        Page<Map<String, Object>> result = new Page<>(page, size);
+        GateFlowHistoryPage result = new GateFlowHistoryPage(page, size);
         long total = waterFlowMapper.selectHistoryCount(siteId, startTime, endTime);
         result.setTotal(total);
         if (total == 0) {
             result.setRecords(Collections.emptyList());
+            result.setLatestFlowTm(latestFlowTm(siteId));
             return result;
         }
         int offset = (int) ((page - 1) * size);
@@ -589,6 +593,19 @@ public class GateMonitorServiceImpl implements GateMonitorService {
         }
         result.setRecords(records);
         return result;
+    }
+
+    /** 单站最近一条流量数据时间（yyyy-MM-dd HH:mm:ss）：取数失败返回 null，不影响历史分页正常返回 */
+    private String latestFlowTm(String siteId) {
+        if (siteId == null || siteId.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return waterFlowMapper.selectLatestFlowTmBySite(siteId.trim());
+        } catch (Exception ex) {
+            log.warn("闸门流量最近数据时间取数失败（站点 {}）：{}", siteId, ex.toString());
+            return null;
+        }
     }
 
     /**

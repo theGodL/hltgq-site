@@ -187,6 +187,19 @@ public interface WaterFlowMapper {
             @Param("endTime") LocalDateTime endTime);
 
     /**
+     * 单站最近一条流量数据时间（yyyy-MM-dd HH:mm:ss，无记录返回 null）
+     * <p>用于“查询区间无数据”时判断该站流量是否已停更（平台侧计算停摆时流量表不再新增，
+     * 而闸门表仍在正常上报）。走 (site, tm DESC) 索引点查 LIMIT 1，实测库内约 0.1ms。
+     *
+     * @param siteId 站点 UUID（站点档案 id = 流量表 site）
+     */
+    @Select("SELECT to_char(f.tm, 'YYYY-MM-DD HH24:MI:SS') AS latest_tm " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_wt_nfo\" f " +
+            "WHERE f.site = #{siteId} " +
+            "ORDER BY f.tm DESC LIMIT 1")
+    String selectLatestFlowTmBySite(@Param("siteId") String siteId);
+
+    /**
      * 流量图表：各站在选中时间点 ±30 分钟内距时间点最近的瞬时流量（每站一条）
      * <p>站点标识 skey = COALESCE(stcd, site)：老站点用编号，MQTT 站点无 stcd（为 NULL）时回退到 site（UUID），
      * 故候选标识（测站编码 + 站点 UUID）一并传入，任一命中即可取数；

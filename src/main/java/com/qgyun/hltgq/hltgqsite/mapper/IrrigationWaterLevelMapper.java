@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Result;
 import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
 
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 
@@ -21,29 +22,30 @@ import java.util.Map;
 public interface IrrigationWaterLevelMapper {
 
     /**
-     * 分页 UNION 分支一 SQL（河道/水库站）：每站最新一条水位 + 1h 涨幅；
-     * 日期过滤由调用注解在 ${ew.customSqlSegment} 占位处注入；
-     * vol 走 LEFT JOIN LATERAL 按站点索引点查（原 DISTINCT ON 子查询在 Nested Loop 下会被
-     * 按行重复执行、每次全表扫描电压表，实测约 0.4s，改为每行一次索引取首条）
+     * 分页 UNION 分支一 SQL（河道/水库站）：每站最新一条水位 + 1h 涨幅。
+     * <p>站点表驱动 + 每站 LATERAL 点查最新一条（命中 (stcd, tm DESC) 索引），
+     * 原写法对 river_info 全表 GROUP BY STCD 再回表，表越大越慢；日期过滤下沉到 LATERAL 内。
+     * vol 走 LEFT JOIN LATERAL 按站点索引点查。
      */
     String RIVER_LATEST_SQL =
-            "SELECT r.STCD AS stcd, s.zzkaec AS stnm, s.id AS id, r.TM AS tm, " +
-            "CASE WHEN r.Z = -999 THEN NULL ELSE TRUNC(r.Z, 2) END AS z, " +
-            "CASE WHEN r.Z IN (-999, -9991) THEN NULL ELSE " +
-            "TRUNC(COALESCE((r.Z - (" +
-            "  SELECT r2.Z FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r2 " +
-            "  WHERE r2.STCD = r.STCD AND r2.TM &lt;= r.TM - INTERVAL '1 hour' AND r2.Z NOT IN (-999, -9991) " +
-            "  ORDER BY r2.TM DESC LIMIT 1" +
+            "SELECT r.stcd AS stcd, s.zzkaec AS stnm, s.id AS id, r.tm AS tm, " +
+            "CASE WHEN r.z = -999 THEN NULL ELSE TRUNC(r.z, 2) END AS z, " +
+            "CASE WHEN r.z IN (-999, -9991) THEN NULL ELSE " +
+            "TRUNC(COALESCE((r.z - (" +
+            "  SELECT r2.z FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r2 " +
+            "  WHERE r2.stcd = r.stcd AND r2.tm &lt;= r.tm - INTERVAL '1 hour' AND r2.z NOT IN (-999, -9991) " +
+            "  ORDER BY r2.tm DESC LIMIT 1" +
             ")) * 100, 0), 2) END AS rise1h, " +
             "fv.vol AS vol " +
-            "FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
-            "INNER JOIN (" +
-            "  SELECT STCD, MAX(TM) AS MaxTM " +
-            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info " +
-            "  ${ew.customSqlSegment} " +
-            "  GROUP BY STCD" +
-            ") rm ON r.STCD = rm.STCD AND r.TM = rm.MaxTM " +
-            "LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON r.STCD = s.iofhpi " +
+            "FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s " +
+            "INNER JOIN LATERAL (" +
+            "  SELECT r.stcd, r.tm, r.z " +
+            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
+            "  WHERE r.stcd = s.iofhpi " +
+            "  <if test='startTime != null'>AND r.tm &gt;= #{startTime} </if>" +
+            "  <if test='endTime != null'>AND r.tm &lt;= #{endTime} </if>" +
+            "  ORDER BY r.tm DESC LIMIT 1" +
+            ") r ON true " +
             "LEFT JOIN LATERAL (" +
             "  SELECT v.vol " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
@@ -54,9 +56,9 @@ public interface IrrigationWaterLevelMapper {
     /**
      * 分页 UNION 分支二 SQL（闸站）：每站最新一批有效闸前水位 up_z（哨兵 -999/-9991 预过滤），
      * 同一时刻多闸孔（gate_no）取一条；1h 涨幅取至少 1 小时前最近有效值，无更早记录按 0。
-     * 最新批次改用「分组 MAX(tm) 聚合 + 点查回表 + DISTINCT ON 兜底」（原全表 DISTINCT ON 排序）、
-     * vol 改为 LEFT JOIN LATERAL 按站点索引点查（同分支一，原 DISTINCT ON 子查询会被按行重复执行）；
-     * 日期过滤仍由 ${ew.customSqlSegment} 注入聚合内层
+     * <p>站点表驱动 + 每站 LATERAL 点查最新一条（命中 (site, tm DESC) 索引 idx_gate_site_tm_latest），
+     * 原写法对 gate 全表 GROUP BY site 再回表（34 万行实测约 0.43s），改为每站一次索引点查；
+     * 日期过滤下沉到 LATERAL 内。
      */
     String GATE_LATEST_SQL =
             "SELECT s2.iofhpi AS stcd, s2.zzkaec AS stnm, s2.id AS id, gm.tm AS tm, " +
@@ -69,19 +71,14 @@ public interface IrrigationWaterLevelMapper {
             ")) * 100, 0), 2) END AS rise1h, " +
             "fv2.vol AS vol " +
             "FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s2 " +
-            "INNER JOIN (" +
-            "  SELECT DISTINCT ON (g3.site) g3.site, g3.tm, g3.up_z FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g3 " +
-            "  JOIN (" +
-            "    SELECT g0.site, MAX(g0.tm) AS tm FROM (" +
-            "      SELECT g.site, g.tm, g.up_z FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
-            "      ${ew.customSqlSegment} " +
-            "    ) g0 " +
-            "    WHERE g0.up_z IS NOT NULL AND g0.up_z NOT IN (-999, -9991) " +
-            "    GROUP BY g0.site" +
-            "  ) m ON m.site = g3.site AND m.tm = g3.tm " +
-            "  WHERE g3.up_z IS NOT NULL AND g3.up_z NOT IN (-999, -9991) " +
-            "  ORDER BY g3.site" +
-            ") gm ON gm.site = s2.id " +
+            "INNER JOIN LATERAL (" +
+            "  SELECT g.site, g.tm, g.up_z " +
+            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
+            "  WHERE g.site = s2.id AND g.up_z IS NOT NULL AND g.up_z NOT IN (-999, -9991) " +
+            "  <if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
+            "  <if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
+            "  ORDER BY g.tm DESC LIMIT 1" +
+            ") gm ON true " +
             "LEFT JOIN LATERAL (" +
             "  SELECT v.vol " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_vol_info v " +
@@ -92,19 +89,28 @@ public interface IrrigationWaterLevelMapper {
     /**
      * 分页查询：每个站点最新一条水位数据
      *
-     * @param dateWrapper 监测日期过滤条件（作用于确定"最新"的子查询）
-     * @param stcd        站点编号过滤（直接参数绑定，作用于外层结果），null 表示不过滤（全站模式仅返回监测类型含水位 #1# 的站点）
-     * @param limit       每页条数
-     * @param offset      偏移量
+     * @param startTime 监测开始时间（可选，下沉到各站 LATERAL 内）
+     * @param endTime   监测结束时间（可选，下沉到各站 LATERAL 内）
+     * @param stcd      站点编号过滤（直接参数绑定，作用于站点表），null 表示不过滤（全站模式仅返回监测类型含水位 #1# 的站点）
+     * @param limit     每页条数
+     * @param offset    偏移量
      */
     @Select("<script>" +
             RIVER_LATEST_SQL +
-            "<if test='stcd != null'>WHERE r.STCD = #{stcd} </if>" +
+            "<if test='stcd != null'>WHERE s.iofhpi = #{stcd} </if>" +
             "<if test='stcd == null'>WHERE s.epjutj LIKE '%#1#%' </if>" +
             "UNION ALL " +
             GATE_LATEST_SQL +
             "<if test='stcd != null'>WHERE s2.iofhpi = #{stcd} </if>" +
             "<if test='stcd == null'>WHERE s2.epjutj LIKE '%#1#%' </if>" +
+            // EXISTS 前置剪枝：先用站点索引判断该站是否存在有效闸前水位（无数据的站点直接跳过 LATERAL，
+            // 避免每站逆序扫 gate 全表）；不能用 (site, tm DESC) 索引时也能快速失败
+            "AND EXISTS (" +
+            "  SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_gate ge " +
+            "  WHERE ge.site = s2.id AND ge.up_z IS NOT NULL AND ge.up_z NOT IN (-999, -9991) " +
+            "  <if test='startTime != null'>AND ge.tm &gt;= #{startTime} </if>" +
+            "  <if test='endTime != null'>AND ge.tm &lt;= #{endTime} </if>" +
+            ") " +
             "AND NOT EXISTS (" +
             "  SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info rx WHERE rx.STCD = s2.iofhpi" +
             ") " +
@@ -121,48 +127,47 @@ public interface IrrigationWaterLevelMapper {
             @Result(column = "vol", property = "vol")
     })
     List<IrrigationWaterLevelVO> selectPage(
-            @Param("ew") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> dateWrapper,
+            @Param("startTime") Timestamp startTime,
+            @Param("endTime") Timestamp endTime,
             @Param("stcd") String stcd,
             @Param("limit") int limit,
             @Param("offset") int offset);
 
     /**
-     * 计数查询：符合条件的站点总数（与 selectPage 同口径：河道站 + 闸站 UNION）；
-     * 闸站「存在有效闸前水位」用分组聚合判定（原全表 DISTINCT ON），日期过滤在聚合内层注入
+     * 计数查询：符合条件的站点总数（与 selectPage 同口径：河道站 + 闸站 UNION）。
+     * <p>计数只判存在性，不需要算最新值：站点表驱动 + EXISTS 点查，避免对 river_info / gate 全表聚合
      */
     @Select("<script>" +
             "SELECT COUNT(*) FROM (" +
-            "  SELECT r.STCD AS stcd " +
-            "  FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
-            "  INNER JOIN (" +
-            "    SELECT STCD, MAX(TM) AS MaxTM " +
-            "    FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info " +
-            "    ${ew.customSqlSegment} " +
-            "    GROUP BY STCD" +
-            "  ) rm ON r.STCD = rm.STCD AND r.TM = rm.MaxTM " +
-            "  LEFT JOIN \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s ON r.STCD = s.iofhpi " +
-            "  <if test='stcd != null'>WHERE r.STCD = #{stcd} </if>" +
-            "  <if test='stcd == null'>WHERE s.epjutj LIKE '%#1#%' </if>" +
+            "  SELECT s.iofhpi AS stcd " +
+            "  FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s " +
+            "  WHERE <if test='stcd != null'>s.iofhpi = #{stcd} </if>" +
+            "        <if test='stcd == null'>s.epjutj LIKE '%#1#%' </if>" +
+            "  AND EXISTS (" +
+            "    SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
+            "    WHERE r.stcd = s.iofhpi " +
+            "    <if test='startTime != null'>AND r.tm &gt;= #{startTime} </if>" +
+            "    <if test='endTime != null'>AND r.tm &lt;= #{endTime} </if>" +
+            "  )" +
             "  UNION ALL " +
             "  SELECT s2.iofhpi AS stcd " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s2 " +
-            "  INNER JOIN (" +
-            "    SELECT g0.site FROM (" +
-            "      SELECT g.site, g.tm, g.up_z FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
-            "      ${ew.customSqlSegment} " +
-            "    ) g0 " +
-            "    WHERE g0.up_z IS NOT NULL AND g0.up_z NOT IN (-999, -9991) " +
-            "    GROUP BY g0.site" +
-            "  ) gm ON gm.site = s2.id " +
-            "  <if test='stcd != null'>WHERE s2.iofhpi = #{stcd} </if>" +
-            "  <if test='stcd == null'>WHERE s2.epjutj LIKE '%#1#%' </if>" +
+            "  WHERE <if test='stcd != null'>s2.iofhpi = #{stcd} </if>" +
+            "        <if test='stcd == null'>s2.epjutj LIKE '%#1#%' </if>" +
+            "  AND EXISTS (" +
+            "    SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
+            "    WHERE g.site = s2.id AND g.up_z IS NOT NULL AND g.up_z NOT IN (-999, -9991) " +
+            "    <if test='startTime != null'>AND g.tm &gt;= #{startTime} </if>" +
+            "    <if test='endTime != null'>AND g.tm &lt;= #{endTime} </if>" +
+            "  )" +
             "  AND NOT EXISTS (" +
             "    SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info rx WHERE rx.STCD = s2.iofhpi" +
             "  )" +
             ") t" +
             "</script>")
     long selectCount(
-            @Param("ew") com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> dateWrapper,
+            @Param("startTime") Timestamp startTime,
+            @Param("endTime") Timestamp endTime,
             @Param("stcd") String stcd);
 
     /**

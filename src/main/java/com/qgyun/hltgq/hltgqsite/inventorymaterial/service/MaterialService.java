@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -233,6 +234,22 @@ public class MaterialService {
         return materialMapper.selectById(id);
     }
 
+    /** 删除前关联检查（与 delete 同一口径）：返回是否可删除及阻止原因，供前端点击删除时预检。 */
+    public Map<String, Object> refs(String id, String scope) {
+        String key = requireText(id, "物资 id 不能为空");
+        MaterialPageItemVO existing = materialMapper.selectById(key);
+        if (existing == null) {
+            throw new IllegalArgumentException("物资不存在或已删除");
+        }
+        InventoryCategory.requireCategory(scope, existing.getCategory(),
+                "该物资不属于当前页面类别，无法删除");
+        List<String> reasons = deleteBlocks(key);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("deletable", reasons.isEmpty());
+        out.put("reasons", reasons);
+        return out;
+    }
+
     /** 删除（有台账或出入库流水引用时拒绝，保护历史数据）。 */
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id, String scope) {
@@ -243,18 +260,10 @@ public class MaterialService {
         }
         InventoryCategory.requireCategory(scope, existing.getCategory(),
                 "该物资不属于当前页面类别，无法删除");
-        if (materialMapper.countLedgerRefs(key) > 0) {
-            throw new IllegalArgumentException("该物资已有库存台账记录，不能删除");
-        }
-        if (materialMapper.countChangeRefs(key) > 0) {
-            throw new IllegalArgumentException("该物资已有出入库流水，不能删除");
-        }
-        // 单据视角由明细引用决定：被出入库/盘点明细引用时删除会让单据翻到另一侧视角
-        if (materialMapper.countOrderItemRefs(key) > 0) {
-            throw new IllegalArgumentException("该物资已被出入库单据引用，不能删除");
-        }
-        if (materialMapper.countStocktakeItemRefs(key) > 0) {
-            throw new IllegalArgumentException("该物资已被盘点单引用，不能删除");
+        List<String> blocks = deleteBlocks(key);
+        if (!blocks.isEmpty()) {
+            throw new IllegalArgumentException("物资「" + existing.getName() + "」已被业务数据引用（"
+                    + String.join("、", blocks) + "），不能删除");
         }
         materialMapper.delete(key);
         log.info("[物资目录] 删除：{}-{}（{}），类别={}，操作人={}",
@@ -263,6 +272,27 @@ public class MaterialService {
     }
 
     // ==================== 校验与工具 ====================
+
+    /**
+     * 删除阻止原因（空 = 可删除）：台账 / 出入库记录 / 盘点单。返回的是短标签，供前端拼成一句提示。
+     * <p>单据视角由明细引用决定：被出入库/盘点明细引用时删除会让单据翻到另一侧视角。
+     * <p>出入库流水与出入库单据明细对用户同属「出入库记录」，合并为一项，避免提示重复。
+     */
+    private List<String> deleteBlocks(String key) {
+        List<String> reasons = new ArrayList<>();
+        if (materialMapper.countLedgerRefs(key) > 0) {
+            reasons.add("库存台账");
+        }
+        boolean hasChange = materialMapper.countChangeRefs(key) > 0;
+        boolean hasOrderItem = materialMapper.countOrderItemRefs(key) > 0;
+        if (hasChange || hasOrderItem) {
+            reasons.add("出入库记录");
+        }
+        if (materialMapper.countStocktakeItemRefs(key) > 0) {
+            reasons.add("盘点单");
+        }
+        return reasons;
+    }
 
     /** 安全库存：空 → null；填写必须为数字（允许负号与小数，与目录历史写法一致）。 */
     private static String normalizeSafetyStock(String raw) {

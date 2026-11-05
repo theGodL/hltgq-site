@@ -305,13 +305,16 @@ public class ExternalService {
      * 关联对象按原 qx-api 补齐 ahieto.zzkaec 与 ywvyds.gfaegg（仅视频类型输出，其余类型结构不变）。
      * <p>视频类型额外排序（仅 #5# 生效，其余类型排序不变）：在线优先 → 有站点编号 → 有经纬度
      * → 花凉亭水库站点（上游）在前 → 站点编号升序；缺编号/缺经纬度的站点整体靠后。
-     * <p>非法 type 抛 IllegalArgumentException → 全局 400。
+     * <p>非法 type 抛 IllegalArgumentException → 全局 400；type 不传/空白 = 全量档案清单
+     * （与平台 kjximffu 无参数同口径）：不查任何实时值（各类型实时值 7 次批量查询串行约 2s），
+     * 行上 data=null、hasData=false、isOnline 按档案状态兜底，只做档案查询与拼装。
      *
-     * @param type 监测类型：1/2/3/4/5/7/8（另兼容 #N# 编码与语义串）
+     * @param type 监测类型：1/2/3/4/5/7/8（另兼容 #N# 编码与语义串）；null/空白 = 全量档案清单
      * @param name 站点名称模糊词，null/空白表示不筛选
      */
     public ExternalVO.StationMonitor stationMonitor(String type, String name) {
-        String typeCode = monitorTypeCode(type);
+        String trimmedType = type == null ? "" : type.trim();
+        String typeCode = trimmedType.isEmpty() ? null : monitorTypeCode(trimmedType);
         List<Map<String, Object>> archives = mapper.selectArchiveByType(typeCode, CheckUtils.trim(name));
         ExternalVO.StationMonitor vo = new ExternalVO.StationMonitor();
         if (archives.isEmpty()) {
@@ -598,6 +601,10 @@ public class ExternalService {
      * 视频 #5# 无站点排序配置，同样返回 null（保持档案默认顺序 + 在线优先）。
      */
     private String monitorSortType(String typeCode) {
+        // 全量档案模式（type 不传）无对应排序类型，保持档案默认顺序 ORDER BY iofhpi
+        if (typeCode == null) {
+            return null;
+        }
         switch (typeCode) {
             case "#1#":
                 return "waterLevel";
@@ -619,6 +626,11 @@ public class ExternalService {
      * 复用各监测接口的服务方法（空参 = 全量最新值；站点排序由本接口统一在档案行上应用）。
      */
     private Map<String, Map<String, Object>> loadMonitorData(String typeCode) {
+        // 全量档案模式（type 不传）不查实时值：7 类实时值各需一次批量查询，串行约 2s，
+        // 而全量接口只用于替代平台站点档案列表（平台无参数也不带实时值）
+        if (typeCode == null) {
+            return new HashMap<>();
+        }
         List<?> rows;
         switch (typeCode) {
             case "#1#":

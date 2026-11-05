@@ -190,6 +190,18 @@ tr.flash td{animation:flash 1s ease}
 .toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:var(--el-bg-color);color:var(--el-text-color-primary);font-size:13px;line-height:20px;padding:9px 16px;border-radius:var(--el-radius);border:1px solid var(--el-border-color-lighter);box-shadow:0 3px 6px -4px rgba(0,0,0,.12),0 6px 16px 0 rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s;z-index:3000;max-width:72%;text-align:center}
 .toast.show{opacity:1}
 .toast.err{color:var(--el-color-danger)}
+
+/* ===== 通用确认弹窗（与巡检/工单列表页一致） ===== */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2100;display:none;align-items:center;justify-content:center;padding:20px}
+.mask.show{display:flex}
+.dlg{width:min(880px,94vw);max-height:min(680px,88vh);background:var(--el-bg-color);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,.12)}
+.dlg-sm{width:min(440px,94vw)}
+.dlg-hd{height:56px;padding:0 24px;border-bottom:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.dlg-hd h3{font-size:16px;font-weight:500;color:var(--el-text-color-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg-bd{flex:1;min-height:0;overflow:auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+.dlg-ft{height:64px;padding:0 24px;border-top:1px solid var(--el-border-color-lighter);display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
+.dlg-ft .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 20px}
+.confirm-text{font-size:14px;line-height:22px;color:var(--el-text-color-primary);white-space:pre-wrap}
 </style>
 </head>
 <body>
@@ -298,6 +310,23 @@ tr.flash td{animation:flash 1s ease}
 </aside>
 
 <div class="toast" id="toast"></div>
+
+<!-- 通用确认弹窗（删除确认 / 无法删除提示） -->
+<div class="mask" id="cfm-mask">
+  <div class="dlg dlg-sm">
+    <div class="dlg-hd">
+      <h3 id="cfm-title">确认</h3>
+      <button class="icon-btn" id="cfm-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="dlg-bd"><div class="confirm-text" id="cfm-text"></div></div>
+    <div class="dlg-ft">
+      <button class="btn btn-default" id="cfm-cancel">取消</button>
+      <button class="btn btn-danger" id="cfm-ok">确定</button>
+    </div>
+  </div>
+</div>
 <script>
 /* ============================ 常量与状态 ============================ */
 const API = '/hltgq-site';
@@ -312,7 +341,8 @@ const S = {
   meta: null,
   page: 1, size: 10, total: 0, records: [],
   filter: { keyword: '', warehouseId: '' },
-  editingId: '', viewing: false, saving: false, listSeq: 0, flashKey: null
+  editingId: '', viewing: false, saving: false, listSeq: 0, flashKey: null,
+  confirmFn: null
 };
 
 const $ = id => document.getElementById(id);
@@ -804,16 +834,75 @@ async function onSave() {
   }
 }
 
+/* ============================ 通用确认弹窗 ============================ */
+function openConfirm(opt) {
+  $('cfm-title').textContent = opt.title || '提示';
+  $('cfm-text').textContent = opt.text || '';
+  const ok = $('cfm-ok');
+  ok.textContent = opt.okText || '确定';
+  ok.className = 'btn ' + (opt.okClass || 'btn-danger');
+  $('cfm-cancel').hidden = !!opt.hideCancel;
+  S.confirmFn = opt.onOk || null;
+  $('cfm-mask').classList.add('show');
+}
+
+function closeConfirm() {
+  $('cfm-mask').classList.remove('show');
+  S.confirmFn = null;
+}
+
+async function onConfirmOk() {
+  const fn = S.confirmFn;
+  if (typeof fn !== 'function') { closeConfirm(); return; }
+  const btn = $('cfm-ok');
+  if (btn.classList.contains('is-loading')) return;
+  btn.classList.add('is-loading');
+  btn.disabled = true;
+  try {
+    await fn();
+    closeConfirm();
+  } catch (e) {
+    showToast(e.message || '操作失败', true);
+  } finally {
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+  }
+}
+
 /* ============================ 删除 ============================ */
 async function onDelete(row) {
-  if (!window.confirm('确定删除物资「' + (row.name || row.code || '') + '」？删除后不可恢复。')) return;
+  const name = row.name || row.code || '';
+  // 删除前先做关联预检（后端同口径）：有台账/流水/单据引用时直接说明原因，不再弹确认后报错
+  let refs = null;
   try {
-    await api('/inventory-material/delete?' + qs({ id: row.id, scope: S.scope }), { method: 'POST' });
-    showToast('删除成功');
-    await loadList();
+    refs = await api('/inventory-material/refs?' + qs({ id: row.id, scope: S.scope }));
   } catch (e) {
-    showToast(e.message || '删除失败', true);
+    showToast(e.message || '删除检查失败', true);
+    return;
   }
+  if (!refs || refs.deletable === false) {
+    const used = (refs && refs.reasons) || [];
+    openConfirm({
+      title: '无法删除',
+      text: '物资「' + name + '」已被业务数据引用，不能删除'
+        + (used.length ? '\n引用内容：' + used.join('、') : ''),
+      okText: '知道了',
+      okClass: 'btn-primary',
+      hideCancel: true
+    });
+    return;
+  }
+  openConfirm({
+    title: '删除确认',
+    text: '确定删除物资「' + name + '」？\n删除后不可恢复。',
+    okText: '确定删除',
+    okClass: 'btn-danger',
+    onOk: async () => {
+      await api('/inventory-material/delete?' + qs({ id: row.id, scope: S.scope }), { method: 'POST' });
+      showToast('删除成功');
+      await loadList();
+    }
+  });
 }
 
 /* ============================ 初始化 ============================ */
@@ -873,6 +962,10 @@ function bindEvents() {
   $('btn-cancel').addEventListener('click', closeDrawer);
   $('btn-save').addEventListener('click', onSave);
   $('drawer-mask').addEventListener('click', closeDrawer);
+  $('cfm-ok').addEventListener('click', onConfirmOk);
+  $('cfm-cancel').addEventListener('click', closeConfirm);
+  $('cfm-close').addEventListener('click', closeConfirm);
+  $('cfm-mask').addEventListener('click', e => { if (e.target === $('cfm-mask')) closeConfirm(); });
   $('in-remark').addEventListener('input', () => {
     $('remark-count').textContent = String($('in-remark').value.length);
   });
@@ -882,6 +975,7 @@ function bindEvents() {
   });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
+    if ($('cfm-mask').classList.contains('show')) { closeConfirm(); return; }
     if ($('drawer').classList.contains('show')) { closeDrawer(); return; }
     if (document.querySelector('.sel.open')) closeAllSelects(null);
   });

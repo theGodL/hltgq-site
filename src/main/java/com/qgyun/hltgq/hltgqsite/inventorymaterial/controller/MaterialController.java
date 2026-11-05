@@ -112,6 +112,18 @@ public class MaterialController {
     }
 
     /**
+     * 删除前关联检查（与删除同口径）：是否可删除及阻止原因。
+     *
+     * @param id    物资 ID（必填）
+     * @param scope 页面视角（可选）：emergency 应急物资；不传/common = 常用物资
+     */
+    @GetMapping("/refs")
+    public Map<String, Object> refs(@RequestParam String id,
+                                    @RequestParam(required = false) String scope) {
+        return materialService.refs(id, scope);
+    }
+
+    /**
      * 删除（有台账/流水引用时拒绝）。
      *
      * @param id    物资 ID（必填）

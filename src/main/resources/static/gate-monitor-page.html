@@ -652,7 +652,7 @@ function waitTick(ms = 200) {
 
 const S = { page: 1, size: 20, total: 0, rows: [], allRows: [], current: null };
 const DETAIL = { holeNos: [], selected: [] }; // holeNos 原始 gateNo
-const HIST = { page: 1, size: 10, total: 0, rows: [], histType: 'waterLevel', openCols: [] };
+const HIST = { page: 1, size: 10, total: 0, rows: [], histType: 'waterLevel', openCols: [], flowLatest: null };
 let HIST_DEVICES = []; // [{id, gateNo, deviceName}] 备用
 let chart = null;
 let openChart = null;
@@ -1650,7 +1650,11 @@ function renderHistory() {
   const tbody = $('hist-body');
   const span = histColspan();
   if (!HIST.rows.length) {
-    tbody.innerHTML = `<tr><td colspan="${span}" class="empty">暂无数据</td></tr>`;
+    // 流量区间无数据但该站有历史流量：显示最近一次流量时间，说明之后未再更新（如平台侧计算停摆）
+    const tip = (HIST.histType === 'flow' && HIST.flowLatest)
+      ? `暂无数据（该站最近一次流量数据为 ${esc(HIST.flowLatest)}，之后未再更新）`
+      : '暂无数据';
+    tbody.innerHTML = `<tr><td colspan="${span}" class="empty">${tip}</td></tr>`;
     return;
   }
   const opTd = i => `<td><button class="act-btn" data-hist-msg="${i}">查看报文</button></td>`;
@@ -1752,6 +1756,15 @@ async function loadHistory() {
     HIST.page = data.current || HIST.page;
     HIST.size = data.size || HIST.size;
     HIST.rows = records;
+    // 流量区间无数据时接口附带该站最近一条流量时间：仅当查询截止时间不早于该时间时提示“之后未再更新”，
+    // 避免把“查询区间早于有数据时段”误判为停更
+    HIST.flowLatest = null;
+    if (HIST.histType === 'flow' && !records.length && !(data.total || 0) && data.latestFlowTm) {
+      const flowEnd = dateToEnd($('hist-end').value);
+      const endAt = flowEnd ? parseTm(flowEnd) : null;
+      const latestAt = parseTm(data.latestFlowTm);
+      if (!flowEnd || (endAt && latestAt && latestAt <= endAt)) HIST.flowLatest = String(data.latestFlowTm);
+    }
 
     if (HIST.histType === 'opening') {
       const fromApi = collectOpenColsFromRecords(records);
@@ -1765,6 +1778,7 @@ async function loadHistory() {
     console.error(e);
     HIST.rows = [];
     HIST.total = 0;
+    HIST.flowLatest = null;
     renderHistHead();
     $('hist-body').innerHTML = `<tr><td colspan="${histColspan()}" class="empty">数据加载失败，请重试</td></tr>`;
     renderHistPager();

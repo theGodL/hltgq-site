@@ -109,6 +109,10 @@ public class GateMonitorController {
      *   <li>水位：每行包含 tm + 闸前水位（upZ）、闸后水位（downZ）</li>
      *   <li>流量：每行包含 tm + 瞬时流量（q，单位 m³/s）+ 累计流量（tf，单位 万m³，3 位小数截断），数据来自流量表 t_auto_hltgq_water_wt_nfo</li>
      * </ul>
+     * <p>流量（type=flow）查询区间无数据时，响应额外携带 latestFlowTm（该站最近一条流量数据时间，
+     * 该站从未有流量数据时为 null）：流量表由平台侧计算写入，停更期内按当天查询必然为空，
+     * 页面据此提示“之后未再更新”，避免误判为系统故障。该值为站点全量最新时间、与查询区间无关，
+     * 展示提示前须与 endTime 比较（早于有数据时段时并非停更）。
      *
      * @param siteId    站点 UUID（可选，不传=全部站点）
      * @param type      数据类型："opening"（开度）、"waterLevel"（水位）或 "flow"（流量）

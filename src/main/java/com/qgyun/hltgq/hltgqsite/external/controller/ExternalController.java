@@ -92,6 +92,8 @@ public class ExternalController {
      * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
      * 每行 = 档案字段（原字段名）+ 该站实时监测值（平铺 + data 子对象）；站点顺序按「站点排序」配置输出。
      * <p>type：1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 5 视频 / 7 墒情 / 8 水质（兼容 #N# 编码与语义串）；非法值返回 400。
+     * **不传或空白 = 全量站点档案清单**（与平台 kjximffu 无参数同口径）：不查任何实时值（各类型实时值
+     * 串行查询约 2s），行上 hasData=false、isOnline 按档案状态兜底，响应与平台全量列表同量级但快数倍。
      * 水位类型（1）只返回通用水位站：档案含 #1# 但排除闸站（#4#）——闸站水位是闸前 / 闸后实测值，
      * 只由 type=4 提供，同一个站不在两个列表重复展示；其余类型不受影响。
      * 视频类型（5）为站点档案清单、无实时值，用于替代原 qx-api 视频站点列表
@@ -107,7 +109,7 @@ public class ExternalController {
      * 响应信封与原 qx-api 一致（success/status/data/msg/...）。
      */
     @GetMapping("/station-monitor")
-    public ExternalVO.StationMonitor stationMonitor(@RequestParam String type,
+    public ExternalVO.StationMonitor stationMonitor(@RequestParam(required = false) String type,
                                                     @RequestParam(required = false) String name) {
         return externalService.stationMonitor(type, name);
     }

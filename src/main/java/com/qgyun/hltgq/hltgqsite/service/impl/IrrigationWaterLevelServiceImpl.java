@@ -43,27 +43,12 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
                                               String stcd,
                                               LocalDateTime startTime,
                                               LocalDateTime endTime) {
-        // ew1: 日期过滤（作用于子查询中确定"最新"记录的范围）
-        QueryWrapper<?> dateWrapper = new QueryWrapper<>();
-        if (startTime != null) {
-            dateWrapper.ge("TM", Timestamp.valueOf(startTime));
-        }
-        if (endTime != null) {
-            dateWrapper.le("TM", Timestamp.valueOf(endTime));
-        }
+        // 时间过滤：下沉到各站「取最新一条」的 LATERAL 内（空表示不限）
+        Timestamp start = startTime == null ? null : Timestamp.valueOf(startTime);
+        Timestamp end = endTime == null ? null : Timestamp.valueOf(endTime);
 
-        // stcd 过滤（作用于外层结果，直接参数绑定）
+        // stcd 过滤（直接参数绑定，作用于站点表）
         String stcdFilter = (stcd != null && !stcd.trim().isEmpty()) ? stcd.trim() : null;
-
-        // 查询总数：仅取列表（searchCount=false，如对外大屏接口）时跳过，省掉一次全量统计
-        if (page.searchCount()) {
-            long total = irrigationWaterLevelMapper.selectCount(dateWrapper, stcdFilter);
-            page.setTotal(total);
-
-            if (total == 0) {
-                return page;
-            }
-        }
 
         // 计算分页偏移
         int offset = (int) ((page.getCurrent() - 1) * page.getSize());
@@ -71,7 +56,14 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
 
         // 分页查询
         List<IrrigationWaterLevelVO> records = irrigationWaterLevelMapper.selectPage(
-                dateWrapper, stcdFilter, limit, offset);
+                start, end, stcdFilter, limit, offset);
+
+        // 总数：首页未取满即可判定结果集就这么多，直接用本页条数，省掉一次 count 查询
+        if (page.searchCount()) {
+            page.setTotal(offset == 0 && records.size() < limit
+                    ? records.size()
+                    : irrigationWaterLevelMapper.selectCount(start, end, stcdFilter));
+        }
         // 在线状态：水位站均为库上站点，以站点表 zebpsu 状态判断（#1# 在线 / #2# 离线），不走时间断联；
         // 站点表未查到状态的站点默认在线（不误报离线）
         if (!records.isEmpty()) {
