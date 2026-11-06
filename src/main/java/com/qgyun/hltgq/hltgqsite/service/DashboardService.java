@@ -14,14 +14,15 @@ public interface DashboardService {
      * 设备状态概览：设备总数/在线数/在线百分比（设备 status 优先、空回退站点 zebpsu）、
      * 闸门设备总数/开启数/开启百分比（设备台账 type 含 #4#，开启 = 最新开度 > 0）、未处理告警数（未关闭）
      *
-     * @param site 站点主键 ID（可选；null/空 = 全部站点，与 activeAlerts 的 site 同口径）
+     * @param site 站点标识：站点档案主键 ID 或站点编号 iofhpi（可选；null/空 = 全部站点），
+     *             与 {@link #activeAlerts(String)} 同口径
      */
     DashboardOverviewVO overview(String site);
 
     /**
      * 某站点未关闭的告警列表（#4# 已关闭不计），按发生时间倒序
      *
-     * @param site 站点主键 ID（必填）
+     * @param site 站点标识：站点档案主键 ID 或站点编号 iofhpi（必填）
      */
     List<WaterAlertVO> activeAlerts(String site);
 }

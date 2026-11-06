@@ -147,6 +147,9 @@ public final class ExternalVO {
      * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
      * 每行 = 档案字段（保持 qx-api 原字段名）+ 该站实时监测值（平铺）+ data 子对象；
      * 响应信封与 qx-api 一致（success/status/data/msg/errCode/time/errorCode/errorMsg），便于前端沿用原解析逻辑。
+     * <p>totalCount / onlineCount 为本次返回结果集的统计（按 type + name 过滤后），任一模式都有值。
+     * <p>typeCounts 仅全部模式（不传 type）有值：按类型分别统计总站点数 / 在线站点数，键 1..8，
+     * 供大屏左侧图例一次请求直接展示「总站点数 / 在线站点数」，不必为每个类型各发一次请求。
      */
     @Data
     public static class StationMonitor {
@@ -156,11 +159,31 @@ public final class ExternalVO {
         private String status = "SUCCESS";
         /** 站点行列表（档案字段 + 实时值平铺 + data 子对象 + hasData） */
         private List<Map<String, Object>> data;
+        /** 本次返回的站点总数（= data.size()，即按 type + name 过滤后的结果集行数） */
+        private long totalCount;
+        /** 本次返回的站点中在线站点数（= data 中 isOnline=true 的行数，与 totalCount 同口径） */
+        private long onlineCount;
+        /**
+         * 按监测类型分组的站点数（仅全部模式有值，单类型为 null）：键 1..8，
+         * 1/2/3/4/5/7/8 每项 totalCount / onlineCount 与该类型单独请求时信封上的同名字段完全一致
+         * （type=1 不含闸站、type=5 视频无实时值按档案状态判定；多类型站各键重复计）；
+         * 6 为模型类型，station-monitor 不接受 type=6（400），该项仅与 station-count.byType["6"] 核对。
+         */
+        private Map<String, TypeCount> typeCounts;
         private String msg;
         private String errCode;
         private String time;
         private String errorCode;
         private String errorMsg;
+    }
+
+    /** 单类型站点数（totalCount 总数 / onlineCount 在线数，口径同 station-monitor 信封） */
+    @Data
+    public static class TypeCount {
+        /** 该类型站点总数 */
+        private long totalCount;
+        /** 该类型在线站点数 */
+        private long onlineCount;
     }
 
     /**

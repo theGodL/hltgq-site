@@ -92,8 +92,12 @@ public class ExternalController {
      * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
      * 每行 = 档案字段（原字段名）+ 该站实时监测值（平铺 + data 子对象）；站点顺序按「站点排序」配置输出。
      * <p>type：1 水位 / 2 雨量 / 3 流量 / 4 闸门 / 5 视频 / 7 墒情 / 8 水质（兼容 #N# 编码与语义串）；非法值返回 400。
-     * **不传或空白 = 全量站点档案清单**（与平台 kjximffu 无参数同口径）：不查任何实时值（各类型实时值
-     * 串行查询约 2s），行上 hasData=false、isOnline 按档案状态兜底，响应与平台全量列表同量级但快数倍。
+     * **不传或空白 = 全部点位**（大屏「全部」页签）：站点集合为档案 epjutj 非空的全部站点
+     * （含仅 #6# 模型 / 编码为空的档案行，不含管理所等 epjutj 为空的记录），并逐站带该站各监测类型实时值——
+     * 与分别调各 type 拿到的实时值一致，只是合并为一行：data 为实时值并集（tm 取各类型最新）、
+     * dataByType 为按类型的实时值（键 1/2/3/4/7/8，只含该站有数据的类型，每项同单独 type 的 data）、
+     * hasData = 任一类型有数据，isOnline = 任一类型在线（全无实时值时按档案状态兜底）；
+     * 全部模式不使用站点排序配置，保持档案默认顺序 + 在线优先（6 类实时值并发装载）。
      * 水位类型（1）只返回通用水位站：档案含 #1# 但排除闸站（#4#）——闸站水位是闸前 / 闸后实测值，
      * 只由 type=4 提供，同一个站不在两个列表重复展示；其余类型不受影响。
      * 视频类型（5）为站点档案清单、无实时值，用于替代原 qx-api 视频站点列表
@@ -106,6 +110,11 @@ public class ExternalController {
      * 闸门站（epjutj 含 #4#）恒为 null——闸门水位是闸前 / 闸后实测值（type=4 的 upZ / downZ），
      * 不属于通用水位指标（type=1 列表已在档案层排除闸站，此判断为防御）。
      * 对外字段名仍为 ccnhtm / ijzsby，值取实时列原样（同表的 double 列为 2026-09 停更的历史快照，不读）。
+     * <p>totalCount / onlineCount：本次返回结果集（按 type + name 过滤后）的站点总数与在线站点数——
+     * totalCount = data 行数，onlineCount = 其中 isOnline=true 的行数（空结果为 0/0，全部模式同口径）。
+     * <p>typeCounts（仅全部模式）：按类型分组的总站点数 / 在线站点数，键 1..8（与 station-count.byType 对齐），
+     * 供大屏左侧图例一次拿全；1/2/3/4/5/7/8 每项与该类型单独请求时信封上的两个字段完全相等
+     * （6 为模型类型，本接口不接受 type=6，该项只能在此取）；单类型模式为 null。
      * 响应信封与原 qx-api 一致（success/status/data/msg/...）。
      */
     @GetMapping("/station-monitor")
@@ -116,9 +125,10 @@ public class ExternalController {
 
     /**
      * 站点数量统计（大屏「站点数」卡片，纯统计不返回明细，避免为取一个数字拉全量列表）。
-     * <p>type：可选（与 station-monitor 的必填约束无关）。不传/空白 = 全量统计；
+     * <p>type：可选（与 station-monitor 的 type 同为可选）。不传/空白 = 全量统计；
      * 传则只统计该类型（1..8 / #N# / 语义串），非法值返回 400。
-     * <p>data.total = 档案全量；data.typedTotal = 可进入 station-monitor 列表的站点并集
+     * <p>data.total = 档案表全部行数（含 epjutj 为空的管理所/单位记录，比 station-monitor 全部模式行数多；
+     * 「全部」页签点位数请取 station-monitor 的 totalCount）；data.typedTotal = 可进入 station-monitor 列表的站点并集
      * （#1#/#2#/#3#/#4#/#5#/#7#/#8# 七类按站去重，与各类型列表按 id 去重结果一致；#6# 模型类型不计入）；
      * data.byType = 按类型计数（键 1..8，含 #6#，多类型站重复计）；其中 type_1 与 station-monitor?type=1
      * 同口径（不含闸站 #4#），闸站单计于 type_4。

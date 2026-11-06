@@ -91,7 +91,8 @@ public interface ExternalMapper {
 
     /**
      * 站点数量统计（大屏「站点数」卡片）：一次聚合，无逐类型多次查询。
-     * <p>total = 档案全量行数；typed_total = epjutj 含 #1#/#2#/#3#/#4#/#5#/#7#/#8# 任一（7 类
+     * <p>total = 档案表全部行数（含 epjutj 为空的管理所/单位记录，比 station-monitor 全部模式多）；
+     * typed_total = epjutj 含 #1#/#2#/#3#/#4#/#5#/#7#/#8# 任一（7 类
      * 监测类型，按站去重；与 selectArchiveByType 的 LIKE 口径完全同源，#6# 模型类型不计入）；
      * type_1..type_8 = 各类型单计，多类型站重复计。
      * <p>type_1 与 station-monitor?type=1 同口径：含 #1# 且不含 #4#（闸站不计入水位站数，

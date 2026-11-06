@@ -11,6 +11,8 @@ import com.qgyun.hltgq.hltgqsite.service.SoilMoistureService;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.service.WaterQualityService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -30,17 +32,28 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.annotation.PreDestroy;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.ValueConvertUtils;
 
 /**
  * 三维系统对接（/external）聚合逻辑。
- * <p>契约见 src/main/resources/三维系统对接接口.md。全部为实时查询（无异步），
- * 单次聚合 SQL + 内存整理，数据量小无需缓存。
+ * <p>契约见 src/main/resources/三维系统对接接口.md。全部为实时查询（无异步任务、无跨请求缓存），
+ * 单次聚合 SQL + 内存整理，数据量小无需缓存（仅 station-monitor 的全部点位模式会并发装载各类型实时值）。
  * <p>监测值清洗：-999（设备不存在）、-9991（设备异常）视为无数据 → null（契约：null=无数据）。
  */
 @Service
 public class ExternalService {
+
+    private static final Logger log = LoggerFactory.getLogger(ExternalService.class);
 
     /** 数据时间格式 */
     private static final DateTimeFormatter TM_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -60,6 +73,30 @@ public class ExternalService {
 
     /** 监测行站点键字段（档案主键 id/siteId、站点编号 stcd/site；各监测表口径不一，取到即用） */
     private static final String[] STATION_KEYS = {"id", "siteId", "stcd", "site"};
+
+    /**
+     * 全部点位模式（type 不传）需要装载实时值的监测类型编码。
+     * <p>顺序即平铺取值优先级：#1# 水位（z）→ #2# 雨量（drp/p）→ #3# 流量（q/tf）→
+     * #4# 闸门（upZ/downZ）→ #7# 墒情 → #8# 水质；#5# 视频无实时值、#6# 模型无实时接口，不在其内。
+     */
+    private static final String[] ALL_MONITOR_TYPE_CODES = {"#1#", "#2#", "#3#", "#4#", "#7#", "#8#"};
+
+    /**
+     * 全部点位模式线程池大小：单请求 6 个任务取 2 倍，避免第二个并发请求整体排队
+     * （池容量 = 任务数时，后到的请求全部等待，健康库也会被总超时预算判成超时）。
+     * 数据库连接池默认上限 10，多出的任务等连接的时间由单次查询耗时决定（百毫秒级），远小于总预算。
+     */
+    private static final int ALL_MONITOR_POOL_SIZE = ALL_MONITOR_TYPE_CODES.length * 2;
+
+    /** 全部点位模式等待队列上限：满后拒绝并把该类降级为空（不阻塞请求、不堆积内存） */
+    private static final int ALL_MONITOR_QUEUE_SIZE = ALL_MONITOR_POOL_SIZE * 4;
+
+    /**
+     * 全部点位模式实时值装载的**总**超时预算（秒）：6 类并发装载共用同一个 deadline，不按类型累加
+     * （逐类型各给 30s 会累加成分钟级，把整个请求拖死）。正常单类批量查询 &lt;300ms，5s 足够宽松；
+     * 超出预算的类型直接降级为空并记 WARN，不影响其它类型与整单返回。
+     */
+    private static final long ALL_MONITOR_TOTAL_TIMEOUT_SECONDS = 5L;
 
     @Autowired
     private ExternalMapper mapper;
@@ -88,6 +125,16 @@ public class ExternalService {
     /** VO → Map 转换用（复用 Web 层 ObjectMapper，字段名/时间格式与业务接口 HTTP 输出一致） */
     @Autowired
     private ObjectMapper objectMapper;
+
+    /**
+     * 全部点位模式实时值并发装载池：核心线程 = 类型数 × 2（daemon，随容器关闭），
+     * 有界队列 + 默认 AbortPolicy：池满 / 停机后 submit 抛 RejectedExecutionException，
+     * 由 {@link #loadAllMonitorData()} 捕获并把该类型降级为空，不冒泡成 500。
+     */
+    private final ExecutorService allMonitorPool = new ThreadPoolExecutor(
+            ALL_MONITOR_POOL_SIZE, ALL_MONITOR_POOL_SIZE, 0L, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(ALL_MONITOR_QUEUE_SIZE),
+            namedFactory("external-station-monitor"));
 
     /** 渠首进水闸站点 ID = 档案表 id（不传 stcd 时的默认站，与页面闸门监测口径一致） */
     @Value("${external.intake-gate-site:CAYQ739MiBWMg9gQvyi}")
@@ -305,11 +352,22 @@ public class ExternalService {
      * 关联对象按原 qx-api 补齐 ahieto.zzkaec 与 ywvyds.gfaegg（仅视频类型输出，其余类型结构不变）。
      * <p>视频类型额外排序（仅 #5# 生效，其余类型排序不变）：在线优先 → 有站点编号 → 有经纬度
      * → 花凉亭水库站点（上游）在前 → 站点编号升序；缺编号/缺经纬度的站点整体靠后。
-     * <p>非法 type 抛 IllegalArgumentException → 全局 400；type 不传/空白 = 全量档案清单
-     * （与平台 kjximffu 无参数同口径）：不查任何实时值（各类型实时值 7 次批量查询串行约 2s），
-     * 行上 data=null、hasData=false、isOnline 按档案状态兜底，只做档案查询与拼装。
+     * <p>非法 type 抛 IllegalArgumentException → 全局 400；type 不传/空白 = 全部点位模式
+     * （大屏「全部」页签）：站点集合为档案 epjutj 非空的全量（含仅 #6# 模型 / 编码为空的档案行，
+     * 不含管理所等 epjutj 为空的记录），并逐站装载该站各监测类型的实时值——与分别调
+     * type=1/2/3/4/7/8 拿到的实时值完全一致，只是合成到一行：行上平铺各类型实时值
+     * （同名键按 #1#→#2#→#3#→#4#→#7#→#8# 顺序先到先得，tm 取各类型最新），
+     * data 为该站实时值并集（无任何实时值时为 null），dataByType 为按类型的实时值对象
+     * （键为去 # 的类型码 1/2/3/4/7/8，只含该站有数据的类型，每项与单独 type 查询的 data 完全一致）；
+     * isOnline 任一类型实时值在线即 true（同一站多类型共用一套采集时以任一类上报为准），
+     * 全无实时值时按档案状态兜底；hasData = 任一类型有实时值；
+     * 全部模式不使用站点排序配置，保持档案默认顺序（ORDER BY iofhpi）+ 在线优先。
+     * <p>totalCount / onlineCount 为本次返回结果集的统计（按 type + name 过滤后）：
+     * totalCount = data.size()、onlineCount = 其中 isOnline=true 的行数（前端传什么类型就统计什么类型，
+     * 全部模式同样统计返回的全量结果集，含不属于 7 类的档案行，故可能大于 station-count.typedTotal）；
+     * 空结果时为 0/0。
      *
-     * @param type 监测类型：1/2/3/4/5/7/8（另兼容 #N# 编码与语义串）；null/空白 = 全量档案清单
+     * @param type 监测类型：1/2/3/4/5/7/8（另兼容 #N# 编码与语义串）；null/空白 = 全部点位（含实时值）
      * @param name 站点名称模糊词，null/空白表示不筛选
      */
     public ExternalVO.StationMonitor stationMonitor(String type, String name) {
@@ -318,40 +376,35 @@ public class ExternalService {
         List<Map<String, Object>> archives = mapper.selectArchiveByType(typeCode, CheckUtils.trim(name));
         ExternalVO.StationMonitor vo = new ExternalVO.StationMonitor();
         if (archives.isEmpty()) {
-            // 站名筛选无命中（或该类型下无档案站点）：不查实时值，直接返回空列表
+            // 站名筛选无命中（或该类型下无档案站点）：不查实时值，直接返回空列表（计数恒为 0）
             vo.setData(new ArrayList<>());
+            applyCounts(vo);
+            if (typeCode == null) {
+                // 全部模式空结果：typeCounts 同样给全 0（键 1..8 不缺），前端图例无需判空
+                vo.setTypeCounts(countByType(vo.getData()));
+            }
             return vo;
         }
-        Map<String, Map<String, Object>> dataIndex = loadMonitorData(typeCode);
+        // 实时值按类型批量装载：单类型只查该类；全部点位模式（type 不传）并发查 6 类后逐站合并
+        boolean allType = typeCode == null;
+        Map<String, Map<String, Map<String, Object>>> allIndex = allType ? loadAllMonitorData() : null;
+        Map<String, Map<String, Object>> dataIndex = allType ? null : loadMonitorData(typeCode);
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Map<String, Object> archive : archives) {
             Map<String, Object> row = toArchiveRow(archive);
             // 核心指标：按当前监测类型取档案对应实时列；无该指标（含 *1 列的 '0.00'）输出 null，与档案字段一起随行返回
-            row.put("coreIndicator", coreIndicatorOf(archive, typeCode));
+            row.put("coreIndicator", allType ? coreIndicatorOfAll(archive) : coreIndicatorOf(archive, typeCode));
             if ("#5#".equals(typeCode)) {
                 // 视频站点对齐原 qx-api：关联对象附带简称列（ahieto.zzkaec / ywvyds.gfaegg，与 dataTitle 同值）
                 putRefExtra(row, "ahieto", "zzkaec", archive.get("ahieto_title"));
                 putRefExtra(row, "ywvyds", "gfaegg", archive.get("ywvyds_title"));
             }
             // 实时值平铺（null 不覆盖档案列）+ data 子对象（原业务接口字段结构）+ hasData 标记
-            Map<String, Object> data = matchMonitorData(dataIndex, row);
-            if (data != null) {
-                for (Map.Entry<String, Object> entry : data.entrySet()) {
-                    if (entry.getValue() != null) {
-                        row.put(entry.getKey(), entry.getValue());
-                    }
-                }
-                // isOnline 每行必有：个别实时值来源缺该字段时按档案状态兜底（防御，正常不应触发）
-                if (!row.containsKey("isOnline")) {
-                    row.put("isOnline", !"2".equals(ValueConvertUtils.str(row.get("zebpsu"))));
-                }
+            if (allType) {
+                attachAllMonitorData(row, allIndex);
             } else {
-                // 无实时值（hasData=false）的站点：isOnline 按档案状态兜底，1=在线 / 2=离线 / 未设置按在线
-                // （isOnline 每行必有：字段缺失时前端无法与人工离线站区分；未设置按在线，与水位接口档案口径一致）
-                row.put("isOnline", !"2".equals(ValueConvertUtils.str(row.get("zebpsu"))));
+                attachMonitorData(row, matchMonitorData(dataIndex, row));
             }
-            row.put("data", data);
-            row.put("hasData", data != null);
             rows.add(row);
         }
         if ("#5#".equals(typeCode)) {
@@ -359,6 +412,7 @@ public class ExternalService {
             // 保证既有类型顺序完全不受影响（视频无实时值、无排序配置）
             sortVideoSites(rows);
             vo.setData(rows);
+            applyCounts(vo);
             return vo;
         }
         String sortType = monitorSortType(typeCode);
@@ -384,16 +438,292 @@ public class ExternalService {
                 .thenComparingInt(r -> Boolean.FALSE.equals(r.get("isOnline")) ? 1 : 0));
         result.addAll(unconfigured);
         vo.setData(result);
+        applyCounts(vo);
+        if (allType) {
+            // 全部模式：按类型分组计数（左侧图例「总站点数 / 在线站点数」一次请求拿全，不逐类型发请求）
+            vo.setTypeCounts(countByType(result));
+        }
         return vo;
     }
 
     /**
+     * 本次返回结果集统计（totalCount / onlineCount）：所有返回分支统一在此汇总，
+     * 空结果、视频类型、普通类型与全部点位模式口径一致（totalCount=返回行数，onlineCount=isOnline=true 行数）。
+     */
+    private void applyCounts(ExternalVO.StationMonitor vo) {
+        List<Map<String, Object>> rows = vo.getData();
+        long online = 0;
+        for (Map<String, Object> row : rows) {
+            if (Boolean.TRUE.equals(row.get("isOnline"))) {
+                online++;
+            }
+        }
+        vo.setTotalCount(rows.size());
+        vo.setOnlineCount(online);
+    }
+
+    /**
+     * 全部模式：按类型统计总站点数 / 在线站点数（供大屏左侧图例直接展示，不逐类型发请求）。
+     * <p>键 1..8 与 station-count.byType 对齐；1/2/3/4/5/7/8 每项与该类型单独请求（?type=N）
+     * 的 totalCount / onlineCount 完全一致（2026-11-06 生产库只读实测逐项 0 差异）；
+     * 6 是模型类型，本接口不接受 type=6，该项只能与 station-count.byType["6"] 核对：
+     * 站点集合 = 档案 epjutj 含该类型（type=1 与列表同口径排除闸站 #4#，闸站单计于 type=4）；
+     * online = 该类型实时值的 isOnline（与单类型请求同一份实时值索引），无实时值时按档案 zebpsu 兜底
+     * （type=5 视频无实时值、type=6 模型无实时接口，一律按档案状态判定）；
+     * 判定规则与单类型请求的 attachMonitorData 一致，不重新定义。
+     * <p>多类型站各键重复计（各项之和大于全部模式 totalCount 属预期）。
+     */
+    private Map<String, ExternalVO.TypeCount> countByType(List<Map<String, Object>> rows) {
+        Map<String, ExternalVO.TypeCount> counts = new LinkedHashMap<>();
+        for (int i = 1; i <= 8; i++) {
+            counts.put(String.valueOf(i), new ExternalVO.TypeCount());
+        }
+        for (Map<String, Object> row : rows) {
+            List<String> types = codeList(row.get("epjutj"));
+            boolean archiveOnline = !"2".equals(ValueConvertUtils.str(row.get("zebpsu")));
+            Map<String, Object> byType = dataByTypeOf(row);
+            for (String code : types) {
+                ExternalVO.TypeCount count = counts.get(code);
+                if (count == null) {
+                    continue;
+                }
+                // type=1 与列表同口径：闸站（含 #4#）不计入水位站数，单计于 type=4
+                if ("1".equals(code) && types.contains("4")) {
+                    continue;
+                }
+                count.setTotalCount(count.getTotalCount() + 1);
+                Boolean online = onlineOf(byType == null ? null : byType.get(code));
+                if (online == null ? archiveOnline : online) {
+                    count.setOnlineCount(count.getOnlineCount() + 1);
+                }
+            }
+        }
+        return counts;
+    }
+
+    /** 行上 epjutj（toArchiveRow 已拆成 List&lt;String&gt;）→ 类型码列表；非列表时按 #N#|#N# 文本解析 */
+    @SuppressWarnings("unchecked")
+    private List<String> codeList(Object value) {
+        if (value instanceof List) {
+            return (List<String>) value;
+        }
+        return codeArray(value);
+    }
+
+    /** 行上 dataByType（仅全部模式有）→ 类型码 → 实时值；无该键返回 null */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> dataByTypeOf(Map<String, Object> row) {
+        Object byType = row.get("dataByType");
+        return byType instanceof Map ? (Map<String, Object>) byType : null;
+    }
+
+    /** 实时值 → isOnline（非 Boolean 视为未知，由调用方按档案状态兜底） */
+    private Boolean onlineOf(Object data) {
+        if (!(data instanceof Map)) {
+            return null;
+        }
+        Object online = ((Map<?, ?>) data).get("isOnline");
+        return online instanceof Boolean ? (Boolean) online : null;
+    }
+
+    /** 线程工厂：命名 + daemon（大屏轮询线程不应阻止容器关闭） */
+    private static ThreadFactory namedFactory(String prefix) {
+        AtomicInteger seq = new AtomicInteger(1);
+        return runnable -> {
+            Thread thread = new Thread(runnable, prefix + "-" + seq.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        allMonitorPool.shutdown();
+        try {
+            if (!allMonitorPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                allMonitorPool.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            allMonitorPool.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * 全部点位模式：6 类实时值并发装载（每类仍是一次批量查询，无逐站 N+1），
+     * 避免 6 次查询串行累加（实测串行约 2s，并发约 0.5s）。
+     * <p>全部类型共用**一个总 deadline**（{@link #ALL_MONITOR_TOTAL_TIMEOUT_SECONDS} 秒）：
+     * 逐类型串行 get(30s) 会累加成分钟级请求，故按剩余时间等待，预算耗尽即降级剩余类型。
+     * <p>降级边界：单类查询异常、等待超时、线程池拒绝（并发请求过多 / 容器停机）都只把该类
+     * 降级为空索引（记 WARN），档案清单与其他类型实时值照常返回，不因一个监测接口异常导致列表 500。
+     * <p>取消用 cancel(false) 而非 cancel(true)：JDBC 阻塞读一般不响应中断，中断标志反而会
+     * 污染池线程上的后续任务；真正的查询超时交由数据库驱动侧处理。
+     *
+     * @return 监测类型编码（#N#）→ 该类实时值索引（站点键 → 实时值 Map）
+     */
+    private Map<String, Map<String, Map<String, Object>>> loadAllMonitorData() {
+        Map<String, Future<Map<String, Map<String, Object>>>> futures = new LinkedHashMap<>();
+        for (String code : ALL_MONITOR_TYPE_CODES) {
+            if (allMonitorPool.isShutdown()) {
+                // 容器停机窗口（@PreDestroy 之后仍有请求进来）：不再提交，直接降级
+                futures.put(code, null);
+                continue;
+            }
+            try {
+                futures.put(code, allMonitorPool.submit(() -> loadMonitorData(code)));
+            } catch (RejectedExecutionException e) {
+                // 队列已满（同一时刻全部模式请求过多）：该类降级为空，不冒泡成 500
+                futures.put(code, null);
+                log.warn("全部点位模式提交 {} 实时值任务被拒绝（线程池繁忙），该类型降级为空", code);
+            }
+        }
+        Map<String, Map<String, Map<String, Object>>> byType = new LinkedHashMap<>();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(ALL_MONITOR_TOTAL_TIMEOUT_SECONDS);
+        boolean interrupted = false;
+        for (Map.Entry<String, Future<Map<String, Map<String, Object>>>> entry : futures.entrySet()) {
+            String code = entry.getKey();
+            Future<Map<String, Map<String, Object>>> future = entry.getValue();
+            if (future == null) {
+                byType.put(code, new HashMap<>());
+                continue;
+            }
+            if (interrupted) {
+                // 线程已被中断：后续 get 会立即抛 InterruptedException，直接降级剩余类型（不重复记日志）
+                future.cancel(false);
+                byType.put(code, new HashMap<>());
+                continue;
+            }
+            long remain = deadline - System.nanoTime();
+            if (remain <= 0) {
+                future.cancel(false);
+                byType.put(code, new HashMap<>());
+                log.warn("全部点位模式装载 {} 实时值超出总预算 {}s，该类型降级为空",
+                        code, ALL_MONITOR_TOTAL_TIMEOUT_SECONDS);
+                continue;
+            }
+            try {
+                byType.put(code, future.get(remain, TimeUnit.NANOSECONDS));
+            } catch (InterruptedException e) {
+                interrupted = true;
+                Thread.currentThread().interrupt();
+                future.cancel(false);
+                byType.put(code, new HashMap<>());
+                log.warn("全部点位模式装载 {} 实时值被中断，该类型及其后类型降级为空", code);
+            } catch (Exception e) {
+                // 等待超时（TimeoutException）或查询异常
+                future.cancel(false);
+                byType.put(code, new HashMap<>());
+                log.warn("全部点位模式装载 {} 实时值失败，该类型降级为空: {}", code, e.toString());
+            }
+        }
+        return byType;
+    }
+
+    /**
+     * 单类型实时值装配：平铺（null 不覆盖档案列）+ data 子对象 + hasData 标记 + isOnline 兜底。
+     * <p>isOnline 每行必有：有实时值时取实时值字段（个别来源缺该字段时防御性按档案兜底），
+     * 无实时值时按档案状态兜底（zebpsu 1=在线 / 2=离线 / 未设置按在线），
+     * 保证人工设为离线的站点不会因字段缺失被误当作在线。
+     */
+    private void attachMonitorData(Map<String, Object> row, Map<String, Object> data) {
+        if (data != null) {
+            for (Map.Entry<String, Object> entry : data.entrySet()) {
+                if (entry.getValue() != null) {
+                    row.put(entry.getKey(), entry.getValue());
+                }
+            }
+            // isOnline 每行必有：个别实时值来源缺该字段时按档案状态兜底（防御，正常不应触发）
+            if (!row.containsKey("isOnline")) {
+                row.put("isOnline", !"2".equals(ValueConvertUtils.str(row.get("zebpsu"))));
+            }
+        } else {
+            // 无实时值（hasData=false）的站点：isOnline 按档案状态兜底，1=在线 / 2=离线 / 未设置按在线
+            // （isOnline 每行必有：字段缺失时前端无法与人工离线站区分；未设置按在线，与水位接口档案口径一致）
+            row.put("isOnline", !"2".equals(ValueConvertUtils.str(row.get("zebpsu"))));
+        }
+        row.put("data", data);
+        row.put("hasData", data != null);
+    }
+
+    /**
+     * 全部点位模式实时值装配：逐类型匹配该站实时值（与单独 type 查询同一份索引、同一结果），
+     * 按类型码（去 #）收进 dataByType，并合并出一份并集作为 data / 行上平铺值。
+     * <p>并集取值规则：同名键按 {@link #ALL_MONITOR_TYPE_CODES} 声明顺序先到先得（null 不占位，
+     * 由后续类型补），tm 取各类型中最新的一个（同格式文本直接比较即时间顺序）；
+     * isOnline 任一类型为 true 即 true（多类型共用采集设备时以任一类上报为准），
+     * 各类型均无该字段时按档案状态兜底；hasData = 至少一个类型有实时值。
+     */
+    private void attachAllMonitorData(Map<String, Object> row,
+                                      Map<String, Map<String, Map<String, Object>>> allIndex) {
+        Map<String, Object> byType = new LinkedHashMap<>();
+        Map<String, Object> merged = new LinkedHashMap<>();
+        String latestTm = null;
+        boolean online = false;
+        boolean onlineKnown = false;
+        for (String code : ALL_MONITOR_TYPE_CODES) {
+            Map<String, Object> data = matchMonitorData(allIndex.get(code), row);
+            if (data == null) {
+                continue;
+            }
+            byType.put(code.replace("#", ""), data);
+            for (Map.Entry<String, Object> entry : data.entrySet()) {
+                if (entry.getValue() != null) {
+                    merged.putIfAbsent(entry.getKey(), entry.getValue());
+                }
+            }
+            Object isOnline = data.get("isOnline");
+            if (isOnline instanceof Boolean) {
+                onlineKnown = true;
+                online = online || (Boolean) isOnline;
+            }
+            Object tm = data.get("tm");
+            if (tm != null) {
+                String text = String.valueOf(tm);
+                if (latestTm == null || text.compareTo(latestTm) > 0) {
+                    latestTm = text;
+                }
+            }
+        }
+        if (latestTm != null) {
+            merged.put("tm", latestTm);
+        }
+        if (onlineKnown) {
+            merged.put("isOnline", online);
+        }
+        attachMonitorData(row, merged.isEmpty() ? null : merged);
+        // 按类型的实时值：只含该站有数据的类型，每项与单独 type 查询的 data 完全一致（同一对象）
+        row.put("dataByType", byType);
+    }
+
+    /**
+     * 全部点位模式的核心指标：按站点自身监测类型取——登记了水位类型（#1#）取水位核心指标，
+     * 否则登记了雨量类型（#2#）取雨量核心指标；两者均无（或无指标值、或闸站）返回 null。
+     */
+    private String coreIndicatorOfAll(Map<String, Object> archive) {
+        List<String> types = codeArray(archive.get("epjutj"));
+        if (types.contains("1")) {
+            String level = coreIndicatorOf(archive, "#1#");
+            if (level != null) {
+                return level;
+            }
+        }
+        if (types.contains("2")) {
+            return coreIndicatorOf(archive, "#2#");
+        }
+        return null;
+    }
+
+    /**
      * 站点数量统计（大屏「站点数」卡片）：纯统计不返回明细，一条聚合 SQL。
-     * <p>total = 档案全量（与 station-monitor 列表同源，不按类型过滤）；
+     * <p>total = 档案表全部行数（**含 epjutj 为空的管理所/单位记录**，比 station-monitor 全部模式行数多，
+     * 不要拿它当「全部」页签的点位数）；
      * typedTotal = 可进入 station-monitor 列表的站点并集（#1#/#2#/#3#/#4#/#5#/#7#/#8# 任一，按站去重），
      * 与「7 个类型分别调 station-monitor 后按 id 去重」完全一致；
-     * #6#（模型类型，10 条，其中 7 条只带 #6#）不在 station-monitor 类型清单内，不计入 typedTotal，
-     * 但仍出现在 byType 中供核对（byType 固定 1..8 八项，多类型站重复计）。
+     * #6#（模型类型，10 行，其中 8 行只带 #6#）不在 station-monitor 类型清单内，不计入 typedTotal，
+     * 但仍出现在 byType 与 station-monitor 全部模式中供核对（byType 固定 1..8 八项，多类型站重复计）。
+     * <p>与 station-monitor 的口径差（三者互不相等属预期）：total 含 epjutj 为空的管理所/单位记录；
+     * station-monitor 全部模式 = epjutj 非空（含仅 #6# 模型 / 编码为空的档案行）；
+     * typedTotal 只计 7 类并集。前端图例「全部」格子请用 station-monitor 的 totalCount，不要用 total。
      * <p>byType["1"]（水位站数）与 station-monitor?type=1 同口径，不含闸站（#4#）——闸站单计于
      * byType["4"]，避免卡片数字比水位列表行数多。
      * <p>传 type 时只统计该类型：total/typedTotal 均为该类型站数、byType 仅含该类型一项；
@@ -624,10 +954,11 @@ public class ExternalService {
     /**
      * 按类型批量查实时值并按站点键建索引：每类型只查一次（无逐站 N+1），
      * 复用各监测接口的服务方法（空参 = 全量最新值；站点排序由本接口统一在档案行上应用）。
+     * <p>注意：本方法可能在线程池线程（allMonitorPool）中执行，<b>不得依赖请求级 ThreadLocal</b>
+     * （登录态 / 用户数据权限等）；新增监测类型时须确认被复用的 service 方法无此依赖。
      */
     private Map<String, Map<String, Object>> loadMonitorData(String typeCode) {
-        // 全量档案模式（type 不传）不查实时值：7 类实时值各需一次批量查询，串行约 2s，
-        // 而全量接口只用于替代平台站点档案列表（平台无参数也不带实时值）
+        // 防御：全部点位模式由 loadAllMonitorData 逐类型并发装载，不会以 null 调用
         if (typeCode == null) {
             return new HashMap<>();
         }

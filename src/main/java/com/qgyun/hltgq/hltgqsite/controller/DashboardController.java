@@ -27,8 +27,10 @@ public class DashboardController {
      * 空回退所属站点 zebpsu，#1# 在线）；闸门按台账 type 含 #4# 的闸孔设备（开启 = 近 24h 最新开度 > 0，
      * 排除站级行 gate_no='0' 与无信号/异常哨兵值），两接口的闸门数必然同值。
      * <p>未处理告警 = 未关闭（#1# 未确认/#2# 已确认/#3# 处理中）。百分比 2 位小数，分母 0 时为 null。
+     * <p>site 与 /dashboard/alerts 同为双键口径（2026-11-06 起）：站点档案主键 id 或站点编号 iofhpi，
+     * 两项查的是同一组站点，同一 site 参数下概览卡片与告警列表不会口径不一致。
      *
-     * @param site 站点主键 ID（可选；不传 = 全部站点，与 /dashboard/alerts 的 site 同口径）；
+     * @param site 站点标识：站点档案主键 ID 或站点编号 iofhpi（可选；不传 = 全部站点）；
      *             传了但站点不存在/无设备无闸门无告警时各计数为 0、百分比为 null
      */
     @GetMapping("/overview")
@@ -38,8 +40,10 @@ public class DashboardController {
 
     /**
      * 某站点未关闭的告警列表（#4# 已关闭不计），按发生时间倒序（最新在前）
+     * <p>site 兼容站点档案主键 id 与站点编号 iofhpi（如流量站 9000000003），传任一即可；
+     * 按站码反查档案主键，同时兜底「告警行 `site` 直接存站码」的历史数据。
      *
-     * @param site 站点主键 ID（必填）
+     * @param site 站点标识：站点档案主键 ID 或站点编号 iofhpi（必填）
      */
     @GetMapping("/alerts")
     public List<WaterAlertVO> alerts(@RequestParam String site) {

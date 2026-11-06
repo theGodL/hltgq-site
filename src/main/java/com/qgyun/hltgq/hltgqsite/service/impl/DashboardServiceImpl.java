@@ -24,7 +24,8 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     public DashboardOverviewVO overview(String site) {
-        // 站点过滤（可选）：站点主键 ID（= 设备/闸门/告警表 site 列值）；空串/空白归一为 null（全量）
+        // 站点过滤（可选）：档案主键 id 或站点编号 iofhpi（Mapper 内双键匹配，与 activeAlerts 同口径）；
+        // 空串/空白归一为 null（全量）
         String siteKey = (site == null || site.trim().isEmpty()) ? null : site.trim();
         DashboardOverviewVO vo = new DashboardOverviewVO();
 
@@ -53,7 +54,10 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     public List<WaterAlertVO> activeAlerts(String site) {
-        List<WaterAlertVO> alerts = dashboardMapper.selectActiveAlertsBySite(site);
+        // site 双键兼容（Mapper 内）：档案主键 id 或站点编号 iofhpi（流量站常传站码）；
+        // 与 overview 一样先 trim，保证同一入参（含首尾空白）两接口口径一致
+        String siteKey = site == null ? null : site.trim();
+        List<WaterAlertVO> alerts = dashboardMapper.selectActiveAlertsBySite(siteKey);
         // 无告警返回空列表（不返回 null）
         return alerts != null ? alerts : Collections.emptyList();
     }
