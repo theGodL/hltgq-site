@@ -20,6 +20,21 @@ case "${1:-deploy}" in
         mkdir -p /service/hltgq/logs/hltgq-site
         mkdir -p /service/hltgq/hltgq-site/decision-excel
         mkdir -p /service/hltgq/hltgq-site/file-dir
+        # 可选：平台登录账号/密码密文覆盖（不设置则用镜像内 application.properties 默认值）
+        EXTRA_ENV=()
+        if [ -n "${AUTH_LOGIN_USERNAME:-}" ]; then
+            EXTRA_ENV+=(-e "AUTH_LOGIN_USERNAME=${AUTH_LOGIN_USERNAME}")
+        fi
+        if [ -n "${AUTH_LOGIN_PASSWORD:-}" ]; then
+            EXTRA_ENV+=(-e "AUTH_LOGIN_PASSWORD=${AUTH_LOGIN_PASSWORD}")
+        fi
+        # 可选：/auth/login 及档案同步接口的调用密钥覆盖（不设置则用镜像内默认值）
+        if [ -n "${AUTH_API_KEY:-}" ]; then
+            EXTRA_ENV+=(-e "AUTH_API_KEY=${AUTH_API_KEY}")
+        fi
+        if [ -n "${AUTH_API_SECRET:-}" ]; then
+            EXTRA_ENV+=(-e "AUTH_API_SECRET=${AUTH_API_SECRET}")
+        fi
         # -v /:/host:ro → 系统资源监控采集宿主机视角（/proc、磁盘挂载点），只读挂载
         # SYSTEM_MONITOR_DB_CAPACITY_GB → 表空间使用率分母（数据库服务器数据盘 /service 分区 7.7TiB）
         # SYSTEM_MONITOR_REPORT_TOKEN → 各服务器采集脚本上报凭证（须与各机 sysmon-collect.sh 内一致）
@@ -38,6 +53,7 @@ case "${1:-deploy}" in
             -e SYSTEM_MONITOR_DB_CAPACITY_GB="${SYSTEM_MONITOR_DB_CAPACITY_GB:-7885}" \
             -e SYSTEM_MONITOR_REPORT_TOKEN="${SYSTEM_MONITOR_REPORT_TOKEN:-hltgq-sysmon-2026}" \
             -e SYSTEM_MONITOR_REPORT_ALLOW_CIDR="${SYSTEM_MONITOR_REPORT_ALLOW_CIDR:-10.68.18.}" \
+            "${EXTRA_ENV[@]}" \
             --memory="1024m" \
             ${IMAGE_NAME}:latest
         echo "部署完成，查看日志："

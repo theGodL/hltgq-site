@@ -28,7 +28,8 @@ import static org.mockito.Mockito.verify;
  */
 class AuthInterceptorTest {
 
-    private static final String LOGIN_PAGE_URL = "http://220.179.1.110:8081/login/user/login";
+    /** 配置覆盖时的登录页地址（未配置则跟随浏览器访问域名） */
+    private static final String CONFIGURED_LOGIN_PAGE_URL = "https://sso.example.com/login/user/login";
 
     private AuthInterceptor interceptor;
     private SessionContextService sessionContextService;
@@ -44,36 +45,84 @@ class AuthInterceptorTest {
         rolePermissionService = mock(RolePermissionService.class);
         ReflectionTestUtils.setField(interceptor, "sessionContextService", sessionContextService);
         ReflectionTestUtils.setField(interceptor, "rolePermissionService", rolePermissionService);
-        ReflectionTestUtils.setField(interceptor, "loginPageUrl", LOGIN_PAGE_URL);
+        ReflectionTestUtils.setField(interceptor, "loginPageUrl", "");
         ReflectionTestUtils.setField(interceptor, "whiteListConfig", "");
         response = new MockHttpServletResponse();
         handler = new HandlerMethod(new Object(), Object.class.getMethod("toString"));
         UserContextHolder.clear();
     }
 
-    /** 无凭证 API 请求：拦截并返回 401 JSON */
+    /** 无凭证 API 请求：拦截并返回 401 JSON（redirectUrl 跟随当前浏览域名） */
     @Test
     void apiWithoutSession_returns401() throws Exception {
         MockHttpServletRequest request = apiRequest("/alert/page");
+        request.setServerName("gq.example.com");
+        request.setServerPort(80);
 
         boolean passed = interceptor.preHandle(request, response, handler);
 
         assertFalse(passed);
         assertEquals(401, response.getStatus());
         assertTrue(response.getContentAsString().contains("未登录"));
+        assertTrue(response.getContentAsString()
+                .contains("\"redirectUrl\":\"http://gq.example.com/login/user/login\""));
     }
 
-    /** 无凭证页面请求（Accept: text/html）：302 跳转平台登录页 */
+    /** 无凭证页面请求（Accept: text/html）：302 跳转当前浏览域名下的平台登录页 */
     @Test
     void pageWithoutSession_redirects302() throws Exception {
         MockHttpServletRequest request = apiRequest("/gate-monitor-page.html");
         request.addHeader("Accept", "text/html,application/xhtml+xml");
+        request.setServerName("10.20.30.40");
+        request.setServerPort(8081);
 
         boolean passed = interceptor.preHandle(request, response, handler);
 
         assertFalse(passed);
         assertEquals(302, response.getStatus());
-        assertEquals(LOGIN_PAGE_URL, response.getRedirectedUrl());
+        assertEquals("http://10.20.30.40:8081/login/user/login", response.getRedirectedUrl());
+    }
+
+    /** 配置了完整登录页地址：优先使用配置（兼容登录页在其它域名的部署） */
+    @Test
+    void configuredLoginPageUrl_takesPrecedence() throws Exception {
+        ReflectionTestUtils.setField(interceptor, "loginPageUrl", CONFIGURED_LOGIN_PAGE_URL);
+        MockHttpServletRequest request = apiRequest("/gate-monitor-page.html");
+        request.addHeader("Accept", "text/html");
+
+        boolean passed = interceptor.preHandle(request, response, handler);
+
+        assertFalse(passed);
+        assertEquals(CONFIGURED_LOGIN_PAGE_URL, response.getRedirectedUrl());
+    }
+
+    /** 反向代理场景：优先使用 X-Forwarded-* 推导对外访问地址（默认端口省略） */
+    @Test
+    void pageWithoutSession_usesForwardedHeaders() throws Exception {
+        MockHttpServletRequest request = apiRequest("/gate-monitor-page.html");
+        request.addHeader("Accept", "text/html");
+        request.addHeader("X-Forwarded-Proto", "https");
+        request.addHeader("X-Forwarded-Host", "gq.example.com");
+        request.addHeader("X-Forwarded-Port", "443");
+
+        boolean passed = interceptor.preHandle(request, response, handler);
+
+        assertFalse(passed);
+        assertEquals("https://gq.example.com/login/user/login", response.getRedirectedUrl());
+    }
+
+    /** 配置为相对路径：拼当前浏览域名，不写死部署域名 */
+    @Test
+    void relativeLoginPageUrl_joinsBrowserOrigin() throws Exception {
+        ReflectionTestUtils.setField(interceptor, "loginPageUrl", "/login/user/login");
+        MockHttpServletRequest request = apiRequest("/gate-monitor-page.html");
+        request.addHeader("Accept", "text/html");
+        request.setServerName("gq.example.com");
+        request.setServerPort(80);
+
+        interceptor.preHandle(request, response, handler);
+
+        assertEquals("http://gq.example.com/login/user/login", response.getRedirectedUrl());
     }
 
     /** Authorization 头携带有效 sessionId：放行并写入用户上下文 */

@@ -28,8 +28,14 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(AuthInterceptor.class);
 
-    /** 平台登录页地址（未登录跳转） */
-    @Value("${auth.login-page-url:http://220.179.1.110:8081/login/user/login}")
+    /** 平台登录页相对路径（跟随浏览器实际访问域名拼接） */
+    private static final String DEFAULT_LOGIN_PATH = "/login/user/login";
+
+    /**
+     * 平台登录页地址（未登录跳转）：可配置完整地址或以 / 开头的相对路径，
+     * 留空 = 跟随浏览器实际访问域名 + 默认登录路径（不写死部署域名，换域名无需改配置）
+     */
+    @Value("${auth.login-page-url:}")
     private String loginPageUrl;
 
     /** 可配置白名单（逗号分隔），与代码固定白名单合并 */
@@ -147,16 +153,23 @@ public class AuthInterceptor implements HandlerInterceptor {
     }
 
     /**
-     * 未登录处理：页面导航 302 跳转登录页；AJAX/API 返回 401 JSON（携带 redirectUrl 供前端跳转）
+     * 未登录处理：页面导航 302 跳转登录页；AJAX/API 返回 401 JSON（携带 redirectUrl 供前端跳转）。
+     * <p>登录页地址按当前请求动态解析（支持反向代理头），配置 auth.login-page-url 可覆盖。
      */
     private void handleUnauthorized(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        String loginUrl = RequestOriginResolver.resolveUrl(request, loginPageUrl, DEFAULT_LOGIN_PATH);
         String accept = request.getHeader("Accept");
         if (accept != null && accept.contains("text/html")) {
-            response.sendRedirect(loginPageUrl);
+            response.sendRedirect(loginUrl);
             return;
         }
         writeJson(response, HttpServletResponse.SC_UNAUTHORIZED,
-                "{\"code\":401,\"message\":\"未登录\",\"redirectUrl\":\"" + loginPageUrl + "\"}");
+                "{\"code\":401,\"message\":\"未登录\",\"redirectUrl\":\"" + escapeJson(loginUrl) + "\"}");
+    }
+
+    /** JSON 字符串转义（URL 通常不含引号/反斜杠，防御性处理） */
+    private String escapeJson(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /**

@@ -2,6 +2,7 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qgyun.hltgq.hltgqsite.auth.RequestOriginResolver;
 import com.qgyun.hltgq.hltgqsite.service.AuthService;
 import com.qgyun.hltgq.hltgqsite.vo.AuthResponseVO;
 import org.slf4j.Logger;
@@ -9,8 +10,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -31,11 +37,26 @@ public class AuthServiceImpl implements AuthService {
     @Value("${auth.api.secret}")
     private String validSecret;
 
-    /** 外部安全码获取地址 */
-    private static final String SECURITY_IMG_URL = "http://220.179.1.110:8081/qx-api/qx-apaas-uc/user/securityImg";
+    /** 平台登录账号（服务端登录代理使用，生产建议用环境变量 AUTH_LOGIN_USERNAME 覆盖） */
+    @Value("${auth.login.username}")
+    private String loginUsername;
 
-    /** 外部登录地址 */
-    private static final String LOGIN_URL = "http://220.179.1.110:8081/qx-api/qx-apaas-auth/server/auth/login";
+    /** 平台登录密码密文（平台加密后的密文，生产建议用环境变量 AUTH_LOGIN_PASSWORD 覆盖） */
+    @Value("${auth.login.password}")
+    private String loginPassword;
+
+    /** 外部安全码接口路径（平台网关 qx-api 前缀） */
+    private static final String SECURITY_IMG_PATH = "/qx-api/qx-apaas-uc/user/securityImg";
+
+    /** 外部登录接口路径（平台网关 qx-api 前缀） */
+    private static final String LOGIN_PATH = "/qx-api/qx-apaas-auth/server/auth/login";
+
+    /**
+     * 平台网关基址（qx-api 所在，如 http://host:port）；
+     * 留空 = 跟随浏览器实际访问域名（同域部署无需配置，换域名无需改配置）
+     */
+    @Value("${auth.platform-base-url:}")
+    private String platformBaseUrl;
 
     public AuthServiceImpl(RestTemplate restTemplate, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
@@ -61,8 +82,9 @@ public class AuthServiceImpl implements AuthService {
         }
 
         try {
-            // 2. 获取安全码
-            String securityKey = fetchSecurityKey();
+            // 2. 获取安全码（平台网关地址：配置优先，未配置跟随浏览器实际访问域名）
+            String baseUrl = resolvePlatformBaseUrl();
+            String securityKey = fetchSecurityKey(baseUrl);
             if (securityKey == null) {
                 response.setSuccess(false);
                 response.setMessage("获取安全码失败");
@@ -70,7 +92,7 @@ public class AuthServiceImpl implements AuthService {
             }
 
             // 3. 调用外部登录接口
-            String sessionId = doLogin(securityKey);
+            String sessionId = doLogin(baseUrl, securityKey);
             if (sessionId == null) {
                 response.setSuccess(false);
                 response.setMessage("外部登录接口调用失败");
@@ -91,11 +113,36 @@ public class AuthServiceImpl implements AuthService {
     }
 
     /**
+     * 平台网关基址：配置 auth.platform-base-url 优先；未配置时按当前请求的
+     * 协议 + 主机 + 端口动态拼接（支持反向代理头）；均无法解析时抛错。
+     */
+    private String resolvePlatformBaseUrl() {
+        if (StringUtils.hasText(platformBaseUrl)) {
+            String configured = platformBaseUrl.trim();
+            return configured.endsWith("/") ? configured.substring(0, configured.length() - 1) : configured;
+        }
+        HttpServletRequest request = currentRequest();
+        String origin = request == null ? null : RequestOriginResolver.resolveOrigin(request);
+        if (origin == null) {
+            throw new IllegalStateException("平台网关地址未配置（auth.platform-base-url）且无法从当前请求解析");
+        }
+        return origin;
+    }
+
+    /** 当前请求（登录接口为同步调用，可在请求线程内取到；无上下文返回 null） */
+    private HttpServletRequest currentRequest() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        return attributes instanceof ServletRequestAttributes
+                ? ((ServletRequestAttributes) attributes).getRequest() : null;
+    }
+
+    /**
      * 调用外部接口获取安全码 key
      */
-    private String fetchSecurityKey() {
+    private String fetchSecurityKey(String baseUrl) {
+        String url = baseUrl + SECURITY_IMG_PATH;
         try {
-            ResponseEntity<String> resp = restTemplate.getForEntity(SECURITY_IMG_URL, String.class);
+            ResponseEntity<String> resp = restTemplate.getForEntity(url, String.class);
             if (resp.getStatusCode() == HttpStatus.OK && resp.getBody() != null) {
                 JsonNode root = objectMapper.readTree(resp.getBody());
                 if (root.path("success").asBoolean()) {
@@ -104,9 +151,9 @@ public class AuthServiceImpl implements AuthService {
                     return key;
                 }
             }
-            log.error("获取安全码返回异常，status: {}, body: {}", resp.getStatusCode(), resp.getBody());
+            log.error("获取安全码返回异常，url: {}, status: {}, body: {}", url, resp.getStatusCode(), resp.getBody());
         } catch (Exception e) {
-            log.error("获取安全码请求异常", e);
+            log.error("获取安全码请求异常，url: " + url, e);
         }
         return null;
     }
@@ -114,21 +161,22 @@ public class AuthServiceImpl implements AuthService {
     /**
      * 调用外部登录接口
      */
-    private String doLogin(String securityKey) {
+    private String doLogin(String baseUrl, String securityKey) {
+        String url = baseUrl + LOGIN_PATH;
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             Map<String, Object> body = new HashMap<>();
-            body.put("username", "15212773620");
-            body.put("password", "KUGKYloUqmCIe7oJ_7tzNA==");
+            body.put("username", loginUsername);
+            body.put("password", loginPassword);
             body.put("autoLogin", false);
             body.put("loginType", "PWD");
             body.put("key", securityKey);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
-            ResponseEntity<String> resp = restTemplate.postForEntity(LOGIN_URL, request, String.class);
+            ResponseEntity<String> resp = restTemplate.postForEntity(url, request, String.class);
             if (resp.getStatusCode() == HttpStatus.OK && resp.getBody() != null) {
                 JsonNode root = objectMapper.readTree(resp.getBody());
                 if (root.path("success").asBoolean()) {
@@ -137,9 +185,9 @@ public class AuthServiceImpl implements AuthService {
                     return sessionId;
                 }
             }
-            log.error("外部登录返回异常，status: {}, body: {}", resp.getStatusCode(), resp.getBody());
+            log.error("外部登录返回异常，url: {}, status: {}, body: {}", url, resp.getStatusCode(), resp.getBody());
         } catch (Exception e) {
-            log.error("外部登录请求异常", e);
+            log.error("外部登录请求异常，url: " + url, e);
         }
         return null;
     }
