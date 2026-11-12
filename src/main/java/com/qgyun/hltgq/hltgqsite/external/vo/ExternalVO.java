@@ -147,9 +147,11 @@ public final class ExternalVO {
      * 监测站点列表（按监测类型合并）：站点集合取站点档案（与原 qx-api 列表同口径，含当前无数据的站点），
      * 每行 = 档案字段（保持 qx-api 原字段名）+ 该站实时监测值（平铺）+ data 子对象；
      * 响应信封与 qx-api 一致（success/status/data/msg/errCode/time/errorCode/errorMsg），便于前端沿用原解析逻辑。
-     * <p>totalCount / onlineCount 为本次返回结果集的统计（按 type + name 过滤后），任一模式都有值。
-     * <p>typeCounts 仅全部模式（不传 type）有值：按类型分别统计总站点数 / 在线站点数，键 1..8，
-     * 供大屏左侧图例一次请求直接展示「总站点数 / 在线站点数」，不必为每个类型各发一次请求。
+     * <p>totalCount / onlineCount 为「设备台数 / 在线台数」，任一模式都有值：不传 name 时统计全量
+     * 设备台账（设备类型以设备表 type 为准），传 name 时统计命中站点下的设备；
+     * 统计对象是设备（一台算一台），与 data 行数（站点数）不相等属预期。
+     * <p>typeCounts 仅全部模式（不传 type）有值：按设备类型分别统计总设备数 / 在线设备数，键 1..8，
+     * 供大屏左侧图例一次请求直接展示「总设备数 / 在线设备数」，不必为每个类型各发一次请求。
      */
     @Data
     public static class StationMonitor {
@@ -159,15 +161,16 @@ public final class ExternalVO {
         private String status = "SUCCESS";
         /** 站点行列表（档案字段 + 实时值平铺 + data 子对象 + hasData） */
         private List<Map<String, Object>> data;
-        /** 本次返回的站点总数（= data.size()，即按 type + name 过滤后的结果集行数） */
+        /** 设备台数（不传 name = 全量台账，传 name = 命中站点下的设备；不等于 data.size()） */
         private long totalCount;
-        /** 本次返回的站点中在线站点数（= data 中 isOnline=true 的行数，与 totalCount 同口径） */
+        /** 上述设备中的在线台数（设备 status 优先、空回退站点 zebpsu，与 totalCount 同口径） */
         private long onlineCount;
         /**
-         * 按监测类型分组的站点数（仅全部模式有值，单类型为 null）：键 1..8，
-         * 1/2/3/4/5/7/8 每项 totalCount / onlineCount 与该类型单独请求时信封上的同名字段完全一致
-         * （type=1 不含闸站、type=5 视频无实时值按档案状态判定；多类型站各键重复计）；
-         * 6 为模型类型，station-monitor 不接受 type=6（400），该项仅与 station-count.byType["6"] 核对。
+         * 按设备类型分组的设备数（仅全部模式有值，单类型为 null）：键 1..8，
+         * 每项 totalCount / onlineCount 与该类型单独请求（?type=N）时信封上的同名字段一致；
+         * 统计的是该类型设备台数（同站多台设备分别计），与 station-count.byType 的站点数不是同一维度；
+         * 未登记类型的设备只计入 totalCount、不进任何键；
+         * 6 为模型类型，station-monitor 不接受 type=6（400），且设备台账无模型设备，该项恒为 0/0。
          */
         private Map<String, TypeCount> typeCounts;
         private String msg;
@@ -177,12 +180,12 @@ public final class ExternalVO {
         private String errorMsg;
     }
 
-    /** 单类型站点数（totalCount 总数 / onlineCount 在线数，口径同 station-monitor 信封） */
+    /** 单类型设备数（totalCount 设备台数 / onlineCount 在线台数，口径同 station-monitor 信封） */
     @Data
     public static class TypeCount {
-        /** 该类型站点总数 */
+        /** 该类型设备台数 */
         private long totalCount;
-        /** 该类型在线站点数 */
+        /** 该类型在线设备台数 */
         private long onlineCount;
     }
 

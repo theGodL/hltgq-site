@@ -9,6 +9,9 @@ decision-excel/
 # 临时探测/验证脚本目录（不入库）
 .tmp-probe/
 
+# 部署机本地短信凭证（不入库，模板见 deploy.secrets.env.example）
+deploy.secrets.env
+
 ### STS ###
 .apt_generated
 .classpath

@@ -114,6 +114,28 @@ public interface ExternalMapper {
     Map<String, Object> selectStationCount();
 
     /**
+     * 设备台数统计（按设备类型分组，station-monitor 的 totalCount / onlineCount /
+     * typeCounts 唯一来源）：一台设备算一台（同一站多台同类型设备分别计，
+     * 与 station-count 的站点数不是同一维度）。
+     * <p>type = 设备表 type 原值（#N#，实测均为单值）；total = 该类型设备台数；
+     * online = 其中在线台数——设备 status 优先（#1# 在线），为空回退所属站点档案 zebpsu，
+     * 与 /dashboard/overview、/network-device/summary 的设备在线口径同源。
+     * <p>siteIds 为 null 统计全量台账（不受站点档案监测类型影响：站点未登记该类型但确实
+     * 挂了该类型设备的，仍计入该类型）；非 null 时只统计这些站点（name 模糊筛选后的子集）。
+     * <p>未登记类型（type 为空/未知）的设备单独成组，由 Service 只计入设备合计、不进 1..8 键。
+     */
+    @Select("<script>" +
+            "SELECT d.type AS type, COUNT(*) AS total, " +
+            "SUM(CASE WHEN COALESCE(NULLIF(d.status, ''), s.zebpsu) IN ('#1#', '#1', '1') THEN 1 ELSE 0 END) AS online " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_water_device\" d " +
+            "LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON s.id = d.site " +
+            "<if test='siteIds != null'>WHERE d.site IN " +
+            "<foreach collection='siteIds' item='siteId' open='(' separator=',' close=')'>#{siteId}</foreach> </if>" +
+            "GROUP BY d.type" +
+            "</script>")
+    List<Map<String, Object>> selectDeviceCountByType(@Param("siteIds") List<String> siteIds);
+
+    /**
      * 站点下拉选项（轻量：仅 id/站名/编号）：站点集合与 selectStationCount 的 typed_total 同口径
      * （7 类监测类型任一，按站去重）；typeCode 非空时再限定该类型（如 '#4#' 仅闸门站）。
      * <p>供告警筛选等下拉框一次拉取，不返回档案全量字段；按站点编号 iofhpi 升序（无编号排在最后）。

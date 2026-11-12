@@ -35,6 +35,7 @@ import javax.sql.DataSource;
         "com.qgyun.hltgq.hltgqsite.inventorymaterial.mapper",
         "com.qgyun.hltgq.hltgqsite.emergencysupport.mapper",
         "com.qgyun.hltgq.hltgqsite.emergencynotice.mapper",
+        "com.qgyun.hltgq.hltgqsite.sms.mapper",
         "com.qgyun.hltgq.hltgqsite.system.mapper"},
         sqlSessionFactoryRef = "primarySqlSessionFactory")
 public class PrimaryDataSourceConfig {

@@ -362,10 +362,10 @@ public class ExternalService {
      * isOnline 任一类型实时值在线即 true（同一站多类型共用一套采集时以任一类上报为准），
      * 全无实时值时按档案状态兜底；hasData = 任一类型有实时值；
      * 全部模式不使用站点排序配置，保持档案默认顺序（ORDER BY iofhpi）+ 在线优先。
-     * <p>totalCount / onlineCount 为本次返回结果集的统计（按 type + name 过滤后）：
-     * totalCount = data.size()、onlineCount = 其中 isOnline=true 的行数（前端传什么类型就统计什么类型，
-     * 全部模式同样统计返回的全量结果集，含不属于 7 类的档案行，故可能大于 station-count.typedTotal）；
-     * 空结果时为 0/0。
+     * <p>totalCount / onlineCount 为设备台数 / 在线台数（统计对象是设备台账、一台算一台，不是 data 行数）：
+     * 不传 name 时统计全量台账（设备类型以设备表 type 为准，站点未登记该类型但确实挂了的设备也计入），
+     * 传 name 时只统计命中站点下的设备；同一站可能挂多台设备、也可能一台都没有，
+     * 故 totalCount 与 data.size() 不相等属预期；空结果或站点下无设备时为 0/0。
      *
      * @param type 监测类型：1/2/3/4/5/7/8（另兼容 #N# 编码与语义串）；null/空白 = 全部点位（含实时值）
      * @param name 站点名称模糊词，null/空白表示不筛选
@@ -373,16 +373,13 @@ public class ExternalService {
     public ExternalVO.StationMonitor stationMonitor(String type, String name) {
         String trimmedType = type == null ? "" : type.trim();
         String typeCode = trimmedType.isEmpty() ? null : monitorTypeCode(trimmedType);
-        List<Map<String, Object>> archives = mapper.selectArchiveByType(typeCode, CheckUtils.trim(name));
+        String keyword = CheckUtils.trim(name);
+        List<Map<String, Object>> archives = mapper.selectArchiveByType(typeCode, keyword);
         ExternalVO.StationMonitor vo = new ExternalVO.StationMonitor();
         if (archives.isEmpty()) {
-            // 站名筛选无命中（或该类型下无档案站点）：不查实时值，直接返回空列表（计数恒为 0）
+            // 站名筛选无命中（或该类型下无档案站点）：不查实时值，直接返回空列表（设备计数也收敛为 0）
             vo.setData(new ArrayList<>());
-            applyCounts(vo);
-            if (typeCode == null) {
-                // 全部模式空结果：typeCounts 同样给全 0（键 1..8 不缺），前端图例无需判空
-                vo.setTypeCounts(countByType(vo.getData()));
-            }
+            applyCounts(vo, typeCode, keyword);
             return vo;
         }
         // 实时值按类型批量装载：单类型只查该类；全部点位模式（type 不传）并发查 6 类后逐站合并
@@ -412,7 +409,7 @@ public class ExternalService {
             // 保证既有类型顺序完全不受影响（视频无实时值、无排序配置）
             sortVideoSites(rows);
             vo.setData(rows);
-            applyCounts(vo);
+            applyCounts(vo, typeCode, keyword);
             return vo;
         }
         String sortType = monitorSortType(typeCode);
@@ -438,92 +435,89 @@ public class ExternalService {
                 .thenComparingInt(r -> Boolean.FALSE.equals(r.get("isOnline")) ? 1 : 0));
         result.addAll(unconfigured);
         vo.setData(result);
-        applyCounts(vo);
-        if (allType) {
-            // 全部模式：按类型分组计数（左侧图例「总站点数 / 在线站点数」一次请求拿全，不逐类型发请求）
-            vo.setTypeCounts(countByType(result));
-        }
+        // 计数与全部模式的 typeCounts 统一在 applyCounts 内按设备台账统计（左侧图例「总设备数 / 在线设备数」）
+        applyCounts(vo, typeCode, keyword);
         return vo;
     }
 
     /**
-     * 本次返回结果集统计（totalCount / onlineCount）：所有返回分支统一在此汇总，
-     * 空结果、视频类型、普通类型与全部点位模式口径一致（totalCount=返回行数，onlineCount=isOnline=true 行数）。
+     * 信封计数（所有返回分支统一在此汇总）：totalCount / onlineCount = 设备台数 / 在线台数，
+     * typeCode 为 null（全部模式）时同时填入 typeCounts（键 1..8）。
+     * <p>无 name 筛选时统计全量设备台账（设备类型以设备表 type 为准，不受站点档案监测类型限制）；
+     * name 非空时只统计命中站点下的设备。站点集合为空、或站点下一台设备都没有时为 0/0。
      */
-    private void applyCounts(ExternalVO.StationMonitor vo) {
-        List<Map<String, Object>> rows = vo.getData();
-        long online = 0;
-        for (Map<String, Object> row : rows) {
-            if (Boolean.TRUE.equals(row.get("isOnline"))) {
-                online++;
-            }
+    private void applyCounts(ExternalVO.StationMonitor vo, String typeCode, String name) {
+        DeviceCounts counts = deviceCounts(vo.getData(), name);
+        if (typeCode == null) {
+            vo.setTotalCount(counts.total);
+            vo.setOnlineCount(counts.online);
+            vo.setTypeCounts(counts.byType);
+            return;
         }
-        vo.setTotalCount(rows.size());
-        vo.setOnlineCount(online);
+        ExternalVO.TypeCount single = counts.byType.get(codeOf(typeCode));
+        vo.setTotalCount(single == null ? 0 : single.getTotalCount());
+        vo.setOnlineCount(single == null ? 0 : single.getOnlineCount());
     }
 
     /**
-     * 全部模式：按类型统计总站点数 / 在线站点数（供大屏左侧图例直接展示，不逐类型发请求）。
-     * <p>键 1..8 与 station-count.byType 对齐；1/2/3/4/5/7/8 每项与该类型单独请求（?type=N）
-     * 的 totalCount / onlineCount 完全一致（2026-11-06 生产库只读实测逐项 0 差异）；
-     * 6 是模型类型，本接口不接受 type=6，该项只能与 station-count.byType["6"] 核对：
-     * 站点集合 = 档案 epjutj 含该类型（type=1 与列表同口径排除闸站 #4#，闸站单计于 type=4）；
-     * online = 该类型实时值的 isOnline（与单类型请求同一份实时值索引），无实时值时按档案 zebpsu 兜底
-     * （type=5 视频无实时值、type=6 模型无实时接口，一律按档案状态判定）；
-     * 判定规则与单类型请求的 attachMonitorData 一致，不重新定义。
-     * <p>多类型站各键重复计（各项之和大于全部模式 totalCount 属预期）。
+     * 设备统计：按设备台账（t_auto_hltgq_water_device）汇总，一台设备算一台。
+     * <p>统计对象是设备而非站点行：同一站可能挂多台设备（闸站多闸孔、视频站多摄像头），
+     * 也可能一台设备都没有，因此设备数与本接口 data 行数（站点数）天然不相等。
+     * <p>设备类型取设备表 type：台账里有 10 台设备挂在未登记该类型的站点下（如闸站内挂的
+     * 流量计），它们只在自己的类型键里计，不在该站点的 epjutj 里——所以不能按站点类型反推设备数。
+     * <p>在线 = 设备 status 优先（#1# 在线），为空回退所属站点 zebpsu，
+     * 与 /dashboard/overview、/network-device/summary 的设备在线口径同源。
+     * <p>未登记类型的设备只计入合计（total/online），不进入 1..8 任何键，
+     * 故 typeCounts 各项之和可能小于 totalCount。
      */
-    private Map<String, ExternalVO.TypeCount> countByType(List<Map<String, Object>> rows) {
-        Map<String, ExternalVO.TypeCount> counts = new LinkedHashMap<>();
+    private DeviceCounts deviceCounts(List<Map<String, Object>> rows, String name) {
+        DeviceCounts counts = new DeviceCounts();
         for (int i = 1; i <= 8; i++) {
-            counts.put(String.valueOf(i), new ExternalVO.TypeCount());
+            counts.byType.put(String.valueOf(i), new ExternalVO.TypeCount());
         }
-        for (Map<String, Object> row : rows) {
-            List<String> types = codeList(row.get("epjutj"));
-            boolean archiveOnline = !"2".equals(ValueConvertUtils.str(row.get("zebpsu")));
-            Map<String, Object> byType = dataByTypeOf(row);
-            for (String code : types) {
-                ExternalVO.TypeCount count = counts.get(code);
-                if (count == null) {
-                    continue;
+        // 无 name 筛选 = 全量台账（siteIds 传 null）；有 name 筛选 = 命中站点子集
+        List<String> siteIds = null;
+        if (name != null && !name.isEmpty()) {
+            siteIds = new ArrayList<>();
+            for (Map<String, Object> row : rows) {
+                String id = ValueConvertUtils.str(row.get("id"));
+                if (id != null && !id.trim().isEmpty()) {
+                    siteIds.add(id.trim());
                 }
-                // type=1 与列表同口径：闸站（含 #4#）不计入水位站数，单计于 type=4
-                if ("1".equals(code) && types.contains("4")) {
-                    continue;
-                }
-                count.setTotalCount(count.getTotalCount() + 1);
-                Boolean online = onlineOf(byType == null ? null : byType.get(code));
-                if (online == null ? archiveOnline : online) {
-                    count.setOnlineCount(count.getOnlineCount() + 1);
-                }
+            }
+            if (siteIds.isEmpty()) {
+                return counts;
+            }
+        }
+        for (Map<String, Object> item : mapper.selectDeviceCountByType(siteIds)) {
+            long total = longOf(item.get("total"));
+            long online = longOf(item.get("online"));
+            counts.total += total;
+            counts.online += online;
+            ExternalVO.TypeCount typeCount = counts.byType.get(deviceTypeCode(item.get("type")));
+            if (typeCount != null) {
+                typeCount.setTotalCount(typeCount.getTotalCount() + total);
+                typeCount.setOnlineCount(typeCount.getOnlineCount() + online);
             }
         }
         return counts;
     }
 
-    /** 行上 epjutj（toArchiveRow 已拆成 List&lt;String&gt;）→ 类型码列表；非列表时按 #N#|#N# 文本解析 */
-    @SuppressWarnings("unchecked")
-    private List<String> codeList(Object value) {
-        if (value instanceof List) {
-            return (List<String>) value;
+    /** 设备表 type 原值 → 类型码（#3# → 3；多值取首个 1..8；空/未知返回 null，由调用方只计入合计） */
+    private String deviceTypeCode(Object type) {
+        for (String code : codeArray(type)) {
+            if (code.length() == 1 && code.charAt(0) >= '1' && code.charAt(0) <= '8') {
+                return code;
+            }
         }
-        return codeArray(value);
+        return null;
     }
 
-    /** 行上 dataByType（仅全部模式有）→ 类型码 → 实时值；无该键返回 null */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> dataByTypeOf(Map<String, Object> row) {
-        Object byType = row.get("dataByType");
-        return byType instanceof Map ? (Map<String, Object>) byType : null;
-    }
-
-    /** 实时值 → isOnline（非 Boolean 视为未知，由调用方按档案状态兜底） */
-    private Boolean onlineOf(Object data) {
-        if (!(data instanceof Map)) {
-            return null;
-        }
-        Object online = ((Map<?, ?>) data).get("isOnline");
-        return online instanceof Boolean ? (Boolean) online : null;
+    /** 设备统计中间结果：按类型分组 + 全部设备合计（含未登记类型的设备） */
+    private static class DeviceCounts {
+        private final Map<String, ExternalVO.TypeCount> byType = new LinkedHashMap<>();
+        private long total;
+        private long online;
     }
 
     /** 线程工厂：命名 + daemon（大屏轮询线程不应阻止容器关闭） */

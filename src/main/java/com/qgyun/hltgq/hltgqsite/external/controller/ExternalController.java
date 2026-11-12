@@ -110,11 +110,13 @@ public class ExternalController {
      * 闸门站（epjutj 含 #4#）恒为 null——闸门水位是闸前 / 闸后实测值（type=4 的 upZ / downZ），
      * 不属于通用水位指标（type=1 列表已在档案层排除闸站，此判断为防御）。
      * 对外字段名仍为 ccnhtm / ijzsby，值取实时列原样（同表的 double 列为 2026-09 停更的历史快照，不读）。
-     * <p>totalCount / onlineCount：本次返回结果集（按 type + name 过滤后）的站点总数与在线站点数——
-     * totalCount = data 行数，onlineCount = 其中 isOnline=true 的行数（空结果为 0/0，全部模式同口径）。
-     * <p>typeCounts（仅全部模式）：按类型分组的总站点数 / 在线站点数，键 1..8（与 station-count.byType 对齐），
-     * 供大屏左侧图例一次拿全；1/2/3/4/5/7/8 每项与该类型单独请求时信封上的两个字段完全相等
-     * （6 为模型类型，本接口不接受 type=6，该项只能在此取）；单类型模式为 null。
+     * <p>totalCount / onlineCount：设备台数与在线台数（统计对象是设备台账，一台算一台，不是 data 行数）：
+     * 不传 name 时统计全量台账（设备类型以设备表 type 为准），传 name 时只统计命中站点下的设备；
+     * 同一站可能挂多台设备（闸站多闸孔、视频站多摄像头），也可能一台都没有。
+     * 在线 = 设备 status 优先（#1# 在线）、为空回退站点 zebpsu。
+     * <p>typeCounts（仅全部模式）：按设备类型分组的总设备数 / 在线设备数，键 1..8，
+     * 供大屏左侧图例一次拿全；每项与该类型单独请求时信封上的两个字段相等（未登记类型的设备只计入 totalCount）；
+     * 6 为模型类型，本接口不接受 type=6 且无模型设备，该项恒为 0/0；单类型模式为 null。
      * 响应信封与原 qx-api 一致（success/status/data/msg/...）。
      */
     @GetMapping("/station-monitor")
@@ -127,11 +129,12 @@ public class ExternalController {
      * 站点数量统计（大屏「站点数」卡片，纯统计不返回明细，避免为取一个数字拉全量列表）。
      * <p>type：可选（与 station-monitor 的 type 同为可选）。不传/空白 = 全量统计；
      * 传则只统计该类型（1..8 / #N# / 语义串），非法值返回 400。
-     * <p>data.total = 档案表全部行数（含 epjutj 为空的管理所/单位记录，比 station-monitor 全部模式行数多；
-     * 「全部」页签点位数请取 station-monitor 的 totalCount）；data.typedTotal = 可进入 station-monitor 列表的站点并集
-     * （#1#/#2#/#3#/#4#/#5#/#7#/#8# 七类按站去重，与各类型列表按 id 去重结果一致；#6# 模型类型不计入）；
+     * <p>data.total = 档案表全部行数（含 epjutj 为空的管理所/单位记录）；data.typedTotal = 可进入
+     * station-monitor 列表的站点并集（#1#/#2#/#3#/#4#/#5#/#7#/#8# 七类按站去重；#6# 模型类型不计入）；
      * data.byType = 按类型计数（键 1..8，含 #6#，多类型站重复计）；其中 type_1 与 station-monitor?type=1
      * 同口径（不含闸站 #4#），闸站单计于 type_4。
+     * <p>本接口全部数字都是「站点数」；station-monitor 的 totalCount / typeCounts 是「设备台数」，
+     * 两个维度不可直接相减（一个站可挂多台设备，也可能零设备）。
      * <p>响应信封与 /external/* 其它接口一致（success/status/data/...）。
      */
     @GetMapping("/station-count")

@@ -8,9 +8,26 @@
 # ============================================================
 set -e
 
+
+
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IMAGE_NAME="hltgq-site"
 CONTAINER_NAME="hltgq-site"
+
+# ============================================================
+# 短信凭证：不入库，由服务器本地文件 deploy.secrets.env 提供
+# 模板见 deploy.secrets.env.example（复制后填写真实值，值含 # @ 等字符须用单引号包裹）
+# 外部 export 优先级高于该文件；AK/SK 都为空时短信总开关自动关闭
+# ============================================================
+if [ -f "$PROJECT_DIR/deploy.secrets.env" ]; then
+    . "$PROJECT_DIR/deploy.secrets.env"
+fi
+SMS_ALIYUN_AK_ID="${SMS_ALIYUN_AK_ID:-}"
+SMS_ALIYUN_AK_SECRET="${SMS_ALIYUN_AK_SECRET:-}"
+SMS_CALLBACK_TOKEN="${SMS_CALLBACK_TOKEN:-}"
+# 接收人非敏感信息；联调期告警与日汇总均只发测试号，恢复生产接收人：注释掉下面两行再重跑
+SMS_RECEIVERS_ALARM="${SMS_RECEIVERS_ALARM:-15212773620}"
+SMS_RECEIVERS_DAILY="${SMS_RECEIVERS_DAILY:-15212773620}"
 
 case "${1:-deploy}" in
     deploy)
@@ -35,6 +52,29 @@ case "${1:-deploy}" in
         if [ -n "${AUTH_API_SECRET:-}" ]; then
             EXTRA_ENV+=(-e "AUTH_API_SECRET=${AUTH_API_SECRET}")
         fi
+        # 短信（AK/SK/token 默认值见文件顶部；外部 export 可覆盖）
+        if [ -n "${SMS_ALIYUN_AK_ID:-}" ]; then
+            EXTRA_ENV+=(-e "SMS_ALIYUN_AK_ID=${SMS_ALIYUN_AK_ID}")
+        fi
+        if [ -n "${SMS_ALIYUN_AK_SECRET:-}" ]; then
+            EXTRA_ENV+=(-e "SMS_ALIYUN_AK_SECRET=${SMS_ALIYUN_AK_SECRET}")
+        fi
+        if [ -n "${SMS_CALLBACK_TOKEN:-}" ]; then
+            EXTRA_ENV+=(-e "SMS_CALLBACK_TOKEN=${SMS_CALLBACK_TOKEN}")
+        fi
+        # 接收人：顶部默认值已兜底（恒注入）；恢复镜像内默认清单需注释掉顶部对应行
+        if [ -n "${SMS_RECEIVERS_ALARM:-}" ]; then
+            EXTRA_ENV+=(-e "SMS_RECEIVERS_ALARM=${SMS_RECEIVERS_ALARM}")
+        fi
+        if [ -n "${SMS_RECEIVERS_DAILY:-}" ]; then
+            EXTRA_ENV+=(-e "SMS_RECEIVERS_DAILY=${SMS_RECEIVERS_DAILY}")
+        fi
+        # 短信总开关：AK 未注入时默认关闭（避免落一堆 NOT_CONFIGURED 失败记录）
+        SMS_ENABLED_DEFAULT=true
+        if [ -z "${SMS_ALIYUN_AK_ID:-}" ] || [ -z "${SMS_ALIYUN_AK_SECRET:-}" ]; then
+            SMS_ENABLED_DEFAULT=false
+            echo "⚠ 未配置短信凭证（缺少 deploy.secrets.env 或 AK/SK），本次部署 SMS_ENABLED=false"
+        fi
         # -v /:/host:ro → 系统资源监控采集宿主机视角（/proc、磁盘挂载点），只读挂载
         # SYSTEM_MONITOR_DB_CAPACITY_GB → 表空间使用率分母（数据库服务器数据盘 /service 分区 7.7TiB）
         # SYSTEM_MONITOR_REPORT_TOKEN → 各服务器采集脚本上报凭证（须与各机 sysmon-collect.sh 内一致）
@@ -53,10 +93,11 @@ case "${1:-deploy}" in
             -e SYSTEM_MONITOR_DB_CAPACITY_GB="${SYSTEM_MONITOR_DB_CAPACITY_GB:-7885}" \
             -e SYSTEM_MONITOR_REPORT_TOKEN="${SYSTEM_MONITOR_REPORT_TOKEN:-hltgq-sysmon-2026}" \
             -e SYSTEM_MONITOR_REPORT_ALLOW_CIDR="${SYSTEM_MONITOR_REPORT_ALLOW_CIDR:-10.68.18.}" \
+            -e SMS_ENABLED="${SMS_ENABLED:-$SMS_ENABLED_DEFAULT}" \
             "${EXTRA_ENV[@]}" \
             --memory="1024m" \
             ${IMAGE_NAME}:latest
-        echo "部署完成，查看日志："
+        echo "部署完成，查看日志（提醒：短信记录表需已执行 sms-record-ddl.sql，否则无记录/幂等/静默）："
         docker logs -f ${CONTAINER_NAME}
         ;;
     restart)
