@@ -8,20 +8,16 @@
 # ============================================================
 set -e
 
-
-
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IMAGE_NAME="hltgq-site"
 CONTAINER_NAME="hltgq-site"
 
 # ============================================================
-# 短信凭证：不入库，由服务器本地文件 deploy.secrets.env 提供
-# 模板见 deploy.secrets.env.example（复制后填写真实值，值含 # @ 等字符须用单引号包裹）
-# 外部 export 优先级高于该文件；AK/SK 都为空时短信总开关自动关闭
+# 短信凭证（仓库不保存明文，部署时通过环境变量注入）：
+#   SMS_ALIYUN_AK_ID='xxx' SMS_ALIYUN_AK_SECRET='xxx' \
+#   SMS_CALLBACK_TOKEN='xxx' ./deploy.sh
+# 值含 # @ 等字符，必须用单引号包裹；AK/SK 为空时短信总开关自动关闭
 # ============================================================
-if [ -f "$PROJECT_DIR/deploy.secrets.env" ]; then
-    . "$PROJECT_DIR/deploy.secrets.env"
-fi
 SMS_ALIYUN_AK_ID="${SMS_ALIYUN_AK_ID:-}"
 SMS_ALIYUN_AK_SECRET="${SMS_ALIYUN_AK_SECRET:-}"
 SMS_CALLBACK_TOKEN="${SMS_CALLBACK_TOKEN:-}"
@@ -52,7 +48,7 @@ case "${1:-deploy}" in
         if [ -n "${AUTH_API_SECRET:-}" ]; then
             EXTRA_ENV+=(-e "AUTH_API_SECRET=${AUTH_API_SECRET}")
         fi
-        # 短信（AK/SK/token 默认值见文件顶部；外部 export 可覆盖）
+        # 短信（凭证通过环境变量注入，见文件顶部说明）
         if [ -n "${SMS_ALIYUN_AK_ID:-}" ]; then
             EXTRA_ENV+=(-e "SMS_ALIYUN_AK_ID=${SMS_ALIYUN_AK_ID}")
         fi
@@ -73,7 +69,7 @@ case "${1:-deploy}" in
         SMS_ENABLED_DEFAULT=true
         if [ -z "${SMS_ALIYUN_AK_ID:-}" ] || [ -z "${SMS_ALIYUN_AK_SECRET:-}" ]; then
             SMS_ENABLED_DEFAULT=false
-            echo "⚠ 未配置短信凭证（缺少 deploy.secrets.env 或 AK/SK），本次部署 SMS_ENABLED=false"
+            echo "⚠ 未配置短信凭证（AK/SK 为空），本次部署 SMS_ENABLED=false"
         fi
         # -v /:/host:ro → 系统资源监控采集宿主机视角（/proc、磁盘挂载点），只读挂载
         # SYSTEM_MONITOR_DB_CAPACITY_GB → 表空间使用率分母（数据库服务器数据盘 /service 分区 7.7TiB）
