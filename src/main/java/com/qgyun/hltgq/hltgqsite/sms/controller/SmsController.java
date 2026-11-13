@@ -5,6 +5,7 @@ import com.qgyun.hltgq.hltgqsite.auth.RequireAdmin;
 import com.qgyun.hltgq.hltgqsite.sms.SmsProperties;
 import com.qgyun.hltgq.hltgqsite.sms.mapper.SmsRecordMapper;
 import com.qgyun.hltgq.hltgqsite.sms.service.SmsAlarmService;
+import com.qgyun.hltgq.hltgqsite.sms.service.SmsDailySummaryService;
 import com.qgyun.hltgq.hltgqsite.sms.service.SmsSendService;
 import com.qgyun.hltgq.hltgqsite.sms.vo.SmsAlarmEventRequest;
 import com.qgyun.hltgq.hltgqsite.sms.vo.SmsAlarmResult;
@@ -58,6 +59,25 @@ public class SmsController {
 
     @Autowired
     private SmsRecordMapper recordMapper;
+
+    @Autowired
+    private SmsDailySummaryService smsDailySummaryService;
+
+    /**
+     * 手动触发日汇总（仅系统管理员）：与 08:01 定时任务同一链路、同一接收人清单。
+     * <p>用途：部署后立即验证取数是否正确（不必等次日 8 点）、数据修正后补发。
+     * <p>⚠ 会真实向全部日汇总接收人发送短信，操作前确认取数日志无误。
+     */
+    @PostMapping("/daily/send")
+    @RequireAdmin
+    public Map<String, Object> triggerDailySummary() {
+        log.info("手动触发日汇总短信（管理员）");
+        smsDailySummaryService.runDailySummary();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("triggered", true);
+        body.put("note", "已按日汇总链路执行，取数与发送结果见服务日志");
+        return body;
+    }
 
     /**
      * mq 告警回调：告警落库后调用，本系统负责组装变量、幂等去重、发送、记录。

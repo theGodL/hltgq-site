@@ -18,7 +18,7 @@ public class SmsAlarmEventRequest {
     /** rain=雨量告警 / water_level=水位告警 */
     private String metric;
 
-    /** 告警站点编码（站点档案 iofhpi，如 00000001） */
+    /** 告警站点编码（站点档案 iofhpi 新编号，如 3206400001 / 9000000003；老编号 0000000x 本系统不映射） */
     private String stcd;
 
     /** 触发阈值（mm，雨量告警必填） */

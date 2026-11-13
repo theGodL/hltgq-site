@@ -91,16 +91,16 @@ public class SmsProperties {
     @Value("${sms.alarm.compensation-lookback-minutes:30}")
     private int compensationLookbackMinutes;
 
-    /** 坝上站号（水位 + 雨量） */
-    @Value("${sms.station.bashang:00000007}")
+    /** 坝上站号（水位 + 雨量；新库真实 STCD，老编号 00000007 需映射） */
+    @Value("${sms.station.bashang:3206400007}")
     private String stationBashang;
 
-    /** 坝下站号（水位 + 雨量） */
-    @Value("${sms.station.baxia:00000004}")
+    /** 坝下站号（水位 + 雨量；新库真实 STCD，老编号 00000004 需映射） */
+    @Value("${sms.station.baxia:320640000A}")
     private String stationBaxia;
 
-    /** 周家河站号（水位 + 雨量） */
-    @Value("${sms.station.zhoujiahe:00000001}")
+    /** 周家河站号（水位 + 雨量；新库真实 STCD，老编号 00000001 需映射） */
+    @Value("${sms.station.zhoujiahe:3206400001}")
     private String stationZhoujiahe;
 
     public boolean isClientConfigured() {
