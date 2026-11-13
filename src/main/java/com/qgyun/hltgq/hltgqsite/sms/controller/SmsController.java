@@ -66,13 +66,17 @@ public class SmsController {
     /**
      * 手动触发日汇总（仅系统管理员）：与 08:01 定时任务同一链路、同一接收人清单。
      * <p>用途：部署后立即验证取数是否正确（不必等次日 8 点）、数据修正后补发。
+     * <p>与定时任务的唯一区别：<b>不等待 08:00 整点报文</b>（立即按当前库内数据执行），
+     * 定时任务会等报文齐（最迟 08:15）。补发历史日数据前确认当天报文早已入库。
+     * <p><b>取数不全时不会发送</b>（12 站整点报文全缺或水位缺数 → 拒发并落 NO_DATA 记录），
+     * 具体原因见服务日志与发送记录页。
      * <p>⚠ 会真实向全部日汇总接收人发送短信，操作前确认取数日志无误。
      */
     @PostMapping("/daily/send")
     @RequireAdmin
     public Map<String, Object> triggerDailySummary() {
-        log.info("手动触发日汇总短信（管理员）");
-        smsDailySummaryService.runDailySummary();
+        log.info("手动触发日汇总短信（管理员，立即执行不等报文）");
+        smsDailySummaryService.sendDailySummaryNow();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("triggered", true);
         body.put("note", "已按日汇总链路执行，取数与发送结果见服务日志");

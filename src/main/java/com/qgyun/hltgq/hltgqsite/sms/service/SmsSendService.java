@@ -32,7 +32,11 @@ public class SmsSendService {
     /** 网络异常最大重试次数（总尝试 = 1 + 2 次） */
     private static final int MAX_RETRY = 2;
 
-    /** 模板变量缺数占位（阿里云模板变量不允许空值，各发送方统一引用） */
+    /**
+     * 历史缺数占位（已停用）：现行策略为"取数不全不发送"（宁可少发不误发），
+     * 短信变量不允许再出现"暂无"；保留常量仅供兼容引用，业务代码不得再使用。
+     */
+    @Deprecated
     public static final String EMPTY_TEXT = "暂无";
 
     @Autowired
@@ -56,7 +60,7 @@ public class SmsSendService {
      * @param phones         接收号码清单
      * @param bizType        业务类型（daily / alarm_rain / alarm_level / test）
      * @param templateCode   模板编码
-     * @param templateParams 模板变量（值不可为空，调用方兜底"暂无"）
+     * @param templateParams 模板变量（调用方保证取数齐全，缺数不发送，不允许"暂无"）
      * @param alertId        告警 id（日汇总/测试为 null）
      * @param silenceKey     静默键（告警为 rain:{stcd} / level:{stcd}，日汇总为 null）
      */

@@ -140,17 +140,26 @@ public class SmsAlarmService {
             if (METRIC_RAIN.equals(metric)) {
                 templateCode = properties.getTemplateRain();
                 bizType = "alarm_rain";
+                if (threshold == null) {
+                    // 防御：回调校验已保证非空、补偿无阈值直接跳过；走到这里说明上游传参异常
+                    log.error("{}雨量告警 threshold 为空，未发送 alertId={} stcd={}", source, alertId, stcd);
+                    return SmsAlarmResult.skipped("雨量告警缺少 threshold，未发送");
+                }
                 // ${hour} 小时累积雨量大于 ${threshold} mm 的雨量站:${stcd}
                 // 模板无独立雨量值变量：实测值拼在站名后（如"周家河12.5"，沿用原运维拼法）
                 int windowHour = hour == null || hour <= 0 ? 1 : hour;
                 String valueText = value == null ? "" : trimZeros(value);
                 params.put("hour", String.valueOf(windowHour));
-                params.put("threshold", threshold == null ? SmsSendService.EMPTY_TEXT : trimZeros(threshold));
+                params.put("threshold", trimZeros(threshold));
                 params.put("stcd", stationName + valueText);
             } else {
                 templateCode = properties.getTemplateLevel();
                 bizType = "alarm_level";
-                fillLevelParams(params, stcd, stationName);
+                // 取数不完整（当前水位/1 小时前任一缺失）→ 本条不发：宁可少发不误发，
+                // 不落处理记录，30 分钟补偿窗口内每 5 分钟重试，数据补齐后自动补发
+                if (!fillLevelParams(params, stcd, stationName)) {
+                    return SmsAlarmResult.skipped("水位取数不完整，未发送（补偿窗口内将重试）");
+                }
             }
 
             log.info("{}告警短信组装 alertId={} metric={} stcd={} 站名={} 参数={}",
@@ -225,32 +234,96 @@ public class SmsAlarmService {
         }
     }
 
-    /** 水位模板参数：station_code / increaseRate（1 小时涨幅）/ waterLevel（当前水位） */
-    private void fillLevelParams(Map<String, String> params, String stcd, String stationName) {
+    /**
+     * 水位模板参数：station_code / increaseRate（1 小时涨幅）/ waterLevel（当前水位）。
+     *
+     * @return true=参数齐全可发送；false=取数不完整（<b>调用方不得发送</b>，宁可少发不误发）
+     */
+    private boolean fillLevelParams(Map<String, String> params, String stcd, String stationName) {
         params.put("station_code", stationName);
-        LocalDateTime now = LocalDateTime.now();
-        Map<String, Object> current = recordMapper.selectRiverLatestUpTo(stcd, now);
-        if (current == null || current.get("z") == null) {
-            params.put("increaseRate", SmsSendService.EMPTY_TEXT);
-            params.put("waterLevel", SmsSendService.EMPTY_TEXT);
-            log.warn("水位告警取当前水位失败：stcd={}（参数填暂无）", stcd);
-            return;
+        LevelSnapshot current = readLevelSnapshot(stcd, LocalDateTime.now());
+        if (current == null) {
+            log.error("水位告警取当前水位失败：stcd={}（河道表/闸站表均无数据，本条不发送）", stcd);
+            return false;
         }
-        BigDecimal zNow = toDecimal(current.get("z")).setScale(2, RoundingMode.HALF_UP);
-        params.put("waterLevel", zNow.toPlainString());
-        log.info("水位告警取当前水位：stcd={} TM={} Z={}", stcd, current.get("tm"), zNow.toPlainString());
+        // 业主水位口径：2 位截断不四舍五入（与 ExternalService.cleanLevel / 日汇总 readLevel 一致）
+        BigDecimal zNow = current.z.setScale(2, RoundingMode.DOWN);
 
-        Map<String, Object> oneHourAgo = recordMapper.selectRiverLatestUpTo(stcd, now.minusHours(1));
-        if (oneHourAgo == null || oneHourAgo.get("z") == null) {
-            params.put("increaseRate", SmsSendService.EMPTY_TEXT);
-            log.warn("水位告警取 1 小时前水位失败：stcd={}（涨幅填暂无）", stcd);
-            return;
+        // 1 小时前 = 当前值时刻回退 1 小时（灌区水位 rise1h 同口径；不用 now，避免当前值滞后时基准漂移）
+        LevelSnapshot oneHourAgo = readLevelSnapshot(stcd, current.time.minusHours(1));
+        if (oneHourAgo == null) {
+            log.error("水位告警取 1 小时前水位失败：stcd={} 当前值时刻={}（本条不发送）", stcd, current.time);
+            return false;
         }
-        BigDecimal zOneHourAgo = toDecimal(oneHourAgo.get("z"));
-        BigDecimal increase = zNow.subtract(zOneHourAgo).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal zOneHourAgo = oneHourAgo.z.setScale(2, RoundingMode.DOWN);
+        BigDecimal increase = zNow.subtract(zOneHourAgo).setScale(2, RoundingMode.DOWN);
+        params.put("waterLevel", zNow.toPlainString());
         params.put("increaseRate", increase.toPlainString());
-        log.info("水位告警归纳 1 小时涨幅：stcd={} 当前={} 1小时前={} 涨幅={}",
-                stcd, zNow.toPlainString(), zOneHourAgo.toPlainString(), increase.toPlainString());
+        log.info("水位告警取数：stcd={} 当前[{}] TM={} Z={} 1小时前[{}] TM={} Z={} 涨幅={}",
+                stcd, current.source, current.time, zNow.toPlainString(),
+                oneHourAgo.source, oneHourAgo.time, zOneHourAgo.toPlainString(), increase.toPlainString());
+        return true;
+    }
+
+    /**
+     * 读水位快照：<b>按该站水位阈值行的 zb 字段取数——告警引擎按哪个字段判定，短信就显示哪个字段</b>。
+     * <ul>
+     *   <li>zb=up_z → t_auto_hltgq_water_gate 闸前水位（站点须按 site 关联，gate 表 39% 行 STCD 为 NULL）；</li>
+     *   <li>zb=down_z → 同表闸后水位（如渠首进水闸 QSJSZ 配的是闸后阈值）；</li>
+     *   <li>zb 空 / Z → river_info 最新有效值（COALESCE(Z, Z1)，排除哨兵值）；</li>
+     *   <li>河道取不到时兜底闸前 up_z（防御：无阈值配置的闸站告警）。</li>
+     * </ul>
+     * <p>2026-11-13 太宿（9000000003）实证：阈值表 zb=up_z/40.1，告警引擎读 gate.up_z=42.71 触发；
+     * 此前短信只查 river_info（该站无行）导致"暂无"。取不到返回 null。
+     */
+    private LevelSnapshot readLevelSnapshot(String stcd, LocalDateTime before) {
+        String siteId = recordMapper.selectStationIdByStcd(stcd);
+        String field = siteId == null ? null : recordMapper.selectLevelThresholdField(siteId);
+        boolean downZ = "down_z".equalsIgnoreCase(field);
+        boolean upZ = "up_z".equalsIgnoreCase(field);
+        if (siteId != null && (upZ || downZ)) {
+            Map<String, Object> gate = downZ
+                    ? recordMapper.selectGateDownZLatestBySite(siteId, before)
+                    : recordMapper.selectGateUpZLatestBySite(siteId, before);
+            if (gate != null && gate.get("z") != null) {
+                return snapshotOf(gate, downZ ? "闸站down_z" : "闸站up_z");
+            }
+            log.warn("水位告警取数：阈值 zb={} 但闸站表取不到值，回退河道口径 stcd={} before={}", field, stcd, before);
+        }
+        Map<String, Object> river = recordMapper.selectRiverLatestUpTo(stcd, before);
+        if (river != null && river.get("z") != null) {
+            return snapshotOf(river, "河道Z");
+        }
+        if (siteId != null) {
+            Map<String, Object> gate = recordMapper.selectGateUpZLatestBySite(siteId, before);
+            if (gate != null && gate.get("z") != null) {
+                return snapshotOf(gate, "闸站up_z(兜底)");
+            }
+        }
+        return null;
+    }
+
+    /** 结果行 → 水位快照（z/tm/source） */
+    private LevelSnapshot snapshotOf(Map<String, Object> row, String source) {
+        LevelSnapshot snapshot = new LevelSnapshot();
+        snapshot.z = toDecimal(row.get("z"));
+        Object tm = row.get("tm");
+        if (tm instanceof java.sql.Timestamp) {
+            snapshot.time = ((java.sql.Timestamp) tm).toLocalDateTime();
+        } else if (tm instanceof LocalDateTime) {
+            snapshot.time = (LocalDateTime) tm;
+        } else {
+            snapshot.time = LocalDateTime.now();
+        }
+        snapshot.source = source;
+        return snapshot;
+    }
+
+    /** 水位快照（当前 / 1 小时前） */
+    private static final class LevelSnapshot {
+        private BigDecimal z;
+        private LocalDateTime time;
+        private String source;
     }
 
     /**

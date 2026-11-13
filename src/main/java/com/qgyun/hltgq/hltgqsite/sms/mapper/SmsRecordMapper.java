@@ -25,6 +25,7 @@ public interface SmsRecordMapper {
     String T_STATION = "\"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\"";
     String T_RAIN = "\"qixiao-apaas\".t_auto_hltgq_water_rain_info";
     String T_RIVER = "\"qixiao-apaas\".t_auto_hltgq_water_river_info";
+    String T_GATE = "\"qixiao-apaas\".t_auto_hltgq_water_gate";
     String T_ALERT = "\"qixiao-apaas\".\"t_auto_hltgq_water_alert\"";
     String T_DEVICE = "\"qixiao-apaas\".\"t_auto_hltgq_water_device\"";
     String T_THRESHOLD = "\"qixiao-apaas\".t_auto_hltgq_water_threshold";
@@ -104,9 +105,28 @@ public interface SmsRecordMapper {
     @Select("SELECT s.zzkaec FROM " + T_STATION + " s WHERE s.iofhpi = #{stcd} LIMIT 1")
     String selectStationName(@Param("stcd") String stcd);
 
+    /** 雨量站总数（档案监测类型含 #2# 的 320640 站，当前 12 站）：日汇总固定分母与"等报文齐"的期望值 */
+    @Select("SELECT COUNT(*) FROM " + T_STATION + " s " +
+            "WHERE s.epjutj LIKE '%#2#%' AND s.iofhpi LIKE '320640%'")
+    int countRainStations();
+
+    /**
+     * 指定整点（TM = endTm）已有入库报文的雨量站数——日汇总发送前"等 08:00 整点报文齐"用。
+     * <p>背景（2026-11-13 实测入库时间）：12 站 08:00 整点报文从 08:00:03 陆续入库到 08:06:29，
+     * 老系统 08:02~08:05 结算时缺一条 0.5（4.63=55.5/12）；我们改为等报文齐再发，保证发完整值。
+     * <p>返回 = {@link #countRainStations()} 即全部到齐。
+     */
+    @Select("SELECT COUNT(*) FROM " + T_STATION + " s " +
+            "WHERE s.epjutj LIKE '%#2#%' AND s.iofhpi LIKE '320640%' " +
+            "AND EXISTS (SELECT 1 FROM " + T_RAIN + " t " +
+            "            WHERE t.STCD = s.iofhpi AND t.deleted IS NOT TRUE AND t.TM = #{endTm})")
+    int countRainStationsWithReportAt(@Param("endTm") LocalDateTime endTm);
+
     /**
      * 雨量：站点的 TM &lt;= endTm 最新一条，且该行属于 endTm 标记的水文日
      * （endTm=今日 08:00 → 返回上一水文日完整累计 DRP；昨日无上报行返回 null → 按 0 计）。
+     * <p>注意：该表 DRP 字段实测恒为 0（2026-11-13 全站核验），日汇总雨量改用
+     * {@link #selectHydroDayRainAllStations} 的 DYP 差值口径；本方法仅留作兼容。
      */
     @Select("SELECT x.stcd AS stcd, x.tm AS tm, x.drp AS drp FROM (" +
             "  SELECT t.STCD AS stcd, t.TM AS tm, t.DRP AS drp, " +
@@ -118,6 +138,43 @@ public interface SmsRecordMapper {
     Map<String, Object> selectRainLatestUpTo(@Param("stcd") String stcd,
                                              @Param("endTm") LocalDateTime endTm);
 
+    /**
+     * 日汇总雨量（完全复刻老系统公式）：320640 系列监测类型含 #2# 的全部站点<b>固定 12 站</b>，
+     * 以站档案为主表 LEFT JOIN 雨量聚合，<b>保证每站恒定出一行</b>，无任何报文的站 rain=0、
+     * rowsCnt=0（分母固定 12，缺报文按 0 参与，与老系统页面"空值按 0、分母不变"一致）。
+     * <p>单站雨量 = Σ max(0, DYP_i − DYP_{i−1})，窗口 = 基线行（TM ≤ baseTm 最新一条）+ (baseTm, endTm] 全部报文；
+     * baseTm=昨日 08:00（上一水文日起点）、endTm=今日 08:00。
+     * <p>与首尾差法的区别：DYP 回退（换设备归零/修正）不计负值，与老系统 dailyDyp 逻辑一致；
+     * 站点区间内只有基线行时 rain=0（无雨）。
+     * <p>返回列：stcd/stnm/rain（Σ 正向增量）/rowsCnt（窗口含基线行数，=1 表示区间内无上报）。
+     * <p>KingbaseES：DISTINCT ON 不能直接出现在 UNION ALL 分支，须套子查询。
+     */
+    @Select("SELECT s.iofhpi AS \"stcd\", s.zzkaec AS \"stnm\", " +
+            " COALESCE(a.rain, 0) AS \"rain\", COALESCE(a.rowsCnt, 0) AS \"rowsCnt\" " +
+            "FROM " + T_STATION + " s " +
+            "LEFT JOIN ( " +
+            "  SELECT x.STCD AS \"STCD\", " +
+            "   COALESCE(SUM(CASE WHEN x.prev IS NULL THEN 0 WHEN x.DYP - x.prev < 0 THEN 0 ELSE x.DYP - x.prev END), 0) AS \"rain\", " +
+            "   COUNT(x.TM) AS \"rowsCnt\" " +
+            "  FROM ( " +
+            "    SELECT w.STCD, w.TM, w.DYP, LAG(w.DYP) OVER (PARTITION BY w.STCD ORDER BY w.TM) AS prev " +
+            "    FROM ( " +
+            "      SELECT t.STCD, t.TM, t.DYP FROM " + T_RAIN + " t " +
+            "      WHERE t.deleted IS NOT TRUE AND t.TM > #{baseTm} AND t.TM <= #{endTm} " +
+            "      UNION ALL " +
+            "      SELECT b.STCD, b.TM, b.DYP FROM ( " +
+            "        SELECT DISTINCT ON (STCD) STCD, TM, DYP FROM " + T_RAIN + " " +
+            "        WHERE deleted IS NOT TRUE AND TM <= #{baseTm} ORDER BY STCD, TM DESC " +
+            "      ) b " +
+            "    ) w " +
+            "  ) x " +
+            "  GROUP BY x.STCD " +
+            ") a ON a.STCD = s.iofhpi " +
+            "WHERE s.epjutj LIKE '%#2#%' AND s.iofhpi LIKE '320640%' " +
+            "ORDER BY s.iofhpi")
+    List<Map<String, Object>> selectHydroDayRainAllStations(@Param("baseTm") LocalDateTime baseTm,
+                                                            @Param("endTm") LocalDateTime endTm);
+
     /** 水位：站点 TM &lt;= before 的最新有效水位（与全站最新口径一致：COALESCE(Z, Z1)，排除哨兵值） */
     @Select("SELECT r.STCD AS stcd, r.TM AS tm, COALESCE(r.Z, r.Z1) AS z " +
             "FROM " + T_RIVER + " r " +
@@ -126,6 +183,45 @@ public interface SmsRecordMapper {
             "ORDER BY r.TM DESC LIMIT 1")
     Map<String, Object> selectRiverLatestUpTo(@Param("stcd") String stcd,
                                               @Param("before") LocalDateTime before);
+
+    /**
+     * 闸站水位（河道站回退口径）：闸前水位 up_z，TM &lt;= before 最新一个时刻（同刻多孔取 MAX）。
+     * <p>背景（2026-11-13 太宿告警实证）：闸站（90000000xx 等）在 river_info 无任何行，
+     * 闸前/闸后水位落本表 up_z/down_z；告警引擎按阈值表 zb 字段取数判定，短信须同字段取数。
+     * <p>必须按 site 关联：gate 表约 39% 行 STCD 为 NULL（393770 行中 154443 行），不能按 stcd 查。
+     */
+    @Select("SELECT g.TM AS tm, MAX(g.up_z) AS z " +
+            "FROM " + T_GATE + " g " +
+            "WHERE g.site = #{siteId} AND g.TM <= #{before} " +
+            "AND g.up_z IS NOT NULL AND g.up_z NOT IN (-999, -9991) " +
+            "GROUP BY g.TM ORDER BY g.TM DESC LIMIT 1")
+    Map<String, Object> selectGateUpZLatestBySite(@Param("siteId") String siteId,
+                                                  @Param("before") LocalDateTime before);
+
+    /** 闸站闸后水位 down_z（阈值表 zb=down_z 的站，如渠首进水闸 QSJSZ；口径同上） */
+    @Select("SELECT g.TM AS tm, MAX(g.down_z) AS z " +
+            "FROM " + T_GATE + " g " +
+            "WHERE g.site = #{siteId} AND g.TM <= #{before} " +
+            "AND g.down_z IS NOT NULL AND g.down_z NOT IN (-999, -9991) " +
+            "GROUP BY g.TM ORDER BY g.TM DESC LIMIT 1")
+    Map<String, Object> selectGateDownZLatestBySite(@Param("siteId") String siteId,
+                                                    @Param("before") LocalDateTime before);
+
+    /** 站点档案 id（=阈值表/gate 表的 site 关联键）；查不到返回 null */
+    @Select("SELECT s.id FROM " + T_STATION + " s WHERE s.iofhpi = #{stcd} LIMIT 1")
+    String selectStationIdByStcd(@Param("stcd") String stcd);
+
+    /**
+     * 该站水位阈值行配置的监测字段（zb）：up_z=闸前 / down_z=闸后 / 空或 Z=河道 Z。
+     * <p>告警引擎（阈值表 site + zvieyb=#1# + zb + threshold）按该字段取实时值判定，
+     * 短信"当前水位/1 小时涨幅"必须与告警引擎同字段，否则会出现"告警了但短信暂无/风马牛不相及"。
+     * <p>同站多行时优先 up_z，其次最近创建；无水位阈值行返回 null（走河道口径）。
+     */
+    @Select("SELECT COALESCE(NULLIF(t.zb, ''), '') AS zb FROM " + T_THRESHOLD + " t " +
+            "WHERE t.site = #{siteId} " +
+            "AND COALESCE(NULLIF(t.\"zvieyb\", ''), t.\"type\", '') = '#1#' " +
+            "ORDER BY CASE WHEN t.zb = 'up_z' THEN 0 ELSE 1 END, t.created_at DESC LIMIT 1")
+    String selectLevelThresholdField(@Param("siteId") String siteId);
 
     /**
      * 补偿扫描候选：时间窗内未处理完的阈值告警（type='#1#'），带站点/设备信息。
