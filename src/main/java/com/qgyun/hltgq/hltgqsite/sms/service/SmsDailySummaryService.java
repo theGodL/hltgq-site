@@ -33,9 +33,9 @@ import java.util.Map;
  *   <li>接收人 = 原运维 msg.number8 的 30 人清单 + 项目经理 + 研发负责人（配置 sms.receivers.daily）。</li>
  * </ul>
  * <p><b>取数策略：宁可少发，绝不发错误短信</b>——短信变量不允许出现"暂无"：
- * 12 站 08:00 整点报文全缺（数据链路异常，此时"0.00"是假数据）或任一站水位缺数时不发送，
- * 落 skipped 记录（response_code=NO_DATA）供运维排查；缺站按 0 参与平均仅适用于"部分站到报文"的
- * 老系统口径（此时其余站数据可信）。
+ * 12 站 08:00 整点报文全缺（数据链路异常，此时"0.00"是假数据）、到报不足半数（缺站按 0 平均严重偏低）、
+ * 或任一站水位缺数时不发送，落 skipped 记录（response_code=NO_DATA）供运维排查；
+ * 缺站按 0 参与平均仅适用于"多数站已到报文"的老系统口径（此时其余站数据可信）。
  */
 @Service
 public class SmsDailySummaryService {
@@ -131,6 +131,16 @@ public class SmsDailySummaryService {
         if (ready <= 0) {
             log.error("日汇总短信不发送：12 站今日 08:00 整点报文全缺（数据链路异常），雨量不可信 endTm={}", endTm);
             saveNoDataSkipRecord(dayLabel, "12 站 08:00 整点报文全缺，雨量不可信，未发送");
+            return;
+        }
+        // 到报不足半数同样拒发：少量站到报文时其余站按 0 参与平均会严重偏低（如 3/12 站到报文，
+        // 均值只剩真实值的 1/4），属于"公式对但数据错"的错误短信——宁可少发不误发。
+        // 正常日 08:00 报文在 08:06 前 12/12 齐，不会触发此分支。
+        int expectedStations = recordMapper.countRainStations();
+        if (expectedStations > 0 && ready * 2 < expectedStations) {
+            log.error("日汇总短信不发送：08:00 整点报文仅到 {}/{} 站（不足半数，缺站按 0 平均会严重失真），宁可少发不误发",
+                    ready, expectedStations);
+            saveNoDataSkipRecord(dayLabel, "到报站数不足半数（" + ready + "/" + expectedStations + "），未发送");
             return;
         }
         LocalDateTime baseTm = endTm.minusDays(1);

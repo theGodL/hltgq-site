@@ -224,15 +224,18 @@ public interface SmsRecordMapper {
     String selectLevelThresholdField(@Param("siteId") String siteId);
 
     /**
-     * 补偿扫描候选：时间窗内未处理完的阈值告警（type='#1#'），带站点/设备信息。
-     * 是否发过/是否可判定指标由 Service 逐条过滤（补发兜底，宁可少发不误发）。
+     * 补偿扫描候选：时间窗内未关闭的阈值告警（type='#1#'），带站点/设备信息。
+     * <p>状态口径（2026-11-13 库内实证）：'#1#'=活动中；'#4#'=已解除（不补发）；
+     * '#2#' 语义未确认（历史数据见长期挂起两个月的记录，疑似"已确认/已处理"），
+     * 按宁可少发不误发排除，只补 '#1#'（'#3#' 留作未来其他未关闭态）。
+     * <p>是否发过/是否可判定指标由 Service 逐条过滤（补发兜底，宁可少发不误发）。
      */
     @Select("SELECT a.id AS alertId, a.time AS alertTime, a.site AS siteId, " +
             "s.iofhpi AS stcd, s.zzkaec AS siteName, d.name AS deviceName " +
             "FROM " + T_ALERT + " a " +
             "JOIN " + T_STATION + " s ON s.id = a.site " +
             "LEFT JOIN " + T_DEVICE + " d ON d.id = a.device " +
-            "WHERE a.type = '#1#' AND a.status IN ('#1#', '#2#', '#3#') " +
+            "WHERE a.type = '#1#' AND a.status IN ('#1#', '#3#') " +
             "AND a.time >= #{start} " +
             "ORDER BY a.time DESC LIMIT 50")
     List<SmsCompensationAlertVO> selectCompensationAlerts(@Param("start") LocalDateTime start);

@@ -44,7 +44,9 @@ import java.util.concurrent.TimeUnit;
  * 设备名不可判定时按阈值表推定——仅当该站全部阈值行均为单一指标
  * （#2#=雨量 / #1#=水位）才可推定，含流量/开度等其他指标或一行多值一律跳过并记日志。
  * 补偿时雨量 hour 按水文日口径推定（报文时间距 08:00 起点整小时数，1~24，与 mq 回调一致）、
- * threshold 取阈值表（无配置跳过）、value 取告警所属水文日累计 DRP（取不到只拼站名）。
+ * threshold 取阈值表（无配置跳过）、实测雨量值不拼（DRP 字段实测恒 0，拼进模板就是假 0 错值）。
+ * <p>水位取数基准：回调用当前时刻；补偿用<b>告警时刻</b>（窗口内当前值可能已变化，
+ * 用告警时刻取值才能与告警内容（如"闸前水位高于40.1m"）严格对应）。
  */
 @Service
 public class SmsAlarmService {
@@ -99,17 +101,18 @@ public class SmsAlarmService {
             return SmsAlarmResult.skipped("雨量告警 threshold/hour 不能为空");
         }
         return processAlarm(request.getAlertId(), metric, request.getStcd(),
-                request.getThreshold(), request.getHour(), request.getValue(), false);
+                request.getThreshold(), request.getHour(), request.getValue(), null, false);
     }
 
     /**
      * 告警短信处理公共链路（回调 + 补偿共用）。
      *
-     * @param compensation true=补偿扫描（日志标注；雨量 hour/value 按水文日口径推定）
+     * @param alertTime    告警发生时刻（补偿扫描传入；回调传 null=当前时刻）
+     * @param compensation true=补偿扫描（日志标注；雨量 hour 按水文日口径推定，实测值不拼）
      */
     private SmsAlarmResult processAlarm(String alertId, String metric, String stcd,
                                         BigDecimal threshold, Integer hour, BigDecimal value,
-                                        boolean compensation) {
+                                        LocalDateTime alertTime, boolean compensation) {
         String source = compensation ? "[补偿]" : "[回调]";
         // 幂等：同一告警已处理过（success=已发 / skipped=静默）直接跳过
         if (recordMapper.countHandledByAlertId(alertId) > 0) {
@@ -146,9 +149,11 @@ public class SmsAlarmService {
                     return SmsAlarmResult.skipped("雨量告警缺少 threshold，未发送");
                 }
                 // ${hour} 小时累积雨量大于 ${threshold} mm 的雨量站:${stcd}
-                // 模板无独立雨量值变量：实测值拼在站名后（如"周家河12.5"，沿用原运维拼法）
+                // 模板无独立雨量值变量：实测值拼在站名后（如"周家河12.5"，沿用原运维拼法）；
+                // value 缺省或 <=0 时只拼站名（0 多半是缺数假值，绝不能显示成"站名0"）
                 int windowHour = hour == null || hour <= 0 ? 1 : hour;
-                String valueText = value == null ? "" : trimZeros(value);
+                String valueText = value != null && value.compareTo(BigDecimal.ZERO) > 0
+                        ? trimZeros(value) : "";
                 params.put("hour", String.valueOf(windowHour));
                 params.put("threshold", trimZeros(threshold));
                 params.put("stcd", stationName + valueText);
@@ -157,7 +162,7 @@ public class SmsAlarmService {
                 bizType = "alarm_level";
                 // 取数不完整（当前水位/1 小时前任一缺失）→ 本条不发：宁可少发不误发，
                 // 不落处理记录，30 分钟补偿窗口内每 5 分钟重试，数据补齐后自动补发
-                if (!fillLevelParams(params, stcd, stationName)) {
+                if (!fillLevelParams(params, stcd, stationName, alertTime)) {
                     return SmsAlarmResult.skipped("水位取数不完整，未发送（补偿窗口内将重试）");
                 }
             }
@@ -237,11 +242,14 @@ public class SmsAlarmService {
     /**
      * 水位模板参数：station_code / increaseRate（1 小时涨幅）/ waterLevel（当前水位）。
      *
+     * @param alertTime 告警时刻（补偿传入；null=取当前时刻）
      * @return true=参数齐全可发送；false=取数不完整（<b>调用方不得发送</b>，宁可少发不误发）
      */
-    private boolean fillLevelParams(Map<String, String> params, String stcd, String stationName) {
+    private boolean fillLevelParams(Map<String, String> params, String stcd, String stationName,
+                                    LocalDateTime alertTime) {
         params.put("station_code", stationName);
-        LevelSnapshot current = readLevelSnapshot(stcd, LocalDateTime.now());
+        LocalDateTime at = alertTime == null ? LocalDateTime.now() : alertTime;
+        LevelSnapshot current = readLevelSnapshot(stcd, at);
         if (current == null) {
             log.error("水位告警取当前水位失败：stcd={}（河道表/闸站表均无数据，本条不发送）", stcd);
             return false;
@@ -359,15 +367,16 @@ public class SmsAlarmService {
                         continue;
                     }
                     // 与 mq 回调口径对齐：hour=报文时间距水文日 08:00 起点整小时数（1~24）；
-                    // value=告警所属水文日累计 DRP（回调丢失时的实测值兜底，取不到只拼站名）
+                    // 实测雨量值不拼：DRP 字段实测恒为 0（2026-11-13 全站核验），拼进模板就是假 0 错值，
+                    // 补偿只拼站名（模板语义完整，宁可少显示也不出错值）
                     LocalDateTime alertTime = alert.getAlertTime() == null ? LocalDateTime.now() : alert.getAlertTime();
                     int hour = calcHydroHour(alertTime);
-                    BigDecimal value = readHydroDayDrp(alert.getStcd(), alertTime);
-                    log.info("补偿雨量告警（hour={} 按水文日口径推定）：alertId={} stcd={} threshold={} value={}",
-                            hour, alert.getAlertId(), alert.getStcd(), threshold, value);
-                    result = processAlarm(alert.getAlertId(), metric, alert.getStcd(), threshold, hour, value, true);
+                    log.info("补偿雨量告警（hour={} 按水文日口径推定，实测值不拼）：alertId={} stcd={} threshold={}",
+                            hour, alert.getAlertId(), alert.getStcd(), threshold);
+                    result = processAlarm(alert.getAlertId(), metric, alert.getStcd(), threshold, hour, null, alertTime, true);
                 } else {
-                    result = processAlarm(alert.getAlertId(), metric, alert.getStcd(), null, null, null, true);
+                    result = processAlarm(alert.getAlertId(), metric, alert.getStcd(), null, null, null,
+                            alert.getAlertTime(), true);
                 }
                 if (result.isSent()) {
                     sentCount++;
@@ -391,15 +400,6 @@ public class SmsAlarmService {
         return time.toLocalTime().isBefore(LocalTime.of(8, 0))
                 ? time.toLocalDate().minusDays(1).atTime(8, 0)
                 : time.toLocalDate().atTime(8, 0);
-    }
-
-    /** 告警所属水文日的累计雨量 DRP（水文日结束时刻=08:00 前属当日 08:00、否则次日 08:00；取不到返回 null） */
-    private BigDecimal readHydroDayDrp(String stcd, LocalDateTime time) {
-        LocalDateTime hydroEnd = time.toLocalTime().isBefore(LocalTime.of(8, 0))
-                ? time.toLocalDate().atTime(8, 0)
-                : time.toLocalDate().plusDays(1).atTime(8, 0);
-        Map<String, Object> row = recordMapper.selectRainLatestUpTo(stcd, hydroEnd);
-        return row == null || row.get("drp") == null ? null : toDecimal(row.get("drp"));
     }
 
     /**

@@ -66,12 +66,12 @@ public class SmsSendService {
      */
     public SmsBatchStat sendToPhones(List<String> phones, String bizType, String templateCode,
                                      Map<String, String> templateParams, String alertId, String silenceKey) {
-        if (!properties.isEnabled()) {
-            log.info("短信总开关关闭（sms.enabled=false），跳过发送 bizType={} 号码数={}", bizType, phones.size());
-            return SmsBatchStat.of(0, 0, 0);
-        }
         if (phones == null || phones.isEmpty()) {
             log.warn("短信接收人为空，跳过发送 bizType={}", bizType);
+            return SmsBatchStat.of(0, 0, 0);
+        }
+        if (!properties.isEnabled()) {
+            log.info("短信总开关关闭（sms.enabled=false），跳过发送 bizType={} 号码数={}", bizType, phones.size());
             return SmsBatchStat.of(0, 0, 0);
         }
 
