@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 系统监控服务（接口 /system-monitor/*，页面 system-monitor.html）。
@@ -98,10 +99,24 @@ public class SystemMonitorService implements ApplicationRunner {
     @Value("${system.monitor.local-alias:应用服务器2}")
     private String localAlias;
 
-    /** 表空间缓存（volatile 发布；刷新在 dbLock 内串行） */
+    /** 表空间缓存（volatile 发布；过期后先返回旧值、由后台线程刷新，接口不阻塞在重量级查询上） */
     private volatile SystemMonitorVO.Database cachedDb;
     private volatile long cachedDbAt;
-    private final Object dbLock = new Object();
+
+    /** 表空间后台刷新互斥（同一时刻只有一个任务去撞重量级查询，失败由退避控制重试节奏） */
+    private final AtomicBoolean dbRefreshing = new AtomicBoolean(false);
+
+    /** 表空间刷新失败后的重试退避（毫秒）：需长于单次查询超时（60s），
+     *  否则超时型失败在退避期满后立即重试，等于持续占用一个连接反复扫目录 */
+    private static final long DB_RETRY_BACKOFF_MS = 5 * 60_000L;
+
+    /** 表空间快照的额外陈旧容忍（毫秒）：正常刷新为秒级，超过「缓存周期 + 本宽限」视为刷新卡住 */
+    private static final long DB_STALE_GRACE_MS = 2 * 60_000L;
+
+    private volatile long dbRetryAfter;
+
+    /** 表空间最近一次刷新是否失败（失败期间缓存保留旧值，越限判定需跳过，避免重复记告警） */
+    private volatile boolean dbRefreshFailed = false;
 
     /** 上次清理日期（调度线程单线程执行，无需原子保证） */
     private volatile LocalDate lastCleanupDay;
@@ -155,27 +170,81 @@ public class SystemMonitorService implements ApplicationRunner {
         return out;
     }
 
-    /** 数据库表空间（带缓存；查询失败回退旧值，无旧值返回 null） */
+    /**
+     * 数据库表空间（缓存 + 后台刷新，请求线程恒定毫秒级返回）。
+     * <p>表空间查询是重量级操作（pg_database_size / pg_tablespace_size 需遍历数据目录，
+     * 库大时单次耗时数十秒），因此请求线程永不执行该查询：无缓存时返回 null 并触发后台加载，
+     * 缓存过期时先返回旧值再后台刷新。
+     * 历史问题：缓存过期瞬间首个请求同步查询并持锁，页面轮询请求全部排在锁上，
+     * 表现为刚打开页面时主机切换下拉框与资源卡片长时间空白，刷新若干次才恢复。
+     */
     public SystemMonitorVO.Database database() {
-        long now = System.currentTimeMillis();
         SystemMonitorVO.Database cached = cachedDb;
-        if (cached != null && now - cachedDbAt < cacheMinutes * 60_000L) {
-            return cached;
+        long now = System.currentTimeMillis();
+        if (cached == null) {
+            // 无缓存：只触发后台加载，首个实例由下一次轮询/采样周期带走
+            if (now >= dbRetryAfter) {
+                refreshDatabaseAsync();
+            }
+            return cachedDb;
         }
-        synchronized (dbLock) {
-            cached = cachedDb;
-            if (cached != null && now - cachedDbAt < cacheMinutes * 60_000L) {
-                return cached;
-            }
+        if (now - cachedDbAt >= cacheTtlMs() && now >= dbRetryAfter) {
+            refreshDatabaseAsync();
+        }
+        return cached;
+    }
+
+    /** 表空间缓存有效期（毫秒）：配置写 0/负数时按 1 分钟兜底，避免每个轮询周期都触发扫目录 */
+    private long cacheTtlMs() {
+        return Math.max(1, cacheMinutes) * 60_000L;
+    }
+
+    /**
+     * 表空间快照是否可用于越限判定与落库。
+     * <p>两种陈旧情形都要跳过：① 最近一次刷新失败——{@code cachedDb} 保留最后一次成功的数值，
+     * 若照常判定，只要旧值仍越限就会按故障抑制窗口重复记同一条告警；
+     * ② 刷新任务卡住（查询超时未生效、连接半开）——此时失败标志还没置位，
+     * 用「缓存周期 + 宽限」兜底识别，避免长期拿陈旧值判定与落库。恢复后自动继续。
+     */
+    private boolean databaseFresh() {
+        if (dbRefreshFailed || cachedDb == null) {
+            return false;
+        }
+        return System.currentTimeMillis() - cachedDbAt <= cacheTtlMs() + DB_STALE_GRACE_MS;
+    }
+
+    /**
+     * 后台刷新表空间缓存（单任务，绝不占用请求线程）。
+     * <p>失败只记退避、不改 {@code cachedDbAt}：保留「最后一次成功时间」语义，
+     * 采样落库与页面「统计时间」据此能看出数据是否陈旧。
+     */
+    private void refreshDatabaseAsync() {
+        if (!dbRefreshing.compareAndSet(false, true)) {
+            return;
+        }
+        Thread t = new Thread(() -> {
             try {
-                SystemMonitorVO.Database db = loadDatabase();
-                cachedDb = db;
-                cachedDbAt = now;
-                return db;
+                cachedDb = loadDatabase();
+                cachedDbAt = System.currentTimeMillis();
+                dbRefreshFailed = false;
             } catch (Exception e) {
-                log.warn("[system-monitor] tablespace query failed: {}", e.getMessage());
-                return cachedDb;
+                dbRetryAfter = System.currentTimeMillis() + DB_RETRY_BACKOFF_MS;
+                dbRefreshFailed = true;
+                log.warn("[system-monitor] tablespace refresh failed: {}", e.getMessage());
+            } finally {
+                dbRefreshing.set(false);
             }
+        }, "system-monitor-db-refresh");
+        try {
+            t.setDaemon(true);
+            t.start();
+        } catch (Throwable ex) {
+            // 启动线程失败：按刷新失败处理（同样跳过越限判定与采样落库，避免用旧值）；
+            // 状态写完再释放互斥，保证后续抢到互斥的任务不会与本处的状态写入交叉
+            dbRetryAfter = System.currentTimeMillis() + DB_RETRY_BACKOFF_MS;
+            dbRefreshFailed = true;
+            log.warn("[system-monitor] start tablespace refresh thread failed: {}", ex.toString());
+            dbRefreshing.set(false);
         }
     }
 
@@ -230,6 +299,8 @@ public class SystemMonitorService implements ApplicationRunner {
         } catch (Exception e) {
             log.warn("[system-monitor] startup record failed: {}", e.getMessage());
         }
+        // 预热表空间缓存：异步执行，避免监控页首次打开时同步查询导致页面长时间空白
+        refreshDatabaseAsync();
     }
 
     /**
@@ -246,14 +317,16 @@ public class SystemMonitorService implements ApplicationRunner {
             log.warn("[system-monitor] sample failed: {}", e.getMessage());
             return;
         }
+        // 同一轮采样共用一份新鲜度判定：刷新失败期间既不落表空间、也不做表空间越限判定
+        boolean dbFresh = databaseFresh();
         try {
-            saveSample(overview);
+            saveSample(overview, dbFresh);
         } catch (Exception e) {
             // 落库失败与故障记录共用同一张库表，此处只告警避免二次失败
             log.warn("[system-monitor] sample persist failed: {}", e.getMessage());
         }
         try {
-            checkThresholds(overview);
+            checkThresholds(overview, dbFresh);
         } catch (Exception e) {
             log.warn("[system-monitor] threshold check failed: {}", e.getMessage());
         }
@@ -264,9 +337,13 @@ public class SystemMonitorService implements ApplicationRunner {
         }
     }
 
-    /** 采样落表（本机完整快照：资源 + 表空间） */
-    private void saveSample(SystemMonitorVO.Overview o) throws Exception {
-        persistSample(o.getResource(), o.getDatabase());
+    /**
+     * 采样落表（本机完整快照：资源 + 表空间）。
+     * <p>表空间快照仅在来自成功刷新时落库：刷新失败或快照过期期间缓存保留上一次成功的数值，
+     * 若照常写入，落库数据会与真实采集状态不一致，也无法区分「采集失败」与「数值未变」。
+     */
+    private void saveSample(SystemMonitorVO.Overview o, boolean dbFresh) throws Exception {
+        persistSample(o.getResource(), dbFresh ? o.getDatabase() : null);
     }
 
     /** 采样落表：磁盘/表空间明细存 JSON 文本列（id 由短 ID 生成器产出，与平台 22 位短 ID 规范一致） */
@@ -303,8 +380,11 @@ public class SystemMonitorService implements ApplicationRunner {
         return s;
     }
 
-    /** 越限检测（本机）：资源项 + 数据库表空间，越限记一条系统故障（desc 含实际值与阈值） */
-    private void checkThresholds(SystemMonitorVO.Overview o) {
+    /**
+     * 越限检测（本机）：资源项 + 数据库表空间，越限记一条系统故障（desc 含实际值与阈值）。
+     * <p>表空间部分仅在快照新鲜时判定，刷新失败或快照过期期间跳过（防陈旧值重复告警）。
+     */
+    private void checkThresholds(SystemMonitorVO.Overview o, boolean dbFresh) {
         SystemMonitorVO.Resource r = o.getResource();
         SystemMonitorVO.Thresholds t = o.getThresholds();
         if (r == null || t == null) {
@@ -312,7 +392,7 @@ public class SystemMonitorService implements ApplicationRunner {
         }
         checkHostThresholds(r, localAlias == null || localAlias.isEmpty() ? hostname() : localAlias);
         SystemMonitorVO.Database db = o.getDatabase();
-        if (db != null && db.getTablespaces() != null) {
+        if (db != null && db.getTablespaces() != null && dbFresh) {
             for (SystemMonitorVO.Tablespace ts : db.getTablespaces()) {
                 if (exceed(ts.getPercent(), t.getTablespace())) {
                     record("表空间 " + ts.getName(), String.format("表空间 %s 使用率 %s%% 超过阈值 %s%%（已用 %s / 基线 %s）",

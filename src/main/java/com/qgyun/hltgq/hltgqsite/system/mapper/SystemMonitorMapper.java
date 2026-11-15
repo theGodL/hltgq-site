@@ -6,6 +6,7 @@ import com.qgyun.hltgq.hltgqsite.system.entity.SystemResourceSample;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;
 import org.apache.ibatis.annotations.Results;
@@ -27,16 +28,20 @@ public interface SystemMonitorMapper extends BaseMapper<SystemFaultRecord> {
 
     /**
      * 当前库名与库大小（字节）。
+     * <p>pg_database_size 需遍历数据目录，库大时耗时较长：限制 60 秒，超时后由缓存回退旧值。
      */
     @Select("SELECT current_database() AS db_name, pg_database_size(current_database()) AS db_size")
+    @Options(timeout = 60)
     Map<String, Object> selectDbInfo();
 
     /**
      * 各表空间已用大小（字节）。sys_default 为数据目录所在表空间（含全部业务数据），
      * sys_global/sysaudit 为系统表空间。
+     * <p>pg_tablespace_size 需遍历表空间目录：限制 60 秒，超时后由缓存回退旧值。
      */
     @Select("SELECT spcname AS spc_name, pg_tablespace_size(oid) AS size_bytes " +
             "FROM pg_tablespace ORDER BY spcname")
+    @Options(timeout = 60)
     List<Map<String, Object>> selectTablespaceSize();
 
     /**

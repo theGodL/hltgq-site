@@ -173,7 +173,8 @@ td.empty:hover{background:transparent}
 <div class="page-wrap">
   <!-- 顶栏白卡：主机切换 + 主机信息 + 最后刷新时间 + 自动刷新开关 + 手动刷新 -->
   <div class="filter-card">
-    <select class="field host-sel" id="host-sel" aria-label="选择服务器"></select>
+    <!-- 初始隐藏：拿到主机列表且确实可切换时才显示，避免请求未返回时露出空下拉框 -->
+    <select class="field host-sel" id="host-sel" aria-label="选择服务器" style="display:none"></select>
     <div class="host-box">
       <span class="host-ic">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 20h8M12 16v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M7 8h.01M7 11h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -299,6 +300,7 @@ td.empty:hover{background:transparent}
 /* ============================ 常量与状态 ============================ */
 const API = '/hltgq-site';
 const REFRESH_MS = 15000;    // 自动刷新间隔（需求：实时自动刷新当前资源信息）
+const API_TIMEOUT_MS = 10000; // 单次请求超时：接口卡住时尽快失败，避免页面停在空态
 const ICON = {
   /* 空态插图（与阈值设置页同一张） */
   empty: '<svg width="92" height="66" viewBox="0 0 92 66" fill="none"><rect x="12" y="12" width="68" height="42" rx="6" stroke="#d8dee8" stroke-width="2"/><path d="M12 24h68" stroke="#d8dee8" stroke-width="2"/><path d="M20 18h5M29 18h5" stroke="#d8dee8" stroke-width="2" stroke-linecap="round"/><rect x="22" y="33" width="30" height="4" rx="2" fill="#eef1f6"/><rect x="22" y="42" width="20" height="4" rx="2" fill="#eef1f6"/><circle cx="68" cy="46" r="13" fill="#f6f8fb"/><path d="M63.4 46.4l3.2 3.2 6-6.4" stroke="#c6d0e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
@@ -368,20 +370,33 @@ function showToast(msg, isErr) {
   showToast.timer = setTimeout(() => t.classList.remove('show'), 2000);
 }
 
-/** 统一请求：非 2xx 抛出后端 message */
+/** 统一请求：非 2xx 抛出后端 message；超时主动中断，避免接口偏慢时页面长时间停在空态 */
 async function api(path, opts) {
   const init = Object.assign({ credentials: 'include' }, opts || {});
-  const res = await fetch(API + path, init);
-  const text = await res.text();
-  let data = null;
-  if (text) {
-    try { data = JSON.parse(text); } catch (e) { data = null; }
+  const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  let timer = null;
+  if (ctrl) {
+    init.signal = ctrl.signal;
+    timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
   }
-  if (!res.ok) {
-    const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
-    throw new Error((data && (data.message || data.error)) || fallback);
+  try {
+    const res = await fetch(API + path, init);
+    const text = await res.text();
+    let data = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch (e) { data = null; }
+    }
+    if (!res.ok) {
+      const fallback = res.status === 403 ? '无操作权限' : '请求失败（HTTP ' + res.status + '）';
+      throw new Error((data && (data.message || data.error)) || fallback);
+    }
+    return data;
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('请求超时，请稍后重试');
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  return data;
 }
 
 function emptyRow(colspan, text, plain) {
