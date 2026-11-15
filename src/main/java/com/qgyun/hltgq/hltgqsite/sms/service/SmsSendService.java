@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +32,9 @@ public class SmsSendService {
 
     /** 网络异常最大重试次数（总尝试 = 1 + 2 次） */
     private static final int MAX_RETRY = 2;
+
+    /** 阿里云"账户余额不足"错误码：整批必然全失败，首条失败后短路跳过剩余号码的 API 调用 */
+    private static final String CODE_AMOUNT_NOT_ENOUGH = "isv.AMOUNT_NOT_ENOUGH";
 
     /**
      * 历史缺数占位（已停用）：现行策略为"取数不全不发送"（宁可少发不误发），
@@ -85,17 +89,28 @@ public class SmsSendService {
         int successCount = 0;
         int failCount = 0;
         int retryCount = 0;
+        // 失败码分布：只落库不进日志会导致"用户没收到短信但日志只有失败=N"（2026-11-14/15 账户余额不足事故）
+        Map<String, Integer> failCodes = new LinkedHashMap<>();
+        // 余额不足短路：同批后续号码必然同样失败，复用一个结果跳过 API 调用（记录仍逐条落 failed）
+        SmsSendResult shortCircuit = null;
         for (String phone : phones) {
             SmsSendResult result = null;
-            for (int attempt = 0; attempt <= MAX_RETRY; attempt++) {
-                // paramsJson 由本方法统一序列化一次，发送与落库共用（client 不再重复序列化）
-                result = smsClient.send(phone, templateCode, paramsJson);
-                if (result.isSuccess() || !result.isRetryable()) {
-                    break;
+            if (shortCircuit != null) {
+                result = shortCircuit;
+            } else {
+                for (int attempt = 0; attempt <= MAX_RETRY; attempt++) {
+                    // paramsJson 由本方法统一序列化一次，发送与落库共用（client 不再重复序列化）
+                    result = smsClient.send(phone, templateCode, paramsJson);
+                    if (result.isSuccess() || !result.isRetryable()) {
+                        break;
+                    }
+                    if (attempt < MAX_RETRY) {
+                        retryCount++;
+                        sleepQuietly(1000L * (attempt + 1));
+                    }
                 }
-                if (attempt < MAX_RETRY) {
-                    retryCount++;
-                    sleepQuietly(1000L * (attempt + 1));
+                if (result != null && !result.isSuccess() && CODE_AMOUNT_NOT_ENOUGH.equals(result.getCode())) {
+                    shortCircuit = result;
                 }
             }
             boolean success = result != null && result.isSuccess();
@@ -104,10 +119,13 @@ public class SmsSendService {
                 successCount++;
             } else {
                 failCount++;
+                String code = result == null || result.getCode() == null ? "NULL" : result.getCode();
+                failCodes.merge(code, 1, Integer::sum);
             }
         }
-        log.info("短信发送完成 bizType={} template={} 成功={} 失败={} 网络重试={}",
-                bizType, templateCode, successCount, failCount, retryCount);
+        log.info("短信发送完成 bizType={} template={} 成功={} 失败={} 网络重试={} 失败码={}",
+                bizType, templateCode, successCount, failCount, retryCount,
+                failCodes.isEmpty() ? "-" : failCodes);
         return SmsBatchStat.of(successCount, failCount, retryCount);
     }
 

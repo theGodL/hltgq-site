@@ -21,9 +21,11 @@ CONTAINER_NAME="hltgq-site"
 SMS_ALIYUN_AK_ID="${SMS_ALIYUN_AK_ID:-}"
 SMS_ALIYUN_AK_SECRET="${SMS_ALIYUN_AK_SECRET:-}"
 SMS_CALLBACK_TOKEN="${SMS_CALLBACK_TOKEN:-}"
-# 接收人非敏感信息；联调期告警与日汇总均只发测试号，恢复生产接收人：注释掉下面两行再重跑
-SMS_RECEIVERS_ALARM="${SMS_RECEIVERS_ALARM:-15212773620}"
-SMS_RECEIVERS_DAILY="${SMS_RECEIVERS_DAILY:-15212773620}"
+# 接收人：生产清单（2026-11-13 恢复正式接收人）
+# 不注入 SMS_RECEIVERS_* 时容器自动取镜像内默认：日汇总 32 人、告警 4 人（application.properties）
+# 如需临时只发测试号：SMS_RECEIVERS_DAILY=15212773620 SMS_RECEIVERS_ALARM=15212773620 ./deploy.sh
+#SMS_RECEIVERS_ALARM="${SMS_RECEIVERS_ALARM:-15212773620}"
+#SMS_RECEIVERS_DAILY="${SMS_RECEIVERS_DAILY:-15212773620}"
 
 case "${1:-deploy}" in
     deploy)
@@ -58,7 +60,7 @@ case "${1:-deploy}" in
         if [ -n "${SMS_CALLBACK_TOKEN:-}" ]; then
             EXTRA_ENV+=(-e "SMS_CALLBACK_TOKEN=${SMS_CALLBACK_TOKEN}")
         fi
-        # 接收人：顶部默认值已兜底（恒注入）；恢复镜像内默认清单需注释掉顶部对应行
+        # 接收人：顶部已注释（生产清单 32/4 人取镜像内默认）；临时测试号可用环境变量传入
         if [ -n "${SMS_RECEIVERS_ALARM:-}" ]; then
             EXTRA_ENV+=(-e "SMS_RECEIVERS_ALARM=${SMS_RECEIVERS_ALARM}")
         fi
