@@ -158,7 +158,7 @@ public class WaterDemandService {
         return detail(id);
     }
 
-    /** 编辑（仅待审核/已驳回；保存后回到待审核并清空审核痕迹） */
+    /** 编辑（仅已驳回：待审核须先完成审核；保存后回到待审核并清空审核痕迹） */
     @Transactional(rollbackFor = Exception.class)
     public WaterDemandVO update(String id, WaterDemandSaveVO req) {
         String key = WaterUsageSupport.requireText(id, "上报单 id 不能为空");
@@ -167,9 +167,8 @@ public class WaterDemandService {
             throw new IllegalArgumentException("需水上报单不存在");
         }
         String rawStatus = current.getStatus();
-        if (!WaterUsageDict.DEMAND_STATUS_WAIT.equals(rawStatus)
-                && !WaterUsageDict.DEMAND_STATUS_REJECT.equals(rawStatus)) {
-            throw new IllegalArgumentException("已通过的上报单不可编辑");
+        if (!WaterUsageDict.DEMAND_STATUS_REJECT.equals(rawStatus)) {
+            throw new IllegalArgumentException("仅已驳回的上报单可编辑重报（待审核须先完成审核）");
         }
         Validated v = validate(req);
         LocalDateTime now = LocalDateTime.now();
@@ -229,7 +228,7 @@ public class WaterDemandService {
         return detail(key);
     }
 
-    /** 删除（被调度指令引用时禁止，含已取消指令） */
+    /** 删除（待审核不可删：须先审核；被调度指令引用时禁止，含已取消指令） */
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
         String key = WaterUsageSupport.requireText(id, "上报单 id 不能为空");
@@ -237,10 +236,15 @@ public class WaterDemandService {
         if (current == null) {
             throw new IllegalArgumentException("需水上报单不存在");
         }
+        if (WaterUsageDict.DEMAND_STATUS_WAIT.equals(current.getStatus())) {
+            throw new IllegalArgumentException("待审核的上报单不可删除，请先完成审核");
+        }
         if (demandMapper.countDispatchRefs(key) > 0) {
             throw new IllegalArgumentException("该上报单已被调度指令引用，请先删除关联调度指令");
         }
-        demandMapper.deleteDemand(key);
+        if (demandMapper.deleteDemand(key) == 0) {
+            throw new IllegalArgumentException("上报单已变更，请刷新后重试");
+        }
     }
 
     // ==================== 内部 ====================

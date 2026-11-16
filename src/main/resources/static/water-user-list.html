@@ -59,6 +59,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .flt-label{font-size:14px;color:var(--el-text-color-title);text-align:right;white-space:nowrap}
 .filter-item .sel{width:170px;min-width:100px}
 .filter-item .field{width:220px;min-width:120px}
+.filter-item .field.date{width:148px;min-width:132px;padding:0 8px}
+.filter-item .flt-sep{color:var(--el-text-color-secondary)}
 .filter-acts{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
 
 .panel{flex:1 0 auto;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
@@ -94,7 +96,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .tbl-wrap{overflow-x:auto;max-width:100%}
 table{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--el-table-border);table-layout:fixed}
 /* 列表表最小宽度：列宽合计按比例展开，窗口装不下时由 .tbl-wrap 整表横向滚动（不拆行、不在单元格内单独出滚动条） */
-.tbl-wrap table{min-width:1600px}
+.tbl-wrap table{min-width:1720px}
 thead tr{background:var(--el-table-header-bg)}
 th{position:sticky;top:0;z-index:2;height:48px;padding:0 12px;text-align:left;font-size:14px;font-weight:500;color:var(--el-text-color-title);background:var(--el-table-header-bg);border-bottom:1px solid var(--el-table-border);box-shadow:0 1px 0 var(--el-table-border);white-space:nowrap}
 td{height:var(--el-table-row-height);padding:0 12px;border-bottom:1px solid var(--el-table-border);font-size:14px;color:var(--el-text-color-primary);text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -241,11 +243,17 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
 </head>
 <body>
 <div class="page-wrap">
-  <!-- 筛选白卡：关键字 / 计算策略 / 统计周期 / 状态 -->
+  <!-- 筛选白卡：关键字 / 用水时间 / 计算策略 / 统计周期 / 状态 -->
   <div class="filter-card">
     <div class="filter-item">
       <span class="flt-label">关键字</span>
       <input class="field" id="f-keyword" placeholder="名称 / 编号 / 联系人" autocomplete="off">
+    </div>
+    <div class="filter-item">
+      <span class="flt-label">用水时间</span>
+      <input class="field date" id="f-start-date" type="date" autocomplete="off">
+      <span class="flt-sep">至</span>
+      <input class="field date" id="f-end-date" type="date" autocomplete="off">
     </div>
     <div class="filter-item">
       <span class="flt-label">计算策略</span>
@@ -277,13 +285,13 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
       <div class="tbl-wrap">
         <table>
           <colgroup>
-            <col style="width:13%"><col style="width:7%"><col style="width:8%"><col style="width:8%"><col style="width:11%">
-            <col style="width:9%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:7%"><col style="width:11%">
+            <col style="width:13%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:11%">
+            <col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:10%"><col style="width:7%"><col style="width:6%"><col style="width:10%">
           </colgroup>
           <thead>
             <tr>
               <th>用水户</th><th>联系人</th><th>联系电话</th><th>灌溉面积</th><th>年度计划水量</th>
-              <th>待出账水量</th><th>水价</th><th>用水计算策略</th><th>统计周期</th><th>状态</th><th>操作</th>
+              <th>累计用水量</th><th>待出账水量</th><th>水价</th><th>用水计算策略</th><th>统计周期</th><th>状态</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="tbl-body"></tbody>
@@ -325,12 +333,13 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
         </div>
         <div class="f-item">
           <label class="f-label"><i class="req">*</i>联系人</label>
-          <input class="field" id="in-contact" maxlength="50" placeholder="请输入联系人姓名" autocomplete="off">
+          <div class="sel" id="sel-contact"></div>
           <div class="f-err" id="err-contact"></div>
         </div>
         <div class="f-item">
           <label class="f-label">联系电话</label>
-          <input class="field" id="in-phone" maxlength="30" placeholder="请输入联系电话" autocomplete="off">
+          <input class="field" id="in-phone" maxlength="30" placeholder="选择联系人后自动带出" autocomplete="off">
+          <div class="f-hint">联系电话取自平台用户，选择联系人后自动带出</div>
         </div>
         <div class="f-item">
           <label class="f-label" id="lbl-area">灌溉面积（亩）</label>
@@ -341,6 +350,11 @@ td .num-warn{color:var(--el-color-warning);font-weight:600;cursor:help}
           <label class="f-label"><i class="req">*</i>水价（元/m³）</label>
           <input class="field" id="in-price" inputmode="decimal" placeholder="如 0.320" autocomplete="off">
           <div class="f-err" id="err-price"></div>
+        </div>
+        <div class="f-item">
+          <label class="f-label">年度计划水量（万m³）</label>
+          <input class="field" id="in-annual" inputmode="decimal" placeholder="选填，如 12.50" autocomplete="off">
+          <div class="f-err" id="err-annual"></div>
         </div>
         <div class="f-item">
           <label class="f-label"><i class="req">*</i>统计周期</label>
@@ -434,7 +448,7 @@ const ICON = {
 const S = {
   meta: { userTypes: [], userStatuses: [], calcModes: [], settleCycles: [], gates: [], contacts: [], today: '' },
   page: 1, size: 20, total: 0, records: [],
-  filter: { keyword: '', calcMode: '', settleCycle: '', status: '' },
+  filter: { keyword: '', calcMode: '', settleCycle: '', status: '', startDate: '', endDate: '' },
   mode: '',                      // 抽屉：create / edit / view
   row: null,                     // 当前编辑/查看行
   saving: false, seq: 0, listSeq: 0, flashKey: null
@@ -632,11 +646,14 @@ function closeAllSelects(except) {
 
 /* ============================ 列表 ============================ */
 function filterParams() {
-  return { keyword: S.filter.keyword, calcMode: S.filter.calcMode, settleCycle: S.filter.settleCycle, status: S.filter.status };
+  return {
+    keyword: S.filter.keyword, calcMode: S.filter.calcMode, settleCycle: S.filter.settleCycle,
+    status: S.filter.status, startDate: S.filter.startDate, endDate: S.filter.endDate
+  };
 }
 
 function emptyRow(text, plain) {
-  return '<tr><td colspan="11" class="empty"><div class="empty-box">' +
+  return '<tr><td colspan="12" class="empty"><div class="empty-box">' +
     (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
 }
 
@@ -682,6 +699,14 @@ function annualCell(r) {
   return WaterRules.fmtWan(r.annualPlanWater) + ' 万m³（已调度 ' + pct + '%）';
 }
 
+/** 累计用水量列：账单计费水量按「用水时间」区间汇总（接口输出 m³ → 万m³ 1 位；未筛选即全部账期） */
+function totalUsedCell(r) {
+  const tip = (S.filter.startDate || S.filter.endDate)
+    ? '按账期与所选用水时间区间重叠部分汇总（账单计费水量）'
+    : '按全部已出账账单计费水量汇总';
+  return '<span title="' + tip + '">' + WaterRules.fmtWan(r.totalUsedQty) + ' 万m³</span>';
+}
+
 /** 待出账水量列：有待出账方案橙显水量（口径同水费台账），否则 0 */
 function pendingCell(r) {
   const cnt = Number(r.pendingCount) || 0;
@@ -708,6 +733,7 @@ function renderTable() {
       '<td>' + esc(r.contactPhone || '--') + '</td>' +
       '<td>' + (r.irrigationArea === null || r.irrigationArea === undefined ? '--' : esc(String(r.irrigationArea)) + ' 亩') + '</td>' +
       '<td>' + annualCell(r) + '</td>' +
+      '<td>' + totalUsedCell(r) + '</td>' +
       '<td>' + pendingCell(r) + '</td>' +
       '<td>' + (r.waterPrice === null || r.waterPrice === undefined ? '--' : esc(String(r.waterPrice)) + ' 元/m³') + '</td>' +
       '<td>' + calcTag(r) + (r.gateText ? ' <span title="' + esc(r.gateText) + '">' + esc(r.gateText) + '</span>' : '') + '</td>' +
@@ -798,10 +824,27 @@ function onPagerClick(e) {
 /* ============================ 表单（抽屉） ============================ */
 let fltCalc = null; let fltCycle = null; let fltStatus = null;
 let selUserType = null; let selSettle = null; let selMode = null; let selStatus = null;
-let selGates = null; let selMain = null; let selDeduct = null;
+let selGates = null; let selMain = null; let selDeduct = null; let selContact = null;
 
 function gateOptions() {
   return ((S.meta && S.meta.gates) || []).map(g => ({ value: g.id, label: g.name || g.id, sub: g.code || '' }));
+}
+
+/** 联系人候选（平台用户）：label 姓名、sub 手机号；提交只传 id，后端回查固化快照 */
+function contactOptions() {
+  return ((S.meta && S.meta.contacts) || []).map(c => ({ value: c.id, label: c.name || c.id, sub: c.mobile || '' }));
+}
+
+/** 存量快照占位值：平台侧改名/离职导致按姓名匹配不上时使用，提交不传 id（走后端编辑分支保留原快照） */
+const LEGACY_CONTACT = '__legacy__';
+
+/** 联系人变更后带出平台手机号（只读；后端按 id 回查，不信任前端传入） */
+function syncContactPhone() {
+  const id = selContact.getValue();
+  if (!id) { $('in-phone').value = ''; return; }
+  if (id === LEGACY_CONTACT) return;
+  const hit = ((S.meta && S.meta.contacts) || []).filter(c => c.id === id)[0];
+  $('in-phone').value = (hit && hit.mobile) || '';
 }
 
 function showDrawer() {
@@ -881,8 +924,10 @@ async function openView(id) {
 
 function resetForm() {
   S.row = null;
-  ['in-no', 'in-name', 'in-contact', 'in-phone', 'in-area', 'in-price',
+  ['in-no', 'in-name', 'in-phone', 'in-area', 'in-price', 'in-annual',
     'in-remark'].forEach(id => { $(id).value = ''; });
+  $('in-phone').readOnly = true;
+  selContact.setOptions(contactOptions()).setPlaceholder('请选择联系人').setValue('');
   selUserType.setOptions((S.meta.userTypes || []).map(o => ({ value: o.value, label: o.label })));
   selUserType.setPlaceholder('请选择用水类型').setValue('');
   selSettle.setOptions((S.meta.settleCycles || []).map(o => ({ value: o.value, label: o.label })));
@@ -902,8 +947,21 @@ function fillForm(d) {
   S.row = d;
   $('in-no').value = d.userNo || '';
   $('in-name').value = d.name || '';
-  $('in-contact').value = d.contactName || '';
-  $('in-phone').value = d.contactPhone || '';
+  // 联系人按姓名匹配平台用户反推 id（库内只存姓名/电话快照）；匹配不上则挂存量快照项，提交走文本分支
+  let contacts = contactOptions();
+  let contactId = '';
+  const hit = d.contactName ? contacts.filter(o => o.label === d.contactName)[0] : null;
+  if (hit) {
+    contactId = hit.value;
+  } else if (d.contactName) {
+    contacts = contacts.concat([{ value: LEGACY_CONTACT, label: d.contactName, sub: d.contactPhone || '存量快照' }]);
+    contactId = LEGACY_CONTACT;
+  }
+  selContact.setOptions(contacts).setValue(contactId);
+  $('in-phone').value = (hit ? (hit.sub || d.contactPhone) : d.contactPhone) || '';
+  $('in-phone').readOnly = true;
+  $('in-annual').value = d.annualPlanWater === null || d.annualPlanWater === undefined
+    ? '' : String(Math.round(Number(d.annualPlanWater) / 100) / 100);
   $('in-area').value = d.irrigationArea === null || d.irrigationArea === undefined ? '' : String(d.irrigationArea);
   $('in-price').value = d.waterPrice === null || d.waterPrice === undefined ? '' : String(d.waterPrice);
   $('in-remark').value = d.remark || '';
@@ -929,8 +987,9 @@ function fillForm(d) {
 const FORM_ERR = {
   name: { box: 'err-name', field: () => $('in-name') },
   userType: { box: 'err-user-type', sel: () => selUserType },
-  contact: { box: 'err-contact', field: () => $('in-contact') },
+  contact: { box: 'err-contact', sel: () => selContact },
   area: { box: 'err-area', field: () => $('in-area') },
+  annual: { box: 'err-annual', field: () => $('in-annual') },
   price: { box: 'err-price', field: () => $('in-price') },
   settle: { box: 'err-settle-cycle', sel: () => selSettle },
   status: { box: 'err-status', sel: () => selStatus },
@@ -961,8 +1020,7 @@ function validateForm() {
   const name = $('in-name').value.trim();
   if (!name) { setFormError('name', '请输入用水户名称'); bad = true; }
   if (!selUserType.getValue()) { setFormError('userType', '请选择用水类型'); bad = true; }
-  const contactName = $('in-contact').value.trim();
-  if (!contactName) { setFormError('contact', '请输入联系人'); bad = true; }
+  if (!selContact.getValue()) { setFormError('contact', '请选择联系人'); bad = true; }
   const phone = $('in-phone').value.trim();
   const areaRaw = $('in-area').value.trim();
   const needArea = selUserType.getValue() === '#1#' || selUserType.getValue() === '#4#';
@@ -973,6 +1031,9 @@ function validateForm() {
   if (!priceRaw) { setFormError('price', '请输入水价'); bad = true; }
   else if (!/^\d+(\.\d{1,3})?$/.test(priceRaw)) { setFormError('price', '水价最多保留 3 位小数'); bad = true; }
   else if (Number(priceRaw) <= 0) { setFormError('price', '水价必须大于 0'); bad = true; }
+  const annualRaw = $('in-annual').value.trim();
+  if (annualRaw && !/^\d+(\.\d{1,2})?$/.test(annualRaw)) { setFormError('annual', '年度计划水量最多保留 2 位小数'); bad = true; }
+  else if (annualRaw && Number(annualRaw) <= 0) { setFormError('annual', '年度计划水量必须大于 0'); bad = true; }
   if (!selSettle.getValue()) { setFormError('settle', '请选择统计周期'); bad = true; }
   if (!selStatus.getValue()) { setFormError('status', '请选择状态'); bad = true; }
   const remark = $('in-remark').value.trim();
@@ -999,19 +1060,22 @@ function validateForm() {
     gateConfig = { mode: 'DIFF', mains: mains.map(id => ({ id })), deduct: deducts.map(id => ({ id })) };
   }
   if (bad) return null;
-  // 年度计划水量 / 经纬度已不在表单录入：编辑时回传原值防止后端清空（新增时为 null）
+  // 经纬度不在表单录入：编辑时回传原值防止后端清空（新增时为 null）；年度计划水量按表单录入（万m³）
   const keepMeta = S.mode === 'edit' && S.row ? S.row : {};
+  const contactId = selContact.getValue();
+  const contactLabel = selContact.getLabel();
   return {
     name,
     userType: selUserType.getValue(),
     status: selStatus.getValue() || '#1#',
-    contactUserId: null,
-    contactName: contactName || null,
+    // 存量快照项不传 id（后端编辑分支保留原快照）；真实联系人传 id 由后端回查固化姓名/电话
+    contactUserId: contactId && contactId !== LEGACY_CONTACT ? contactId : null,
+    contactName: contactLabel || null,
     contactPhone: phone || null,
     irrigationArea: areaRaw ? Number(areaRaw) : null,
     lng: keepMeta.lng === undefined ? null : keepMeta.lng,
     lat: keepMeta.lat === undefined ? null : keepMeta.lat,
-    annualPlanWater: keepMeta.annualPlanWater === undefined ? null : keepMeta.annualPlanWater,
+    annualPlanWater: annualRaw ? Number(annualRaw) : null,
     waterPrice: Number(priceRaw),
     calcMode: mode,
     gateConfig,
@@ -1291,17 +1355,26 @@ function bindEvents() {
   });
 
   $('flt-search').addEventListener('click', () => {
+    const startDate = $('f-start-date').value;
+    const endDate = $('f-end-date').value;
+    if (startDate && endDate && startDate > endDate) {
+      showToast('开始日期不能晚于结束日期', true);
+      return;
+    }
     S.filter.keyword = $('f-keyword').value.trim();
     S.filter.calcMode = fltCalc.getValue() || '';
     S.filter.settleCycle = fltCycle.getValue() || '';
     S.filter.status = fltStatus.getValue() || '';
+    S.filter.startDate = startDate;
+    S.filter.endDate = endDate;
     S.page = 1;
     loadList();
   });
   $('flt-reset').addEventListener('click', () => {
     $('f-keyword').value = '';
+    $('f-start-date').value = ''; $('f-end-date').value = '';
     fltCalc.setValue(''); fltCycle.setValue(''); fltStatus.setValue('');
-    S.filter = { keyword: '', calcMode: '', settleCycle: '', status: '' };
+    S.filter = { keyword: '', calcMode: '', settleCycle: '', status: '', startDate: '', endDate: '' };
     S.page = 1;
     loadList();
   });
@@ -1316,9 +1389,10 @@ function bindEvents() {
   $('in-name').addEventListener('input', () => clearFormError('name'));
   $('in-area').addEventListener('input', () => clearFormError('area'));
   $('in-price').addEventListener('input', () => clearFormError('price'));
+  $('in-annual').addEventListener('input', () => clearFormError('annual'));
   $('in-remark').addEventListener('input', () => clearFormError('remark'));
   selUserType.onChange(() => clearFormError('userType'));
-  $('in-contact').addEventListener('input', () => clearFormError('contact'));
+  selContact.onChange(() => { clearFormError('contact'); syncContactPhone(); });
   selSettle.onChange(() => clearFormError('settle'));
   selStatus.onChange(() => clearFormError('status'));
   selMode.onChange(v => { clearFormError('mode'); applyGateRows(v); });
@@ -1363,6 +1437,7 @@ function bindEvents() {
   fltStatus.setPlaceholder('全部状态');
 
   selUserType = createSelect($('sel-user-type'));
+  selContact = createSelect($('sel-contact')).setSearchable(true);
   selSettle = createSelect($('sel-settle-cycle'));
   selStatus = createSelect($('sel-status'));
   selMode = createSelect($('sel-calc-mode'));

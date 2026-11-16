@@ -263,7 +263,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           </colgroup>
           <thead>
             <tr>
-              <th>台账编号</th><th>用水户</th><th>结算周期</th><th>用水量<br>（m³）</th><th>单价<br>（元/m³）</th>
+              <th>台账编号</th><th>用水户</th><th>结算周期</th><th>用水量<br>（万m³）</th><th>单价<br>（元/m³）</th>
               <th>应收金额</th><th>计费状态</th><th>备注</th><th>操作</th>
             </tr>
           </thead>
@@ -457,8 +457,9 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           </div>
         </div>
         <div class="form-item">
-          <label>用水量（m³） <i class="req">*</i></label>
-          <input type="number" class="ipt" id="ml-volume" min="0" step="0.01" placeholder="0">
+          <label>用水量（万m³） <i class="req">*</i></label>
+          <input type="number" class="ipt" id="ml-volume" min="0" step="0.0001" placeholder="自动带出实测水量">
+          <div class="f-tip">新增时自动带出本账期未计费方案的实测水量，可手工修改；最小 0.0001 万m³（1 m³）</div>
         </div>
         <div class="form-item">
           <label>单价（元/m³） <i class="req">*</i></label>
@@ -467,7 +468,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         <div class="form-item span2">
           <label>应收金额（元）</label>
           <input type="text" class="ipt" id="ml-amount" readonly placeholder="自动计算">
-          <div class="f-tip">金额 = 用水量 × 单价，保留两位小数</div>
+          <div class="f-tip">金额 = 用水量（万m³）× 10000 × 单价（元/m³），保留两位小数</div>
         </div>
         <div class="form-item span2">
           <label>备注</label>
@@ -669,6 +670,12 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     return String(round2(Number(n)));
   }
 
+  /** 台账用水量（万m³）格式化:最多 4 位小数去尾零（保证 1 m³ 精度） */
+  function fmtWanQty(n) {
+    if (n == null || n === '' || isNaN(Number(n))) return '—';
+    return String(Math.round(Number(n) * 10000) / 10000);
+  }
+
   /** 金额格式化:千分位 + 2位小数 */
   function fmtMoney(n) {
     var s = round2(Number(n)).toFixed(2);
@@ -746,13 +753,16 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     });
   }
 
-  /** 出账成功提示(单张:账单号+算式;多张:拆分张数+合计) */
+  /** 出账成功提示(单张:账单号+口径;多张:拆分张数+合计) */
   function toastCreated(res) {
     var bills = (res && res.bills) || [];
     if (!bills.length) { toast('出账成功'); return; }
     if (bills.length === 1) {
       var b = bills[0];
-      toast('账单 ' + b.billNo + ' 已生成：' + fmtQty(b.quantity) + ' 万m³ × ' + fmtPrice(b.price) + ' 元/m³ = ' + fmtMoney(b.amount));
+      // 账单 quantity 为万m³、price 为元/m³；金额按 m³ 计算，故文案不写等式（否则差 10000 倍）
+      toast('账单 ' + b.billNo + ' 已生成：计费水量 ' + fmtWanQty(b.quantity) + ' 万m³（折合 '
+        + fmtQty(round2(Number(b.quantity) * 10000)) + ' m³）· 单价 ' + fmtPrice(b.price)
+        + ' 元/m³ · 应收 ' + fmtMoney(b.amount));
     } else {
       var total = 0;
       bills.forEach(function (b) { total += Number(b.amount) || 0; });
@@ -886,7 +896,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           (r.waterUserNo ? '<br><span style="color:#8c8c8c;font-size:12.5px">' + esc(r.waterUserNo) + '</span>' : '') + '</td>' +
         '<td><span class="cell-main">' + esc(r.cycleLabel || r.cycleKey || '') + '</span><br>' +
           '<span class="tag ' + (CYCLE_TAG[r.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[r.cycle] || esc(r.cycleName || '')) + '</span></td>' +
-        '<td>' + fmtQty(r.volume) + '</td>' +
+        '<td>' + fmtWanQty(r.volume) + '</td>' +
         '<td>' + fmtPrice(r.price) + '</td>' +
         '<td><span class="amt">' + fmtMoney(r.amount) + '</span></td>' +
         '<td>' + statusHtml + '</td>' +
@@ -940,11 +950,82 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     mlPartOptions(ML.cycle, part);
   }
 
-  /** 金额自动计算:用水量 × 单价,保留两位小数 */
+  /** 金额自动计算:用水量（万m³）× 10000 × 单价（元/m³）,保留两位小数 */
   function updateMlAmount() {
     var v = parseFloat($('ml-volume').value), p = parseFloat($('ml-price').value);
     var ok = isFinite(v) && isFinite(p) && v >= 0 && p >= 0;
-    $('ml-amount').value = ok ? (Math.round((v * p + Number.EPSILON) * 100) / 100).toFixed(2) : '';
+    $('ml-amount').value = ok ? (Math.round((v * 10000 * p + Number.EPSILON) * 100) / 100).toFixed(2) : '';
+  }
+
+  /** 弹窗当前选择的账期 key（与保存口径一致；年份/月份非法返回空） */
+  function currentMlCycleKey() {
+    var year = parseInt($('ml-year').value, 10);
+    if (!(year >= 2000 && year <= 2100)) return '';
+    var cycle = ML.cycle;
+    var key = String(year);
+    if (cycle === 'month') {
+      if (!(ML.part >= 1 && ML.part <= 12)) return '';
+      key += '-' + (ML.part < 10 ? '0' + ML.part : ML.part);
+    } else if (cycle === 'quarter') {
+      if (!(ML.part >= 1 && ML.part <= 4)) return '';
+      key += '-Q' + ML.part;
+    }
+    return key;
+  }
+
+  /** 弹窗内实测水量缓存（按户拉取未计费方案的实时计量，单位万m³） */
+  var ML_PLANS = [];
+  var mlPlansSeq = 0;
+
+  /** 拉取该户方案实测明细（未计费行后端实时计量；已计费行取账单快照） */
+  function loadMeterPlans(userId, cb) {
+    var seq = ++mlPlansSeq;
+    ML_PLANS = [];
+    if (!userId) { if (cb) cb(); return; }
+    api('GET', '/water-bill/user-plans?userId=' + encodeURIComponent(userId), null, function (err, data) {
+      if (seq !== mlPlansSeq) return;
+      ML_PLANS = (!err && data && data.records) ? data.records : [];
+      if (cb) cb();
+    });
+  }
+
+  /** 所选账期的实测水量合计（万m³）：未计费且计量可得；先按 cycleKey 精确匹配，匹配不到同周期形态内按账期重叠兜底 */
+  function meterVolumeOf(cycleKey) {
+    if (!cycleKey) return null;
+    var range = cycleRange(cycleKey);
+    var hit = ML_PLANS.filter(function (p) { return !p.billed && p.cycleKey === cycleKey; });
+    if (!hit.length) {
+      // 兜底仅限同周期形态（年度/季度/月度），避免把年度方案量误带入月度账期
+      var shape = cycleShape(cycleKey);
+      hit = ML_PLANS.filter(function (p) {
+        if (p.billed || !p.cycleKey || cycleShape(p.cycleKey) !== shape) return false;
+        var s = String(p.startTime || '').slice(0, 10);
+        var e = String(p.endTime || '').slice(0, 10) || s;
+        return !!s && s <= range[1] && e >= range[0];
+      });
+    }
+    var sum = 0, counted = 0;
+    hit.forEach(function (p) {
+      if (p.amount === null || p.amount === undefined || isNaN(Number(p.amount))) return;
+      sum += Number(p.amount);
+      counted++;
+    });
+    return counted ? Math.round(sum * 100) / 100 : null;
+  }
+
+  /** 账期 key 的周期形态：Y 年度 / Q 季度 / M 月度 */
+  function cycleShape(key) {
+    var k = String(key || '');
+    if (k.indexOf('-Q') > 0) return 'Q';
+    return k.length === 4 ? 'Y' : 'M';
+  }
+
+  /** 新增台账时自动带出实测水量（仍可手工修改）；编辑态保留已存值不覆盖 */
+  function fillMeterVolume() {
+    if (mlEditId) return;
+    var v = meterVolumeOf(currentMlCycleKey());
+    $('ml-volume').value = v === null ? '' : String(v);
+    updateMlAmount();
   }
 
   /** 打开新增(id 空)/编辑台账弹窗(已出账禁改) */
@@ -977,10 +1058,12 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       }
       updateMlAmount();
       openModal('ledger-ov');
+      // 新增态：按当前户/账期异步带出实测水量（仍可手工修改；编辑态不覆盖已存值）
+      if (!mlEditId) loadMeterPlans($('ml-user').dataset.value, fillMeterVolume);
     });
   }
 
-  /** 保存台账:金额服务端按 用水量×单价 复算,前端仅做校验与提示 */
+  /** 保存台账:金额服务端按 用水量（万m³）× 10000 × 单价 复算,前端仅做校验与提示 */
   function saveLedger() {
     var userId = $('ml-user').dataset.value;
     if (!userId) { toast('请选择用水户'); return; }
@@ -988,23 +1071,22 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (!(year >= 2000 && year <= 2100)) { toast('请填写有效的结算年份'); return; }
     var cycle = ML.cycle;
     if (!cycle) { toast('请选择结算周期'); return; }
-    var cycleKey = String(year);
-    if (cycle === 'month') {
-      if (!(ML.part >= 1 && ML.part <= 12)) { toast('请选择结算月份'); return; }
-      cycleKey += '-' + (ML.part < 10 ? '0' + ML.part : ML.part);
-    } else if (cycle === 'quarter') {
-      if (!(ML.part >= 1 && ML.part <= 4)) { toast('请选择结算季度'); return; }
-      cycleKey += '-Q' + ML.part;
+    var cycleKey = currentMlCycleKey();
+    if (!cycleKey) {
+      toast(cycle === 'month' ? '请选择结算月份' : (cycle === 'quarter' ? '请选择结算季度' : '请填写有效的结算年份'));
+      return;
     }
     var v = parseFloat($('ml-volume').value), p = parseFloat($('ml-price').value);
     if (!(v > 0)) { toast('用水量必须大于 0'); return; }
+    var volumeWan = Number(v.toFixed(4));
+    if (!(volumeWan > 0)) { toast('用水量精度过高：最小 0.0001 万m³（1 m³）'); return; }
     if (!(p > 0)) { toast('单价必须大于 0'); return; }
-    if (Math.round((v * p + Number.EPSILON) * 100) / 100 <= 0) { toast('金额须不少于 0.01 元，请核对用水量与单价'); return; }
+    if (Math.round((volumeWan * 10000 * p + Number.EPSILON) * 100) / 100 <= 0) { toast('金额须不少于 0.01 元，请核对用水量与单价'); return; }
     var payload = {
       userId: userId,
       cycle: cycle,
       cycleKey: cycleKey,
-      volume: Number(v.toFixed(2)),
+      volume: volumeWan,
       price: p,
       remark: $('ml-remark').value.trim()
     };
@@ -1025,7 +1107,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var row = findLedger(id);
     if (!row || row.billed) return;
     askConfirm('台账出账', '确定为台账 ' + row.ledgerNo + ' 生成账单？'
-      + row.waterUserName + ' · ' + fmtQty(row.volume) + ' m³ × ' + fmtPrice(row.price) + ' 元/m³ = ' + fmtMoney(row.amount)
+      + row.waterUserName + ' · 用水量 ' + fmtWanQty(row.volume) + ' 万m³（折合 ' + fmtQty(round2(Number(row.volume) * 10000)) + ' m³）'
+      + ' · 单价 ' + fmtPrice(row.price) + ' 元/m³ · 应收 ' + fmtMoney(row.amount)
       + '，账期 ' + (row.cycleLabel || row.cycleKey || '') + '。', '确认出账', function () {
       api('POST', '/water-bill/ledger/bill?id=' + encodeURIComponent(id), null, function (err, b) {
         if (err) return;
@@ -1124,7 +1207,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       statItem('用水计算策略', esc(u.calcModeName || '-') + ' · ' + esc(u.gateText || '-'), (u.calcModeName || '-') + ' · ' + (u.gateText || '-')) +
       statItem('统计周期', esc(u.settleCycleName || '-')) +
       statItem('水价', fmtPrice(u.waterPrice) + ' <span class="stat-unit">元/m³</span>') +
-      statItem('待出账水量', fmtQty(pendQty) + ' <span class="stat-unit">万m³</span>') +
+      statItem('待出账水量', fmtWanQty(pendQty) + ' <span class="stat-unit">万m³</span>') +
       statItem('待出账金额', fmtMoney(pendAmt));
 
     // 按分期分组(接口行上已给出 cycleKey/cycleLabel;key 倒序,最新期在前)
@@ -1164,13 +1247,13 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         if (nos.length) right += '<span class="p-billno" data-vbill="' + esc(nos[0]) + '">本期已出账 · 账单 ' + nos.join('、') + '</span>';
       }
       if (gUnbilled.length) {
-        right += '<span class="p-status">待出账 ' + gUnbilled.length + ' 个 · ' + fmtQty(pQty) + ' 万m³ · ' + fmtMoney(pAmt) + '</span>' +
+        right += '<span class="p-status">待出账 ' + gUnbilled.length + ' 个 · ' + fmtWanQty(pQty) + ' 万m³ · ' + fmtMoney(pAmt) + '</span>' +
           '<button type="button" class="btn btn-primary btn-xs" data-genkey="' + esc(key) + '">生成本期账单</button>';
       }
       html += '<tr class="period-row"><td colspan="10"><div class="period-line">' +
         '<span class="p-name">' + esc(label) + '</span>' +
         '<span class="p-range">' + range[0] + ' ~ ' + range[1] + '</span>' +
-        '<span class="p-qty">水量 ' + fmtQty(gQty) + ' 万m³</span>' +
+        '<span class="p-qty">水量 ' + fmtWanQty(gQty) + ' 万m³</span>' +
         '<span class="p-count">方案 ' + g.length + ' 个</span>' +
         '<span class="p-right">' + right + '</span>' +
         '</div></td></tr>';
@@ -1189,8 +1272,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           '<td><span class="cell-main">' + esc(p.dispatchNo || p.dispatchId || '-') + '</span>' + (p.planName ? ' · <span style="color:#8c8c8c">' + esc(p.planName) + '</span>' : '') + '</td>' +
           '<td>' + esc(p.gateName || '-') + '</td>' +
           '<td><span style="font-size:12.5px;color:#595959">' + esc(p.startTime || '') + '<br>' + esc(p.endTime || '') + '</span></td>' +
-          '<td>' + fmtQty(p.planAmount) + '</td>' +
-          '<td>' + (p.amount == null ? (p.meterIssue ? '<span style="color:#fa8c16;font-size:12px" title="' + esc(p.meterIssue) + '">' + esc(p.meterIssue) + '</span>' : '<span style="color:#bfbfbf">—</span>') : fmtQty(p.amount)) + '</td>' +
+          '<td>' + fmtWanQty(p.planAmount) + '</td>' +
+          '<td>' + (p.amount == null ? (p.meterIssue ? '<span style="color:#fa8c16;font-size:12px" title="' + esc(p.meterIssue) + '">' + esc(p.meterIssue) + '</span>' : '<span style="color:#bfbfbf">—</span>') : fmtWanQty(p.amount)) + '</td>' +
           '<td><span class="amt">' + amtTxt + '</span></td>' +
           '<td>' + planStatusTag(p) + '</td>' +
           '<td>' + (billed ? '<span class="st-tag billed">已计费</span>' : '<span class="st-tag unbilled">未计费</span>') + '</td>' +
@@ -1222,7 +1305,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       }
     }
     qty = round2(qty);
-    $('detail-sel').innerHTML = '已选 <b>' + count + '</b> 个 · 水量 <b>' + fmtQty(qty) + '</b> 万m³ · 金额 <b>' + fmtMoney(round2(qty * price * 10000)) + '</b>';
+    $('detail-sel').innerHTML = '已选 <b>' + count + '</b> 个 · 水量 <b>' + fmtWanQty(qty) + '</b> 万m³ · 金额 <b>' + fmtMoney(round2(qty * price * 10000)) + '</b>';
     $('btn-detail-gen').disabled = count === 0;
   }
 
@@ -1257,7 +1340,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
           '<td><span class="cell-main">' + esc(b.waterUserName || '-') + '</span></td>' +
           '<td><span class="tag ' + (CYCLE_TAG[b.cycle] || 'tag-blue') + '">' + (CYCLE_SHORT[b.cycle] || esc(b.cycleName || '')) + '</span></td>' +
           '<td>' + esc(b.startDate || '') + ' ~ ' + esc(b.endDate || '') + '</td>' +
-          '<td>' + fmtQty(b.quantity) + ' 万m³</td>' +
+          '<td>' + fmtWanQty(b.quantity) + ' 万m³</td>' +
           '<td>' + fmtPrice(b.price) + ' 元/m³</td>' +
           '<td><span class="amt">' + fmtMoney(b.amount) + '</span></td>' +
           '<td>' + (b.paid > 0
@@ -1361,7 +1444,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     if (!p) return;
     if (p.billed) { toast('该方案已计费，请先删除关联账单后再调整'); return; }
     adjId = id;
-    $('adj-old').value = fmtQty(p.planAmount) + ' 万m³';
+    $('adj-old').value = fmtWanQty(p.planAmount) + ' 万m³';
     $('adj-new').value = p.planAmount;
     $('adj-start').value = String(p.startTime || '').replace(' ', 'T');
     $('adj-end').value = p.endTime ? String(p.endTime).replace(' ', 'T') : '';
@@ -1419,7 +1502,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         kvRow('统计周期', esc(b.cycleLabel || '') + '（' + esc(b.cycleName || '') + '）') +
         (b.ledgerNo ? kvRow('来源台账', '<span class="cell-main">' + esc(b.ledgerNo) + '</span>（手工台账出账）') : '') +
         kvRow('账期区间', esc(b.startDate || '') + ' ~ ' + esc(b.endDate || '')) +
-        kvRow('计费水量', fmtQty(b.quantity) + ' 万m³' + (b.ledgerNo
+        kvRow('计费水量', fmtWanQty(b.quantity) + ' 万m³' + (b.ledgerNo
           ? '（手工台账出账，无方案明细）'
           : '（含 ' + (b.planCount || (b.plans || []).length) + ' 个方案）')) +
         kvRow('水价', fmtPrice(b.price) + ' 元/m³') +
@@ -1513,7 +1596,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
     var p = findCurPlan(id);
     if (!p) return;
     if (p.billed) { toast('该方案已计费，请先删除关联账单后再删除'); return; }
-    askConfirm('删除方案', '确定删除方案 ' + (p.dispatchNo || id) + '（' + (p.gateName || '-') + ' · ' + fmtQty(p.planAmount) + ' 万m³）？删除后该方案将不再参与出账。', '确认删除', function () {
+    askConfirm('删除方案', '确定删除方案 ' + (p.dispatchNo || id) + '（' + (p.gateName || '-') + ' · ' + fmtWanQty(p.planAmount) + ' 万m³）？删除后该方案将不再参与出账。', '确认删除', function () {
       api('DELETE', '/water-dispatch/delete?id=' + encodeURIComponent(id), null, function (err) {
         if (err) return;
         delete selPlans[id];
@@ -1547,7 +1630,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   /* ==================== 导出 Excel(复用项目通用 MonitorExport) ==================== */
   function dateTag() { return nowStr().slice(0, 10); }
 
-  /** 导出台账:按当前筛选结果导出手工台账(用水量 m³ / 单价 / 应收金额) */
+  /** 导出台账:按当前筛选结果导出手工台账(用水量万m³ / 单价 / 应收金额) */
   function exportLedger() {
     if (!LEDGERS.length) { toast('当前筛选条件下没有可导出的台账'); return; }
     var rows = LEDGERS.map(function (r) {
@@ -1573,7 +1656,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
         { key: 'userNo', label: '用水户编号' },
         { key: 'cycleLabel', label: '结算周期' },
         { key: 'cycleName', label: '周期类型' },
-        { key: 'volume', label: '用水量（m³）' },
+        { key: 'volume', label: '用水量（万m³）' },
         { key: 'price', label: '单价（元/m³）' },
         { key: 'amount', label: '应收金额（元）' },
         { key: 'status', label: '计费状态' },
@@ -1791,16 +1874,22 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       if (!mlEditId) {
         mlSetCycle(u && u.cycle ? u.cycle : 'month');
         mlSetPeriod(u ? u.cycleKey : '');
+        // 换户后重新拉取该户实测明细并带出当前账期水量
+        loadMeterPlans(v, fillMeterVolume);
+      } else {
+        updateMlAmount();
       }
-      updateMlAmount();
     });
     bindSearchSelect('ml-cycle', 'ml-cycle-dd', function () { return CYCLE_OPTS; }, function (v) {
       ML.cycle = v || 'month';
       mlPartOptions(ML.cycle);
+      fillMeterVolume();
     });
     bindSearchSelect('ml-part', 'ml-part-dd', function () { return ML_PART_OPTIONS; }, function (v) {
       ML.part = parseInt(v, 10) || 1;
+      fillMeterVolume();
     });
+    $('ml-year').addEventListener('change', fillMeterVolume);
     $('ml-volume').addEventListener('input', updateMlAmount);
     $('ml-price').addEventListener('input', updateMlAmount);
     $('btn-ledger-save').addEventListener('click', saveLedger);

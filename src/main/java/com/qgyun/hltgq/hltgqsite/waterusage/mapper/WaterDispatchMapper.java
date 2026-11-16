@@ -210,6 +210,16 @@ public interface WaterDispatchMapper {
                                          @Param("userId") String userId,
                                          @Param("excludeId") String excludeId);
 
+    /**
+     * 该需水单已下达合计（未取消方案 plan_amount，m³；编辑时经 excludeId 排除自身）——
+     * 需水申报量上限的剩余额度口径：已下达 + 本次 ≤ 申报量，兼容一单分次下达。
+     */
+    @Select("<script>SELECT COALESCE(SUM(d.plan_amount), 0) FROM " + T_DISPATCH + " d " +
+            "WHERE d.demand_id = #{demandId} AND d.status != '#4#' AND d.corp_code = 'hltgq' " +
+            "<if test='excludeId != null and excludeId != \"\"'>AND d.id != #{excludeId} </if></script>")
+    BigDecimal selectActiveSumByDemand(@Param("demandId") String demandId,
+                                       @Param("excludeId") String excludeId);
+
     /** 锁用水计划行（编制/编辑/调整方案事务内 FOR UPDATE：并发下达不超配额；不存在返回 null） */
     @Select("SELECT id FROM " + T_PLAN + " WHERE id = #{planId} AND corp_code = 'hltgq' FOR UPDATE")
     String lockPlanForUpdate(@Param("planId") String planId);

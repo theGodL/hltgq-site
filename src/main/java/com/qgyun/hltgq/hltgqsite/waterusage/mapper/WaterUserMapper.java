@@ -53,7 +53,8 @@ public interface WaterUserMapper {
 
     /**
      * 列表分页：年度计划水量为档案字段（BASE_COLS 直出）；
-     * 年度已调度 = 该户当年年度计划上未取消调度方案的 plan_amount 合计（调度模块回写口径）。
+     * 年度已调度 = 该户当年年度计划上未取消调度方案的 plan_amount 合计（调度模块回写口径）；
+     * 累计用水量 = 该户账单计费水量（m³）合计，按账期区间与 startDate~endDate 重叠筛选（未传时间则为全部账期）。
      */
     @Select("<script>" +
             "SELECT " + BASE_COLS + ", " +
@@ -61,7 +62,12 @@ public interface WaterUserMapper {
             " JOIN " + T_PLAN + " p2 ON p2.id = dd.plan_id " +
             " WHERE dd.water_user_id = u.id AND dd.corp_code = 'hltgq' AND dd.status != '#4#' " +
             " AND p2.plan_type = '#1#' AND p2.status IN ('#2#', '#3#') " +
-            " AND EXTRACT(YEAR FROM p2.period_start) = #{year}) AS annualScheduledQty " +
+            " AND EXTRACT(YEAR FROM p2.period_start) = #{year}) AS annualScheduledQty, " +
+            "(SELECT COALESCE(SUM(b.quantity), 0) FROM " + T_BILL + " b " +
+            " WHERE b.water_user_id = u.id AND b.corp_code = 'hltgq' " +
+            "<if test='startDate != null'>AND b.period_end &gt;= CAST(#{startDate} AS date) </if>" +
+            "<if test='endDate != null'>AND b.period_start &lt;= CAST(#{endDate} AS date) </if>" +
+            ") AS totalUsedQty " +
             "FROM " + T_USER + " u WHERE u.corp_code = 'hltgq' " + LIST_CONDITIONS +
             "ORDER BY u.user_no DESC LIMIT #{size} OFFSET #{offset}" +
             "</script>")
@@ -69,6 +75,8 @@ public interface WaterUserMapper {
                                      @Param("calcMode") String calcMode,
                                      @Param("settleCycle") String settleCycle,
                                      @Param("status") String status,
+                                     @Param("startDate") String startDate,
+                                     @Param("endDate") String endDate,
                                      @Param("year") int year,
                                      @Param("size") int size,
                                      @Param("offset") long offset);

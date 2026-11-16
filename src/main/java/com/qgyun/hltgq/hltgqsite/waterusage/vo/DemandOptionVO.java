@@ -22,6 +22,12 @@ public class DemandOptionVO {
 
     private String waterUserName;
 
+    /** 申报拟用闸口（可空；非空时调度指令闸口随单锁定） */
+    private String gateId;
+
+    /** 申报闸口名称（站档快照，展示用） */
+    private String gateName;
+
     /** 申报计划水量（万m³） */
     private BigDecimal amount;
 

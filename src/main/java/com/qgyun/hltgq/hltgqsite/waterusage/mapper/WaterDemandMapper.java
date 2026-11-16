@@ -14,9 +14,10 @@ import java.util.Map;
 
 /**
  * 需水上报（t_auto_hltgq_water_demand）。表结构见 init.sql 灌区用水管理 2.1 / water-dispatch-bill-ddl.sql。
- * <p>审核态：待审核(#1#) →（审核）已通过(#2#)/已驳回(#3#)；待审核/已驳回可编辑
- * （保存后重置为待审核并清空审核痕迹，重新进入审核流程）；已通过锁定编辑（审核结论）。
- * <p>删除保护：被调度方案（demand_id）引用时禁止删除（Service 前置校验）。
+ * <p>审核态：待审核(#1#) →（审核）已通过(#2#)/已驳回(#3#)；仅已驳回可编辑
+ * （保存后重置为待审核并清空审核痕迹，重新进入审核流程）；待审核内容已提交，不可改、不可删，
+ * 只能走审核；已通过为最终审核结论，锁定编辑。
+ * <p>删除保护：待审核不可删除；被调度方案（demand_id）引用时禁止删除（Service 前置校验）。
  * <p>编号 XS + 4 位序号：应用层 MAX+1 取号、唯一索引 uk_water_demand_no 兜底并发（Controller 重试）。
  * <p>写入走 {@code @Param("row") Map}：key 为 snake_case 列名（Service 组装）；审计列 corp_code 恒 'hltgq'、时间由 Java 传入。
  * <p>KES 注意：模糊匹配一律 {@code CONCAT('%', #{x}, '%')}；日期参数 CAST 为 date。
@@ -96,7 +97,7 @@ public interface WaterDemandMapper {
             "#{row.remark}, 'hltgq', #{row.now}, #{row.operator}, #{row.now}, #{row.operator})")
     int insertDemand(@Param("row") Map<String, Object> row);
 
-    /** 编辑（仅待审核/已驳回；保存后重置为待审核并清空审核痕迹，重新进入审核流程） */
+    /** 编辑（仅已驳回；保存后重置为待审核并清空审核痕迹，重新进入审核流程） */
     @Update("UPDATE " + T_DEMAND + " SET \"water_user_id\" = #{row.water_user_id}, " +
             "\"gate_id\" = #{row.gate_id}, \"amount\" = #{row.amount}, " +
             "\"period_year\" = #{row.period_year}, \"period_month\" = #{row.period_month}, " +
@@ -105,7 +106,7 @@ public interface WaterDemandMapper {
             "\"usage_desc\" = #{row.usage_desc}, \"remark\" = #{row.remark}, \"status\" = '#1#', " +
             "\"audit_opinion\" = NULL, \"audit_by\" = NULL, \"audit_at\" = NULL, " +
             "\"updated_at\" = #{row.now}, \"updated_by\" = #{row.operator} " +
-            "WHERE \"id\" = #{row.id} AND \"status\" IN ('#1#', '#3#') AND \"corp_code\" = 'hltgq'")
+            "WHERE \"id\" = #{row.id} AND \"status\" = '#3#' AND \"corp_code\" = 'hltgq'")
     int updateDemand(@Param("row") Map<String, Object> row);
 
     /** 审核（仅待审核；toStatus = #2# 通过 / #3# 驳回；意见必填与否由 Service 校验） */
@@ -133,7 +134,8 @@ public interface WaterDemandMapper {
 
     /** 已通过上报单下拉（调度方案「关联需水申请」；可按用水户过滤；amount 库内 m³，Service 折算万m³） */
     @Select("<script>SELECT d.id AS id, d.demand_no AS demandNo, d.water_user_id AS waterUserId, " +
-            "u.user_no AS waterUserNo, u.name AS waterUserName, d.amount AS amount, " +
+            "u.user_no AS waterUserNo, u.name AS waterUserName, d.gate_id AS gateId, s.zzkaec AS gateName, " +
+            "d.amount AS amount, " +
             "to_char(d.start_date, 'YYYY-MM-DD') AS startDate, to_char(d.end_date, 'YYYY-MM-DD') AS endDate " +
             BASE_JOINS + "WHERE d.corp_code = 'hltgq' AND d.status = '#2#' " +
             "<if test='userId != null and userId != \"\"'>AND d.water_user_id = #{userId} </if>" +

@@ -83,6 +83,9 @@ public class WaterUserVO {
     /** 待出账方案数（列表装配） */
     private Integer pendingCount;
 
+    /** 累计用水量（m³，列表装配：账单计费水量按所选时间范围汇总；未选时间为全部账期） */
+    private BigDecimal totalUsedQty;
+
     /** 备注 */
     private String remark;
 }

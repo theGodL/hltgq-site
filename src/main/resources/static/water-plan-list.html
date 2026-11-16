@@ -411,7 +411,7 @@ td.empty:hover{background:transparent}
           <thead>
             <tr>
               <th>#</th><th>用水户</th><th>面积(亩)</th><th>适用定额</th>
-              <th>测算水量(m³)</th><th>计划水量(万m³)</th><th>阶段</th><th>超测算说明</th><th></th>
+              <th>测算水量(万m³)</th><th>计划水量(万m³)</th><th>阶段</th><th>超测算说明</th><th></th>
             </tr>
           </thead>
           <tbody id="items-body"></tbody>
@@ -1216,7 +1216,7 @@ function refreshRow(i) {
   if (!tr) { updateSummary(); return; }
   const over = isOver(it);
   const calcCell = tr.querySelector('.m-calc');
-  if (calcCell) calcCell.textContent = it.calc === null ? '--' : fmtNum(it.calc, 2);
+  if (calcCell) calcCell.textContent = it.calc === null ? '--' : fmtNum(it.calc / 10000, 2);
   const wanEl = tr.querySelector('.m-wan');
   if (wanEl) {
     if (document.activeElement !== wanEl) wanEl.value = it.wan;
@@ -1249,7 +1249,7 @@ function addItem() {
 
 function itemRowHtml(it, i) {
   const over = isOver(it);
-  const calcText = it.calc === null ? '--' : fmtNum(it.calc, 2);
+  const calcText = it.calc === null ? '--' : fmtNum(it.calc / 10000, 2);
   const wanInput = '<input class="m-in m-wan' + (over ? ' is-warn' : '') + '" inputmode="decimal" maxlength="12" placeholder="0.00" value="' + esc(it.wan) + '"' +
     (over ? ' title="计划水量超过测算水量，请填写超测算说明"' : '') + '>';
   const reasonCell = '<span class="m-dash"' + (over ? ' hidden' : '') + '>—</span>' +
@@ -1542,7 +1542,7 @@ function renderView(d) {
     '<td><div class="m-txt">' + esc(it.waterUserName || '--') + '</div><div class="m-sub">' + esc(it.waterUserNo || '') + '</div></td>' +
     '<td><div class="m-txt">' + (it.irrigationArea === null || it.irrigationArea === undefined ? '--' : esc(String(it.irrigationArea))) + '</div></td>' +
     '<td><div class="m-txt">' + esc(it.quotaCropType || '--') + '</div><div class="m-sub">' + esc(it.quotaIrrigationMethodName || it.quotaIrrigationMethod || '') + '</div></td>' +
-    '<td class="m-calc">' + (it.calcWater === null || it.calcWater === undefined ? '--' : esc(fmtNum(it.calcWater, 2))) + '</td>' +
+    '<td class="m-calc">' + (it.calcWater === null || it.calcWater === undefined ? '--' : esc(fmtNum(it.calcWater / 10000, 2))) + '</td>' +
     '<td><div class="m-txt">' + (it.planWater === null || it.planWater === undefined ? '--' : esc(fmtNum(Number(it.planWater) / 10000, 2))) + '</div></td>' +
     '<td class="m-calc">' + (rowDone === null ? '--' : esc(fmtNum(rowDone / 10000, 2))) + '</td>' +
     '<td>' + (rowMissing ? '<span class="m-sub">待补计量数据</span>' : rowRate + '%') + '</td>' +
@@ -1552,7 +1552,7 @@ function renderView(d) {
   const itemsHtml = items.length
     ? '<table class="m-tbl"><colgroup><col style="width:28px"><col style="width:114px"><col style="width:62px"><col style="width:94px">' +
       '<col style="width:94px"><col style="width:108px"><col style="width:124px"><col style="width:94px"><col style="width:54px"><col style="width:100px"></colgroup>' +
-      '<thead><tr><th>#</th><th>用水户</th><th>面积(亩)</th><th>适用定额</th><th>测算水量(m³)</th><th>计划水量(万m³)</th><th>已完成供水量(万m³)</th><th>灌溉进度</th><th>阶段</th><th>超测算说明</th></tr></thead>' +
+      '<thead><tr><th>#</th><th>用水户</th><th>面积(亩)</th><th>适用定额</th><th>测算水量(万m³)</th><th>计划水量(万m³)</th><th>已完成供水量(万m³)</th><th>灌溉进度</th><th>阶段</th><th>超测算说明</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table>' +
       '<div class="m-sum">计划总水量：<b>' + fmt2(total / 10000) + '</b> 万m³<span class="sub">合计 ' + items.length + ' 行</span></div>'
     : '<div class="empty-box">暂无明细</div>';

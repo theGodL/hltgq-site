@@ -41,8 +41,8 @@ import java.util.Map;
  * 两条来源写同一张账单表：台账出账回收 ledger_id、方案出账回收 方案.bill_id；账单删除时双向解除挂接
  * （方案恢复未计费、台账恢复未出账），可重新出账。
  * <p>编号 SF + 期间码 + '-' + 户号 + 4 位全局序号：MAX+1 取号、唯一索引兜底并发（冲突重试在 Controller 层）。
- * <p>数量口径：账单接口对外万m³（4 位小数），库内 m³；手工台账接口直接输出 m³；
- * 金额 = 计入水量(m³) × 水价(元/m³)。
+ * <p>数量口径：账单 / 手工台账接口对外统一万m³（4 位小数），库内 m³（台账录入亦按万m³ ≤4 位
+ * 校验后折算入库，保证 1 m³ 精度）；金额 = 计入水量(m³) × 水价(元/m³)。
  */
 @Service
 public class WaterBillService {
@@ -310,7 +310,7 @@ public class WaterBillService {
         return out;
     }
 
-    /** 手工台账统计条（全量，无筛选参数：台账总数 / 待出账条数 / 待出账水量(m³) / 待出账金额 / 已出账金额） */
+    /** 手工台账统计条（全量，无筛选参数：台账总数 / 待出账条数 / 待出账水量(万m³) / 待出账金额 / 已出账金额） */
     public Map<String, Object> ledgerStat() {
         Map<String, Object> agg = ledgerMapper.selectLedgerStat();
         Map<String, Object> stat = new LinkedHashMap<>();
@@ -324,7 +324,7 @@ public class WaterBillService {
         }
         stat.put("ledgerCount", agg.get("cnt") == null ? 0L : ((Number) agg.get("cnt")).longValue());
         stat.put("pendingCount", agg.get("pendingcnt") == null ? 0L : ((Number) agg.get("pendingcnt")).longValue());
-        stat.put("pendingVolume", toDecimal(agg.get("pendingvol")));
+        stat.put("pendingVolume", WaterUsageSupport.toWan(toDecimal(agg.get("pendingvol"))));
         stat.put("pendingAmount", toDecimal(agg.get("pendingamt")));
         stat.put("billedAmount", toDecimal(agg.get("billedamt")));
         return stat;
@@ -365,10 +365,13 @@ public class WaterBillService {
         if (WaterUsageDict.cycleRange(cycleKey) == null) {
             throw new IllegalArgumentException("结算周期推导失败：" + cycleKey);
         }
-        BigDecimal volume = vo.getVolume();
-        if (volume == null || volume.signum() <= 0) {
+        // 录入口径万m³（≤4 位小数，保证 1 m³ 精度）→ 库内 m³；金额仍按 m³ × 单价计算
+        BigDecimal volumeWan = vo.getVolume();
+        if (volumeWan == null || volumeWan.signum() <= 0) {
             throw new IllegalArgumentException("用水量必须大于 0");
         }
+        BigDecimal volume = WaterUsageSupport.toM3(
+                WaterUsageSupport.requirePositive(volumeWan, "用水量", 4));
         BigDecimal price = vo.getPrice();
         if (price == null || price.signum() <= 0) {
             throw new IllegalArgumentException("单价必须大于 0");
@@ -565,7 +568,7 @@ public class WaterBillService {
             }
             if (raw.signum() <= 0) {
                 throw new IllegalArgumentException("指令 " + row.getDispatchNo() + " 计入水量为 0 或负值（"
-                        + raw.toPlainString() + " m³），请核对流量数据");
+                        + WaterUsageSupport.formatWan(raw) + " 万m³），请核对流量数据");
             }
             BigDecimal signed = WaterUsageMeter.isDeduct(config, row.getGateId()) ? raw.negate() : raw;
             String groupKey = row.getWaterUserId() + "|" + cycleKey;
@@ -711,7 +714,7 @@ public class WaterBillService {
                     if (raw == null) {
                         notes.add(plan.getDispatchNo() + " " + measured.getIssue());
                     } else if (raw.signum() <= 0) {
-                        notes.add(plan.getDispatchNo() + " 计量异常（" + raw.toPlainString() + " m³）");
+                        notes.add(plan.getDispatchNo() + " 计量异常（" + WaterUsageSupport.formatWan(raw) + " 万m³）");
                     } else {
                         signed = WaterUsageMeter.isDeduct(config, plan.getGateId()) ? raw.negate() : raw;
                         pendingQty = pendingQty.add(signed);
@@ -845,7 +848,7 @@ public class WaterBillService {
         plan.setAmount(WaterUsageSupport.toWan(plan.getAmount()));
     }
 
-    /** 台账行装饰：周期英文码 + 中文名/标签、已出账标记与账单状态英文码（水量保持 m³） */
+    /** 台账行装饰：周期英文码 + 中文名/标签、已出账标记与账单状态英文码、水量折算万m³ */
     private void decorateLedger(WaterLedgerVO vo) {
         if (vo == null) {
             return;
@@ -854,6 +857,7 @@ public class WaterBillService {
         vo.setCycle(WaterUsageDict.settleCycleUnitOf(settle));
         vo.setCycleName(WaterUsageDict.settleCycleName(settle));
         vo.setCycleLabel(WaterUsageDict.cycleLabel(vo.getCycleKey()));
+        vo.setVolume(WaterUsageSupport.toWan(vo.getVolume()));
         boolean billed = vo.getBillId() != null;
         vo.setBilled(billed);
         if (billed) {

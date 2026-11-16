@@ -42,7 +42,7 @@ public class WaterUserController {
     }
 
     /**
-     * 列表分页（关键字 / 计算策略 / 统计周期 / 状态筛选）。
+     * 列表分页（关键字 / 计算策略 / 统计周期 / 状态筛选；startDate~endDate 为累计用水量的账期时间范围）。
      *
      * @return total / page / size / pages / records
      */
@@ -52,8 +52,10 @@ public class WaterUserController {
                                     @RequestParam(required = false) String keyword,
                                     @RequestParam(required = false) String calcMode,
                                     @RequestParam(required = false) String settleCycle,
-                                    @RequestParam(required = false) String status) {
-        return userService.page(page, size, keyword, calcMode, settleCycle, status);
+                                    @RequestParam(required = false) String status,
+                                    @RequestParam(required = false) String startDate,
+                                    @RequestParam(required = false) String endDate) {
+        return userService.page(page, size, keyword, calcMode, settleCycle, status, startDate, endDate);
     }
 
     /** 详情（编辑回显 + 闸口结构解析） */

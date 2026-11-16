@@ -199,6 +199,13 @@ public class WaterDispatchService {
         if (current.getBillId() != null) {
             throw new IllegalArgumentException("该指令已计费，请先删除关联账单后再编辑");
         }
+        // 已关联需水上报单的指令：需水单不可取消/更换，用水户由需水单锁定（validate 内强制继承）
+        if (current.getDemandId() != null) {
+            String reqDemand = WaterUsageSupport.trim(req == null ? null : req.getDemandId());
+            if (!current.getDemandId().equals(reqDemand)) {
+                throw new IllegalArgumentException("该指令已关联需水上报单，不可更换或取消关联的需水申请");
+            }
+        }
         Draft d = validate(req, key);
         LocalDateTime now = LocalDateTime.now();
         String operator = WaterUsageSupport.currentOperatorId(fallbackOperator);
@@ -382,13 +389,36 @@ public class WaterDispatchService {
         String remark;
     }
 
-    /** 编制/编辑共用校验：户（选填）正常与闸口归属、计划已生效、需水已通过且同户、执行时间、闸门高度、配额 */
+    /** 编制/编辑共用校验：户（选填）正常与闸口归属、计划已生效、需水已通过（户/闸口/水量上限/用水时段随需水单锁定）、执行时间、闸门高度、配额 */
     private Draft validate(WaterDispatchSaveVO req, String excludeId) {
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
         }
         Draft d = new Draft();
+        // 需水单已通过后，需水内容以需水单为准（编制/编辑均不可突破；未选户时直接继承）
+        d.demandId = WaterUsageSupport.trim(req.getDemandId());
+        WaterDemandVO demand = null;
+        String demandUserId = null;
+        if (d.demandId != null) {
+            demand = demandMapper.selectDemandById(d.demandId);
+            if (demand == null) {
+                throw new IllegalArgumentException("关联的需水上报单不存在");
+            }
+            if (!WaterUsageDict.DEMAND_STATUS_PASS.equals(demand.getStatus())) {
+                throw new IllegalArgumentException("仅已通过的需水上报单可关联调度指令");
+            }
+            demandUserId = WaterUsageSupport.trim(demand.getWaterUserId());
+            if (demandUserId == null) {
+                throw new IllegalArgumentException("关联的需水上报单缺少用水户，无法编制调度指令");
+            }
+        }
         d.userId = WaterUsageSupport.trim(req.getWaterUserId());
+        if (demandUserId != null) {
+            if (d.userId != null && !d.userId.equals(demandUserId)) {
+                throw new IllegalArgumentException("关联的需水上报单已锁定用水户，不可更换");
+            }
+            d.userId = demandUserId;
+        }
         WaterUserVO user = null;
         if (d.userId != null) {
             user = userMapper.selectUserById(d.userId);
@@ -419,21 +449,10 @@ public class WaterDispatchService {
                 throw new IllegalArgumentException("仅已生效的用水计划可关联调度指令");
             }
         }
-        d.demandId = WaterUsageSupport.trim(req.getDemandId());
-        if (d.demandId != null) {
-            WaterDemandVO demand = demandMapper.selectDemandById(d.demandId);
-            if (demand == null) {
-                throw new IllegalArgumentException("关联的需水上报单不存在");
-            }
-            if (!WaterUsageDict.DEMAND_STATUS_PASS.equals(demand.getStatus())) {
-                throw new IllegalArgumentException("仅已通过的需水上报单可关联调度指令");
-            }
-            if (d.userId != null && !d.userId.equals(demand.getWaterUserId())) {
-                throw new IllegalArgumentException("关联的需水上报单与所选用水户不一致");
-            }
-        }
         d.planAmount = WaterUsageSupport.optionalPositiveWan(req.getPlanAmount(), "计划放水量");
         d.execTime = WaterUsageSupport.parseDateTime(req.getExecTime(), "执行时间");
+        // 需水内容锁定：申报闸口 / 申报水量（累计上限）/ 用水时段，编制与编辑均不可突破
+        checkDemandLock(d, demand, excludeId);
         d.gateHeightCm = req.getGateHeightCm();
         if (d.gateHeightCm != null && (d.gateHeightCm < 0 || d.gateHeightCm > 999)) {
             throw new IllegalArgumentException("闸门高度须在 0~999 cm 之间");
@@ -443,6 +462,47 @@ public class WaterDispatchService {
         d.remark = WaterUsageSupport.maxLength(WaterUsageSupport.trim(req.getRemark()), 200, "备注");
         checkQuota(d.planId, d.userId, d.planAmount, excludeId);
         return d;
+    }
+
+    /**
+     * 需水单内容锁定：审核通过的需水单即对「谁、哪个闸口、多少水、什么时段」的承诺，
+     * 编制指令与编辑指令均不得突破；仅执行参数（关联计划 / 闸门高度 / 负责人 / 备注）可调。
+     * <p>水量按上限控制：同一需水单多张指令（分次下达）合计不得超申报量，已取消指令不计；
+     * 执行时间仅比较日期（精确到时刻由调度员在时段内确定）。
+     */
+    private void checkDemandLock(Draft d, WaterDemandVO demand, String excludeId) {
+        if (demand == null) {
+            return;
+        }
+        String demandGate = WaterUsageSupport.trim(demand.getGateId());
+        if (demandGate != null && !demandGate.equals(d.gateId)) {
+            throw new IllegalArgumentException("关联的需水上报单已锁定申报闸口，不可更换");
+        }
+        if (d.planAmount != null && demand.getAmount() != null) {
+            if (d.planAmount.compareTo(demand.getAmount()) > 0) {
+                throw new IllegalArgumentException("计划放水量不可超过需水上报的申报水量 "
+                        + WaterUsageSupport.formatWan(demand.getAmount()) + " 万m³");
+            }
+            BigDecimal issued = dispatchMapper.selectActiveSumByDemand(demand.getId(), excludeId);
+            if (issued == null) {
+                issued = BigDecimal.ZERO;
+            }
+            if (issued.add(d.planAmount).compareTo(demand.getAmount()) > 0) {
+                throw new IllegalArgumentException("超出需水申报量：该需水单申报 "
+                        + WaterUsageSupport.formatWan(demand.getAmount()) + " 万m³，已下达 "
+                        + WaterUsageSupport.formatWan(issued) + " 万m³，本次 "
+                        + WaterUsageSupport.formatWan(d.planAmount) + " 万m³");
+            }
+        }
+        LocalDate demandStart = WaterUsageSupport.parseQuiet(demand.getStartDate());
+        LocalDate demandEnd = WaterUsageSupport.parseQuiet(demand.getEndDate());
+        if (demandStart != null && demandEnd != null && d.execTime != null) {
+            LocalDate execDate = d.execTime.toLocalDate();
+            if (execDate.isBefore(demandStart) || execDate.isAfter(demandEnd)) {
+                throw new IllegalArgumentException("执行时间须在需水上报的用水时段内（"
+                        + demand.getStartDate() + " 至 " + demand.getEndDate() + "）");
+            }
+        }
     }
 
     /**

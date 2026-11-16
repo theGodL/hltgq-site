@@ -89,18 +89,24 @@ public class WaterUserService {
         return out;
     }
 
-    /** 列表分页（年度计划水量/年度已调度为当年派生列；待出账为账单口径实时装配） */
+    /** 列表分页（年度计划水量/年度已调度为当年派生列；待出账为账单口径实时装配；累计用水量按账期区间重叠筛选） */
     public Map<String, Object> page(int page, int size, String keyword,
-                                    String calcMode, String settleCycle, String status) {
+                                    String calcMode, String settleCycle, String status,
+                                    String startDate, String endDate) {
         int p = WaterUsageSupport.clampPage(page);
         int s = WaterUsageSupport.clampSize(size);
         String kw = WaterUsageSupport.trim(keyword);
         String cm = WaterUsageSupport.trim(calcMode);
         String sc = WaterUsageSupport.trim(settleCycle);
         String st = WaterUsageSupport.trim(status);
+        String from = normalizeDate(startDate, "开始日期");
+        String to = normalizeDate(endDate, "结束日期");
+        if (from != null && to != null && from.compareTo(to) > 0) {
+            throw new IllegalArgumentException("开始日期不能晚于结束日期");
+        }
         int year = LocalDate.now().getYear();
         long total = userMapper.countUsers(kw, cm, sc, st);
-        List<WaterUserVO> records = userMapper.selectUserPage(kw, cm, sc, st, year, s, (long) (p - 1) * s);
+        List<WaterUserVO> records = userMapper.selectUserPage(kw, cm, sc, st, from, to, year, s, (long) (p - 1) * s);
         for (WaterUserVO row : records) {
             decorate(row);
         }
@@ -461,14 +467,26 @@ public class WaterUserService {
         }
         if (mainSum.subtract(deductSum).signum() <= 0) {
             throw new IllegalArgumentException("差额策略保存失败：主闸口读数合计（"
-                    + WaterUsageSupport.scale2(mainSum).toPlainString() + " m³）未大于扣减闸口读数合计（"
-                    + WaterUsageSupport.scale2(deductSum).toPlainString() + " m³），请检查闸口选择或待流量数据更新后重试");
+                    + WaterUsageSupport.formatWan(mainSum) + " 万m³）未大于扣减闸口读数合计（"
+                    + WaterUsageSupport.formatWan(deductSum) + " 万m³），请检查闸口选择或待流量数据更新后重试");
         }
     }
 
     /** 闸口最新可用读数（ttf；缺失/哨兵返回 null） */
     private BigDecimal usableReading(String gateId) {
         return WaterUsageSupport.usableFlow(userMapper.selectLatestGateReading(gateId));
+    }
+
+    /** 时间范围参数归一（YYYY-MM-DD；空放过；非法报错） */
+    private static String normalizeDate(String text, String label) {
+        String value = WaterUsageSupport.trim(text);
+        if (value == null) {
+            return null;
+        }
+        if (!value.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            throw new IllegalArgumentException(label + "格式应为 YYYY-MM-DD");
+        }
+        return value;
     }
 
     /** 选填数值 + 范围校验（null 放过；填写须在 [min, max] 且小数位 ≤ maxScale） */

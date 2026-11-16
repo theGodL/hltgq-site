@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 /**
  * 手工用水台账保存入参（新增 id 为空；编辑必传 id）。
  * <p>cycle 传前端英文码 month/quarter/year，cycleKey 传结算周期（2026-10 / 2026-Q3 / 2026）；
- * 金额由服务端按 volume × price 计算（2 位小数），不信任前端传入。
+ * volume 为万m³ 录入口径（≤4 位小数，服务端换算 m³）；金额由服务端按 m³ × price 计算（2 位小数），不信任前端传入。
  */
 @Data
 public class WaterLedgerSaveVO {
@@ -24,7 +24,7 @@ public class WaterLedgerSaveVO {
     /** 结算周期（2026-10 / 2026-Q3 / 2026） */
     private String cycleKey;
 
-    /** 用水量（m³，>0） */
+    /** 用水量（万m³，>0，≤4 位小数；服务端换算 m³ 存储） */
     private BigDecimal volume;
 
     /** 单价（元/m³，>0） */
