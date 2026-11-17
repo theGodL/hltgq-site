@@ -853,6 +853,7 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
       if (openDd !== dd) openDdPanel(dd);
     });
     dd.addEventListener('click', function (e) {
+      if (input.dataset.locked === '1') return; // 锁定态防御：面板残留时也不允许改选
       var opt = e.target.closest('.dd-opt');
       if (!opt) return;
       input.value = opt.textContent;
@@ -1165,7 +1166,8 @@ input[type="number"].ipt{-moz-appearance:textfield;appearance:textfield}
   function fillPlanByApply(row) {
     setSel('f-plan', '', '');
     setSel('f-p-farmer', rowUserLabel(row), row.waterUserId);
-    lockSel('f-p-farmer', !!row.waterUserId);
+    // 入口/所选关联单即已通过的需水单：用水户一律随单锁定（不依赖行数据是否带 waterUserId，后端 validate 同口径）
+    lockSel('f-p-farmer', true);
     setSel('f-p-gate', '', '');
     $('f-p-amount').value = fmtAmount(row.amount);
     // 需水上报按旬申报,自动带出旬首日 08:00 作为执行时间(只能在申报时段内调整)
