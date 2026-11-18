@@ -46,11 +46,12 @@ public interface WaterQualityMapper {
      */
     @Select("<script>" +
             "SELECT DISTINCT ON (t.skey) " +
-            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.lon, t.lat, t.tm, t.zebpsu, " +
+            "t.stcd, t.skey AS site, t.site_id, t.stnm, t.canal_id, t.lon, t.lat, t.tm, t.zebpsu, " +
             "t.nh3n, t.codmn, t.codcr, t.bod5, t.tp, t.tn, t.dox, t.wt " +
             "FROM ( " +
             "  SELECT n.stcd, COALESCE(n.stcd, n.site) AS skey, n.site AS site_id, " +
             "  COALESCE(s.zzkaec, n.stcd, n.site) AS stnm, " +
+            "  COALESCE(s.ywvyds, s2.ywvyds) AS canal_id, " +
             "  COALESCE(s.bviiio_x, s2.bviiio_x) AS lon, COALESCE(s.bviiio_y, s2.bviiio_y) AS lat, " +
             "  COALESCE(s.zebpsu, s2.zebpsu) AS zebpsu, " +
             "  n.tm, " +
@@ -87,6 +88,7 @@ public interface WaterQualityMapper {
             @Result(column = "site", property = "site"),
             @Result(column = "site_id", property = "siteId"),
             @Result(column = "stnm", property = "stnm"),
+            @Result(column = "canal_id", property = "canalId"),
             @Result(column = "lon", property = "lon"),
             @Result(column = "lat", property = "lat"),
             @Result(column = "tm", property = "tm"),
@@ -279,17 +281,21 @@ public interface WaterQualityMapper {
      * <p>注意：DISTINCT ON/ORDER BY 必须用简单列，函数表达式（COALESCE）会报
      * "SELECT DISTINCT ON expressions must match initial ORDER BY expressions"，故子查询先物化 skey。
      */
-    @Select("SELECT DISTINCT ON (t.skey) t.skey AS code, t.name " +
+    @Select("SELECT DISTINCT ON (t.skey) t.skey AS code, t.name, t.stcd, t.canal_id " +
             "FROM ( " +
-            "  SELECT COALESCE(n.stcd, n.site) AS skey, COALESCE(s.zzkaec, n.stcd, n.site) AS name " +
+            "  SELECT COALESCE(n.stcd, n.site) AS skey, COALESCE(s.zzkaec, n.stcd, n.site) AS name, " +
+            "  n.stcd AS stcd, COALESCE(s.ywvyds, s2.ywvyds) AS canal_id " +
             "  FROM \"qixiao-apaas\".t_auto_hltgq_water_nmisp_info n " +
             "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s ON n.site = s.id " +
+            "  LEFT JOIN \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\" s2 ON s.id IS NULL AND s2.iofhpi = n.stcd " +
             "  WHERE s.epjutj LIKE '%#8#%' " +
             ") t " +
             "ORDER BY t.skey")
     @Results({
             @Result(column = "code", property = "code"),
-            @Result(column = "name", property = "name")
+            @Result(column = "name", property = "name"),
+            @Result(column = "stcd", property = "stcd"),
+            @Result(column = "canal_id", property = "canalId")
     })
     List<StationSiteVO> selectWaterQualityStations();
 }

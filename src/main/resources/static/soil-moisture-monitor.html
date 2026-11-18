@@ -396,7 +396,7 @@ const DEPTHS = [10, 20, 30];
 const MOISTURE_FIELDS = {
   10: 'mten', 20: 'mtwenty', 30: 'mthirty',
 };
-const COL_SPAN = 7;
+const COL_SPAN = 8;
 const MOISTURE_COLORS = ['#9254DE', '#FF7875', '#69C0FF'];
 const HIST_COL_SPAN = 5;
 
@@ -512,7 +512,7 @@ function fuzzyMatch(text, kw) {
   return false;
 }
 
-/* ===== 麻塘湖灌区：接口待接入 ===== */
+/* ===== 灌区 Tab 配置：hlt 花凉亭灌区 / mth 麻塘湖灌区（前缀驱动 DOM 与状态） ===== */
 
 const DIST = {
   hlt: {
@@ -542,7 +542,7 @@ let selectedCanal = null;
 let canalTreeData = [];
 let canalKwTimer = null;
 
-/** 选中渠系时把渠系 id 加进查询参数（取消选中后等同于不传）；仅花凉亭灌区 Tab 生效（麻塘湖暂无站点） */
+/** 选中渠系时把渠系 id 加进查询参数（取消选中后等同于不传）；仅花凉亭灌区 Tab 生效（麻塘湖 Tab 不按渠系树过滤） */
 function applyCanalParam(p) {
   if (selectedCanal && isCanalTab()) p.set(CANAL_PARAM, selectedCanal.id);
   return p;
@@ -643,7 +643,7 @@ function onCanalSelect(node) {
   refreshByCanal();
 }
 
-/** 渠系结构仅花凉亭灌区 Tab 有效：麻塘湖灌区仅一条太怀干渠且暂无站点 */
+/** 渠系结构仅花凉亭灌区 Tab 有效：麻塘湖灌区站点按档案渠系归属直接过滤，不提供渠系树筛选 */
 function isCanalTab() {
   return activeMainTab() === 'hlt';
 }
@@ -654,7 +654,7 @@ function syncCanalSide() {
   if (side) side.classList.toggle('is-hidden', !isCanalTab());
 }
 
-/** 渠系选择变化后重查花凉亭灌区数据（麻塘湖接口暂空，不重查） */
+/** 渠系选择变化后重查花凉亭灌区数据（麻塘湖 Tab 不展示渠系树，不重查） */
 function refreshByCanal() {
   if (!isCanalTab()) return;
   cfg('hlt').state.page = 1;
@@ -741,9 +741,8 @@ function setModalDefaultDates() {
 }
 
 async function loadMoistureSites(key) {
-  if (key !== 'hlt') return;
   try {
-    const res = await fetch(`${API}/station-metrics/sites?type=moisture`);
+    const res = await fetch(`${API}/station-metrics/sites?type=moisture&zone=${key}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     cfg(key).sites = Array.isArray(data) ? data.map(x => ({
@@ -751,6 +750,11 @@ async function loadMoistureSites(key) {
       name: String(x.name ?? x.stnm ?? x.code ?? ''),
     })).filter(x => x.code) : [];
   } catch (e) {
+    // 老兜底接口不支持灌区过滤，仅花凉亭 Tab 可用；麻塘湖无站点时直接置空
+    if (key !== 'hlt') {
+      cfg(key).sites = [];
+      return;
+    }
     console.warn('加载墒情站点失败，尝试 /soil-moisture/sites', e);
     try {
       const res = await fetch(`${API}/soil-moisture/sites`);
@@ -837,8 +841,8 @@ function bindDevSelect(key) {
 }
 
 async function fetchMonitoring(key) {
-  if (key !== 'hlt') return [];
   const p = new URLSearchParams();
+  p.set('zone', key); // hlt=花凉亭灌区（排除麻塘湖站点）/ mth=麻塘湖灌区
   const stcd = ($(elId(key, 'dev-code')).value || '').trim();
   if (stcd) p.set('stcds', stcd);
   applyCanalParam(p);
@@ -850,16 +854,10 @@ async function fetchMonitoring(key) {
 }
 
 function filterRows(key, list) {
-  if (key === 'hlt') {
-    const kw = ($(elId(key, 'dev-input')).value || '').trim();
-    if (!kw || $(elId(key, 'dev-code')).value) return list;
-    return list.filter(r => fuzzyMatch(r.siteName, kw) || fuzzyMatch(r.siteCode, kw) || fuzzyMatch(r.stcd, kw));
-  }
-  const siteId = ($(elId(key, 'dev-code')).value || '').trim();
-  if (siteId) return list.filter(r => String(r.siteCode || r.siteId) === siteId);
+  if ($(elId(key, 'dev-code')).value) return list;
   const kw = ($(elId(key, 'dev-input')).value || '').trim();
   if (!kw) return list;
-  return list.filter(r => fuzzyMatch(r.siteName, kw) || fuzzyMatch(r.siteCode, kw));
+  return list.filter(r => fuzzyMatch(r.siteName, kw) || fuzzyMatch(r.siteCode, kw) || fuzzyMatch(r.stcd, kw));
 }
 
 function applyPage(key) {
@@ -873,10 +871,6 @@ function applyPage(key) {
 }
 
 async function loadList(key) {
-  if (key === 'mth') {
-    renderMthEmpty();
-    return;
-  }
   const wrap = $(elId(key, 'list-tbl-wrap'));
   setLoading(wrap, true);
   try {
@@ -1380,7 +1374,17 @@ function renderMthEmpty() {
     <button class="pg-btn" disabled>&gt;</button>`;
 }
 
-/** 当前主 Tab（hlt 花凉亭灌区 / mth 麻塘湖灌区）：麻塘湖数据未接入，该 Tab 下不提供站点排序入口 */
+/** 麻塘湖灌区首次切换时懒加载：站点下拉 + 列表（每次进入页面只加载一次） */
+let mthLoaded = false;
+
+function ensureMthLoaded() {
+  if (mthLoaded) return;
+  mthLoaded = true;
+  loadMoistureSites('mth');
+  loadList('mth');
+}
+
+/** 当前主 Tab（hlt 花凉亭灌区 / mth 麻塘湖灌区）：麻塘湖 Tab 不提供渠系树与站点排序入口 */
 function activeMainTab() {
   const active = document.querySelector('.tab-item.active');
   return active ? active.dataset.tab : '';
@@ -1393,7 +1397,7 @@ function bindDistrictTabs() {
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
       $('panel-' + tab.dataset.tab).classList.add('active');
-      if (tab.dataset.tab === 'mth') renderMthEmpty();
+      if (tab.dataset.tab === 'mth') ensureMthLoaded();
       syncCanalSide(); // 渠系结构仅花凉亭灌区 Tab 展示
     });
   });
@@ -1416,7 +1420,7 @@ async function init() {
   syncCanalSide();
   await loadList('hlt');
   renderMthEmpty();
-  // 站点排序（Tab 栏右侧入口）：保存后按新顺序重载设备下拉与列表；麻塘湖灌区数据未接入，该 Tab 下不显示入口
+  // 站点排序（Tab 栏右侧入口）：保存后按新顺序重载设备下拉与列表；麻塘湖 Tab 不显示入口
   StationSort.mount({
     type: 'moisture',
     visible: () => activeMainTab() !== 'mth',

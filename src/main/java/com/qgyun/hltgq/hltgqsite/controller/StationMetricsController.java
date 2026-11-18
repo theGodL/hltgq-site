@@ -57,21 +57,24 @@ public class StationMetricsController {
      *             不传则返回全部分类，按 JSON key 分组。
      *             <p>展示顺序 = 「站点排序」配置（监测类型维度）优先：已配置站点按配置序号，
      *             未配置站点保持该类型默认顺序并排在其后。
+     * @param zone 灌区范围（可选）：hlt=花凉亭灌区（含空渠系站点，排除麻塘湖站点）、
+     *             mth=麻塘湖灌区（只含麻塘湖子树与兜底站）；不传=不过滤（大屏等既有调用）
      */
     @GetMapping("/sites")
-    public Object sites(@RequestParam(required = false) String type) {
+    public Object sites(@RequestParam(required = false) String type,
+                        @RequestParam(required = false) String zone) {
         // 指定类型 → 返回单一列表
         if (type != null && !type.isEmpty()) {
-            return applyOrder(type, stationSiteService.sitesOfType(type));
+            return applyOrder(type, stationSiteService.sitesOfType(type, zone));
         }
 
         // 不传 type → 返回全量分组
         StationSitesVO vo = stationSiteService.allSites();
-        vo.setRainfall(applyOrder("rainfall", vo.getRainfall()));
-        vo.setWaterLevel(applyOrder("waterLevel", vo.getWaterLevel()));
-        vo.setGate(applyOrder("gate", vo.getGate()));
-        vo.setFlow(applyOrder("flow", vo.getFlow()));
-        vo.setMoisture(applyOrder("moisture", vo.getMoisture()));
+        vo.setRainfall(applyOrder("rainfall", stationSiteService.filterByZone(vo.getRainfall(), zone)));
+        vo.setWaterLevel(applyOrder("waterLevel", stationSiteService.filterByZone(vo.getWaterLevel(), zone)));
+        vo.setGate(applyOrder("gate", stationSiteService.filterByZone(vo.getGate(), zone)));
+        vo.setFlow(applyOrder("flow", stationSiteService.filterByZone(vo.getFlow(), zone)));
+        vo.setMoisture(applyOrder("moisture", stationSiteService.filterByZone(vo.getMoisture(), zone)));
         return vo;
     }
 

@@ -960,25 +960,25 @@ public class ExternalService {
         switch (typeCode) {
             case "#1#":
                 // 只要列表不要总数：searchCount=false 跳过 count 查询（水位列表的 count 需全量统计，约 0.4s）
-                rows = irrigationWaterLevelService.page(new Page<>(1, MAX_MONITOR_SITES, false), null, null, null).getRecords();
+                rows = irrigationWaterLevelService.page(new Page<>(1, MAX_MONITOR_SITES, false), null, null, null, null).getRecords();
                 break;
             case "#2#":
                 rows = stPptnRService.gqRainfallMonitoringAll();
                 break;
             case "#3#":
-                rows = flowMonitorService.monitoring(null, null, null, null);
+                rows = flowMonitorService.monitoring(null, null, null, null, null);
                 break;
             case "#4#":
-                rows = gateMonitorService.monitoring(null, null, null, null);
+                rows = gateMonitorService.monitoring(null, null, null, null, null);
                 break;
             case "#5#":
                 // 视频类型是站点档案清单，无实时监测值：不查任何业务实时接口，返回空索引（行上 isOnline 按档案兜底）
                 return new HashMap<>();
             case "#7#":
-                rows = soilMoistureService.monitoring(null, null, null);
+                rows = soilMoistureService.monitoring(null, null, null, null);
                 break;
             default:
-                rows = waterQualityService.monitoring(null, null, null);
+                rows = waterQualityService.monitoring(null, null, null, null);
                 break;
         }
         Map<String, Map<String, Object>> index = new HashMap<>();

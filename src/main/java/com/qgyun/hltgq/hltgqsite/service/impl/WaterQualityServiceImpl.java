@@ -2,7 +2,9 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterQualityMapper;
+import com.qgyun.hltgq.hltgqsite.service.IrrigationScopeService;
 import com.qgyun.hltgq.hltgqsite.service.WaterQualityService;
+import com.qgyun.hltgq.hltgqsite.vo.SiteScopeFilter;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import com.qgyun.hltgq.hltgqsite.vo.WaterQualityTrendVO;
 import com.qgyun.hltgq.hltgqsite.vo.WaterQualityVO;
@@ -32,12 +34,28 @@ public class WaterQualityServiceImpl implements WaterQualityService {
     @Autowired
     private WaterQualityMapper waterQualityMapper;
 
+    @Autowired
+    private IrrigationScopeService irrigationScopeService;
+
     @Override
-    public List<WaterQualityVO> monitoring(List<String> stcds, LocalDate startDate, LocalDate endDate) {
+    public List<WaterQualityVO> monitoring(List<String> stcds, LocalDate startDate, LocalDate endDate,
+                                           String zone) {
         LocalDateTime startTime = startDate != null ? startDate.atStartOfDay() : null;
         // 截止日含当日全天：endDate +1 天 00:00（SQL 为 < 不含）
         LocalDateTime endTime = endDate != null ? endDate.plusDays(1).atStartOfDay() : null;
         List<WaterQualityVO> records = waterQualityMapper.selectLatestPerStation(stcds, startTime, endTime);
+        // 灌区范围过滤（按站点档案渠系所属顶级灌区）
+        SiteScopeFilter scope = irrigationScopeService.resolve(zone);
+        if (scope != null && !records.isEmpty()) {
+            List<WaterQualityVO> filtered = new ArrayList<>();
+            for (WaterQualityVO r : records) {
+                if (irrigationScopeService.matches(scope, r.getCanalId(),
+                        r.getStcd(), r.getSiteId(), r.getSite())) {
+                    filtered.add(r);
+                }
+            }
+            records = filtered;
+        }
         // 在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则按最新采集时间断联判定
         records.forEach(r -> r.setIsOnline(StationStatusUtils.isZebpsuOnline(r.getZebpsu()) && !StationStatusUtils.isStale(r.getTm(), r.getStnm())));
         attachThresholds(records);
@@ -204,8 +222,20 @@ public class WaterQualityServiceImpl implements WaterQualityService {
     }
 
     @Override
-    public List<StationSiteVO> sites() {
-        return waterQualityMapper.selectWaterQualityStations();
+    public List<StationSiteVO> sites(String zone) {
+        List<StationSiteVO> sites = waterQualityMapper.selectWaterQualityStations();
+        SiteScopeFilter scope = irrigationScopeService.resolve(zone);
+        if (scope == null || sites.isEmpty()) {
+            return sites;
+        }
+        List<StationSiteVO> filtered = new ArrayList<>();
+        for (StationSiteVO site : sites) {
+            if (irrigationScopeService.matches(scope, site.getCanalId(),
+                    site.getStcd(), site.getSiteId(), site.getCode())) {
+                filtered.add(site);
+            }
+        }
+        return filtered;
     }
 
     /**

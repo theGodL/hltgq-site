@@ -181,6 +181,7 @@ tbody tr:hover td{background:#fafafa}
 .modal{background:#fff;border-radius:10px;width:1100px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;border:1px solid #e8e8e8;box-shadow:0 8px 28px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06)}
 /* 详情弹窗固定尺寸，不随数据多少伸缩 */
 #gr-hist-overlay .modal{width:1000px;height:min(720px,90vh)}
+#mth-hist-overlay .modal{width:760px;height:min(620px,90vh)}
 .modal-hd{padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#fff}
 .modal-hd span{font-size:16px;font-weight:600;color:#1f1f1f;line-height:24px}
 .modal-actions{display:inline-flex;align-items:center;gap:2px}
@@ -404,7 +405,7 @@ tbody tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <!-- 麻塘湖灌区：同款样式，接口暂空 -->
+  <!-- 麻塘湖灌区：麻塘湖站点最新水位（/irrigation-water-level/page?zone=mth） -->
   <div class="panel" id="panel-mth">
     <div class="card filter-card">
       <div class="filter-bar">
@@ -500,6 +501,43 @@ tbody tr:hover td{background:#fafafa}
         <div class="chart-box" id="gr-hist-chart"></div>
         <div class="trend-tip" id="gr-hist-chart-tip"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- 麻塘湖灌区水位详情：小时级水位历史（/irrigation-water-level/history） -->
+<div class="overlay" id="mth-hist-overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <span id="mth-hist-title">水位历史数据</span>
+      <div class="modal-actions">
+        <button type="button" class="modal-close" data-close="mth-hist-overlay">×</button>
+      </div>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-filter">
+        <label style="color:#666;white-space:nowrap">日期</label>
+        <input type="date" id="mth-hist-start">
+        <span class="date-sep">—</span>
+        <input type="date" id="mth-hist-end">
+        <span style="white-space:nowrap">
+          <button class="btn btn-primary" id="mth-hist-query-btn">查询</button>
+          <button class="btn btn-default" id="mth-hist-reset-btn">重置</button>
+        </span>
+      </div>
+      <div class="tbl-wrap" id="mth-hist-tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>监测时间</th>
+              <th>水位值 (m)</th>
+              <th>1h水位涨幅 (cm)</th>
+            </tr>
+          </thead>
+          <tbody id="mth-hist-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="mth-hist-pg"></div>
     </div>
   </div>
 </div>
@@ -822,7 +860,8 @@ function syncClear(input, clearBtn) {
 async function ensureGrSites() {
   if (grSitesLoaded) return;
   try {
-    const res = await fetch(`${API}/station-metrics/sites?type=gate`);
+    // zone=hlt：花凉亭灌区范围（排除麻塘湖站点）
+    const res = await fetch(`${API}/station-metrics/sites?type=gate&zone=hlt`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     GR_SITES = Array.isArray(data) ? data.map(x => ({
@@ -929,6 +968,7 @@ async function loadGateLevels() {
     const siteId = getGrDevCode();
     const p = new URLSearchParams();
     if (siteId) p.set('site', siteId);
+    p.set('zone', 'hlt'); // 花凉亭灌区 tab：排除麻塘湖站点
     applyCanalParam(p);
     const res = await fetch(`${API}/gate-monitor/monitoring?${p}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1122,21 +1162,40 @@ function bindTabs() {
       // 默认 Tab 为花凉亭水库（进页即取数）；灌区闸前/闸后水位首次切入该 Tab 时再加载
       if (tab.dataset.tab === 'irrigation') { ensureGrSites(); loadGateLevels(); }
       if (tab.dataset.tab === 'reservoir' && !S.resLoaded) { S.resLoaded = true; loadResData(); }
-      if (tab.dataset.tab === 'mth') renderMthEmpty();
+      // 麻塘湖灌区：首次切入时并行加载站点下拉与最新水位列表
+      if (tab.dataset.tab === 'mth') { ensureMthSites(); mthQuery(); }
       syncCanalSide(); // 渠系结构仅花凉亭灌区 Tab 展示
     });
   });
 }
 
-/* ===== 麻塘湖灌区：同款 UI，接口暂空 ===== */
+/* ===== 麻塘湖灌区：水位站最新数据（/irrigation-water-level/page?zone=mth） ===== */
 let MTH_WL_SITES = [];
+let mthSitesLoaded = false;
+const MTH = { page: 1, size: 20, total: 0, rows: [] };
 
+/** 日期默认留空：不限定监测日期时取各站最新一条（填日期则按区间过滤） */
 function setMthDefaultDates() {
-  const now = new Date();
-  const s = fmtDate(new Date(now - 3 * 24 * 3600e3));
-  const e = fmtDate(now);
-  $('mth-start-date').value = s;
-  $('mth-end-date').value = e;
+  $('mth-start-date').value = '';
+  $('mth-end-date').value = '';
+}
+
+/** 麻塘湖站点下拉：只含麻塘湖灌区站点（档案渠系属麻塘湖子树 + 麻塘湖水库兜底站） */
+async function ensureMthSites() {
+  if (mthSitesLoaded) return;
+  try {
+    const res = await fetch(`${API}/station-metrics/sites?type=waterLevel&zone=mth`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    MTH_WL_SITES = Array.isArray(data) ? data.map(x => ({
+      code: String(x.stcd ?? x.code ?? ''),
+      name: String(x.name ?? x.stnm ?? x.stcd ?? x.code ?? '')
+    })).filter(x => x.code) : [];
+  } catch (e) {
+    console.warn('加载麻塘湖水位站点失败', e);
+    MTH_WL_SITES = [];
+  }
+  mthSitesLoaded = true;
 }
 
 function setMthSite(code, name) {
@@ -1152,6 +1211,12 @@ function clearMthSite() {
 function renderMthSiteDd(keyword) {
   const dd = $('mth-st-dd');
   const code = $('mth-st-code').value;
+  if (!mthSitesLoaded) {
+    dd.innerHTML = '<div class="ss-empty">正在加载站点...</div>';
+    dd.classList.add('open');
+    ensureMthSites().then(() => { if (dd.classList.contains('open')) renderMthSiteDd(keyword); });
+    return;
+  }
   const list = MTH_WL_SITES.filter(s => fuzzyMatch(s.name, keyword) || fuzzyMatch(s.code, keyword));
   if (!list.length) {
     dd.innerHTML = '<div class="ss-empty">无匹配站点</div>';
@@ -1194,11 +1259,223 @@ function renderMthEmpty() {
     <button class="pg-btn" disabled>&gt;</button>`;
 }
 
-async function mthQuery() { renderMthEmpty(); }
+async function mthQuery() {
+  MTH.page = 1;
+  await loadMthLevels();
+}
+
 async function mthReset() {
   clearMthSite();
   setMthDefaultDates();
-  renderMthEmpty();
+  MTH.page = 1;
+  await loadMthLevels();
+}
+
+/** 麻塘湖灌区水位列表：/irrigation-water-level/page（zone=mth，站点编号 stcd 过滤，日期可选） */
+async function loadMthLevels() {
+  const wrap = $('mth-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    const p = new URLSearchParams();
+    p.set('page', String(MTH.page));
+    p.set('size', String(MTH.size));
+    p.set('zone', 'mth');
+    const stcd = ($('mth-st-code').value || '').trim();
+    if (stcd) p.set('stcd', stcd);
+    const d1 = $('mth-start-date').value;
+    const d2 = $('mth-end-date').value;
+    if (d1) p.set('startTime', `${d1} 00:00:00`);
+    if (d2) p.set('endTime', `${d2} 23:59:59`);
+    const res = await fetch(`${API}/irrigation-water-level/page?${p}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    MTH.rows = Array.isArray(data.records) ? data.records : [];
+    MTH.total = data.total || 0;
+    MTH.page = data.current || MTH.page;
+    MTH.size = data.size || MTH.size;
+    renderMthRows();
+  } catch (e) {
+    console.error('麻塘湖水位加载失败', e);
+    MTH.rows = [];
+    MTH.total = 0;
+    $('mth-tbl-body').innerHTML = '<tr><td colspan="5" class="empty">数据加载失败，请重试</td></tr>';
+  } finally {
+    setLoading(wrap, false);
+    renderMthPager();
+  }
+}
+
+/** 水位列口径：2 位小数；-9991 异常→'--'、-999 不存在→空白 */
+function renderMthRows() {
+  const tbody = $('mth-tbl-body');
+  if (!MTH.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = MTH.rows.map((r, i) => `
+    <tr>
+      <td>${esc(fmtN(r.stnm))}</td>
+      <td>${fmtTm(r.tm)}</td>
+      <td>${fmtN2(r.z)}</td>
+      <td>${fmtN2(r.rise1h)}</td>
+      <td>${r.stcd ? `<button class="act-btn" data-action="mth-detail" data-idx="${i}">详情</button>` : ''}</td>
+    </tr>
+  `).join('');
+}
+
+function renderMthPager() {
+  const bar = $('mth-tbl-pg');
+  if (!bar) return;
+  const pages = Math.max(1, Math.ceil(MTH.total / MTH.size) || 1);
+  if (MTH.page > pages) MTH.page = pages;
+
+  let html = `<span class="pg-info">共 ${MTH.total} 条</span>`;
+  html += `<select class="pg-size" id="mth-pg-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === MTH.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${MTH.page - 1}" ${MTH.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+  const maxShow = 5;
+  let from = Math.max(1, MTH.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === MTH.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${MTH.page + 1}" ${MTH.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === MTH.page || p < 1 || p > pages) return;
+      MTH.page = p;
+      loadMthLevels();
+    });
+  });
+  const sizeSel = $('mth-pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      MTH.size = +sizeSel.value;
+      MTH.page = 1;
+      loadMthLevels();
+    });
+  }
+}
+
+/* ===== 麻塘湖灌区水位详情：小时级水位历史（/irrigation-water-level/history，按 stcd） ===== */
+const MTH_HIST = { stcd: '', name: '', page: 1, size: 20, total: 0, rows: [] };
+
+/** 弹窗日期默认近 7 天（与灌区闸站水位详情一致） */
+function setMthHistDefaultDates() {
+  const now = new Date();
+  $('mth-hist-start').value = fmtDate(new Date(now - 7 * 24 * 3600e3));
+  $('mth-hist-end').value = fmtDate(now);
+}
+
+function openMthHist(row) {
+  MTH_HIST.stcd = (row && row.stcd) || '';
+  MTH_HIST.name = (row && (row.stnm || row.stcd)) || '站点';
+  if (!MTH_HIST.stcd) return;
+  $('mth-hist-title').textContent = `${MTH_HIST.name} · 水位历史数据`;
+  setMthHistDefaultDates();
+  MTH_HIST.page = 1;
+  MTH_HIST.total = 0;
+  MTH_HIST.rows = [];
+  $('mth-hist-body').innerHTML = '<tr><td colspan="3" class="empty">加载中...</td></tr>';
+  openModal('mth-hist-overlay');
+  loadMthHist();
+}
+
+async function loadMthHist() {
+  if (!MTH_HIST.stcd) return;
+  const wrap = $('mth-hist-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    const p = new URLSearchParams();
+    p.set('stcd', MTH_HIST.stcd);
+    p.set('page', String(MTH_HIST.page));
+    p.set('size', String(MTH_HIST.size));
+    const s = dateToStart($('mth-hist-start').value);
+    const e = dateToEnd($('mth-hist-end').value);
+    if (s) p.set('startTime', s);
+    if (e) p.set('endTime', e);
+    const res = await fetch(`${API}/irrigation-water-level/history?${p}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    MTH_HIST.rows = Array.isArray(data.records) ? data.records : [];
+    MTH_HIST.total = data.total || 0;
+    MTH_HIST.page = data.current || MTH_HIST.page;
+    MTH_HIST.size = data.size || MTH_HIST.size;
+    renderMthHistRows();
+  } catch (e) {
+    console.error('麻塘湖水位历史加载失败', e);
+    MTH_HIST.rows = [];
+    MTH_HIST.total = 0;
+    $('mth-hist-body').innerHTML = '<tr><td colspan="3" class="empty">数据加载失败，请重试</td></tr>';
+  } finally {
+    setLoading(wrap, false);
+    renderMthHistPager();
+  }
+}
+
+/** 水位列口径同列表；涨幅口径与列表 1h水位涨幅列一致 */
+function renderMthHistRows() {
+  const tbody = $('mth-hist-body');
+  if (!MTH_HIST.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = MTH_HIST.rows.map(r => `
+    <tr>
+      <td>${esc(fmtTm(r.hour))}</td>
+      <td>${fmtN2(r.waterLevel)}</td>
+      <td>${fmtN2(r.change)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderMthHistPager() {
+  const bar = $('mth-hist-pg');
+  if (!bar) return;
+  const pages = Math.max(1, Math.ceil(MTH_HIST.total / MTH_HIST.size) || 1);
+  if (MTH_HIST.page > pages) MTH_HIST.page = pages;
+
+  let html = `<span class="pg-info">共 ${MTH_HIST.total} 条</span>`;
+  html += `<select class="pg-size" id="mth-hist-pg-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === MTH_HIST.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${MTH_HIST.page - 1}" ${MTH_HIST.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+  const maxShow = 5;
+  let from = Math.max(1, MTH_HIST.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === MTH_HIST.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${MTH_HIST.page + 1}" ${MTH_HIST.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === MTH_HIST.page || p < 1 || p > pages) return;
+      MTH_HIST.page = p;
+      loadMthHist();
+    });
+  });
+  const sizeSel = $('mth-hist-pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      MTH_HIST.size = +sizeSel.value;
+      MTH_HIST.page = 1;
+      loadMthHist();
+    });
+  }
 }
 
 /* ===== 模糊匹配（可搜索下拉共用） ===== */
@@ -2253,6 +2530,19 @@ async function init() {
   });
   bindAsyncClick($('mth-query-btn'), mthQuery);
   bindAsyncClick($('mth-reset-btn'), mthReset);
+  // 麻塘湖列表「详情」：事件委托，按当前页数据行（含 stcd）弹窗查小时级水位历史
+  $('mth-tbl-body').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="mth-detail"]');
+    if (!btn) return;
+    const row = MTH.rows[+btn.dataset.idx];
+    if (row) openMthHist(row);
+  });
+  bindAsyncClick($('mth-hist-query-btn'), async () => { MTH_HIST.page = 1; await loadMthHist(); });
+  bindAsyncClick($('mth-hist-reset-btn'), async () => {
+    setMthHistDefaultDates();
+    MTH_HIST.page = 1;
+    await loadMthHist();
+  });
   renderMthEmpty();
   initPeriodCks();
   initResCks();

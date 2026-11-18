@@ -31,6 +31,10 @@ public class WaterQualityVO {
     /** 站点名称 */
     private String stnm;
 
+    /** 站点所属渠系 id（站点表 ywvyds → 渠系管理表 t_auto_hltgq_knc3g_egvnhw.id；灌区范围过滤用，不出 JSON） */
+    @JsonIgnore
+    private String canalId;
+
     /** 站点经度（站点表 bviiio_x），档案缺失为 null */
     private BigDecimal lon;
 

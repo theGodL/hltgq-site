@@ -29,6 +29,12 @@ public class StationSiteVO {
      */
     private String siteId;
 
+    /**
+     * 归属渠系 id（站点档案表 ywvyds）：按「渠系所属顶级灌区」拆分页面 Tab 的依据，
+     * 档案无对应记录或未挂渠系时为 null（空渠系站点按业务口径归花凉亭）
+     */
+    private String canalId;
+
     /** 站点经度（站点档案表 bviiio_x），档案无对应记录时为 null */
     private BigDecimal lon;
 

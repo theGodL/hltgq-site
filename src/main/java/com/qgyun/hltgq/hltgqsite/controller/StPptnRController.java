@@ -159,6 +159,8 @@ public class StPptnRController {
      *
      * @param canalId 渠系 id（可选，站点表 ywvyds → 渠系管理表 id；传入时按渠系树过滤，
      *                返回该渠系及其所有子孙渠系下的站点）
+     * @param zone    灌区范围（可选）：hlt=花凉亭灌区（含空渠系站点，排除麻塘湖站点）、
+     *                mth=麻塘湖灌区（只含麻塘湖子树与兜底站）；不传=不过滤
      */
     @GetMapping("/gq-rainfall")
     public IPage<GqRainfallVO> gqRainfall(
@@ -167,8 +169,9 @@ public class StPptnRController {
             @RequestParam(required = false) String stcd,
             @RequestParam(required = false) String canalId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
-        return stPptnRService.gqRainfallPage(page, size, stcd, canalId, startTime, endTime);
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(required = false) String zone) {
+        return stPptnRService.gqRainfallPage(page, size, stcd, canalId, startTime, endTime, zone);
     }
 
     /**

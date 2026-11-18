@@ -89,6 +89,8 @@ public class GateMonitorController {
      *                  传入时按渠系树过滤，返回该渠系及其所有子孙渠系下的站点）
      * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
      * @param endTime   截止时间（含），格式 yyyy-MM-dd HH:mm:ss，可选
+     * @param zone      灌区范围（可选）：hlt=花凉亭灌区（含空渠系站点，排除麻塘湖站点）、
+     *                  mth=麻塘湖灌区（只含麻塘湖子树与兜底站）；不传=不过滤
      * @return 各闸站最新监测数据列表（每条携带 canalId/canalName 渠系字段）
      */
     @GetMapping("/monitoring")
@@ -96,8 +98,9 @@ public class GateMonitorController {
             @RequestParam(required = false) String site,
             @RequestParam(required = false) String canalId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
-        return gateMonitorService.monitoring(site, canalId, startTime, endTime);
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(required = false) String zone) {
+        return gateMonitorService.monitoring(site, canalId, startTime, endTime, zone);
     }
 
     /**

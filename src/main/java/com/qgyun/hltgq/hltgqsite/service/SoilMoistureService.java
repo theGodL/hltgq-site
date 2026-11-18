@@ -21,8 +21,9 @@ public interface SoilMoistureService {
      * @param canalId 渠系 id（可选，站点表 ywvyds → 渠系管理表 id；传入时按渠系树过滤：
      *                返回该渠系及其所有子孙渠系下的站点，每条记录携带 canalId/canalName）
      * @param date    监测日期（可选，yyyy-MM-dd），仅返回该日期内的最新记录
+     * @param zone    灌区范围（可选）：hlt=花凉亭灌区 / mth=麻塘湖灌区；空值不过滤
      */
-    List<SoilMoistureVO> monitoring(List<String> stcds, String canalId, LocalDate date);
+    List<SoilMoistureVO> monitoring(List<String> stcds, String canalId, LocalDate date, String zone);
 
     /**
      * 墒情趋势：含水量曲线（8 个深度各一条线）

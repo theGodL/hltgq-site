@@ -23,9 +23,10 @@ public interface GateMonitorService {
      *                  返回该渠系及其所有子孙渠系下的站点，每条记录携带 canalId/canalName）
      * @param startTime 起始时间（含），null 表示不限制
      * @param endTime   截止时间（含），null 表示不限制
+     * @param zone      灌区范围（可选）：hlt=花凉亭灌区 / mth=麻塘湖灌区；空值不过滤
      * @return 各闸站监测数据列表（按站点名称排序）
      */
-    List<GateMonitoringVO> monitoring(String site, String canalId, LocalDateTime startTime, LocalDateTime endTime);
+    List<GateMonitoringVO> monitoring(String site, String canalId, LocalDateTime startTime, LocalDateTime endTime, String zone);
 
     /**
      * 闸门历史数据（分页，按监测时间倒序）

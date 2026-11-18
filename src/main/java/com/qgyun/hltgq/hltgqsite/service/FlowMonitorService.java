@@ -23,9 +23,10 @@ public interface FlowMonitorService {
      *                  返回该渠系及其所有子孙渠系下的站点，每条记录携带 canalId/canalName）
      * @param startTime 起始时间（可选）
      * @param endTime   截止时间（可选）
+     * @param zone      灌区范围（可选）：hlt=花凉亭灌区 / mth=麻塘湖灌区；空值不过滤
      */
     List<FlowMonitoringVO> monitoring(List<String> stcds, String canalId,
-                                      LocalDateTime startTime, LocalDateTime endTime);
+                                      LocalDateTime startTime, LocalDateTime endTime, String zone);
 
     /**
      * 流量趋势图表（默认近 7 天）

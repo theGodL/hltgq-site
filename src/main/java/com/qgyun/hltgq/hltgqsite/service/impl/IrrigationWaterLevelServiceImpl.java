@@ -5,10 +5,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.IrrigationWaterLevelMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
+import com.qgyun.hltgq.hltgqsite.service.IrrigationScopeService;
 import com.qgyun.hltgq.hltgqsite.service.IrrigationWaterLevelService;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelChartVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelHistoryVO;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelVO;
+import com.qgyun.hltgq.hltgqsite.vo.SiteScopeFilter;
 import com.qgyun.hltgq.hltgqsite.vo.WaterLevelTrendVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -38,11 +40,15 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
     @Autowired
     private StStinfoMapper stStinfoMapper;
 
+    @Autowired
+    private IrrigationScopeService irrigationScopeService;
+
     @Override
     public Page<IrrigationWaterLevelVO> page(Page<IrrigationWaterLevelVO> page,
                                               String stcd,
                                               LocalDateTime startTime,
-                                              LocalDateTime endTime) {
+                                              LocalDateTime endTime,
+                                              String zone) {
         // 时间过滤：下沉到各站「取最新一条」的 LATERAL 内（空表示不限）
         Timestamp start = startTime == null ? null : Timestamp.valueOf(startTime);
         Timestamp end = endTime == null ? null : Timestamp.valueOf(endTime);
@@ -50,19 +56,22 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
         // stcd 过滤（直接参数绑定，作用于站点表）
         String stcdFilter = (stcd != null && !stcd.trim().isEmpty()) ? stcd.trim() : null;
 
+        // 灌区范围过滤（站点档案渠系所属顶级灌区）：下沉到 SQL，分页与计数同口径
+        SiteScopeFilter scope = irrigationScopeService.resolve(zone);
+
         // 计算分页偏移
         int offset = (int) ((page.getCurrent() - 1) * page.getSize());
         int limit = (int) page.getSize();
 
         // 分页查询
         List<IrrigationWaterLevelVO> records = irrigationWaterLevelMapper.selectPage(
-                start, end, stcdFilter, limit, offset);
+                start, end, stcdFilter, scope, limit, offset);
 
         // 总数：首页未取满即可判定结果集就这么多，直接用本页条数，省掉一次 count 查询
         if (page.searchCount()) {
             page.setTotal(offset == 0 && records.size() < limit
                     ? records.size()
-                    : irrigationWaterLevelMapper.selectCount(start, end, stcdFilter));
+                    : irrigationWaterLevelMapper.selectCount(start, end, stcdFilter, scope));
         }
         // 在线状态：水位站均为库上站点，以站点表 zebpsu 状态判断（#1# 在线 / #2# 离线），不走时间断联；
         // 站点表未查到状态的站点默认在线（不误报离线）

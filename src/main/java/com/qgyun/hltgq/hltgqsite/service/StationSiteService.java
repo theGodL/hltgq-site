@@ -38,6 +38,19 @@ public interface StationSiteService {
     List<StationSiteVO> sitesOfType(String metricType);
 
     /**
+     * 按监测类型取站点清单，并按灌区范围过滤（站点档案渠系所属顶级灌区）：
+     * hlt=花凉亭灌区（含空渠系站点，排除麻塘湖站点）、mth=麻塘湖灌区（只含麻塘湖子树与兜底站）；
+     * zone 为空或 all 不限制范围（原样返回）。
+     */
+    List<StationSiteVO> sitesOfType(String metricType, String zone);
+
+    /**
+     * 按灌区范围过滤清单（保持原顺序）：口径同 {@link #sitesOfType(String, String)}；
+     * 供不按监测类型取清单的接口（如水质站点）复用。
+     */
+    List<StationSiteVO> filterByZone(List<StationSiteVO> sites, String zone);
+
+    /**
      * 按站点范围过滤清单（保持原顺序）：{@link #SCOPE_RESERVOIR} 只留花凉亭水库站点，
      * {@link #SCOPE_GQ} 只留灌区站点；空值或 all 不限制范围（原样返回）。
      * <p>供「站点排序」抽屉按页面主 Tab（花凉亭灌区 / 花凉亭水库）拆分展示范围。

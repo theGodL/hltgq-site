@@ -334,7 +334,7 @@ th.col-act,td.col-act{white-space:nowrap}
     </div>
   </div>
 
-  <!-- 麻塘湖灌区：同款样式，接口暂空 -->
+  <!-- 麻塘湖灌区：麻塘湖站点闸门（/gate-monitor/monitoring?zone=mth） -->
   <div class="panel" id="panel-mth">
     <div class="card filter-card">
       <div class="filter-bar">
@@ -1020,7 +1020,8 @@ function bindDevSelect() {
 
 async function loadGateSites() {
   try {
-    const res = await fetch(`${API}/station-metrics/sites?type=gate`);
+    // zone=hlt：花凉亭灌区范围（排除麻塘湖站点）
+    const res = await fetch(`${API}/station-metrics/sites?type=gate&zone=hlt`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     GATE_SITES = Array.isArray(data) ? data.map(x => ({
@@ -1050,7 +1051,9 @@ async function loadList() {
   if (keepH > 0) wrap.style.minHeight = keepH + 'px';
   setLoading(wrap, true);
   try {
-    const qs = applyCanalParam(new URLSearchParams()).toString();
+    const p = new URLSearchParams();
+    p.set('zone', 'hlt'); // 花凉亭灌区 tab：排除麻塘湖站点
+    const qs = applyCanalParam(p).toString();
     const res = await fetch(`${API}/gate-monitor/monitoring${qs ? `?${qs}` : ''}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -2334,8 +2337,37 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
-/* ===== 麻塘湖灌区：同款 UI，接口暂空 ===== */
-let MTH_GATE_SITES = []; // 后续接接口再填
+/* ===== 麻塘湖灌区：麻塘湖站点闸门（/gate-monitor/monitoring?zone=mth，前端本地分页） ===== */
+let MTH_GATE_SITES = [];
+let mthSitesLoaded = false;
+let mthLoaded = false;
+const MTH = { page: 1, size: 20, total: 0, allRows: [], rows: [] };
+
+/** 麻塘湖设备下拉：只含麻塘湖灌区站点（档案渠系属麻塘湖子树 + 麻塘湖水库兜底站） */
+async function loadMthSites() {
+  try {
+    const res = await fetch(`${API}/station-metrics/sites?type=gate&zone=mth`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    MTH_GATE_SITES = Array.isArray(data) ? data.map(x => ({
+      code: String(x.code ?? x.stcd ?? ''),
+      name: String(x.name ?? x.stnm ?? x.code ?? '')
+    })).filter(x => x.code) : [];
+  } catch (e) {
+    console.warn('加载麻塘湖闸门设备失败', e);
+    MTH_GATE_SITES = [];
+  }
+  mthSitesLoaded = true;
+}
+
+/** 麻塘湖闸门首次进入时加载（设备下拉 + 列表并行） */
+function ensureMthLoaded() {
+  if (!mthLoaded) {
+    mthLoaded = true;
+    loadMthSites();
+    loadMthList();
+  }
+}
 
 function setMthDev(code, name) {
   $('mth-dev-code').value = code || '';
@@ -2351,6 +2383,12 @@ function clearMthDev() {
 function renderMthDevDd(keyword) {
   const dd = $('mth-dev-dd');
   const code = $('mth-dev-code').value;
+  if (!mthSitesLoaded) {
+    dd.innerHTML = '<div class="ss-empty">正在加载设备...</div>';
+    dd.classList.add('open');
+    loadMthSites().then(() => { if (dd.classList.contains('open')) renderMthDevDd(keyword); });
+    return;
+  }
   const list = MTH_GATE_SITES.filter(s => fuzzyMatch(s.name, keyword) || fuzzyMatch(s.code, keyword));
   if (!list.length) {
     dd.innerHTML = '<div class="ss-empty">无匹配设备</div>';
@@ -2397,8 +2435,115 @@ function bindMthDevSelect() {
   });
 }
 
+async function loadMthList() {
+  const wrap = $('mth-list-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    const p = new URLSearchParams();
+    p.set('zone', 'mth');
+    const res = await fetch(`${API}/gate-monitor/monitoring?${p}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    let list = Array.isArray(data) ? data : [];
+    // 与花凉亭列表同口径：选中设备时按 siteId 前端过滤
+    const siteId = ($('mth-dev-code').value || '').trim();
+    if (siteId) list = list.filter(r => String(r.siteId || '') === siteId);
+    MTH.allRows = list;
+    MTH.total = list.length;
+    applyMthPage();
+  } catch (e) {
+    console.error('麻塘湖闸门加载失败', e);
+    MTH.allRows = [];
+    MTH.total = 0;
+    MTH.rows = [];
+    $('mth-tbl-body').innerHTML = '<tr><td colspan="7" class="empty">数据加载失败，请重试</td></tr>';
+    renderMthPager();
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+function applyMthPage() {
+  const pages = Math.max(1, Math.ceil(MTH.total / MTH.size) || 1);
+  if (MTH.page > pages) MTH.page = pages;
+  const start = (MTH.page - 1) * MTH.size;
+  MTH.rows = MTH.allRows.slice(start, start + MTH.size);
+  renderMthTable();
+  renderMthPager();
+}
+
+function renderMthTable() {
+  const tbody = $('mth-tbl-body');
+  if (!MTH.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = MTH.rows.map((r, i) => `
+    <tr>
+      <td class="col-name">${esc(fmtN(r.siteName))}</td>
+      <td>${esc(fmtHolesOpen(r.holes))}${gateActionSub(r)}</td>
+      <td>${fmtN2(r.upZ)}</td>
+      <td>${fmtN2(r.downZ)}</td>
+      <td>${fmtTm(r.tm)}</td>
+      <td class="col-vol">${fmtN2(r.vol)}</td>
+      <td class="col-act">
+        <span class="act-group">
+          <button class="act-btn" data-action="detail" data-idx="${i}">详情</button>
+        </span>
+      </td>
+    </tr>`).join('');
+}
+
+function renderMthPager() {
+  const bar = $('mth-tbl-pg');
+  const pages = Math.max(1, Math.ceil(MTH.total / MTH.size) || 1);
+  if (MTH.page > pages) MTH.page = pages;
+
+  let html = `<span class="pg-info">共 ${MTH.total} 条</span>`;
+  html += `<select class="pg-size" id="mth-pg-size">
+    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${n === MTH.size ? 'selected' : ''}>${n}条/页</option>`).join('')}
+  </select>`;
+  html += `<button class="pg-btn" data-page="${MTH.page - 1}" ${MTH.page <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+  const maxShow = 5;
+  let from = Math.max(1, MTH.page - Math.floor(maxShow / 2));
+  let to = Math.min(pages, from + maxShow - 1);
+  from = Math.max(1, to - maxShow + 1);
+  if (from > 1) html += `<span class="pg-ellipsis">...</span>`;
+  for (let i = from; i <= to; i++) {
+    html += `<button class="pg-btn ${i === MTH.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (to < pages) html += `<span class="pg-ellipsis">...</span>`;
+  html += `<button class="pg-btn" data-page="${MTH.page + 1}" ${MTH.page >= pages ? 'disabled' : ''}>&gt;</button>`;
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.pg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = +btn.dataset.page;
+      if (!p || p === MTH.page || p < 1 || p > pages) return;
+      MTH.page = p;
+      applyMthPage();
+    });
+  });
+  const sizeSel = $('mth-pg-size');
+  if (sizeSel) {
+    sizeSel.addEventListener('change', () => {
+      MTH.size = +sizeSel.value;
+      MTH.page = 1;
+      applyMthPage();
+    });
+  }
+}
+
+function onMthTableClick(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn || btn.dataset.action !== 'detail') return;
+  const row = MTH.rows[+btn.dataset.idx];
+  if (row) openDetail(row);
+}
+
 function renderMthEmpty() {
-  $('mth-tbl-body').innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+  $('mth-tbl-body').innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
   $('mth-tbl-pg').innerHTML = `<span class="pg-info">共 0 条</span>
     <select class="pg-size" disabled><option>20条/页</option></select>
     <button class="pg-btn" disabled>&lt;</button>
@@ -2407,12 +2552,14 @@ function renderMthEmpty() {
 }
 
 async function mthQuery() {
-  renderMthEmpty();
+  MTH.page = 1;
+  await loadMthList();
 }
 
 async function mthReset() {
   clearMthDev();
-  renderMthEmpty();
+  MTH.page = 1;
+  await loadMthList();
 }
 
 /** 当前主 Tab（hlt 花凉亭灌区 / mth 麻塘湖灌区）：麻塘湖数据未接入，该 Tab 下不提供站点排序入口 */
@@ -2429,7 +2576,7 @@ function bindDistrictTabs() {
       tab.classList.add('active');
       const panel = $('panel-' + tab.dataset.tab);
       if (panel) panel.classList.add('active');
-      if (tab.dataset.tab === 'mth') renderMthEmpty();
+      if (tab.dataset.tab === 'mth') ensureMthLoaded();
       syncCanalSide(); // 渠系结构仅花凉亭灌区 Tab 展示
     });
   });
@@ -2926,6 +3073,7 @@ async function init() {
   bindAsyncClick($('mth-query-btn'), mthQuery);
   bindAsyncClick($('mth-reset-btn'), mthReset);
   $('tbl-body').addEventListener('click', onTableClick);
+  $('mth-tbl-body').addEventListener('click', onMthTableClick);
   bindAsyncClick($('dc-save-btn'), saveDischarge);
   renderMthEmpty();
   await loadDischargeEditable();

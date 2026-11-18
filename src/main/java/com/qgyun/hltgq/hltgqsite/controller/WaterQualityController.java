@@ -35,13 +35,16 @@ public class WaterQualityController {
      * @param stcds    站点标识列表，逗号分隔（可选，不传=全部水质站点）
      * @param startDate 起始日期，格式 yyyy-MM-dd（可选）
      * @param endDate   截止日期（含当日），格式 yyyy-MM-dd（可选）
+     * @param zone      灌区范围（可选）：hlt=花凉亭灌区（含空渠系站点，排除麻塘湖站点）、
+     *                  mth=麻塘湖灌区（只含麻塘湖子树与兜底站）；不传=不过滤
      */
     @GetMapping("/monitoring")
     public List<WaterQualityVO> monitoring(
             @RequestParam(required = false) String stcds,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate) {
-        return waterQualityService.monitoring(ValueConvertUtils.split(stcds, ","), startDate, endDate);
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
+            @RequestParam(required = false) String zone) {
+        return waterQualityService.monitoring(ValueConvertUtils.split(stcds, ","), startDate, endDate, zone);
     }
 
     /**
@@ -87,9 +90,11 @@ public class WaterQualityController {
 
     /**
      * 水质监测站点列表（表中有水质数据的站点，供下拉选择）
+     *
+     * @param zone 灌区范围（可选）：hlt / mth；不传=不过滤
      */
     @GetMapping("/sites")
-    public List<StationSiteVO> sites() {
-        return waterQualityService.sites();
+    public List<StationSiteVO> sites(@RequestParam(required = false) String zone) {
+        return waterQualityService.sites(zone);
     }
 }

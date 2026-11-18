@@ -406,7 +406,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
     </div>
   </div>
 
-  <!-- 麻塘湖灌区：同款样式，接口暂空 -->
+  <!-- 麻塘湖灌区：麻塘湖站点实时雨情（/st-pptn-r/gq-rainfall?zone=mth） -->
   <div class="panel" id="panel-mth">
     <div class="card filter-card">
       <div class="filter-bar">
@@ -420,7 +420,7 @@ tbody tr.total-row:hover td{background:#e6f4ff}
             <div class="ss-dd" id="mth-site-dd"></div>
           </div>
         </div>
-        <div class="filter-item">
+        <div class="filter-item" style="display:none">
           <label>日期</label>
           <input type="date" id="mth-start">
           <span class="date-sep">—</span>
@@ -994,18 +994,47 @@ function bindTabs() {
         updateResFilterUI();
         loadResData();
       }
-      if (tab.dataset.tab === 'mth') renderMthEmpty();
+      if (tab.dataset.tab === 'mth') ensureMthLoaded();
       syncCanalSide(); // 渠系结构仅花凉亭灌区 Tab 展示
     });
   });
 }
 
-/* ===== 麻塘湖灌区：同款 UI，接口暂空 ===== */
+/* ===== 麻塘湖灌区：麻塘湖站点实时雨情（/st-pptn-r/gq-rainfall?zone=mth） ===== */
 let MTH_SITES = [];
+let mthSitesLoaded = false;
+let mthLoaded = false;
+const MTH = { page: 1, size: 20, total: 0, rows: [] };
 
 /** 输入框有值时显示清空小叉 */
 function syncClear(input, clearBtn) {
   clearBtn.classList.toggle('show', !!input.value);
+}
+
+/** 麻塘湖站点下拉：只含麻塘湖灌区站点（档案渠系属麻塘湖子树 + 麻塘湖水库兜底站） */
+async function loadMthSites() {
+  try {
+    const res = await fetch(`${API}/station-metrics/sites?type=gq-rainfall&zone=mth`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    MTH_SITES = Array.isArray(data) ? data.map(x => ({
+      code: String(x.code ?? x.stcd ?? ''),
+      name: String(x.name ?? x.stnm ?? x.code ?? '')
+    })).filter(x => x.code) : [];
+  } catch (e) {
+    console.warn('加载麻塘湖雨量站点失败', e);
+    MTH_SITES = [];
+  }
+  mthSitesLoaded = true;
+}
+
+/** 麻塘湖实时雨情首次进入时加载（站点下拉 + 列表并行） */
+function ensureMthLoaded() {
+  if (!mthLoaded) {
+    mthLoaded = true;
+    loadMthSites();
+    loadMthList();
+  }
 }
 
 function setMthSite(code, name) {
@@ -1022,6 +1051,12 @@ function clearMthSite() {
 function renderMthSiteDd(keyword) {
   const dd = $('mth-site-dd');
   const code = $('mth-site-code').value;
+  if (!mthSitesLoaded) {
+    dd.innerHTML = '<div class="ss-empty">正在加载站点...</div>';
+    dd.classList.add('open');
+    loadMthSites().then(() => { if (dd.classList.contains('open')) renderMthSiteDd(keyword); });
+    return;
+  }
   const list = MTH_SITES.filter(s => fuzzyMatch(s.name, keyword) || fuzzyMatch(s.code, keyword));
   if (!list.length) {
     dd.innerHTML = '<div class="ss-empty">无匹配站点</div>';
@@ -1070,7 +1105,7 @@ function bindMthSiteSelect() {
 }
 
 function renderMthEmpty() {
-  $('mth-tbody').innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+  $('mth-tbody').innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>';
   $('mth-pg').innerHTML = `<span class="pg-info">共 0 条</span>
     <select class="pg-size" disabled><option>20条/页</option></select>
     <button class="pg-btn" disabled>&lt;</button>
@@ -1078,11 +1113,74 @@ function renderMthEmpty() {
     <button class="pg-btn" disabled>&gt;</button>`;
 }
 
-async function mthQuery() { renderMthEmpty(); }
+/** 麻塘湖实时雨情：/st-pptn-r/gq-rainfall（zone=mth，每站最新一条，站点编号 stcd 过滤） */
+async function loadMthList() {
+  const wrap = $('mth-tbl-wrap');
+  setLoading(wrap, true);
+  try {
+    const p = new URLSearchParams();
+    p.set('page', MTH.page);
+    p.set('size', MTH.size);
+    p.set('zone', 'mth');
+    const stcd = ($('mth-site-code').value || '').trim();
+    if (stcd) p.set('stcd', stcd);
+    const res = await fetch(`${API}/st-pptn-r/gq-rainfall?${p}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    MTH.total = data.total || 0;
+    MTH.page = data.current || MTH.page;
+    MTH.size = data.size || MTH.size;
+    MTH.rows = data.records || [];
+    renderMthList();
+    renderPager('mth-pg', MTH, loadMthList, loadMthList);
+  } catch (e) {
+    console.error('麻塘湖雨量加载失败', e);
+    MTH.rows = [];
+    MTH.total = 0;
+    $('mth-tbody').innerHTML = '<tr><td colspan="9" class="empty">数据加载失败，请重试</td></tr>';
+    renderPager('mth-pg', MTH, loadMthList, loadMthList);
+  } finally {
+    setLoading(wrap, false);
+  }
+}
+
+function renderMthList() {
+  const tbody = $('mth-tbody');
+  if (!MTH.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = MTH.rows.map((r, i) => `
+    <tr>
+      <td>${fmtN(r.stnm)}</td>
+      <td${isStaleTm(r.tm, r.stnm) ? ' class="tm-stale"' : ''}>${fmtTm(r.tm)}</td>
+      <td>${fmtN(r.drp)}</td>
+      <td>${fmtN(r.rain1h)}</td>
+      <td>${fmtN(r.rain3h)}</td>
+      <td>${fmtN(r.rain6h)}</td>
+      <td>${fmtN(r.dyp)}</td>
+      <td class="col-vol">${fmtN2(r.vol)}</td>
+      <td><button class="act-btn" data-action="detail" data-idx="${i}">详情</button></td>
+    </tr>
+  `).join('');
+}
+
+function onMthTableClick(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn || btn.dataset.action !== 'detail') return;
+  const row = MTH.rows[+btn.dataset.idx];
+  if (row) openDetail(row);
+}
+
+async function mthQuery() {
+  MTH.page = 1;
+  await loadMthList();
+}
+
 async function mthReset() {
   clearMthSite();
-  setDefaultDates('mth');
-  renderMthEmpty();
+  MTH.page = 1;
+  await loadMthList();
 }
 
 /* ===== 站点可搜索下拉 ===== */
@@ -1178,8 +1276,8 @@ function bindIrrSiteSelect() {
 
 async function loadIrrSites() {
   try {
-    // 灌区站点下拉：非水库站点（后端已排除水库 13 站）
-    const res = await fetch(`${API}/station-metrics/sites?type=gq-rainfall`);
+    // 灌区站点下拉：非水库站点（后端已排除水库 13 站），zone=hlt 排除麻塘湖站点
+    const res = await fetch(`${API}/station-metrics/sites?type=gq-rainfall&zone=hlt`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     IRR_SITES = Array.isArray(data) ? data.map(x => ({
@@ -1206,6 +1304,7 @@ function buildIrrParams() {
   const p = new URLSearchParams();
   p.set('page', IRR.page);
   p.set('size', IRR.size);
+  p.set('zone', 'hlt'); // 花凉亭灌区 tab：排除麻塘湖站点
   const stcd = ($('irr-site-code').value || '').trim();
   if (stcd) p.set('stcd', stcd);
   return applyCanalParam(p);
@@ -2371,6 +2470,7 @@ async function init() {
   bindAsyncClick($('mth-query-btn'), mthQuery);
   bindAsyncClick($('mth-reset-btn'), mthReset);
   $('irr-tbody').addEventListener('click', onIrrTableClick);
+  $('mth-tbody').addEventListener('click', onMthTableClick);
   renderMthEmpty();
   // 数据维护入口：仅系统管理员可见（后台判定，不阻塞主流程）
   loadMaintEntry();

@@ -10,12 +10,14 @@ import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.service.CanalService;
 import com.qgyun.hltgq.hltgqsite.service.FlowMonitorService;
+import com.qgyun.hltgq.hltgqsite.service.IrrigationScopeService;
 import com.qgyun.hltgq.hltgqsite.service.StRiverRService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowStationVO;
 import com.qgyun.hltgq.hltgqsite.vo.FlowTrendVO;
 import com.qgyun.hltgq.hltgqsite.vo.PeriodRegimeVO;
+import com.qgyun.hltgq.hltgqsite.vo.SiteScopeFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +64,9 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
     @Autowired
     private CanalService canalService;
+
+    @Autowired
+    private IrrigationScopeService irrigationScopeService;
 
     /**
      * 流量图表固定八站（按展示顺序）：渠首进水闸、双庙湖节制闸、南山寺节制闸、太怀干渠进水闸、
@@ -162,10 +167,22 @@ public class FlowMonitorServiceImpl implements FlowMonitorService {
 
     @Override
     public List<FlowMonitoringVO> monitoring(List<String> stcds, String canalId,
-                                             LocalDateTime startTime, LocalDateTime endTime) {
+                                             LocalDateTime startTime, LocalDateTime endTime, String zone) {
         // 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
         List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
         List<FlowMonitoringVO> rows = waterFlowMapper.selectLatestPerStation(stcds, canalIds, startTime, endTime);
+        // 灌区范围过滤（站点档案渠系所属顶级灌区）：行内已带 canalId/stcd/siteId，内存过滤保序
+        SiteScopeFilter scope = irrigationScopeService.resolve(zone);
+        if (scope != null && !rows.isEmpty()) {
+            List<FlowMonitoringVO> filtered = new ArrayList<>();
+            for (FlowMonitoringVO row : rows) {
+                if (irrigationScopeService.matches(scope, row.getCanalId(),
+                        row.getStcd(), row.getSiteId(), row.getSite())) {
+                    filtered.add(row);
+                }
+            }
+            rows = filtered;
+        }
         // -999 = 设备不存在：转 null 返回（-9991 设备异常保留，透传由前端展示 '--'）
         rows.forEach(r -> {
             r.setQ(DeviceValueUtils.nullIfMissing(r.getQ()));

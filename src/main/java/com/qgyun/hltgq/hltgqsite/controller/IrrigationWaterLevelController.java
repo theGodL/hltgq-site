@@ -37,6 +37,7 @@ public class IrrigationWaterLevelController {
      * @param stcd      站点编号（可选）
      * @param startTime 监测开始时间（可选，格式：yyyy-MM-dd HH:mm:ss）
      * @param endTime   监测结束时间（可选，格式：yyyy-MM-dd HH:mm:ss）
+     * @param zone      灌区范围（可选）：hlt=花凉亭灌区 / mth=麻塘湖灌区；不传=全部
      * @return 分页结果
      */
     @GetMapping("/page")
@@ -45,9 +46,10 @@ public class IrrigationWaterLevelController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String stcd,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestParam(required = false) String zone) {
         return irrigationWaterLevelService.page(
-                new Page<>(page, size), stcd, startTime, endTime);
+                new Page<>(page, size), stcd, startTime, endTime, zone);
     }
 
     /**

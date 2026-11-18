@@ -20,8 +20,10 @@ public interface WaterQualityService {
      * @param stcds     站点标识列表（编号或 site UUID，可选），null/空 → 全部
      * @param startDate 起始日期（可选，yyyy-MM-dd），仅返回该日期区间内的最新记录
      * @param endDate   截止日期（可选，yyyy-MM-dd，含当日），与 startDate 单独或成对使用
+     * @param zone      灌区范围（可选）：hlt=花凉亭灌区（含空渠系站点，排除麻塘湖站点）、
+     *                  mth=麻塘湖灌区（只含麻塘湖子树与兜底站）；不传=不过滤
      */
-    List<WaterQualityVO> monitoring(List<String> stcds, LocalDate startDate, LocalDate endDate);
+    List<WaterQualityVO> monitoring(List<String> stcds, LocalDate startDate, LocalDate endDate, String zone);
 
     /**
      * 水质趋势：七项指标 + 水温曲线（COD/高锰酸盐指数/BOD、氨氮/总氮/总磷、溶解氧四图共用），
@@ -48,6 +50,8 @@ public interface WaterQualityService {
 
     /**
      * 水质监测全部站点（供下拉选择）
+     *
+     * @param zone 灌区范围（可选）：hlt / mth；不传=不过滤
      */
-    List<StationSiteVO> sites();
+    List<StationSiteVO> sites(String zone);
 }

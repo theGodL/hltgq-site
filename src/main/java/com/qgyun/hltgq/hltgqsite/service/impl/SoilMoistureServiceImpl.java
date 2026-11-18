@@ -3,8 +3,10 @@ package com.qgyun.hltgq.hltgqsite.service.impl;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.mapper.SoilMoistureMapper;
 import com.qgyun.hltgq.hltgqsite.service.CanalService;
+import com.qgyun.hltgq.hltgqsite.service.IrrigationScopeService;
 import com.qgyun.hltgq.hltgqsite.service.SoilMoistureService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
+import com.qgyun.hltgq.hltgqsite.vo.SiteScopeFilter;
 import com.qgyun.hltgq.hltgqsite.vo.SoilMoistureTrendVO;
 import com.qgyun.hltgq.hltgqsite.vo.SoilMoistureVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
@@ -38,13 +40,28 @@ public class SoilMoistureServiceImpl implements SoilMoistureService {
     @Autowired
     private CanalService canalService;
 
+    @Autowired
+    private IrrigationScopeService irrigationScopeService;
+
     @Override
-    public List<SoilMoistureVO> monitoring(List<String> stcds, String canalId, LocalDate date) {
+    public List<SoilMoistureVO> monitoring(List<String> stcds, String canalId, LocalDate date, String zone) {
         LocalDateTime startTime = date != null ? date.atStartOfDay() : null;
         LocalDateTime endTime = date != null ? date.plusDays(1).atStartOfDay() : null;
         // 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
         List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
         List<SoilMoistureVO> rows = soilMoistureMapper.selectLatestPerStation(stcds, canalIds, startTime, endTime);
+        // 灌区范围过滤（站点档案渠系所属顶级灌区）：行内已带 canalId/stcd/siteId，内存过滤保序
+        SiteScopeFilter scope = irrigationScopeService.resolve(zone);
+        if (scope != null && !rows.isEmpty()) {
+            List<SoilMoistureVO> filtered = new ArrayList<>();
+            for (SoilMoistureVO row : rows) {
+                if (irrigationScopeService.matches(scope, row.getCanalId(),
+                        row.getStcd(), row.getSiteId(), row.getSite())) {
+                    filtered.add(row);
+                }
+            }
+            rows = filtered;
+        }
         // 在线状态：档案手动离线（zebpsu=#2#）优先判离线；否则按最新采集时间断联判定
         rows.forEach(r -> r.setIsOnline(StationStatusUtils.isZebpsuOnline(r.getZebpsu()) && !StationStatusUtils.isStale(r.getTm(), r.getStnm())));
         // 站点排序配置（墒情监测类型）：已配置站点按配置顺序，未配置站点保持 SQL 默认顺序排在其后；

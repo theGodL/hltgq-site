@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.mapper;
 
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelVO;
+import com.qgyun.hltgq.hltgqsite.vo.SiteScopeFilter;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -87,11 +88,50 @@ public interface IrrigationWaterLevelMapper {
             ") fv2 ON true ";
 
     /**
+     * 灌区范围过滤 SQL（河道分支，站点表别名 s）：站点档案渠系命中范围渠系 / 空渠系归属 /
+     * 兜底站显式包含，最后排除对方范围的兜底站；scope 为空（不传 zone）时不追加任何条件。
+     * <p>站点表即站点档案表，渠系列 ywvyds 直接可用，无需关联。
+     */
+    String RIVER_SCOPE_SQL =
+            "<if test='scope != null'>" +
+            " AND (" +
+            "<if test='scope.canalIds != null and !scope.canalIds.isEmpty()'>s.ywvyds IN " +
+            "<foreach collection='scope.canalIds' item='cid' open='(' separator=',' close=')'>#{cid}</foreach>" +
+            "</if>" +
+            "<if test='scope.includeUnassigned'> OR s.ywvyds IS NULL OR TRIM(s.ywvyds) = ''</if>" +
+            "<if test='scope.includeStcds != null and !scope.includeStcds.isEmpty()'> OR s.iofhpi IN " +
+            "<foreach collection='scope.includeStcds' item='inc' open='(' separator=',' close=')'>#{inc}</foreach>" +
+            "</if>" +
+            ")" +
+            "<if test='scope.excludeStcds != null and !scope.excludeStcds.isEmpty()'> AND s.iofhpi NOT IN " +
+            "<foreach collection='scope.excludeStcds' item='exc' open='(' separator=',' close=')'>#{exc}</foreach>" +
+            "</if>" +
+            "</if>";
+
+    /** 灌区范围过滤 SQL（闸站分支，站点表别名 s2），口径同 {@link #RIVER_SCOPE_SQL} */
+    String GATE_SCOPE_SQL =
+            "<if test='scope != null'>" +
+            " AND (" +
+            "<if test='scope.canalIds != null and !scope.canalIds.isEmpty()'>s2.ywvyds IN " +
+            "<foreach collection='scope.canalIds' item='cid' open='(' separator=',' close=')'>#{cid}</foreach>" +
+            "</if>" +
+            "<if test='scope.includeUnassigned'> OR s2.ywvyds IS NULL OR TRIM(s2.ywvyds) = ''</if>" +
+            "<if test='scope.includeStcds != null and !scope.includeStcds.isEmpty()'> OR s2.iofhpi IN " +
+            "<foreach collection='scope.includeStcds' item='inc' open='(' separator=',' close=')'>#{inc}</foreach>" +
+            "</if>" +
+            ")" +
+            "<if test='scope.excludeStcds != null and !scope.excludeStcds.isEmpty()'> AND s2.iofhpi NOT IN " +
+            "<foreach collection='scope.excludeStcds' item='exc' open='(' separator=',' close=')'>#{exc}</foreach>" +
+            "</if>" +
+            "</if>";
+
+    /**
      * 分页查询：每个站点最新一条水位数据
      *
      * @param startTime 监测开始时间（可选，下沉到各站 LATERAL 内）
      * @param endTime   监测结束时间（可选，下沉到各站 LATERAL 内）
      * @param stcd      站点编号过滤（直接参数绑定，作用于站点表），null 表示不过滤（全站模式仅返回监测类型含水位 #1# 的站点）
+     * @param scope     灌区范围过滤（站点档案渠系），null 表示不过滤
      * @param limit     每页条数
      * @param offset    偏移量
      */
@@ -99,10 +139,12 @@ public interface IrrigationWaterLevelMapper {
             RIVER_LATEST_SQL +
             "<if test='stcd != null'>WHERE s.iofhpi = #{stcd} </if>" +
             "<if test='stcd == null'>WHERE s.epjutj LIKE '%#1#%' </if>" +
+            RIVER_SCOPE_SQL +
             "UNION ALL " +
             GATE_LATEST_SQL +
             "<if test='stcd != null'>WHERE s2.iofhpi = #{stcd} </if>" +
             "<if test='stcd == null'>WHERE s2.epjutj LIKE '%#1#%' </if>" +
+            GATE_SCOPE_SQL +
             // EXISTS 前置剪枝：先用站点索引判断该站是否存在有效闸前水位（无数据的站点直接跳过 LATERAL，
             // 避免每站逆序扫 gate 全表）；不能用 (site, tm DESC) 索引时也能快速失败
             "AND EXISTS (" +
@@ -130,6 +172,7 @@ public interface IrrigationWaterLevelMapper {
             @Param("startTime") Timestamp startTime,
             @Param("endTime") Timestamp endTime,
             @Param("stcd") String stcd,
+            @Param("scope") SiteScopeFilter scope,
             @Param("limit") int limit,
             @Param("offset") int offset);
 
@@ -143,6 +186,7 @@ public interface IrrigationWaterLevelMapper {
             "  FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s " +
             "  WHERE <if test='stcd != null'>s.iofhpi = #{stcd} </if>" +
             "        <if test='stcd == null'>s.epjutj LIKE '%#1#%' </if>" +
+            RIVER_SCOPE_SQL +
             "  AND EXISTS (" +
             "    SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_river_info r " +
             "    WHERE r.stcd = s.iofhpi " +
@@ -154,6 +198,7 @@ public interface IrrigationWaterLevelMapper {
             "  FROM \"qixiao-apaas\".t_auto_hltgq_5nw74_vnqqef s2 " +
             "  WHERE <if test='stcd != null'>s2.iofhpi = #{stcd} </if>" +
             "        <if test='stcd == null'>s2.epjutj LIKE '%#1#%' </if>" +
+            GATE_SCOPE_SQL +
             "  AND EXISTS (" +
             "    SELECT 1 FROM \"qixiao-apaas\".t_auto_hltgq_water_gate g " +
             "    WHERE g.site = s2.id AND g.up_z IS NOT NULL AND g.up_z NOT IN (-999, -9991) " +
@@ -168,7 +213,8 @@ public interface IrrigationWaterLevelMapper {
     long selectCount(
             @Param("startTime") Timestamp startTime,
             @Param("endTime") Timestamp endTime,
-            @Param("stcd") String stcd);
+            @Param("stcd") String stcd,
+            @Param("scope") SiteScopeFilter scope);
 
     /**
      * 查询站点水位历史数据（用于水位变化图表）

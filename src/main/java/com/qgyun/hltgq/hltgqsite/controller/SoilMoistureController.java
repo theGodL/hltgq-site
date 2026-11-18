@@ -36,13 +36,16 @@ public class SoilMoistureController {
      * @param canalId 渠系 id（可选，站点表 ywvyds → 渠系管理表 t_auto_hltgq_knc3g_egvnhw.id；
      *                传入时按渠系树过滤，返回该渠系及其所有子孙渠系下的站点）
      * @param date    监测日期，格式 yyyy-MM-dd（可选）
+     * @param zone    灌区范围（可选）：hlt=花凉亭灌区（含空渠系站点，排除麻塘湖站点）、
+     *                mth=麻塘湖灌区（只含麻塘湖子树与兜底站）；不传=不过滤
      */
     @GetMapping("/monitoring")
     public List<SoilMoistureVO> monitoring(
             @RequestParam(required = false) String stcds,
             @RequestParam(required = false) String canalId,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date) {
-        return soilMoistureService.monitoring(ValueConvertUtils.split(stcds, ","), canalId, date);
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date,
+            @RequestParam(required = false) String zone) {
+        return soilMoistureService.monitoring(ValueConvertUtils.split(stcds, ","), canalId, date, zone);
     }
 
     /**

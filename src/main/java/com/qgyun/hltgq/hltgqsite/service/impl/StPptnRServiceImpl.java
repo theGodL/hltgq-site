@@ -12,6 +12,7 @@ import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.service.CanalService;
+import com.qgyun.hltgq.hltgqsite.service.IrrigationScopeService;
 import com.qgyun.hltgq.hltgqsite.service.RainAdjustService;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
@@ -23,6 +24,7 @@ import com.qgyun.hltgq.hltgqsite.vo.ReservoirPeriodRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallBriefVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirRainfallVO;
 import com.qgyun.hltgq.hltgqsite.vo.ReservoirTenDayRainfallVO;
+import com.qgyun.hltgq.hltgqsite.vo.SiteScopeFilter;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,6 +60,9 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Autowired
     private RainAdjustService rainAdjustService;
+
+    @Autowired
+    private IrrigationScopeService irrigationScopeService;
 
     private static final Logger log = LoggerFactory.getLogger(StPptnRServiceImpl.class);
 
@@ -137,16 +142,19 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
 
     @Override
     public IPage<GqRainfallVO> gqRainfallPage(long page, long size, String stcd, String canalId,
-                                              LocalDateTime startTime, LocalDateTime endTime) {
+                                              LocalDateTime startTime, LocalDateTime endTime, String zone) {
         // drp 基线 = 服务器当前所属水文日的 8 点起点（与 dailyDyp 同用 LocalDateTime.now() 时钟口径）：
         // "当前雨量"始终表示当前水文日累计，最新报文停留在上一水文日（如 8 点整点报文）时不会与"昨日雨量"重合
         LocalDateTime hydroBase = hydroDayStart(LocalDateTime.now());
         // 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
         List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
+        // 灌区范围过滤（站点档案渠系所属顶级灌区）：行内已带 canal_id，内存过滤后分页口径不变
+        SiteScopeFilter scope = irrigationScopeService.resolve(zone);
         List<Map<String, Object>> rows = baseMapper.selectGqRainfallList(stcd, canalIds, startTime, endTime, hydroBase);
         // 未指定 stcd 时按灌区口径排除水库 13 站；显式指定 stcd 时放行该站（含水库站）
         List<GqRainfallVO> vos = rows.stream()
                 .filter(row -> gqStationVisible(row, stcd))
+                .filter(row -> inZone(scope, row))
                 .map(this::toGqRainfallVO).collect(Collectors.toList());
         // 在线状态：水库站用站点表 zebpsu 状态（#1# 在线 / #2# 离线），不走时间断联（水库站报文频率特殊，水位页面为时段列表语义）；
         // 其余站按时间断联判定（MQTT 站 30 分钟、RabbitMQ 站 70 分钟无更新判离线）
@@ -164,6 +172,20 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
         // 站点排序配置（雨量类型）：分页前排序，已配置站点按配置顺序，未配置站点保持默认顺序排在其后；
         // 站点标识 = 站点管理主键（GqRainfallVO.id），档案缺失时该行保持默认位置
         return toPage(stationSortService.applyOrder("rainfall", vos, GqRainfallVO::getId), page, size);
+    }
+
+    /** 灌区范围判定：按行内渠系（canal_id）归属顶级灌区，兜底站按站点编号 / 站点管理主键匹配 */
+    private boolean inZone(SiteScopeFilter scope, Map<String, Object> row) {
+        if (scope == null) {
+            return true;
+        }
+        return irrigationScopeService.matches(scope,
+                asText(row.get("canal_id")), asText(row.get("stcd")), asText(row.get("id")));
+    }
+
+    /** 字段值转字符串（null 安全） */
+    private static String asText(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     @Override

@@ -18,6 +18,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .breadcrumb .sep{margin:0 6px}
 .breadcrumb .cur{color:#333}
 
+/* 灌区 Tab：花凉亭灌区 / 麻塘湖灌区 */
+.tab-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex-shrink:0}
+.tab-item{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);padding:10px 42px;cursor:pointer;color:#666;font-size:14px;user-select:none;transition:color .2s,box-shadow .2s;border:1px solid transparent;white-space:nowrap}
+.tab-item:hover{color:#1677ff}
+.tab-item.active{color:#1677ff;font-weight:500;border-color:#1677ff;box-shadow:0 1px 4px rgba(22,119,255,.12)}
+
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 .filter-card{padding:14px 16px;flex-shrink:0}
 .filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
@@ -172,6 +178,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   .page-wrap{height:auto;min-height:100%;overflow:visible}
   .table-card,.table-wrap{overflow:visible}
   .ms{width:100%;min-width:220px}
+  .tab-item{padding:10px 24px}
 }
 </style>
 </head>
@@ -184,6 +191,12 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     <span class="cur">水质监测</span>
   </div>
   -->
+
+  <!-- 灌区 Tab：归属按站点档案渠系所属顶级灌区（麻塘湖子树+兜底站归麻塘湖，其余与空渠系归花凉亭） -->
+  <div class="tab-bar">
+    <div class="tab-item active" data-tab="hlt">花凉亭灌区</div>
+    <div class="tab-item" data-tab="mth">麻塘湖灌区</div>
+  </div>
 
   <div class="card filter-card">
     <div class="filter-bar">
@@ -332,13 +345,21 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     { keys: ['水温', 'WT'], metric: 'wt' },
   ];
 
-  const state = {
-    sites: [],
-    selected: new Set(),
-    rows: [],
-    current: null,
-    hist: { page: 1, size: 10, total: 0, pages: 1, records: [] },
-  };
+  /** 灌区 Tab 数据源：花凉亭/麻塘湖各自维护站点、选中与列表，切换 Tab 不串数据 */
+  function newZoneState() {
+    return {
+      sites: [],
+      selected: new Set(),
+      rows: [],
+      loaded: false,
+      current: null,
+      hist: { page: 1, size: 10, total: 0, pages: 1, records: [] },
+    };
+  }
+  const ZONES = { hlt: newZoneState(), mth: newZoneState() };
+  let activeZone = 'hlt';
+  /** state 始终指向当前 Tab 的数据源 */
+  let state = ZONES.hlt;
 
   let chartOrganic = null;
   let chartNutrient = null;
@@ -759,8 +780,10 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
   }
 
   async function loadHistory(page) {
-    if (!state.current) return;
-    const stcd = state.current.stcd || state.current.site;
+    // 弹窗关闭后 state.current 会置空：先取快照，避免历史数据返回时读取 null
+    const cur = state.current;
+    if (!cur) return;
+    const stcd = cur.stcd || cur.site;
     if (!stcd) return;
     const s = $('h-start').value;
     const e = $('h-end').value;
@@ -780,10 +803,10 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
       $('hist-tbody').innerHTML = state.hist.records.map(r => {
         const tm = parseTm(r.tm);
         // 报文关联站点：优先行内测站编码，回退当前详情站点（含 MQTT 站 UUID）
-        const key = r.stcd || state.current.stcd || state.current.site;
+        const key = r.stcd || cur.stcd || cur.site;
         const tmv = tm.date === '--' ? '' : `${tm.date} ${tm.time || '00:00:00'}`;
         // 水质历史多为整点补齐行，实际报文随机分钟入库，窗口放宽到该小时（after=60）
-        const msgBtn = (key && tmv) ? MessageViewer.button({ key, tm: tmv, name: state.current.stnm, after: 60 }) : '';
+        const msgBtn = (key && tmv) ? MessageViewer.button({ key, tm: tmv, name: cur.stnm, after: 60 }) : '';
         return `<tr>
           <td>${esc(tm.date)} ${esc(tm.time)}</td>
           <td>${cellHtml(r.nh3n)}</td>
@@ -831,39 +854,65 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     if (name === 'trend') setTimeout(() => { chartOrganic && chartOrganic.resize(); chartNutrient && chartNutrient.resize(); chartDo && chartDo.resize(); chartWt && chartWt.resize(); }, 30);
   }
 
-  async function loadSites() {
+  async function loadSites(zone) {
+    const zs = ZONES[zone];
     try {
-      const list = await fetchApi('/water-quality/sites');
-      state.sites = Array.isArray(list) ? list : [];
-      renderSiteList();
-      renderSiteTrigger();
+      const list = await fetchApi('/water-quality/sites?zone=' + zone);
+      zs.sites = Array.isArray(list) ? list : [];
     } catch (err) {
       console.error(err);
-      state.sites = [];
-      renderSiteList();
+      zs.sites = [];
       toast((err && err.message) || '站点列表加载失败');
+    }
+    if (zone === activeZone) {
+      renderSiteList();
+      renderSiteTrigger();
     }
   }
 
   async function loadMonitoring() {
+    const zone = activeZone;
+    const zs = ZONES[zone];
     const btn = $('btn-query');
     btn.disabled = true;
     $('tbody').innerHTML = '<tr><td class="empty" colspan="10">加载中...</td></tr>';
     try {
       const p = new URLSearchParams();
-      const codes = [...state.selected];
+      p.set('zone', zone); // hlt=花凉亭灌区（排除麻塘湖站点）/ mth=麻塘湖灌区
+      const codes = [...zs.selected];
       if (codes.length) p.set('stcds', codes.join(','));
-      const qs = p.toString();
-      const data = await fetchApi('/water-quality/monitoring' + (qs ? '?' + qs : ''));
-      state.rows = Array.isArray(data) ? data : [];
-      renderTable(state.rows);
+      const data = await fetchApi('/water-quality/monitoring?' + p);
+      zs.rows = Array.isArray(data) ? data : [];
+      if (activeZone === zone) renderTable(zs.rows);
     } catch (err) {
       console.error(err);
-      state.rows = [];
-      $('tbody').innerHTML = '<tr><td class="empty" colspan="10">加载失败，请重试</td></tr>';
+      zs.rows = [];
+      if (activeZone === zone) {
+        $('tbody').innerHTML = '<tr><td class="empty" colspan="10">加载失败，请重试</td></tr>';
+      }
       toast((err && err.message) || '数据加载失败');
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  /** 切换灌区 Tab：各 Tab 独立状态；首次切换懒加载站点与列表，切回直接展示缓存 */
+  function switchZone(zone) {
+    if (zone === activeZone || !ZONES[zone]) return;
+    activeZone = zone;
+    state = ZONES[zone];
+    setMsOpen(false);
+    $('site-kw').value = '';
+    renderSiteList();
+    renderSiteTrigger();
+    if (!state.loaded) {
+      state.loaded = true;
+      $('tbody').innerHTML = '<tr><td class="empty" colspan="10">加载中...</td></tr>';
+      loadSites(zone).then(() => {
+        if (activeZone === zone) loadMonitoring();
+      });
+    } else {
+      renderTable(state.rows);
     }
   }
 
@@ -907,7 +956,7 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     MonitorExport.download({
       fields: WQ_EXPORT_FIELDS,
       rows: state.rows.map(wqExportRow),
-      filename: () => `水质监测_${todayStr()}`,
+      filename: () => `水质监测_${activeZone === 'mth' ? '麻塘湖灌区' : '花凉亭灌区'}_${todayStr()}`,
       sheetName: '水质监测',
     });
   }
@@ -1026,7 +1075,18 @@ table.data-table td.left,table.data-table th.left{text-align:left !important}
     chartWt && chartWt.resize();
   });
 
-  loadSites().then(loadMonitoring);
+  // 灌区 Tab：切换后加载对应灌区数据（首次切换懒加载）
+  document.querySelectorAll('.tab-bar .tab-item').forEach(tab => {
+    tab.addEventListener('click', () => {
+      if (tab.classList.contains('active')) return;
+      document.querySelectorAll('.tab-bar .tab-item').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      switchZone(tab.dataset.tab);
+    });
+  });
+
+  ZONES.hlt.loaded = true; // 初始 Tab 由下方直接加载，无需懒加载
+  loadSites('hlt').then(loadMonitoring);
 })();
 </script>
 <script src="./lib/date-placeholder.js"></script>

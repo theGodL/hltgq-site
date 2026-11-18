@@ -13,6 +13,7 @@ import com.qgyun.hltgq.hltgqsite.mapper.WaterThresholdMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.WaterVolumeUtils;
 import com.qgyun.hltgq.hltgqsite.service.CanalService;
 import com.qgyun.hltgq.hltgqsite.service.GateMonitorService;
+import com.qgyun.hltgq.hltgqsite.service.IrrigationScopeService;
 import com.qgyun.hltgq.hltgqsite.service.StationSiteService;
 import com.qgyun.hltgq.hltgqsite.service.StationSortService;
 import com.qgyun.hltgq.hltgqsite.vo.FlowMonitoringVO;
@@ -23,6 +24,7 @@ import com.qgyun.hltgq.hltgqsite.vo.GateHoleData;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonitoringVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateMonthCumulativeFlowVO;
 import com.qgyun.hltgq.hltgqsite.vo.GateStationWaterLevelVO;
+import com.qgyun.hltgq.hltgqsite.vo.SiteScopeFilter;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -163,8 +165,12 @@ public class GateMonitorServiceImpl implements GateMonitorService {
     @Autowired
     private CanalService canalService;
 
+    @Autowired
+    private IrrigationScopeService irrigationScopeService;
+
     @Override
-    public List<GateMonitoringVO> monitoring(String site, String canalId, LocalDateTime startTime, LocalDateTime endTime) {
+    public List<GateMonitoringVO> monitoring(String site, String canalId, LocalDateTime startTime, LocalDateTime endTime,
+                                             String zone) {
         // 0. 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身）
         List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
 
@@ -431,6 +437,18 @@ public class GateMonitorServiceImpl implements GateMonitorService {
             }
             vo.setHoles(holeDataList);
             result.add(vo);
+        }
+
+        // 灌区范围过滤（站点档案渠系所属顶级灌区）：VO 已带 canalId/stcd/siteId，内存过滤保序
+        SiteScopeFilter scope = irrigationScopeService.resolve(zone);
+        if (scope != null && !result.isEmpty()) {
+            List<GateMonitoringVO> filtered = new ArrayList<>();
+            for (GateMonitoringVO vo : result) {
+                if (irrigationScopeService.matches(scope, vo.getCanalId(), vo.getStcd(), vo.getSiteId())) {
+                    filtered.add(vo);
+                }
+            }
+            result = filtered;
         }
 
         // 默认顺序：置前站点按固定顺序展示、其余站点按站点名称排序。置前清单与站点排序抽屉、

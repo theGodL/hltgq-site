@@ -8,8 +8,10 @@ import com.qgyun.hltgq.hltgqsite.mapper.StPptnRMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.WaterFlowMapper;
 import com.qgyun.hltgq.hltgqsite.model.util.CheckUtils;
+import com.qgyun.hltgq.hltgqsite.service.IrrigationScopeService;
 import com.qgyun.hltgq.hltgqsite.service.StPptnRService;
 import com.qgyun.hltgq.hltgqsite.service.StationSiteService;
+import com.qgyun.hltgq.hltgqsite.vo.SiteScopeFilter;
 import com.qgyun.hltgq.hltgqsite.vo.StationSiteVO;
 import com.qgyun.hltgq.hltgqsite.vo.StationSitesVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,6 +61,9 @@ public class StationSiteServiceImpl implements StationSiteService {
     @Autowired
     private StStinfoMapper stStinfoMapper;
 
+    @Autowired
+    private IrrigationScopeService irrigationScopeService;
+
     @Override
     public List<String> supportedTypes() {
         return SUPPORTED_TYPES;
@@ -99,6 +104,32 @@ public class StationSiteServiceImpl implements StationSiteService {
                 throw new IllegalArgumentException("无效的 type 值: " + metricType
                         + "，可选: " + String.join(" / ", SUPPORTED_TYPES));
         }
+    }
+
+    @Override
+    public List<StationSiteVO> sitesOfType(String metricType, String zone) {
+        return filterByZone(sitesOfType(metricType), zone);
+    }
+
+    /**
+     * 按灌区范围过滤站点清单（保序）：以站点档案归属渠系（canalId）按顶级灌区判定，
+     * 麻塘湖兜底站按站点编号显式归麻塘湖并在花凉亭范围排除。
+     */
+    @Override
+    public List<StationSiteVO> filterByZone(List<StationSiteVO> sites, String zone) {
+        SiteScopeFilter filter = irrigationScopeService.resolve(zone);
+        if (sites == null || sites.isEmpty() || filter == null) {
+            return sites;
+        }
+        List<StationSiteVO> result = new ArrayList<>();
+        for (StationSiteVO site : sites) {
+            // 站点标识三列一起参与兜底站匹配：站点编号 / 站点管理主键 / 业务表原值
+            if (irrigationScopeService.matches(filter, site.getCanalId(),
+                    site.getStcd(), site.getSiteId(), site.getCode())) {
+                result.add(site);
+            }
+        }
+        return result;
     }
 
     /**
@@ -206,6 +237,7 @@ public class StationSiteServiceImpl implements StationSiteService {
             String archiveStcd = trim(archive.getStcd());
             site.setStcd(archiveStcd != null ? archiveStcd : (codeIsStcd ? key : null));
             site.setSiteId(archive.getSiteId());
+            site.setCanalId(trim(archive.getCanalId()));
             site.setLon(archive.getLon());
             site.setLat(archive.getLat());
         }
