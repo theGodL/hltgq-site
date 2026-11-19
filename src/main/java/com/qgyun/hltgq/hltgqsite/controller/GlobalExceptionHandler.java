@@ -175,6 +175,8 @@ public class GlobalExceptionHandler {
             message = "该潜力年度已存在水量记录，请刷新列表后直接编辑";
         } else if (detail.contains("uk_water_saving_scheme_year_name")) {
             message = "同一年度已存在同名节水方案，请刷新列表后重试";
+        } else if (detail.contains("uk_sms_receiver_biz_phone")) {
+            message = "该类型下手机号已存在（可能有他人同时维护短信接收人），请刷新后重试";
         } else if (detail.contains("uk_water_saving_indicator_name")) {
             message = "指标名称已存在（停用指标的名称同样占用），请刷新列表后重试";
         } else {

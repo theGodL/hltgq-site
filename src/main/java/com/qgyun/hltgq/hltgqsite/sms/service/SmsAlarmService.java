@@ -75,6 +75,9 @@ public class SmsAlarmService {
     private SmsSendService smsSendService;
 
     @Autowired
+    private SmsReceiverService smsReceiverService;
+
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
     @Autowired
@@ -170,7 +173,9 @@ public class SmsAlarmService {
             log.info("{}告警短信组装 alertId={} metric={} stcd={} 站名={} 参数={}",
                     source, alertId, metric, stcd, stationName, params);
 
-            SmsBatchStat stat = smsSendService.sendToPhones(properties.getReceiversAlarm(), bizType,
+            // 接收人：完全以短信管理页（接收人表）为准（未建表/该类型 0 人 = 不发）
+            SmsBatchStat stat = smsSendService.sendToPhones(
+                    smsReceiverService.resolvePhones(SmsReceiverService.BIZ_ALARM), bizType,
                     templateCode, params, alertId, silenceKey);
             if (stat.getSuccessCount() > 0) {
                 return SmsAlarmResult.sent();

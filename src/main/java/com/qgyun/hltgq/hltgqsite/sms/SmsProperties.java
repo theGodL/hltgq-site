@@ -5,14 +5,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-
 /**
- * 短信配置（AK/签名/模板/接收人全部走环境变量，见 application.properties 的 sms.* 段）。
+ * 短信配置（AK/签名/模板走环境变量，见 application.properties 的 sms.* 段）。
+ * <p><b>接收人不在配置中</b>：完全由数据库表 t_auto_hltgq_water_sms_receiver 管理
+ * （页面 /message-rule-setting.html「短信管理」Tab），原 sms.receivers.* / SMS_RECEIVERS_* 已废弃。
  * <p>生产密钥通过 deploy.sh 注入：SMS_ALIYUN_AK_ID / SMS_ALIYUN_AK_SECRET / SMS_CALLBACK_TOKEN，
  * 代码与镜像内不落真实密钥。
  * <p>开关 {@code sms.enabled} 默认关闭：关闭时不发任何短信（任务/接口直接返回），
@@ -63,14 +59,6 @@ public class SmsProperties {
     @Value("${sms.template.level:}")
     private String templateLevel;
 
-    /** 日汇总接收人（逗号分隔，原运维 msg.number8 的 30 个号码） */
-    @Value("${sms.receivers.daily:}")
-    private String receiversDailyConfig;
-
-    /** 告警接收人（逗号分隔：18956904399、18909665998） */
-    @Value("${sms.receivers.alarm:}")
-    private String receiversAlarmConfig;
-
     /** 告警回调鉴权 token（X-Sms-Token）；为空 = 拒绝所有回调（防裸奔） */
     @Value("${sms.callback.token:}")
     private String callbackToken;
@@ -106,29 +94,5 @@ public class SmsProperties {
     public boolean isClientConfigured() {
         return StringUtils.hasText(accessKeyId) && StringUtils.hasText(accessKeySecret)
                 && StringUtils.hasText(signName);
-    }
-
-    /** 日汇总接收人清单（去空白、去重） */
-    public List<String> getReceiversDaily() {
-        return parsePhones(receiversDailyConfig);
-    }
-
-    /** 告警接收人清单（去空白、去重） */
-    public List<String> getReceiversAlarm() {
-        return parsePhones(receiversAlarmConfig);
-    }
-
-    private List<String> parsePhones(String config) {
-        if (!StringUtils.hasText(config)) {
-            return Collections.emptyList();
-        }
-        Set<String> phones = new LinkedHashSet<>();
-        for (String item : config.split("[,;]")) {
-            String phone = item.trim();
-            if (!phone.isEmpty()) {
-                phones.add(phone);
-            }
-        }
-        return new ArrayList<>(phones);
     }
 }

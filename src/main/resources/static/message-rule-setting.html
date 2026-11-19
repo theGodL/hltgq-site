@@ -64,6 +64,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 /* 表格卡 */
 .panel{flex:1;min-height:0;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;overflow:hidden}
+/* 关键：.panel 的 display:flex 会覆盖 UA 默认的 [hidden]{display:none}，必须显式声明，否则切 Tab 时另一张表格仍在显示 */
+.panel[hidden]{display:none}
 .panel-bd{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 24px}
 
 /* ===== 控件（按钮圆角 8px、字号 14px、字重 400，均取平台默认规格） ===== */
@@ -234,6 +236,28 @@ td.empty:hover{background:transparent}
 .no-perm-box{display:flex;flex-direction:column;align-items:center;gap:8px;padding:48px 72px;background:var(--el-bg-color);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 .no-perm-title{font-size:16px;font-weight:500;color:var(--el-text-color-title);line-height:24px}
 .no-perm-sub{font-size:14px;color:var(--el-text-color-secondary);line-height:22px}
+
+/* ===== 短信管理 Tab（接收人清单）：类型筛选 + 状态提示条 ===== */
+.tab-sep{width:1px;height:20px;background:var(--el-border-color);margin:0 8px;flex-shrink:0}
+.sms-hd{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-shrink:0}
+.sms-tip{flex:1;font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
+.sms-tip.warn{color:var(--el-color-danger)}
+.sms-hd .sel .sel-box{height:var(--el-control-height-sm);border-radius:var(--el-radius)}
+.sms-hd .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 16px;flex-shrink:0}
+.sms-filter{width:150px;flex-shrink:0}
+
+/* 短信接收人导入弹窗（选择文件 + 写入模式） */
+.mbox-wide{width:520px}
+.mbox .f-err{align-items:flex-start}
+.mbox .f-err svg{flex-shrink:0;margin-top:2px}
+.imp-file{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.imp-file .btn{height:var(--el-control-height-sm);padding:0 14px;flex-shrink:0}
+.imp-file-name{flex:1;font-size:13px;color:var(--el-text-color-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imp-file-name.on{color:var(--el-text-color-primary)}
+.imp-mode{display:flex;flex-direction:column;gap:8px}
+.imp-opt{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--el-text-color-regular);line-height:20px;cursor:pointer}
+.imp-opt input{margin-top:3px;flex-shrink:0}
+.imp-opt b{font-weight:500;color:var(--el-text-color-primary)}
 </style>
 </head>
 <body>
@@ -243,13 +267,13 @@ td.empty:hover{background:transparent}
     <div class="tab-row">
       <div class="maint-tabs" id="type-tabs" role="tablist" aria-label="消息类型"></div>
       <button class="btn btn-primary" id="btn-add">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>新增规则
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span id="btn-add-text">新增规则</span>
       </button>
     </div>
     <div class="tab-desc" id="type-desc"></div>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="rule-panel">
     <div class="panel-bd">
       <div class="tbl-wrap">
         <table>
@@ -265,6 +289,32 @@ td.empty:hover{background:transparent}
         </table>
       </div>
       <div class="pg-bar" id="pg-bar"></div>
+    </div>
+  </div>
+
+  <!-- 短信管理：接收人清单（每日8点报 / 报警短信） -->
+  <div class="panel" id="sms-panel" hidden>
+    <div class="panel-bd">
+      <div class="sms-hd">
+        <div class="sel sms-filter" id="sel-sms-filter"></div>
+        <div class="sms-tip" id="sms-source-tip"></div>
+        <button class="btn btn-default" id="btn-sms-export">导出</button>
+        <button class="btn btn-default" id="btn-sms-import">导入</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <colgroup>
+            <col style="width:20%"><col style="width:30%"><col style="width:26%"><col style="width:24%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>短信类型</th><th>姓名</th><th>手机号码</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="sms-tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="sms-pg-bar"></div>
     </div>
   </div>
 </div>
@@ -328,6 +378,66 @@ td.empty:hover{background:transparent}
   </div>
 </aside>
 
+<!-- 短信接收人抽屉：新增/编辑（短信管理 Tab） -->
+<div class="drawer-mask" id="sms-drawer-mask"></div>
+<aside class="drawer" id="sms-drawer" aria-hidden="true">
+  <div class="drawer-hd">
+    <h3 id="sms-drawer-title">新增接收人</h3>
+    <div class="hd-acts">
+      <button class="icon-btn" id="btn-sms-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="drawer-bd">
+    <div class="f-item">
+      <label class="f-label"><i class="req">*</i>短信类型</label>
+      <div class="sel" id="sel-sms-type"></div>
+      <div class="f-err" id="err-sms-type"></div>
+    </div>
+    <div class="f-item">
+      <label class="f-label"><i class="req">*</i>姓名</label>
+      <input class="field" id="sms-name" maxlength="32" placeholder="请输入接收人姓名" autocomplete="off">
+      <div class="f-err" id="err-sms-name"></div>
+    </div>
+    <div class="f-item">
+      <label class="f-label"><i class="req">*</i>手机号码</label>
+      <input class="field" id="sms-phone" maxlength="11" placeholder="请输入 11 位手机号码" autocomplete="off">
+      <div class="f-err" id="err-sms-phone"></div>
+    </div>
+    <div class="f-hint">同一类型下手机号不可重复；编辑时短信类型不可修改（需换类型请删除后重新新增）。</div>
+  </div>
+  <div class="drawer-ft">
+    <button class="btn btn-default" id="btn-sms-cancel">取消</button>
+    <button class="btn btn-primary" id="btn-sms-save">保存</button>
+  </div>
+</aside>
+
+<!-- 短信接收人导入：选择 xlsx + 写入模式（以文件为准 / 仅新增更新） -->
+<div class="mask" id="sms-import-mask">
+  <div class="mbox mbox-wide">
+    <div class="mbox-hd">导入接收人</div>
+    <div class="mbox-bd">
+      <div class="imp-file">
+        <button class="btn btn-default" id="btn-sms-imp-pick">选择文件</button>
+        <span class="imp-file-name" id="sms-imp-file-name">未选择文件（仅支持 .xlsx；请保留首行表头，可直接用导出文件填写）</span>
+      </div>
+      <input type="file" id="sms-imp-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+      <div class="imp-mode">
+        <label class="imp-opt"><input type="radio" name="sms-imp-mode" value="replace" checked>
+          <span><b>以文件为准</b>：文件里出现的类型，库中不在文件内的接收人将被删除（文件未出现的类型不受影响）</span></label>
+        <label class="imp-opt"><input type="radio" name="sms-imp-mode" value="merge">
+          <span><b>仅新增 / 更新</b>：不删除任何已有接收人</span></label>
+      </div>
+      <div class="f-err" id="err-sms-imp"></div>
+    </div>
+    <div class="mbox-ft">
+      <button class="btn btn-default" id="btn-sms-imp-cancel">取消</button>
+      <button class="btn btn-primary" id="btn-sms-imp-ok">开始导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- 删除二次确认 -->
 <div class="mask" id="confirm-mask">
   <div class="mbox">
@@ -351,6 +461,15 @@ td.empty:hover{background:transparent}
 <script>
 /* ============================ 常量与状态 ============================ */
 const API = '/hltgq-site';
+
+/* 短信管理 Tab 编码（与 5 类消息 Tab 并列的独立视图） */
+const SMS_TAB = '__sms__';
+
+/* 短信类型字典（与后端 SmsReceiverService.BIZ_TYPE_LABELS 同口径，列表行以后端 bizTypeLabel 优先） */
+const SMS_TYPES = [{ value: 'daily', label: '每日8点报' }, { value: 'alarm', label: '报警短信' }];
+
+/* 短信管理筛选字典：all = 不传 bizType（两类全查） */
+const SMS_FILTERS = [{ value: 'all', label: '全部类型' }].concat(SMS_TYPES);
 
 /* 接收维度 → 候选 kind（后端 /message-rule/options 的 kind 参数） */
 const PICK_KINDS = { '#org#': 'org', '#position#': 'position', '#role#': 'role', '#user#': 'user' };
@@ -377,9 +496,12 @@ const S = {
   form: null,                  // 表单状态 { mode, messageType, targetType, targets:[], sites:[], row }
   pick: null,                  // 多选态 { kind:'target'|'site', optKind, temp:[], keyword:'', filtered:[] }
   flashId: null,               // 保存后需高亮的行
-  saving: false
+  saving: false,
+  /* 短信管理视图：mode=table 已有接收人 / empty 无接收人；ddlReady=false 表未建 */
+  sms: { mode: '', ddlReady: true, total: 0, page: 1, size: 20, records: [], tableCount: 0, lastType: 'daily', filterType: 'all' },
+  smsForm: null,               // 短信抽屉表单 { mode, id }
+  flashSmsId: null             // 短信保存后需高亮的行
 };
-let pendingDelete = null;
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v === null || v === undefined ? '' : v)
@@ -517,10 +639,16 @@ async function loadMeta() {
 function renderTabs() {
   $('type-tabs').innerHTML = S.typeMeta.map(t =>
     '<div class="maint-tab' + (t.value === S.tab ? ' active' : '') + '" data-v="' + esc(t.value) + '" role="tab">' +
-    esc(t.label) + '</div>').join('');
+    esc(t.label) + '</div>').join('') +
+    '<span class="tab-sep"></span>' +
+    '<div class="maint-tab' + (S.tab === SMS_TAB ? ' active' : '') + '" data-v="' + SMS_TAB + '" role="tab">短信管理</div>';
 }
 
 function renderTabDesc() {
+  if (S.tab === SMS_TAB) {
+    $('type-desc').textContent = '短信管理：维护“每日8点报”与“报警短信”的接收人清单（姓名 / 手机号码）；保存后下一次发送即生效。';
+    return;
+  }
   const t = S.typeMap[S.tab];
   $('type-desc').textContent = t && t.desc ? t.desc : '';
 }
@@ -529,10 +657,29 @@ function switchTab(v) {
   if (!v || S.tab === v) return;
   S.tab = v;
   S.page = 1;
+  S.sms.page = 1;
   renderTabs();
   renderTabDesc();
   closeDrawer();
-  loadList();
+  closeSmsDrawer();
+  closeSmsImport();
+  closeConfirm();
+  const sms = v === SMS_TAB;
+  $('rule-panel').hidden = sms;
+  $('sms-panel').hidden = !sms;
+  $('btn-add-text').textContent = sms ? '新增接收人' : '新增规则';
+  if (sms) {
+    (async () => {
+      try {
+        await loadSmsMeta();
+      } catch (e) {
+        showToast(e.message || '短信管理元数据加载失败', true);
+      }
+      await loadSmsList();
+    })();
+  } else {
+    loadList();
+  }
 }
 
 /** 候选加载（带缓存）：org/position/role/user/site */
@@ -565,8 +712,8 @@ async function loadList() {
 }
 
 /** 空态/过程态整行：空数据用平台空态插图，加载中等过程态只给文字 */
-function emptyRow(text, plain) {
-  return '<tr><td colspan="5" class="empty"><div class="empty-box">' +
+function emptyRow(text, plain, cols) {
+  return '<tr><td colspan="' + (cols || 5) + '" class="empty"><div class="empty-box">' +
     (plain ? '' : ICON.empty) + '<div>' + esc(text) + '</div></div></td></tr>';
 }
 
@@ -959,31 +1106,478 @@ async function save() {
   }
 }
 
-/* ============================ 删除 ============================ */
+/* ============================ 短信管理（接收人清单） ============================ */
+const selSmsType = createSelect($('sel-sms-type'));
+const selSmsFilter = createSelect($('sel-sms-filter')).setOptions(SMS_FILTERS).setValue('all');
+
+const smsTypeName = v => (SMS_TYPES.filter(t => t.value === v)[0] || {}).label || v || '';
+
+async function loadSmsMeta() {
+  const data = await api('/sms/receiver/meta');
+  const sms = S.sms;
+  sms.mode = data && data.mode ? data.mode : 'empty';
+  sms.ddlReady = !(data && data.ddlReady === false);
+  sms.tableCount = data && data.tableCount != null ? Number(data.tableCount) : 0;
+  renderSmsTip();
+}
+
+/** 状态提示条：表未建（需执行 DDL）/ 未添加接收人（提示新增）/ 正常（不显示） */
+function renderSmsTip() {
+  const sms = S.sms;
+  let text = '';
+  let warn = false;
+  if (!sms.ddlReady) {
+    text = '接收人表尚未创建：请先在数据库执行 sms-receiver-ddl.sql；建表前不会发送任何短信。';
+    warn = true;
+  } else if (sms.mode === 'empty') {
+    text = '暂无接收人：请点击右上角「新增接收人」添加；某类型 0 人时该类短信不发送。';
+  }
+  const tip = $('sms-source-tip');
+  tip.textContent = text;
+  tip.classList.toggle('warn', warn);
+}
+
+async function loadSmsList() {
+  const sms = S.sms;
+  const params = new URLSearchParams({ page: String(sms.page), size: String(sms.size) });
+  if (sms.filterType && sms.filterType !== 'all') params.set('bizType', sms.filterType);
+  $('sms-tbl-body').innerHTML = emptyRow('加载中...', true, 4);
+  try {
+    const data = await api('/sms/receiver/page?' + params.toString());
+    sms.mode = data && data.mode ? data.mode : 'empty';
+    if (data && data.ddlReady === false) sms.ddlReady = false;
+    sms.total = Number(data && data.total) || 0;
+    sms.records = (data && Array.isArray(data.records)) ? data.records : [];
+    if (!sms.records.length && sms.page > 1) { sms.page -= 1; return loadSmsList(); }
+    renderSmsTable();
+    renderSmsPager();
+    renderSmsTip();
+  } catch (e) {
+    sms.records = [];
+    sms.total = 0;
+    $('sms-tbl-body').innerHTML = emptyRow('数据加载失败', false, 4);
+    renderSmsPager();
+    showToast(e.message || '数据加载失败', true);
+  }
+}
+
+function renderSmsTable() {
+  const sms = S.sms;
+  const tb = $('sms-tbl-body');
+  if (!sms.records.length) {
+    const msg = !sms.ddlReady ? '接收人表尚未创建（请先执行 sms-receiver-ddl.sql）'
+      : (sms.mode === 'empty' ? '暂无接收人，请点击右上角「新增接收人」添加' : '该类型暂无接收人（0 人时不会发送该类短信）');
+    tb.innerHTML = emptyRow(msg, false, 4);
+    return;
+  }
+  tb.innerHTML = sms.records.map(r => {
+    const key = r.id;
+    const acts = actBtn('sms-edit', '编辑接收人', ICON.pencil, key) +
+      actBtn('sms-del', '删除接收人', ICON.trash, key, true);
+    return '<tr data-id="' + esc(key) + '">' +
+      '<td><span class="tag">' + esc(r.bizTypeLabel || smsTypeName(r.bizType) || '--') + '</span></td>' +
+      '<td>' + esc(r.name || '--') + '</td>' +
+      '<td>' + esc(r.phone || '--') + '</td>' +
+      '<td class="col-act">' + acts + '</td></tr>';
+  }).join('');
+
+  if (S.flashSmsId) {
+    const tr = tb.querySelector('tr[data-id="' + S.flashSmsId + '"]');
+    S.flashSmsId = null;
+    if (tr) {
+      tr.classList.add('flash');
+      setTimeout(() => tr.classList.remove('flash'), 1100);
+    }
+  }
+}
+
+function renderSmsPager() {
+  const sms = S.sms;
+  const totalPages = Math.max(1, Math.ceil(sms.total / sms.size));
+  const sizes = [10, 20, 50, 100];
+  let html = '<span class="pg-info">共 ' + sms.total + ' 条</span><div class="pg-btns">' +
+    '<button class="pg-btn" data-pg="prev"' + (sms.page <= 1 ? ' disabled' : '') + '>‹</button>';
+  pageNumbers(sms.page, totalPages).forEach(p => {
+    html += p === '...'
+      ? '<span class="pg-ellipsis">···</span>'
+      : '<button class="pg-btn' + (p === sms.page ? ' active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+  });
+  html += '<button class="pg-btn" data-pg="next"' + (sms.page >= totalPages ? ' disabled' : '') + '>›</button></div>' +
+    '<select class="pg-size" id="sms-pg-size">' +
+    sizes.map(n => '<option value="' + n + '"' + (n === sms.size ? ' selected' : '') + '>' + n + ' 条/页</option>').join('') +
+    '</select>' +
+    '<span class="pg-jump">跳至<input type="text" id="sms-pg-jump" inputmode="numeric" aria-label="跳至页码"' +
+    ' value="' + sms.page + '" autocomplete="off">页</span>';
+  $('sms-pg-bar').innerHTML = html;
+}
+
+function smsJumpToPage(val) {
+  const sms = S.sms;
+  const totalPages = Math.max(1, Math.ceil(sms.total / sms.size));
+  const n = parseInt(String(val).trim(), 10);
+  const target = isNaN(n) ? sms.page : Math.min(totalPages, Math.max(1, n));
+  const box = $('sms-pg-jump');
+  if (box) box.value = String(target);
+  if (target === sms.page) return;
+  sms.page = target;
+  loadSmsList();
+}
+
+function findSmsRow(id) {
+  return S.sms.records.filter(r => String(r.id) === String(id))[0] || null;
+}
+
+function onSmsTableClick(e) {
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  const row = findSmsRow(btn.dataset.id);
+  if (!row) return;
+  if (btn.dataset.act === 'sms-edit') openSmsDrawer('edit', row);
+  else if (btn.dataset.act === 'sms-del') askDeleteSms(row);
+}
+
+function onSmsPagerClick(e) {
+  const btn = e.target.closest('[data-pg]');
+  if (!btn || btn.disabled) return;
+  const sms = S.sms;
+  const totalPages = Math.max(1, Math.ceil(sms.total / sms.size));
+  const v = btn.dataset.pg;
+  if (v === 'prev') sms.page = Math.max(1, sms.page - 1);
+  else if (v === 'next') sms.page = Math.min(totalPages, sms.page + 1);
+  else sms.page = Number(v);
+  loadSmsList();
+}
+
+/* ============================ 短信抽屉：新增/编辑接收人 ============================ */
+function showSmsDrawer() {
+  $('sms-drawer-mask').classList.add('show');
+  $('sms-drawer').classList.add('show');
+  $('sms-drawer').setAttribute('aria-hidden', 'false');
+}
+
+function closeSmsDrawer() {
+  $('sms-drawer-mask').classList.remove('show');
+  $('sms-drawer').classList.remove('show');
+  $('sms-drawer').setAttribute('aria-hidden', 'true');
+  S.smsForm = null;
+  clearSmsErrors();
+}
+
+/** 新增入口：表未建时提示先执行 DDL */
+function requestCreateSms() {
+  if (!S.sms.ddlReady) {
+    showToast('接收人表尚未创建，请先在数据库执行 sms-receiver-ddl.sql', true);
+    return;
+  }
+  openSmsDrawer('create');
+}
+
+function openSmsDrawer(mode, row) {
+  S.smsForm = { mode: mode, id: row ? row.id : null };
+  clearSmsErrors();
+  $('sms-drawer-title').textContent = mode === 'create' ? '新增接收人' : '编辑接收人';
+  selSmsType.setOptions(SMS_TYPES);
+  if (mode === 'edit') {
+    selSmsType.setDisabled(true).setValue(row.bizType);
+  } else {
+    selSmsType.setDisabled(false).setValue(S.sms.filterType !== 'all' ? S.sms.filterType : (S.sms.lastType || 'daily'));
+  }
+  $('sms-name').value = row ? (row.name || '') : '';
+  $('sms-phone').value = row ? (row.phone || '') : '';
+  showSmsDrawer();
+}
+
+function setSmsError(field, msg) {
+  if (field === 'type') selSmsType.setError(!!msg);
+  const box = $('err-sms-' + field);
+  if (box) {
+    box.innerHTML = msg ? ICON.err + '<span>' + esc(msg) + '</span>' : '';
+    box.classList.toggle('show', !!msg);
+  }
+}
+
+const clearSmsErrors = () => ['type', 'name', 'phone'].forEach(f => setSmsError(f, ''));
+
+function validateSms() {
+  clearSmsErrors();
+  let bad = false;
+  const bizType = selSmsType.getValue();
+  const name = $('sms-name').value.trim();
+  const phone = $('sms-phone').value.trim();
+  if (!bizType) {
+    setSmsError('type', '请选择短信类型');
+    bad = true;
+  }
+  if (!name) {
+    setSmsError('name', '请输入姓名');
+    bad = true;
+  } else if (name.length > 32) {
+    setSmsError('name', '姓名最长 32 字');
+    bad = true;
+  }
+  if (!phone) {
+    setSmsError('phone', '请输入手机号码');
+    bad = true;
+  } else if (!/^1\d{10}$/.test(phone)) {
+    setSmsError('phone', '手机号码格式不正确（须为 1 开头的 11 位数字）');
+    bad = true;
+  }
+  return !bad;
+}
+
+let smsSaving = false;
+function setSmsSaving(on) {
+  smsSaving = !!on;
+  const btn = $('btn-sms-save');
+  btn.disabled = !!on;
+  btn.classList.toggle('is-loading', !!on);
+}
+
+async function saveSms() {
+  if (smsSaving || !S.smsForm) return;
+  if (!validateSms()) return;
+  const f = S.smsForm;
+  const bizType = selSmsType.getValue();
+  const body = { name: $('sms-name').value.trim(), phone: $('sms-phone').value.trim() };
+  if (f.mode === 'create') body.bizType = bizType;
+  setSmsSaving(true);
+  try {
+    const saved = f.mode === 'create'
+      ? await api('/sms/receiver', { method: 'POST', body: body })
+      : await api('/sms/receiver/' + encodeURIComponent(f.id), { method: 'PUT', body: body });
+    S.sms.lastType = bizType;
+    S.flashSmsId = saved && saved.id ? saved.id : null;
+    closeSmsDrawer();
+    await loadSmsMeta();
+    await loadSmsList();
+    showToast('保存成功');
+  } catch (e) {
+    // 同类型号码重复等业务错误：抽屉不关、已填内容保留
+    showToast(e.message || '保存失败', true);
+  } finally {
+    setSmsSaving(false);
+  }
+}
+
+/* ============================ 短信导入 / 导出（Excel） ============================ */
+let smsImportFile = null;
+let smsImporting = false;
+
+/** 当前筛选的类型（all = 空串，不传 bizType） */
+function smsFilterBizType() {
+  const v = S.sms.filterType;
+  return v && v !== 'all' ? v : '';
+}
+
+/** 文件名时间戳 yyyyMMddHHmmss（与后端导出文件名同口径） */
+function smsStamp() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
+    p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
+/** 导出当前筛选下的全部接收人（不分页） */
+async function exportSms() {
+  if (!S.sms.ddlReady) {
+    showToast('接收人表尚未创建，请先在数据库执行 sms-receiver-ddl.sql', true);
+    return;
+  }
+  const btn = $('btn-sms-export');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const bizType = smsFilterBizType();
+    const res = await fetch(API + '/sms/receiver/export' +
+      (bizType ? '?bizType=' + encodeURIComponent(bizType) : ''), { credentials: 'include' });
+    if (!res.ok) {
+      let msg = '导出失败（HTTP ' + res.status + '）';
+      try {
+        const data = JSON.parse(await res.text());
+        msg = (data && (data.message || data.error)) || msg;
+      } catch (e) { /* 非 JSON 错误体，用默认提示 */ }
+      throw new Error(msg);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '短信接收人_' + smsStamp() + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('导出成功');
+  } catch (e) {
+    showToast(e.message || '导出失败', true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function openSmsImport() {
+  if (!S.sms.ddlReady) {
+    showToast('接收人表尚未创建，请先在数据库执行 sms-receiver-ddl.sql', true);
+    return;
+  }
+  smsImportFile = null;
+  $('sms-imp-input').value = '';
+  const name = $('sms-imp-file-name');
+  name.textContent = '未选择文件（仅支持 .xlsx；请保留首行表头，可直接用导出文件填写）';
+  name.classList.remove('on');
+  document.querySelectorAll('input[name="sms-imp-mode"]').forEach(r => { r.checked = r.value === 'replace'; });
+  setSmsError('imp', '');
+  $('sms-import-mask').classList.add('show');
+}
+
+function closeSmsImport() {
+  $('sms-import-mask').classList.remove('show');
+  smsImportFile = null;
+  setSmsError('imp', '');
+}
+
+function onSmsImportFileChange(e) {
+  const file = e.target.files && e.target.files[0];
+  smsImportFile = null;
+  if (!file) return;
+  if (!/\.xlsx$/i.test(file.name)) {
+    e.target.value = '';
+    setSmsError('imp', '仅支持 .xlsx 格式文件');
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    e.target.value = '';
+    setSmsError('imp', '文件超过 20MB，请拆分后再导入');
+    return;
+  }
+  smsImportFile = file;
+  setSmsError('imp', '');
+  const name = $('sms-imp-file-name');
+  name.textContent = file.name + '（' + (file.size / 1024).toFixed(1) + ' KB）';
+  name.classList.add('on');
+}
+
+/** 点击「开始导入」：replace 涉及删除，先二次确认删除范围；merge 无删除直接提交 */
+function submitSmsImport() {
+  if (smsImporting) return;
+  if (!smsImportFile) {
+    setSmsError('imp', '请先选择要导入的 .xlsx 文件');
+    return;
+  }
+  const modeEl = document.querySelector('input[name="sms-imp-mode"]:checked');
+  const mode = modeEl ? modeEl.value : 'replace';
+  if (mode === 'replace') {
+    openConfirm('将按文件覆盖：文件中出现的类型，库中不在文件内的接收人会被删除' +
+      '（文件未出现的类型不受影响）。建议先「导出」备份，是否继续？', '继续导入', () => doSubmitSmsImport(mode));
+    return;
+  }
+  doSubmitSmsImport(mode);
+}
+
+async function doSubmitSmsImport(mode) {
+  closeConfirm();
+  const btn = $('btn-sms-imp-ok');
+  smsImporting = true;
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  setSmsError('imp', '');
+  try {
+    const fd = new FormData();
+    fd.append('file', smsImportFile);
+    fd.append('mode', mode);
+    const res = await fetch(API + '/sms/receiver/import', { method: 'POST', credentials: 'include', body: fd });
+    const text = await res.text();
+    let data = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch (e) { data = null; }
+    }
+    if (!res.ok) {
+      throw new Error((data && (data.message || data.error)) || ('导入失败（HTTP ' + res.status + '）'));
+    }
+    closeSmsImport();
+    await loadSmsMeta();
+    await loadSmsList();
+    const parts = ['新增 ' + (Number(data && data.inserted) || 0),
+      '更新 ' + (Number(data && data.updated) || 0)];
+    if (mode === 'replace') parts.push('删除 ' + (Number(data && data.deleted) || 0));
+    const noName = Number(data && data.noName) || 0;
+    showToast('导入完成：' + parts.join(' / ') + (noName ? '（' + noName + ' 条姓名待补录）' : ''));
+  } catch (e) {
+    setSmsError('imp', e.message || '导入失败');
+  } finally {
+    smsImporting = false;
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+/* ============================ 删除 / 二次确认 ============================ */
+let pendingDelete = null;        // 规则删除目标
+let pendingSmsDelete = null;     // 短信接收人删除目标
+let confirmAction = null;        // 当前确认执行的异步动作
+
+function openConfirm(text, okText, action) {
+  confirmAction = action;
+  $('confirm-text').textContent = text;
+  $('confirm-ok').textContent = okText || '删除';
+  $('confirm-mask').classList.add('show');
+}
+
+function closeConfirm() {
+  confirmAction = null;
+  pendingDelete = null;
+  pendingSmsDelete = null;
+  $('confirm-mask').classList.remove('show');
+}
+
+async function runConfirm() {
+  if (!confirmAction) return;
+  const btn = $('confirm-ok');
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  try {
+    await confirmAction();
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
 function askDelete(row) {
   pendingDelete = row;
-  $('confirm-text').textContent = '删除后，【' + typeName(row.messageType) +
-    '】将不再按此规则发送给“' + (row.targetNames || row.targetId || '') + '”，是否继续？';
-  $('confirm-mask').classList.add('show');
+  openConfirm('删除后，【' + typeName(row.messageType) + '】将不再按此规则发送给“' +
+    (row.targetNames || row.targetId || '') + '”，是否继续？', '删除', doDelete);
 }
 
 async function doDelete() {
   if (!pendingDelete) return;
   const row = pendingDelete;
-  const btn = $('confirm-ok');
-  btn.disabled = true;
-  btn.classList.add('is-loading');
   try {
     await api('/message-rule/' + encodeURIComponent(row.id), { method: 'DELETE' });
-    pendingDelete = null;
-    $('confirm-mask').classList.remove('show');
+    closeConfirm();
     await loadList();
     showToast('删除成功');
   } catch (e) {
     showToast(e.message || '删除失败', true);
-  } finally {
-    btn.disabled = false;
-    btn.classList.remove('is-loading');
+  }
+}
+
+function askDeleteSms(row) {
+  pendingSmsDelete = row;
+  openConfirm('删除后，【' + (row.bizTypeLabel || smsTypeName(row.bizType)) + '】将不再向“' +
+    (row.name || '未命名（待补录）') + '（' + row.phone + '）”发送，是否继续？', '删除', doDeleteSms);
+}
+
+async function doDeleteSms() {
+  if (!pendingSmsDelete) return;
+  const row = pendingSmsDelete;
+  try {
+    await api('/sms/receiver/' + encodeURIComponent(row.id), { method: 'DELETE' });
+    closeConfirm();
+    await loadSmsMeta();
+    await loadSmsList();
+    showToast('删除成功');
+  } catch (e) {
+    showToast(e.message || '删除失败', true);
   }
 }
 
@@ -993,7 +1587,7 @@ function bindEvents() {
     const tab = e.target.closest('.maint-tab');
     if (tab) switchTab(tab.dataset.v);
   });
-  $('btn-add').addEventListener('click', () => openDrawer('create'));
+  $('btn-add').addEventListener('click', () => S.tab === SMS_TAB ? requestCreateSms() : openDrawer('create'));
   $('btn-close').addEventListener('click', closeDrawer);
   $('btn-cancel').addEventListener('click', closeDrawer);
   $('btn-save').addEventListener('click', save);
@@ -1046,6 +1640,40 @@ function bindEvents() {
 
   selType.onChange(onChangeType);
   selTarget.onChange(onChangeTarget);
+  selSmsFilter.onChange(v => {
+    S.sms.filterType = v || 'all';
+    S.sms.page = 1;
+    loadSmsList();
+  });
+
+  // 短信管理：抽屉 / 表格操作 / 分页
+  $('btn-sms-close').addEventListener('click', closeSmsDrawer);
+  $('btn-sms-cancel').addEventListener('click', closeSmsDrawer);
+  $('btn-sms-save').addEventListener('click', saveSms);
+  $('sms-drawer-mask').addEventListener('click', closeSmsDrawer);
+  // 短信管理：导入 / 导出
+  $('btn-sms-export').addEventListener('click', exportSms);
+  $('btn-sms-import').addEventListener('click', openSmsImport);
+  $('btn-sms-imp-pick').addEventListener('click', () => $('sms-imp-input').click());
+  $('sms-imp-input').addEventListener('change', onSmsImportFileChange);
+  $('btn-sms-imp-cancel').addEventListener('click', closeSmsImport);
+  $('btn-sms-imp-ok').addEventListener('click', submitSmsImport);
+  $('sms-tbl-body').addEventListener('click', onSmsTableClick);
+  const smsPgBar = $('sms-pg-bar');
+  smsPgBar.addEventListener('click', onSmsPagerClick);
+  smsPgBar.addEventListener('change', e => {
+    if (e.target && e.target.id === 'sms-pg-size') {
+      S.sms.size = Number(e.target.value) || 20;
+      S.sms.page = 1;
+      loadSmsList();
+    }
+  });
+  smsPgBar.addEventListener('keydown', e => {
+    if (e.target && e.target.id === 'sms-pg-jump' && e.key === 'Enter') e.target.blur();
+  });
+  smsPgBar.addEventListener('focusout', e => {
+    if (e.target && e.target.id === 'sms-pg-jump') smsJumpToPage(e.target.value);
+  });
 
   const pgBar = $('pg-bar');
   $('tbl-body').addEventListener('click', onTableClick);
@@ -1064,24 +1692,19 @@ function bindEvents() {
     if (e.target && e.target.id === 'pg-jump') jumpToPage(e.target.value);
   });
 
-  $('confirm-cancel').addEventListener('click', () => {
-    pendingDelete = null;
-    $('confirm-mask').classList.remove('show');
-  });
-  $('confirm-ok').addEventListener('click', doDelete);
+  $('confirm-cancel').addEventListener('click', closeConfirm);
+  $('confirm-ok').addEventListener('click', runConfirm);
 
   document.addEventListener('click', e => {
     if (!e.target.closest('.sel')) closeAllSelects(null);
   });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if ($('confirm-mask').classList.contains('show')) {
-      pendingDelete = null;
-      $('confirm-mask').classList.remove('show');
-      return;
-    }
+    if ($('confirm-mask').classList.contains('show')) { closeConfirm(); return; }
+    if ($('sms-import-mask').classList.contains('show')) { closeSmsImport(); return; }
     if (document.querySelector('.sel.open')) { closeAllSelects(null); return; }
     if (S.pick) { backToForm(); return; }   // 多选态先返回表单
+    if ($('sms-drawer').classList.contains('show')) { closeSmsDrawer(); return; }
     if ($('drawer').classList.contains('show')) closeDrawer();
   });
 }

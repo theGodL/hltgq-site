@@ -241,6 +241,22 @@ CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_rule (
 -- 列兜底（表已建但缺 2026-10 新增列时补齐，幂等；独立执行版见项目根 message-rule-ddl.sql）
 ALTER TABLE t_auto_hltgq_water_message_rule ADD COLUMN IF NOT EXISTS site_id VARCHAR;
 
+-- 短信接收人表（2026-11 新增，页面 message-rule-setting.html「短信管理」Tab 维护；独立执行版见项目根 sms-receiver-ddl.sql）
+-- 发送取人口径：表不存在/为空 → 用 application.properties 配置清单；表有数据 → 完全以表为准（某类型空=该类型不发）
+CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_sms_receiver (
+    id         VARCHAR(64) PRIMARY KEY,
+    biz_type   VARCHAR(16) NOT NULL,          -- 短信类型：daily=每日8点报 / alarm=报警短信
+    name       VARCHAR(64),                   -- 接收人姓名（应用层必填，最长 32 字）
+    phone      VARCHAR(20) NOT NULL,          -- 手机号码（11 位，应用层校验）
+    corp_code  VARCHAR(64),
+    created_at TIMESTAMP,
+    created_by VARCHAR(64),
+    updated_at TIMESTAMP,
+    updated_by VARCHAR(64)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_sms_receiver_biz_phone
+    ON "qixiao-apaas".t_auto_hltgq_water_sms_receiver(biz_type, phone);
+
 -- ========== 系统资源监控（2026-09 新增，页面 system-monitor.html） ==========
 -- 故障记录：软件故障（GlobalExceptionHandler 上游依赖异常埋点）+ 系统故障（服务重启/依赖中断/资源越限）
 -- 同键（category+fault_type+fault_source）在抑制窗口内只记一条，落库异步、失败不影响业务链路

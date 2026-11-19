@@ -21,11 +21,8 @@ CONTAINER_NAME="hltgq-site"
 SMS_ALIYUN_AK_ID="${SMS_ALIYUN_AK_ID:-}"
 SMS_ALIYUN_AK_SECRET="${SMS_ALIYUN_AK_SECRET:-}"
 SMS_CALLBACK_TOKEN="${SMS_CALLBACK_TOKEN:-}"
-# 接收人：生产清单（2026-11-13 恢复正式接收人）
-# 不注入 SMS_RECEIVERS_* 时容器自动取镜像内默认：日汇总 32 人、告警 4 人（application.properties）
-# 如需临时只发测试号：SMS_RECEIVERS_DAILY=15212773620 SMS_RECEIVERS_ALARM=15212773620 ./deploy.sh
-#SMS_RECEIVERS_ALARM="${SMS_RECEIVERS_ALARM:-15212773620}"
-#SMS_RECEIVERS_DAILY="${SMS_RECEIVERS_DAILY:-15212773620}"
+# 接收人：由数据库表 t_auto_hltgq_water_sms_receiver 管理（页面「短信管理」Tab 维护）
+# 原 SMS_RECEIVERS_DAILY / SMS_RECEIVERS_ALARM 已废弃：应用不再读取（2026-11 起）
 
 case "${1:-deploy}" in
     deploy)
@@ -59,13 +56,6 @@ case "${1:-deploy}" in
         fi
         if [ -n "${SMS_CALLBACK_TOKEN:-}" ]; then
             EXTRA_ENV+=(-e "SMS_CALLBACK_TOKEN=${SMS_CALLBACK_TOKEN}")
-        fi
-        # 接收人：顶部已注释（生产清单 32/4 人取镜像内默认）；临时测试号可用环境变量传入
-        if [ -n "${SMS_RECEIVERS_ALARM:-}" ]; then
-            EXTRA_ENV+=(-e "SMS_RECEIVERS_ALARM=${SMS_RECEIVERS_ALARM}")
-        fi
-        if [ -n "${SMS_RECEIVERS_DAILY:-}" ]; then
-            EXTRA_ENV+=(-e "SMS_RECEIVERS_DAILY=${SMS_RECEIVERS_DAILY}")
         fi
         # 短信总开关：AK 未注入时默认关闭（避免落一堆 NOT_CONFIGURED 失败记录）
         SMS_ENABLED_DEFAULT=true

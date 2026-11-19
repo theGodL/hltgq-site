@@ -30,7 +30,7 @@ import java.util.Map;
  *       四舍五入结果，因老系统 08:01 结算时 13 日 08:00 整点报文尚缺一条 0.5，数据到齐后应同为 4.67）；</li>
  *   <li>水位 = 坝上/坝下/周家河三站 TM &lt;= 今日 08:00 最新一条 Z（绝不取 08:00 之后的数据——08:00 后属于下一水文日）；</li>
  *   <li>time = 昨日日期（水文日标签），hour 固定 8；</li>
- *   <li>接收人 = 原运维 msg.number8 的 30 人清单 + 项目经理 + 研发负责人（配置 sms.receivers.daily）。</li>
+ *   <li>接收人 = 短信管理页（接收人表）清单，完全以表为准（未建表/该类型 0 人 = 不发送）。</li>
  * </ul>
  * <p><b>取数策略：宁可少发，绝不发错误短信</b>——短信变量不允许出现"暂无"：
  * 12 站 08:00 整点报文全缺（数据链路异常，此时"0.00"是假数据）、到报不足半数（缺站按 0 平均严重偏低）、
@@ -50,6 +50,9 @@ public class SmsDailySummaryService {
 
     @Autowired
     private SmsSendService smsSendService;
+
+    @Autowired
+    private SmsReceiverService smsReceiverService;
 
     @Autowired
     private ShortIdGenerator shortIdGenerator;
@@ -172,7 +175,8 @@ public class SmsDailySummaryService {
         log.info("日汇总短信取数 endTm={} 到报站数={} 雨量(全站DYP差值平均)={} 水位[坝上={}, 坝下={}, 周家河={}]",
                 endTm, ready, rainAvg, levelBashang, levelBaxia, levelZhoujiahe);
 
-        smsSendService.sendToPhones(properties.getReceiversDaily(), "daily",
+        // 接收人：完全以短信管理页（接收人表）为准（未建表/该类型 0 人 = 不发）
+        smsSendService.sendToPhones(smsReceiverService.resolvePhones(SmsReceiverService.BIZ_DAILY), "daily",
                 properties.getTemplateDaily(), params, null, null);
     }
 
