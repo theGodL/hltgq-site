@@ -18,7 +18,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 水文日汇总短信（模板 SMS_489685013）：每日 08:01 发送昨日水文日汇总。
+ * 水文日汇总短信（模板 SMS_489685013）：每日 08:01 发早 8 点报，每日 20:00 发晚 8 点报。
+ * <p><b>早/晚两份短信内容完全一致</b>：同一个模板、同一套参数、同一数据截止（今日 08:00），
+ * 唯一区别是接收人清单（daily / evening）与发送记录 biz_type；晚 8 点不等报文。
  * <p>口径（2026-11-13 依据业主老系统"时段雨情"导出数据逐行对账后定稿，完全复刻老系统公式）：
  * <ul>
  *   <li>雨量 = 320640 系列<b>全部 12 个雨量站</b>（档案监测类型含 #2#）上一水文日雨量的算术平均；
@@ -61,7 +63,7 @@ public class SmsDailySummaryService {
     private ObjectMapper objectMapper;
 
     /**
-     * 调度入口（08:01 触发）：<b>先等 08:00 整点报文到齐（最迟等到 08:15），再组装发送</b>。
+     * 早 8 点报调度入口（08:01 触发）：<b>先等 08:00 整点报文到齐（最迟等到 08:15），再组装发送</b>。
      * <p>为什么等：2026-11-13 实测 12 站 08:00 整点报文从 08:00:03 陆续入库到 08:06:29，
      * 老系统 08:02~08:05 结算时缺一条 0.5（4.63=55.5/12）；等齐后发送 = 数据完整值，与老系统
      * 公式一致而数值更准，且避免我们 08:01 结算时缺更多（实测 08:01 仅 4 站到库）。
@@ -74,7 +76,35 @@ public class SmsDailySummaryService {
         }
         LocalDateTime endTm = LocalDate.now().atTime(8, 0);
         int ready = waitHourlyReportsReady(endTm);
-        sendDailySummary(endTm, ready);
+        sendSummary(endTm, ready, SmsReceiverService.BIZ_DAILY, "每日8点报");
+    }
+
+    /**
+     * 晚 8 点报调度入口（20:00 触发）：内容与早 8 点报<b>完全一致</b>
+     * （同模板、同参数、endTm=今日 08:00），只换接收人清单（evening）与记录 biz_type。
+     * <p>20:00 时今日 08:00 整点报文早已入库，<b>不等待报文</b>；仍执行“取数不全不发送”校验。
+     */
+    public void runEveningSummary() {
+        if (!properties.isEnabled()) {
+            log.info("短信总开关关闭（sms.enabled=false），跳过晚8点报短信");
+            return;
+        }
+        LocalDateTime endTm = LocalDate.now().atTime(8, 0);
+        sendSummary(endTm, recordMapper.countRainStationsWithReportAt(endTm),
+                SmsReceiverService.BIZ_EVENING, "晚8点报");
+    }
+
+    /**
+     * 手动入口（POST /sms/evening/send）：立即执行一次晚 8 点报（部署验证晚 8 点链路用）。
+     */
+    public void sendEveningSummaryNow() {
+        if (!properties.isEnabled()) {
+            log.info("短信总开关关闭（sms.enabled=false），跳过晚8点报短信");
+            return;
+        }
+        LocalDateTime endTm = LocalDate.now().atTime(8, 0);
+        sendSummary(endTm, recordMapper.countRainStationsWithReportAt(endTm),
+                SmsReceiverService.BIZ_EVENING, "晚8点报");
     }
 
     /**
@@ -87,7 +117,8 @@ public class SmsDailySummaryService {
             return;
         }
         LocalDateTime endTm = LocalDate.now().atTime(8, 0);
-        sendDailySummary(endTm, recordMapper.countRainStationsWithReportAt(endTm));
+        sendSummary(endTm, recordMapper.countRainStationsWithReportAt(endTm),
+                SmsReceiverService.BIZ_DAILY, "每日8点报");
     }
 
     /**
@@ -125,15 +156,18 @@ public class SmsDailySummaryService {
     }
 
     /**
-     * 组装"平均雨量 + 三站 08:00 水位"并发送给日汇总接收人。
+     * 组装“平均雨量 + 三站 08:00 水位”并发送给指定类型的接收人（早 8 点报 / 晚 8 点报共用）。
      * <p><b>取数不全一律不发送</b>（宁可少发，绝不发错误短信）：
      * ready=0（12 站整点报文全缺，雨量"0.00"必为假数据）或任一站水位缺数 → 落 skipped 记录（NO_DATA）。
+     *
+     * @param bizType 接收人类型（daily / evening），同时写发送记录 biz_type
+     * @param scene   日志场景名（每日8点报 / 晚8点报）
      */
-    private void sendDailySummary(LocalDateTime endTm, int ready) {
+    private void sendSummary(LocalDateTime endTm, int ready, String bizType, String scene) {
         String dayLabel = LocalDate.now().minusDays(1).toString();
         if (ready <= 0) {
-            log.error("日汇总短信不发送：12 站今日 08:00 整点报文全缺（数据链路异常），雨量不可信 endTm={}", endTm);
-            saveNoDataSkipRecord(dayLabel, "12 站 08:00 整点报文全缺，雨量不可信，未发送");
+            log.error("{}短信不发送：12 站今日 08:00 整点报文全缺（数据链路异常），雨量不可信 endTm={}", scene, endTm);
+            saveNoDataSkipRecord(dayLabel, bizType, "12 站 08:00 整点报文全缺，雨量不可信，未发送");
             return;
         }
         // 到报不足半数同样拒发：少量站到报文时其余站按 0 参与平均会严重偏低（如 3/12 站到报文，
@@ -141,9 +175,9 @@ public class SmsDailySummaryService {
         // 正常日 08:00 报文在 08:06 前 12/12 齐，不会触发此分支。
         int expectedStations = recordMapper.countRainStations();
         if (expectedStations > 0 && ready * 2 < expectedStations) {
-            log.error("日汇总短信不发送：08:00 整点报文仅到 {}/{} 站（不足半数，缺站按 0 平均会严重失真），宁可少发不误发",
-                    ready, expectedStations);
-            saveNoDataSkipRecord(dayLabel, "到报站数不足半数（" + ready + "/" + expectedStations + "），未发送");
+            log.error("{}短信不发送：08:00 整点报文仅到 {}/{} 站（不足半数，缺站按 0 平均会严重失真），宁可少发不误发",
+                    scene, ready, expectedStations);
+            saveNoDataSkipRecord(dayLabel, bizType, "到报站数不足半数（" + ready + "/" + expectedStations + "），未发送");
             return;
         }
         LocalDateTime baseTm = endTm.minusDays(1);
@@ -157,9 +191,9 @@ public class SmsDailySummaryService {
         String levelZhoujiahe = readLevel(properties.getStationZhoujiahe(), endTm);
 
         if (rainAvg == null || levelBashang == null || levelBaxia == null || levelZhoujiahe == null) {
-            log.error("日汇总短信不发送：取数不全（雨量={} 坝上={} 坝下={} 周家河={}），宁可少发不误发",
-                    rainAvg, levelBashang, levelBaxia, levelZhoujiahe);
-            saveNoDataSkipRecord(dayLabel, "取数不全未发送（雨量=" + rainAvg + " 坝上=" + levelBashang
+            log.error("{}短信不发送：取数不全（雨量={} 坝上={} 坝下={} 周家河={}），宁可少发不误发",
+                    scene, rainAvg, levelBashang, levelBaxia, levelZhoujiahe);
+            saveNoDataSkipRecord(dayLabel, bizType, "取数不全未发送（雨量=" + rainAvg + " 坝上=" + levelBashang
                     + " 坝下=" + levelBaxia + " 周家河=" + levelZhoujiahe + "）");
             return;
         }
@@ -172,24 +206,28 @@ public class SmsDailySummaryService {
         params.put("baxia", levelBaxia);
         params.put("zhoujiahe", levelZhoujiahe);
 
-        log.info("日汇总短信取数 endTm={} 到报站数={} 雨量(全站DYP差值平均)={} 水位[坝上={}, 坝下={}, 周家河={}]",
-                endTm, ready, rainAvg, levelBashang, levelBaxia, levelZhoujiahe);
+        log.info("{}短信取数 endTm={} 到报站数={} 雨量(全站DYP差值平均)={} 水位[坝上={}, 坝下={}, 周家河={}]",
+                scene, endTm, ready, rainAvg, levelBashang, levelBaxia, levelZhoujiahe);
 
         // 接收人：完全以短信管理页（接收人表）为准（未建表/该类型 0 人 = 不发）
-        smsSendService.sendToPhones(smsReceiverService.resolvePhones(SmsReceiverService.BIZ_DAILY), "daily",
+        List<String> receivers = smsReceiverService.resolvePhones(bizType);
+        log.info("{}短信接收人：{} 个（bizType={}）", scene, receivers.size(), bizType);
+        smsSendService.sendToPhones(receivers, bizType,
                 properties.getTemplateDaily(), params, null, null);
     }
 
     /**
      * 未发送落痕（send_status='skipped'，phone 占位 '-'）：让运维在发送记录页能看到
-     * "某天为什么没收到日汇总短信"，response_code=NO_DATA 标识取数不全。
+     * "某天为什么没收到早/晚 8 点报短信"，response_code=NO_DATA 标识取数不全。
+     *
+     * @param bizType 发送记录 biz_type（daily / evening）
      */
-    private void saveNoDataSkipRecord(String dayLabel, String reason) {
+    private void saveNoDataSkipRecord(String dayLabel, String bizType, String reason) {
         try {
             LocalDateTime now = LocalDateTime.now();
             Map<String, Object> row = new HashMap<>();
             row.put("id", shortIdGenerator.nextUUID(null));
-            row.put("biz_type", "daily");
+            row.put("biz_type", bizType);
             row.put("alert_id", null);
             row.put("silence_key", null);
             row.put("phone", "-");
@@ -211,7 +249,7 @@ public class SmsDailySummaryService {
             row.put("now", now);
             recordMapper.insertRecord(row);
         } catch (Exception e) {
-            log.error("日汇总未发送记录落库失败 day={} err={}", dayLabel, e.toString());
+            log.error("{}未发送记录落库失败 day={} err={}", bizType, dayLabel, e.toString());
         }
     }
 

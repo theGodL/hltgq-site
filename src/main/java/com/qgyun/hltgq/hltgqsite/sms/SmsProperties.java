@@ -67,6 +67,13 @@ public class SmsProperties {
     @Value("${sms.daily.cron:0 1 8 * * ?}")
     private String dailyCron;
 
+    /**
+     * 晚 8 点报任务 cron（每天 20:00）：内容与早 8 点报完全相同（同一个模板 sms.template.daily、
+     * 同一套参数与数据截止 08:00），只是接收人取 evening 清单、发送记录 biz_type=evening。
+     */
+    @Value("${sms.evening.cron:0 0 20 * * ?}")
+    private String eveningCron;
+
     /** 同站点同指标静默窗口（分钟） */
     @Value("${sms.alarm.silence-minutes:30}")
     private int alarmSilenceMinutes;

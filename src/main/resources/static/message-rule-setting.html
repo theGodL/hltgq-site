@@ -239,12 +239,19 @@ td.empty:hover{background:transparent}
 
 /* ===== 短信管理 Tab（接收人清单）：类型筛选 + 状态提示条 ===== */
 .tab-sep{width:1px;height:20px;background:var(--el-border-color);margin:0 8px;flex-shrink:0}
-.sms-hd{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-shrink:0}
-.sms-tip{flex:1;font-size:13px;color:var(--el-text-color-secondary);line-height:20px}
+.sms-hd{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-shrink:0;flex-wrap:wrap}
+.sms-tip{flex:1 1 200px;font-size:13px;color:var(--el-text-color-secondary);line-height:20px;min-width:0}
 .sms-tip.warn{color:var(--el-color-danger)}
 .sms-hd .sel .sel-box{height:var(--el-control-height-sm);border-radius:var(--el-radius)}
 .sms-hd .btn{height:var(--el-control-height-sm);border-radius:var(--el-radius);padding:0 16px;flex-shrink:0}
 .sms-filter{width:150px;flex-shrink:0}
+.sms-kw{width:220px;flex-shrink:0;display:flex;align-items:center;gap:6px;height:var(--el-control-height-sm);border:1px solid var(--el-border-color);border-radius:var(--el-radius);padding:0 12px;background:var(--el-bg-color);transition:border-color .2s,box-shadow .2s}
+.sms-kw:focus-within{border-color:var(--el-color-primary);box-shadow:0 0 0 2px var(--el-color-primary-ring)}
+.sms-kw svg{flex-shrink:0;color:var(--el-text-color-secondary)}
+.sms-kw input{flex:1;min-width:0;height:22px;border:none;outline:none;font-size:14px;color:var(--el-text-color-primary);background:transparent}
+.sms-kw input::placeholder{color:var(--el-text-color-placeholder)}
+/* 手机号码列：一行可存多个号码（逗号分隔），允许折行完整展示 */
+#sms-tbl-body td.col-phone{white-space:normal;word-break:break-all;line-height:20px;padding-top:6px;padding-bottom:6px}
 
 /* 短信接收人导入弹窗（选择文件 + 写入模式） */
 .mbox-wide{width:520px}
@@ -292,11 +299,15 @@ td.empty:hover{background:transparent}
     </div>
   </div>
 
-  <!-- 短信管理：接收人清单（每日8点报 / 报警短信） -->
+  <!-- 短信管理：接收人清单（每日8点报 / 晚8点报 / 报警短信） -->
   <div class="panel" id="sms-panel" hidden>
     <div class="panel-bd">
       <div class="sms-hd">
         <div class="sel sms-filter" id="sel-sms-filter"></div>
+        <div class="sms-kw">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6L14.4 14.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <input type="text" id="sms-keyword" placeholder="姓名 / 手机号码" autocomplete="off">
+        </div>
         <div class="sms-tip" id="sms-source-tip"></div>
         <button class="btn btn-default" id="btn-sms-export">导出</button>
         <button class="btn btn-default" id="btn-sms-import">导入</button>
@@ -304,7 +315,7 @@ td.empty:hover{background:transparent}
       <div class="tbl-wrap">
         <table>
           <colgroup>
-            <col style="width:20%"><col style="width:30%"><col style="width:26%"><col style="width:24%">
+            <col style="width:18%"><col style="width:24%"><col style="width:34%"><col style="width:24%">
           </colgroup>
           <thead>
             <tr>
@@ -396,16 +407,16 @@ td.empty:hover{background:transparent}
       <div class="f-err" id="err-sms-type"></div>
     </div>
     <div class="f-item">
-      <label class="f-label"><i class="req">*</i>姓名</label>
-      <input class="field" id="sms-name" maxlength="32" placeholder="请输入接收人姓名" autocomplete="off">
+      <label class="f-label">姓名</label>
+      <input class="field" id="sms-name" maxlength="32" placeholder="请输入接收人姓名（可不填）" autocomplete="off">
       <div class="f-err" id="err-sms-name"></div>
     </div>
     <div class="f-item">
       <label class="f-label"><i class="req">*</i>手机号码</label>
-      <input class="field" id="sms-phone" maxlength="11" placeholder="请输入 11 位手机号码" autocomplete="off">
+      <input class="field" id="sms-phone" maxlength="200" placeholder="多个号码用逗号分隔，如 13800000001,13900000002" autocomplete="off">
       <div class="f-err" id="err-sms-phone"></div>
     </div>
-    <div class="f-hint">同一类型下手机号不可重复；编辑时短信类型不可修改（需换类型请删除后重新新增）。</div>
+    <div class="f-hint">姓名可不填（列表显示 --）；手机号可填多个（逗号分隔，最多 10 个），<b>同一条记录保存多个号码</b>（发送时逐个号码发送）；同一类型下手机号不可重复；短信类型保存后不可修改（需换类型请删除后重新新增）。</div>
   </div>
   <div class="drawer-ft">
     <button class="btn btn-default" id="btn-sms-cancel">取消</button>
@@ -420,7 +431,7 @@ td.empty:hover{background:transparent}
     <div class="mbox-bd">
       <div class="imp-file">
         <button class="btn btn-default" id="btn-sms-imp-pick">选择文件</button>
-        <span class="imp-file-name" id="sms-imp-file-name">未选择文件（仅支持 .xlsx；请保留首行表头，可直接用导出文件填写）</span>
+        <span class="imp-file-name" id="sms-imp-file-name">未选择文件（仅支持 .xlsx；请保留首行表头，号码列可写多个用逗号分隔，可直接用导出文件填写）</span>
       </div>
       <input type="file" id="sms-imp-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
       <div class="imp-mode">
@@ -466,9 +477,9 @@ const API = '/hltgq-site';
 const SMS_TAB = '__sms__';
 
 /* 短信类型字典（与后端 SmsReceiverService.BIZ_TYPE_LABELS 同口径，列表行以后端 bizTypeLabel 优先） */
-const SMS_TYPES = [{ value: 'daily', label: '每日8点报' }, { value: 'alarm', label: '报警短信' }];
+const SMS_TYPES = [{ value: 'daily', label: '每日8点报' }, { value: 'evening', label: '晚8点报' }, { value: 'alarm', label: '报警短信' }];
 
-/* 短信管理筛选字典：all = 不传 bizType（两类全查） */
+/* 短信管理筛选字典：all = 不传 bizType（三类全查） */
 const SMS_FILTERS = [{ value: 'all', label: '全部类型' }].concat(SMS_TYPES);
 
 /* 接收维度 → 候选 kind（后端 /message-rule/options 的 kind 参数） */
@@ -498,8 +509,8 @@ const S = {
   flashId: null,               // 保存后需高亮的行
   saving: false,
   /* 短信管理视图：mode=table 已有接收人 / empty 无接收人；ddlReady=false 表未建 */
-  sms: { mode: '', ddlReady: true, total: 0, page: 1, size: 20, records: [], tableCount: 0, lastType: 'daily', filterType: 'all' },
-  smsForm: null,               // 短信抽屉表单 { mode, id }
+  sms: { mode: '', ddlReady: true, total: 0, page: 1, size: 20, records: [], tableCount: 0, lastType: 'daily', filterType: 'all', keyword: '' },
+  smsForm: null,               // 短信抽屉表单 { mode, id, phoneExists, checkedKey }
   flashSmsId: null             // 短信保存后需高亮的行
 };
 
@@ -646,7 +657,7 @@ function renderTabs() {
 
 function renderTabDesc() {
   if (S.tab === SMS_TAB) {
-    $('type-desc').textContent = '短信管理：维护“每日8点报”与“报警短信”的接收人清单（姓名 / 手机号码）；保存后下一次发送即生效。';
+    $('type-desc').textContent = '短信管理：维护“每日8点报”“晚8点报”与“报警短信”的接收人清单（姓名 / 手机号码），各类清单独立维护；保存后下一次发送即生效。';
     return;
   }
   const t = S.typeMap[S.tab];
@@ -1137,13 +1148,36 @@ function renderSmsTip() {
   tip.classList.toggle('warn', warn);
 }
 
+let smsKeywordTimer = null;
+
+/** 关键字搜索（姓名 / 号码）：回车或失焦立即生效，输入时 300ms 防抖 */
+function applySmsKeyword(value) {
+  clearTimeout(smsKeywordTimer);
+  const kw = String(value == null ? $('sms-keyword').value : value).trim();
+  if (kw === S.sms.keyword) return;
+  S.sms.keyword = kw;
+  S.sms.page = 1;
+  loadSmsList();
+}
+
+function onSmsKeywordInput(e) {
+  const value = e.target.value;
+  clearTimeout(smsKeywordTimer);
+  smsKeywordTimer = setTimeout(() => applySmsKeyword(value), 300);
+}
+
+let smsListSeq = 0;
+
 async function loadSmsList() {
   const sms = S.sms;
+  const seq = ++smsListSeq;
   const params = new URLSearchParams({ page: String(sms.page), size: String(sms.size) });
   if (sms.filterType && sms.filterType !== 'all') params.set('bizType', sms.filterType);
+  if (sms.keyword) params.set('keyword', sms.keyword);
   $('sms-tbl-body').innerHTML = emptyRow('加载中...', true, 4);
   try {
     const data = await api('/sms/receiver/page?' + params.toString());
+    if (seq !== smsListSeq) return;   // 关键字/筛选已变化，丢弃过期响应
     sms.mode = data && data.mode ? data.mode : 'empty';
     if (data && data.ddlReady === false) sms.ddlReady = false;
     sms.total = Number(data && data.total) || 0;
@@ -1153,6 +1187,7 @@ async function loadSmsList() {
     renderSmsPager();
     renderSmsTip();
   } catch (e) {
+    if (seq !== smsListSeq) return;
     sms.records = [];
     sms.total = 0;
     $('sms-tbl-body').innerHTML = emptyRow('数据加载失败', false, 4);
@@ -1166,7 +1201,8 @@ function renderSmsTable() {
   const tb = $('sms-tbl-body');
   if (!sms.records.length) {
     const msg = !sms.ddlReady ? '接收人表尚未创建（请先执行 sms-receiver-ddl.sql）'
-      : (sms.mode === 'empty' ? '暂无接收人，请点击右上角「新增接收人」添加' : '该类型暂无接收人（0 人时不会发送该类短信）');
+      : (sms.keyword ? '未找到匹配的接收人（可更换姓名或手机号码关键字）'
+        : (sms.mode === 'empty' ? '暂无接收人，请点击右上角「新增接收人」添加' : '该类型暂无接收人（0 人时不会发送该类短信）'));
     tb.innerHTML = emptyRow(msg, false, 4);
     return;
   }
@@ -1177,7 +1213,7 @@ function renderSmsTable() {
     return '<tr data-id="' + esc(key) + '">' +
       '<td><span class="tag">' + esc(r.bizTypeLabel || smsTypeName(r.bizType) || '--') + '</span></td>' +
       '<td>' + esc(r.name || '--') + '</td>' +
-      '<td>' + esc(r.phone || '--') + '</td>' +
+      '<td class="col-phone" title="' + esc(r.phone || '') + '">' + esc(r.phone || '--') + '</td>' +
       '<td class="col-act">' + acts + '</td></tr>';
   }).join('');
 
@@ -1260,6 +1296,8 @@ function closeSmsDrawer() {
   $('sms-drawer').classList.remove('show');
   $('sms-drawer').setAttribute('aria-hidden', 'true');
   S.smsForm = null;
+  smsPhoneCheckSeq++;
+  clearTimeout(smsPhoneTimer);
   clearSmsErrors();
 }
 
@@ -1273,7 +1311,9 @@ function requestCreateSms() {
 }
 
 function openSmsDrawer(mode, row) {
-  S.smsForm = { mode: mode, id: row ? row.id : null };
+  S.smsForm = { mode: mode, id: row ? row.id : null, phoneExists: false, checkedKey: '' };
+  smsPhoneCheckSeq++;
+  clearTimeout(smsPhoneTimer);
   clearSmsErrors();
   $('sms-drawer-title').textContent = mode === 'create' ? '新增接收人' : '编辑接收人';
   selSmsType.setOptions(SMS_TYPES);
@@ -1283,8 +1323,69 @@ function openSmsDrawer(mode, row) {
     selSmsType.setDisabled(false).setValue(S.sms.filterType !== 'all' ? S.sms.filterType : (S.sms.lastType || 'daily'));
   }
   $('sms-name').value = row ? (row.name || '') : '';
-  $('sms-phone').value = row ? (row.phone || '') : '';
+  const phoneBox = $('sms-phone');
+  phoneBox.maxLength = 200;
+  phoneBox.placeholder = '多个号码用逗号分隔，如 13800000001,13900000002';
+  phoneBox.value = row ? (row.phone || '') : '';
   showSmsDrawer();
+  // 编辑时也检测一次（历史上可能存在同类型同号重复数据）
+  checkSmsPhone(false);
+}
+
+let smsPhoneTimer = null;
+let smsPhoneCheckSeq = 0;
+
+const SMS_PHONE_RE = /^1\d{10}$/;
+const SMS_MAX_PHONES = 10;
+
+/** 拆分多号码输入（英文/中文逗号、顿号、分号、空白） */
+function splitSmsPhones(text) {
+  return String(text == null ? '' : text).split(/[,，、;；\s]+/).map(s => s.trim()).filter(Boolean);
+}
+
+/** 当前抽屉的“类型|号码清单”（用于丢弃过期的异步检测结果） */
+function smsPhoneKey() {
+  return S.smsForm ? selSmsType.getValue() + '|' + splitSmsPhones($('sms-phone').value).join(',') : '';
+}
+
+/**
+ * 同类型号码占用检测（编辑时排除自身；新增时逐个检测多个号码）：返回 true = 已存在。
+ * 输入未填完/格式不合法时不检测（交由保存前校验）；查询失败不阻断保存（后端仍会最终查重）。
+ */
+async function checkSmsPhone(force) {
+  const form = S.smsForm;
+  if (!form) return false;
+  const bizType = selSmsType.getValue();
+  const phones = splitSmsPhones($('sms-phone').value);
+  const invalid = phones.some(p => !SMS_PHONE_RE.test(p));
+  if (!bizType || !phones.length || invalid) {
+    form.phoneExists = false;
+    form.checkedKey = '';
+    return false;
+  }
+  const key = bizType + '|' + phones.join(',');
+  if (!force && form.checkedKey === key) return form.phoneExists;
+  const seq = ++smsPhoneCheckSeq;
+  let existsPhones = [];
+  try {
+    const results = await Promise.all(phones.map(async phone => {
+      const params = new URLSearchParams({ bizType: bizType, phone: phone });
+      if (form.id) params.set('excludeId', form.id);
+      const data = await api('/sms/receiver/check?' + params.toString());
+      return data && data.exists === true ? phone : '';
+    }));
+    existsPhones = results.filter(Boolean);
+  } catch (e) {
+    return false;
+  }
+  if (seq !== smsPhoneCheckSeq || S.smsForm !== form || smsPhoneKey() !== key) {
+    return false;
+  }
+  const exists = existsPhones.length > 0;
+  form.phoneExists = exists;
+  form.checkedKey = key;
+  if (exists) setSmsError('phone', '该类型下手机号 ' + existsPhones.join('、') + ' 已存在，请更换号码');
+  return exists;
 }
 
 function setSmsError(field, msg) {
@@ -1303,24 +1404,36 @@ function validateSms() {
   let bad = false;
   const bizType = selSmsType.getValue();
   const name = $('sms-name').value.trim();
-  const phone = $('sms-phone').value.trim();
+  const phones = splitSmsPhones($('sms-phone').value);
   if (!bizType) {
     setSmsError('type', '请选择短信类型');
     bad = true;
   }
-  if (!name) {
-    setSmsError('name', '请输入姓名');
-    bad = true;
-  } else if (name.length > 32) {
+  if (name.length > 32) {
     setSmsError('name', '姓名最长 32 字');
     bad = true;
   }
-  if (!phone) {
+  if (!phones.length) {
     setSmsError('phone', '请输入手机号码');
     bad = true;
-  } else if (!/^1\d{10}$/.test(phone)) {
-    setSmsError('phone', '手机号码格式不正确（须为 1 开头的 11 位数字）');
-    bad = true;
+  } else {
+    const badPhone = phones.find(p => !SMS_PHONE_RE.test(p));
+    const seen = Object.create(null);
+    const dupPhone = phones.find(p => {
+      if (seen[p]) return true;
+      seen[p] = 1;
+      return false;
+    });
+    if (badPhone) {
+      setSmsError('phone', '手机号码「' + badPhone + '」格式不正确（须为 1 开头的 11 位数字）');
+      bad = true;
+    } else if (dupPhone) {
+      setSmsError('phone', '手机号码 ' + dupPhone + ' 重复填写，请检查');
+      bad = true;
+    } else if (phones.length > SMS_MAX_PHONES) {
+      setSmsError('phone', '一条记录最多填写 ' + SMS_MAX_PHONES + ' 个手机号码');
+      bad = true;
+    }
   }
   return !bad;
 }
@@ -1338,10 +1451,13 @@ async function saveSms() {
   if (!validateSms()) return;
   const f = S.smsForm;
   const bizType = selSmsType.getValue();
-  const body = { name: $('sms-name').value.trim(), phone: $('sms-phone').value.trim() };
-  if (f.mode === 'create') body.bizType = bizType;
+  const phones = splitSmsPhones($('sms-phone').value);
   setSmsSaving(true);
   try {
+    // 保存前强制同步检测：同类型任一号码已存在则不可提交（后端仍会最终查重）
+    if (await checkSmsPhone(true)) return;
+    const body = { name: $('sms-name').value.trim(), phone: phones.join(',') };
+    if (f.mode === 'create') body.bizType = bizType;
     const saved = f.mode === 'create'
       ? await api('/sms/receiver', { method: 'POST', body: body })
       : await api('/sms/receiver/' + encodeURIComponent(f.id), { method: 'PUT', body: body });
@@ -1350,7 +1466,8 @@ async function saveSms() {
     closeSmsDrawer();
     await loadSmsMeta();
     await loadSmsList();
-    showToast('保存成功');
+    const created = saved && Number(saved.created) > 0 ? Number(saved.created) : 1;
+    showToast(f.mode === 'create' && created > 1 ? '已添加 ' + created + ' 个手机号码' : '保存成功');
   } catch (e) {
     // 同类型号码重复等业务错误：抽屉不关、已填内容保留
     showToast(e.message || '保存失败', true);
@@ -1644,6 +1761,36 @@ function bindEvents() {
     S.sms.filterType = v || 'all';
     S.sms.page = 1;
     loadSmsList();
+  });
+  // 短信管理：姓名/号码关键字搜索（防抖 + 回车/失焦立即生效）
+  $('sms-keyword').addEventListener('input', onSmsKeywordInput);
+  $('sms-keyword').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); applySmsKeyword(e.target.value); e.target.blur(); }
+  });
+  $('sms-keyword').addEventListener('change', e => applySmsKeyword(e.target.value));
+  // 短信抽屉：切换类型/修改号码时即时查重（同类型同号码不可添加）
+  selSmsType.onChange(() => {
+    if (!S.smsForm) return;
+    S.smsForm.checkedKey = '';
+    S.smsForm.phoneExists = false;
+    setSmsError('type', '');
+    setSmsError('phone', '');
+    checkSmsPhone(false);
+  });
+  $('sms-phone').addEventListener('input', () => {
+    if (!S.smsForm) return;
+    S.smsForm.checkedKey = '';
+    S.smsForm.phoneExists = false;
+    setSmsError('phone', '');
+    clearTimeout(smsPhoneTimer);
+    smsPhoneTimer = setTimeout(() => checkSmsPhone(false), 350);
+  });
+  // 失焦时把多号码统一规范为英文逗号（不影响已检测缓存：key 按号码清单归一）
+  $('sms-phone').addEventListener('blur', () => {
+    if (!S.smsForm) return;
+    const box = $('sms-phone');
+    const phones = splitSmsPhones(box.value);
+    if (phones.length > 1) box.value = phones.join(',');
   });
 
   // 短信管理：抽屉 / 表格操作 / 分页

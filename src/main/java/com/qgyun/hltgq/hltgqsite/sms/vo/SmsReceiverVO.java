@@ -14,13 +14,13 @@ public class SmsReceiverVO {
     /** 记录 id */
     private String id;
 
-    /** 短信类型：daily=每日 8 点报 / alarm=报警短信 */
+    /** 短信类型：daily=每日 8 点报 / evening=晚 8 点报 / alarm=报警短信 */
     private String bizType;
 
     /** 短信类型中文名（页面直接展示，不在前端写死字典） */
     private String bizTypeLabel;
 
-    /** 姓名（页面新增/编辑必填） */
+    /** 姓名（选填，未填写时页面显示 --） */
     private String name;
 
     /** 手机号码 */

@@ -45,13 +45,27 @@ public class SmsReceiverController {
         return smsReceiverService.meta();
     }
 
-    /** 接收人分页：bizType 可选过滤（daily / alarm）；表未建时返回空列表 */
+    /**
+     * 接收人分页：bizType 可选过滤（daily / evening / alarm）；
+     * keyword 可选（姓名 / 手机号码模糊匹配）；表未建时返回空列表。
+     */
     @GetMapping("/page")
     public Map<String, Object> page(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String bizType) {
-        return smsReceiverService.page(page, size, bizType);
+            @RequestParam(required = false) String bizType,
+            @RequestParam(required = false) String keyword) {
+        return smsReceiverService.page(page, size, bizType, keyword);
+    }
+
+    /**
+     * 号码占用检测：同类型下该号码是否已存在（页面新增/编辑即时查重；编辑时传 excludeId 排除自身）。
+     */
+    @GetMapping("/check")
+    public Map<String, Object> check(@RequestParam String bizType,
+                                     @RequestParam String phone,
+                                     @RequestParam(required = false) String excludeId) {
+        return smsReceiverService.checkDuplicate(bizType, phone, excludeId);
     }
 
     /** 导出接收人 xlsx（bizType 可选：不传导出全部，传则仅该类型） */
@@ -76,9 +90,12 @@ public class SmsReceiverController {
         return smsReceiverService.importExcel(file, mode);
     }
 
-    /** 新增接收人（类型/姓名/号码必填，同类型同号码查重） */
+    /**
+     * 新增接收人（类型必填，姓名选填）：phone 支持逗号分隔多个号码，合并存为一条记录；
+     * 整批原子（任一号码已存在/格式错误则本次不写入）。
+     */
     @PostMapping
-    public SmsReceiverVO create(@RequestBody SmsReceiverSaveVO body) {
+    public Map<String, Object> create(@RequestBody SmsReceiverSaveVO body) {
         return smsReceiverService.create(body);
     }
 

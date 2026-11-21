@@ -31,8 +31,10 @@ import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -58,18 +60,24 @@ public class SmsReceiverService {
     /** 短信类型：每日 8 点报 */
     public static final String BIZ_DAILY = "daily";
 
+    /** 短信类型：晚 8 点报（清单与早 8 点独立维护） */
+    public static final String BIZ_EVENING = "evening";
+
     /** 短信类型：报警短信（雨量告警 / 水位涨幅共用同一清单） */
     public static final String BIZ_ALARM = "alarm";
 
     /** 短信类型字典（编码 → 名称，顺序即页面展示顺序） */
     private static final String[][] BIZ_TYPE_LABELS = {
-            {BIZ_DAILY, "每日8点报"}, {BIZ_ALARM, "报警短信"}
+            {BIZ_DAILY, "每日8点报"}, {BIZ_EVENING, "晚8点报"}, {BIZ_ALARM, "报警短信"}
     };
 
     /** 手机号格式：1 开头 11 位数字 */
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1\\d{10}$");
 
     private static final int NAME_MAX_LENGTH = 32;
+
+    /** 单条接收人记录最多可保存的手机号码数（防止误粘贴超长清单） */
+    private static final int MAX_PHONES_PER_ROW = 10;
 
     private static final int PAGE_SIZE_DEFAULT = 20;
 
@@ -98,20 +106,36 @@ public class SmsReceiverService {
      */
     public List<String> resolvePhones(String bizType) {
         String type = requireBizType(bizType);
-        List<String> phones;
+        List<String> cells;
         try {
-            phones = receiverMapper.selectPhonesByType(type);
+            cells = receiverMapper.selectPhonesByType(type);
         } catch (Exception e) {
             log.error("[短信接收人] 接收人表不可用（请确认已执行 sms-receiver-ddl.sql），本次不发送 bizType={} err={}",
                     type, e.toString());
             return Collections.emptyList();
         }
-        if (phones.isEmpty()) {
+        if (cells.isEmpty()) {
             log.warn("[短信接收人] 接收人表中 {} 类型无接收人，本次不发送（如需接收请在短信管理页添加）", type);
             return Collections.emptyList();
         }
-        log.info("[短信接收人] 发送取人 bizType={} 人数={} 号码={}", type, phones.size(), masked(phones));
-        return phones;
+        // 一行可存多个号码（英文逗号分隔）：发送前拆成单个号码并去重；格式非法的号码跳过并告警
+        LinkedHashSet<String> phones = new LinkedHashSet<>();
+        for (String cell : cells) {
+            for (String phone : splitPhoneText(cell)) {
+                if (PHONE_PATTERN.matcher(phone).matches()) {
+                    phones.add(phone);
+                } else {
+                    log.error("[短信接收人] 号码格式非法，已跳过 bizType={} 值={}", type, AliyunSmsClient.maskPhone(phone));
+                }
+            }
+        }
+        if (phones.isEmpty()) {
+            log.warn("[短信接收人] 接收人表中 {} 类型无可用号码，本次不发送", type);
+            return Collections.emptyList();
+        }
+        List<String> out = new ArrayList<>(phones);
+        log.info("[短信接收人] 发送取人 bizType={} 记录数={} 号码数={} 号码={}", type, cells.size(), out.size(), masked(out));
+        return out;
     }
 
     // ==================== 页面：元数据 / 分页 ====================
@@ -130,10 +154,12 @@ public class SmsReceiverService {
     }
 
     /**
-     * 接收人分页：bizType 可选过滤；表未建时返回空列表（ddlReady=false，页面提示执行 DDL）。
+     * 接收人分页：bizType 可选过滤；keyword 可选（姓名 / 手机号码模糊匹配）；
+     * 表未建时返回空列表（ddlReady=false，页面提示执行 DDL）。
      */
-    public Map<String, Object> page(int page, int size, String bizType) {
+    public Map<String, Object> page(int page, int size, String bizType, String keyword) {
         String type = optionalBizType(bizType);
+        String like = likeKeyword(keyword);
         int safePage = Math.max(page, 1);
         int safeSize = normalizeSize(size);
         long tableCount = countAllSafe();
@@ -152,7 +178,7 @@ public class SmsReceiverService {
         }
 
         IPage<SmsReceiverVO> result = receiverMapper.selectReceiverPage(
-                new Page<>(safePage, safeSize), type);
+                new Page<>(safePage, safeSize), type, like);
         for (SmsReceiverVO vo : result.getRecords()) {
             vo.setBizTypeLabel(bizTypeName(vo.getBizType()));
             vo.setSource("table");
@@ -179,6 +205,8 @@ public class SmsReceiverService {
     static {
         IMPORT_TYPE_CODES.put("每日8点报", BIZ_DAILY);
         IMPORT_TYPE_CODES.put(BIZ_DAILY, BIZ_DAILY);
+        IMPORT_TYPE_CODES.put("晚8点报", BIZ_EVENING);
+        IMPORT_TYPE_CODES.put(BIZ_EVENING, BIZ_EVENING);
         IMPORT_TYPE_CODES.put("报警短信", BIZ_ALARM);
         IMPORT_TYPE_CODES.put(BIZ_ALARM, BIZ_ALARM);
     }
@@ -198,7 +226,7 @@ public class SmsReceiverService {
         } catch (Exception e) {
             throw new IllegalArgumentException("接收人表不存在，请先执行 sms-receiver-ddl.sql");
         }
-        // 类型按字典序（每日8点报在前），同类型按号码
+        // 类型按页面字典序（每日8点报 → 晚8点报 → 报警短信），同类型按号码
         rows.sort((a, b) -> {
             int t = Integer.compare(typeOrder(a.getBizType()), typeOrder(b.getBizType()));
             return t != 0 ? t : String.valueOf(a.getPhone()).compareTo(String.valueOf(b.getPhone()));
@@ -238,9 +266,13 @@ public class SmsReceiverService {
      * <p><b>安全红线</b>：识别不到表头或缺列（如误删表头/删掉姓名列、首行就是数据）→ 整单拒绝，
      * 绝不按列序猜测，避免首行数据被当表头丢弃后误删号码，或姓名列缺失时整批姓名被清空。
      * <p><b>整体校验</b>：任一行不合法则整体拒绝（400），返回前 5 条错误便于修正后重导。
+     * <p><b>号码列</b>：一行可写多个号码（英文/中文逗号、顿号、分号、空白分隔，最多 {@value #MAX_PHONES_PER_ROW} 个），
+     * 落库仍为一条记录（英文逗号分隔）；文件内按“类型 + 单个号码”查重。
      * <p><b>写入口径</b>：mode=replace（默认）以文件为准——<b>文件中出现的每个类型</b>，
      * 库中不在文件内的接收人删除，文件未出现的类型不受影响；mode=merge 仅新增/更新，不删除。
-     * <p>姓名允许为空（兼容存量未补录数据）；填写时 ≤32 字。
+     * <p>存量行按“类型 + 归一号码清单”匹配（号码集合相同视为同一条记录，只更新姓名）；
+     * merge 模式下新增行的号码若已被同类型其他接收人占用 → 整单拒绝（不删存量，会造成同号两条）。
+     * <p>姓名选填（兼容存量未补录数据，页面显示 --）；填写时 ≤32 字。
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> importExcel(MultipartFile file, String mode) {
@@ -279,39 +311,51 @@ public class SmsReceiverService {
 
         List<String> errors = new ArrayList<>();
         List<SmsReceiver> parsed = new ArrayList<>();
+        List<Integer> parsedRowNums = new ArrayList<>();
         Set<String> fileKeys = new HashSet<>();
         for (ExcelParseUtils.RowEntry entry : rows) {
             Map<String, String> data = entry.getData();
             String rawType = trim(cellValue(data, headers, typeCol));
             String name = trim(cellValue(data, headers, nameCol));
-            String phone = trim(cellValue(data, headers, phoneCol));
+            String phoneRaw = trim(cellValue(data, headers, phoneCol));
             String typeCode = rawType == null ? null : IMPORT_TYPE_CODES.get(rawType.toLowerCase(Locale.ROOT));
             String prefix = "第 " + entry.getRowNum() + " 行：";
             if (typeCode == null) {
-                errors.add(prefix + "短信类型须为「每日8点报」或「报警短信」");
+                errors.add(prefix + "短信类型须为「每日8点报」「晚8点报」或「报警短信」");
                 continue;
             }
             if (name != null && name.length() > NAME_MAX_LENGTH) {
                 errors.add(prefix + "姓名最长 " + NAME_MAX_LENGTH + " 字");
                 continue;
             }
-            if (phone == null) {
-                errors.add(prefix + "手机号码不能为空");
+            List<String> phones;
+            try {
+                // 单元格支持逗号分隔多个号码（与页面新增同口径：格式校验、输入内去重、升序归一）
+                phones = parsePhones(phoneRaw);
+            } catch (IllegalArgumentException e) {
+                errors.add(prefix + e.getMessage());
                 continue;
             }
-            if (!PHONE_PATTERN.matcher(phone).matches()) {
-                errors.add(prefix + "手机号码格式不正确（须为 1 开头的 11 位数字）");
+            // 文件内按“类型 + 单个号码”查重（一行多个号码逐个比对）
+            List<String> repeats = new ArrayList<>();
+            for (String phone : phones) {
+                if (fileKeys.contains(typeCode + "|" + phone)) {
+                    repeats.add(phone);
+                }
+            }
+            if (!repeats.isEmpty()) {
+                errors.add(prefix + "文件内同类型号码 " + String.join("、", repeats) + " 重复");
                 continue;
             }
-            if (!fileKeys.add(typeCode + "|" + phone)) {
-                errors.add(prefix + "文件内同类型同号码重复");
-                continue;
+            for (String phone : phones) {
+                fileKeys.add(typeCode + "|" + phone);
             }
             SmsReceiver row = new SmsReceiver();
             row.setBizType(typeCode);
             row.setName(name);
-            row.setPhone(phone);
+            row.setPhone(joinPhones(phones));
             parsed.add(row);
+            parsedRowNums.add(entry.getRowNum());
         }
         if (!errors.isEmpty()) {
             throw new IllegalArgumentException(buildImportError(errors));
@@ -323,40 +367,90 @@ public class SmsReceiverService {
         } catch (Exception e) {
             throw new IllegalArgumentException("接收人表不存在，请先执行 sms-receiver-ddl.sql");
         }
+        // 存量行按“类型 + 归一号码清单”建索引：文件里号码集合完全一致视为同一条记录（只更新姓名）
         Map<String, SmsReceiver> existMap = new LinkedHashMap<>();
         for (SmsReceiver row : existing) {
-            existMap.put(row.getBizType() + "|" + row.getPhone(), row);
+            existMap.put(row.getBizType() + "|" + canonicalPhoneText(row.getPhone()), row);
+        }
+
+        // 匹配存量：命中 = 保留（姓名变化则更新）；未命中 = 新增
+        Set<String> matchedIds = new HashSet<>();
+        List<SmsReceiver> toInsert = new ArrayList<>();
+        List<Integer> toInsertRowNums = new ArrayList<>();
+        List<SmsReceiver> toRename = new ArrayList<>();
+        List<String> renameIds = new ArrayList<>();
+        int unchanged = 0;
+        int noName = 0;
+        for (int i = 0; i < parsed.size(); i++) {
+            SmsReceiver row = parsed.get(i);
+            if (row.getName() == null) {
+                noName++;
+            }
+            SmsReceiver old = existMap.get(row.getBizType() + "|" + canonicalPhoneText(row.getPhone()));
+            if (old == null) {
+                toInsert.add(row);
+                toInsertRowNums.add(parsedRowNums.get(i));
+                continue;
+            }
+            matchedIds.add(old.getId());
+            if (sameName(old.getName(), row.getName())) {
+                unchanged++;
+            } else {
+                toRename.add(row);
+                renameIds.add(old.getId());
+            }
+        }
+
+        // merge 模式：新增行的号码不得与“保留的存量行”重叠（merge 不删存量，否则会变成同类型同号两条记录）
+        if (!replace && !toInsert.isEmpty()) {
+            Map<String, Set<String>> occupied = new HashMap<>();
+            for (SmsReceiver old : existing) {
+                if (matchedIds.contains(old.getId())) {
+                    continue;
+                }
+                Set<String> numbers = occupied.computeIfAbsent(old.getBizType(), k -> new HashSet<>());
+                numbers.addAll(splitPhoneText(old.getPhone()));
+            }
+            List<String> conflictErrors = new ArrayList<>();
+            for (int i = 0; i < toInsert.size(); i++) {
+                SmsReceiver row = toInsert.get(i);
+                Set<String> numbers = occupied.get(row.getBizType());
+                if (numbers == null || numbers.isEmpty()) {
+                    continue;
+                }
+                List<String> conflicts = new ArrayList<>();
+                for (String phone : splitPhoneText(row.getPhone())) {
+                    if (numbers.contains(phone)) {
+                        conflicts.add(phone);
+                    }
+                }
+                if (!conflicts.isEmpty()) {
+                    conflictErrors.add("第 " + toInsertRowNums.get(i) + " 行：号码 " + String.join("、", conflicts)
+                            + " 已被同类型其他接收人占用（「仅新增 / 更新」模式不删除存量数据）");
+                }
+            }
+            if (!conflictErrors.isEmpty()) {
+                throw new IllegalArgumentException(buildImportError(conflictErrors));
+            }
         }
 
         String operator = currentOperatorId();
         LocalDateTime now = LocalDateTime.now();
         Set<String> fileTypes = new HashSet<>();
-        Set<String> keptIds = new HashSet<>();
-        int inserted = 0;
-        int updated = 0;
-        int unchanged = 0;
-        int noName = 0;
         for (SmsReceiver row : parsed) {
             fileTypes.add(row.getBizType());
-            if (row.getName() == null) {
-                noName++;
-            }
-            SmsReceiver old = existMap.get(row.getBizType() + "|" + row.getPhone());
-            if (old == null) {
-                applyCreateAudit(row);
-                receiverMapper.insert(row);
-                keptIds.add(row.getId());
-                inserted++;
-                continue;
-            }
-            keptIds.add(old.getId());
-            if (sameName(old.getName(), row.getName())) {
-                unchanged++;
-                continue;
-            }
+        }
+        int inserted = 0;
+        for (SmsReceiver row : toInsert) {
+            applyCreateAudit(row);
+            receiverMapper.insert(row);
+            inserted++;
+        }
+        int updated = 0;
+        for (int i = 0; i < toRename.size(); i++) {
             UpdateWrapper<SmsReceiver> wrapper = new UpdateWrapper<>();
-            wrapper.eq("\"id\"", old.getId());
-            wrapper.set("\"name\"", row.getName());
+            wrapper.eq("\"id\"", renameIds.get(i));
+            wrapper.set("\"name\"", toRename.get(i).getName());
             wrapper.set("\"updated_at\"", now);
             wrapper.set("\"updated_by\"", operator);
             receiverMapper.update(null, wrapper);
@@ -366,7 +460,7 @@ public class SmsReceiverService {
         int deleted = 0;
         if (replace) {
             for (SmsReceiver old : existing) {
-                if (fileTypes.contains(old.getBizType()) && !keptIds.contains(old.getId())) {
+                if (fileTypes.contains(old.getBizType()) && !matchedIds.contains(old.getId())) {
                     receiverMapper.deleteById(old.getId());
                     deleted++;
                 }
@@ -388,29 +482,56 @@ public class SmsReceiverService {
 
     // ==================== 新增 / 编辑 / 删除 ====================
 
-    /** 新增接收人：类型/姓名/号码必填，同类型同号码查重 */
-    public SmsReceiverVO create(SmsReceiverSaveVO req) {
+    /**
+     * 号码占用检测（页面新增/编辑即时查重）：同类型下该号码是否已存在，编辑时经 excludeId 排除自身。
+     */
+    public Map<String, Object> checkDuplicate(String bizType, String phone, String excludeId) {
+        String type = requireBizType(bizType);
+        String number = requirePhone(phone);
+        boolean exists = findConflicts(type, Collections.singletonList(number), excludeId).contains(number);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("exists", exists);
+        out.put("bizType", type);
+        out.put("bizTypeLabel", bizTypeName(type));
+        out.put("phone", number);
+        return out;
+    }
+
+    /**
+     * 新增接收人：类型必填，姓名选填（可留空，最长 32 字）；
+     * 手机号可填多个（英文/中文逗号、顿号、分号或空白分隔，最多 10 个），<b>合并保存为一条记录</b>，
+     * 号码列存英文逗号分隔文本；发送时再拆分逐号发送。
+     * <p>任一号码格式错误、输入内重复或同类型已被其他记录占用 → 不写入。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> create(SmsReceiverSaveVO req) {
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
         }
         String bizType = requireBizType(req.getBizType());
-        String name = requireName(req.getName());
-        String phone = requirePhone(req.getPhone());
-        if (receiverMapper.countSamePhone(bizType, phone, null) > 0) {
-            throw new IllegalArgumentException("该类型下手机号 " + phone + " 已存在，请勿重复添加");
+        String name = optionalName(req.getName());
+        List<String> phones = parsePhones(req.getPhone());
+        List<String> conflicts = findConflicts(bizType, phones, null);
+        if (!conflicts.isEmpty()) {
+            throw new IllegalArgumentException("该类型下手机号 " + String.join("、", conflicts) + " 已存在，请勿重复添加");
         }
         SmsReceiver entity = new SmsReceiver();
         entity.setBizType(bizType);
         entity.setName(name);
-        entity.setPhone(phone);
+        entity.setPhone(joinPhones(phones));
         applyCreateAudit(entity);
         receiverMapper.insert(entity);
         log.info("[短信管理] 新增接收人：id={} 类型={} 姓名={} 号码={} 操作人={}",
-                entity.getId(), bizTypeName(bizType), name, AliyunSmsClient.maskPhone(phone), entity.getUpdatedBy());
-        return detail(entity.getId());
+                entity.getId(), bizTypeName(bizType), name, masked(phones), entity.getUpdatedBy());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", entity.getId());
+        out.put("created", phones.size());
+        out.put("phones", phones);
+        out.put("receivers", Collections.singletonList(toVO(entity)));
+        return out;
     }
 
-    /** 编辑接收人：类型锁定，可改姓名/号码，查重排除自身 */
+    /** 编辑接收人：类型锁定，可改姓名/号码（号码支持多个，查重排除自身；姓名可留空） */
     public SmsReceiverVO update(String id, SmsReceiverSaveVO req) {
         if (req == null) {
             throw new IllegalArgumentException("请求体不能为空");
@@ -420,21 +541,23 @@ public class SmsReceiverService {
         if (reqType != null && !reqType.equals(row.getBizType())) {
             throw new IllegalArgumentException("短信类型不可修改，如需更换请删除后重新新增");
         }
-        String name = requireName(req.getName());
-        String phone = requirePhone(req.getPhone());
-        if (receiverMapper.countSamePhone(row.getBizType(), phone, row.getId()) > 0) {
-            throw new IllegalArgumentException("该类型下手机号 " + phone + " 已存在");
+        String name = optionalName(req.getName());
+        List<String> phones = parsePhones(req.getPhone());
+        List<String> conflicts = findConflicts(row.getBizType(), phones, row.getId());
+        if (!conflicts.isEmpty()) {
+            throw new IllegalArgumentException("该类型下手机号 " + String.join("、", conflicts) + " 已存在");
         }
         String operator = currentOperatorId();
+        String phoneText = joinPhones(phones);
         UpdateWrapper<SmsReceiver> wrapper = new UpdateWrapper<>();
         wrapper.eq("\"id\"", row.getId());
         wrapper.set("\"name\"", name);
-        wrapper.set("\"phone\"", phone);
+        wrapper.set("\"phone\"", phoneText);
         wrapper.set("\"updated_at\"", LocalDateTime.now());
         wrapper.set("\"updated_by\"", operator);
         receiverMapper.update(null, wrapper);
         log.info("[短信管理] 编辑接收人：id={} 类型={} 姓名={} 号码={} 操作人={}",
-                row.getId(), bizTypeName(row.getBizType()), name, AliyunSmsClient.maskPhone(phone), operator);
+                row.getId(), bizTypeName(row.getBizType()), name, masked(phones), operator);
         return detail(row.getId());
     }
 
@@ -449,7 +572,11 @@ public class SmsReceiverService {
 
     /** 单行详情（新增/编辑回显） */
     public SmsReceiverVO detail(String id) {
-        SmsReceiver row = requireRow(id);
+        return toVO(requireRow(id));
+    }
+
+    /** 实体 → 页面 VO（类型中文名/来源由服务端补齐） */
+    private static SmsReceiverVO toVO(SmsReceiver row) {
         SmsReceiverVO vo = new SmsReceiverVO();
         vo.setId(row.getId());
         vo.setBizType(row.getBizType());
@@ -482,7 +609,7 @@ public class SmsReceiverService {
                 return code;
             }
         }
-        throw new IllegalArgumentException("短信类型仅支持 daily（每日8点报）/ alarm（报警短信）");
+        throw new IllegalArgumentException("短信类型仅支持 daily（每日8点报）/ evening（晚8点报）/ alarm（报警短信）");
     }
 
     private static String optionalBizType(String raw) {
@@ -490,12 +617,10 @@ public class SmsReceiverService {
         return code == null ? null : requireBizType(code);
     }
 
-    private static String requireName(String raw) {
+    /** 姓名选填：空白→null（页面显示 --）；填写时 ≤32 字 */
+    private static String optionalName(String raw) {
         String name = trim(raw);
-        if (name == null) {
-            throw new IllegalArgumentException("请输入姓名");
-        }
-        if (name.length() > NAME_MAX_LENGTH) {
+        if (name != null && name.length() > NAME_MAX_LENGTH) {
             throw new IllegalArgumentException("姓名最长 " + NAME_MAX_LENGTH + " 字");
         }
         return name;
@@ -510,6 +635,93 @@ public class SmsReceiverService {
             throw new IllegalArgumentException("手机号码格式不正确（须为 1 开头的 11 位数字）");
         }
         return phone;
+    }
+
+    /**
+     * 解析入参号码清单：兼容英文/中文逗号、顿号、分号和空白分隔；
+     * 逐个校验格式、输入内去重，并按号码升序归一（11 位定长，字典序等价数值序），最多 {@value #MAX_PHONES_PER_ROW} 个。
+     */
+    private static List<String> parsePhones(String raw) {
+        String text = trim(raw);
+        if (text == null) {
+            throw new IllegalArgumentException("请输入手机号码");
+        }
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        for (String phone : splitPhoneText(text)) {
+            if (!PHONE_PATTERN.matcher(phone).matches()) {
+                throw new IllegalArgumentException("手机号码「" + phone + "」格式不正确（须为 1 开头的 11 位数字）");
+            }
+            if (!unique.add(phone)) {
+                throw new IllegalArgumentException("手机号码 " + phone + " 重复填写，请检查");
+            }
+        }
+        if (unique.isEmpty()) {
+            throw new IllegalArgumentException("请输入手机号码");
+        }
+        if (unique.size() > MAX_PHONES_PER_ROW) {
+            throw new IllegalArgumentException("一条记录最多填写 " + MAX_PHONES_PER_ROW + " 个手机号码");
+        }
+        List<String> phones = new ArrayList<>(unique);
+        Collections.sort(phones);
+        return phones;
+    }
+
+    /** 拆分号码文本（容错，不校验格式；用于解析已落库的逗号分隔号码） */
+    private static List<String> splitPhoneText(String raw) {
+        List<String> out = new ArrayList<>();
+        String text = trim(raw);
+        if (text == null) {
+            return out;
+        }
+        for (String part : text.split("[,，、;；\\s]+")) {
+            String phone = part.trim();
+            if (!phone.isEmpty()) {
+                out.add(phone);
+            }
+        }
+        return out;
+    }
+
+    /** 号码清单 → 落库文本（英文逗号分隔） */
+    private static String joinPhones(List<String> phones) {
+        return String.join(",", phones);
+    }
+
+    /** 已落库号码文本归一（拆分、去重、升序），用于导入时按号码集合匹配存量行 */
+    private static String canonicalPhoneText(String raw) {
+        LinkedHashSet<String> unique = new LinkedHashSet<>(splitPhoneText(raw));
+        List<String> phones = new ArrayList<>(unique);
+        Collections.sort(phones);
+        return joinPhones(phones);
+    }
+
+    /**
+     * 同类型下已被其他记录占用的号码（编辑时排除自身）：逐行拆分号码到集合再比对；
+     * 这样一行存多个号码时，也能拦住与其他记录重复的单个号码。
+     */
+    private List<String> findConflicts(String bizType, List<String> phones, String excludeId) {
+        List<SmsReceiver> rows;
+        try {
+            rows = receiverMapper.selectList(new QueryWrapper<SmsReceiver>().eq("biz_type", bizType));
+        } catch (Exception e) {
+            log.error("[短信管理] 读取接收人表失败：{}", e.toString());
+            throw new IllegalArgumentException("接收人表不存在，请先执行 sms-receiver-ddl.sql");
+        }
+        String exclude = trim(excludeId);
+        Set<String> occupied = new HashSet<>();
+        for (SmsReceiver row : rows) {
+            if (exclude != null && exclude.equals(row.getId())) {
+                continue;
+            }
+            occupied.addAll(splitPhoneText(row.getPhone()));
+        }
+        List<String> conflicts = new ArrayList<>();
+        for (String phone : phones) {
+            if (occupied.contains(phone)) {
+                conflicts.add(phone);
+            }
+        }
+        return conflicts;
     }
 
     private static String bizTypeName(String code) {
@@ -532,15 +744,28 @@ public class SmsReceiverService {
         return out;
     }
 
-    /** 类型导出排序：daily=0 / alarm=1 / 其他=2 */
+    /** 类型导出排序：daily=0 / evening=1 / alarm=2 / 其他=3 */
     private static int typeOrder(String bizType) {
         if (BIZ_DAILY.equals(bizType)) {
             return 0;
         }
-        if (BIZ_ALARM.equals(bizType)) {
+        if (BIZ_EVENING.equals(bizType)) {
             return 1;
         }
-        return 2;
+        if (BIZ_ALARM.equals(bizType)) {
+            return 2;
+        }
+        return 3;
+    }
+
+    /** 关键字转 LIKE 模糊条件（% _ ! 转义，配合 Mapper 的 ESCAPE '!'） */
+    private static String likeKeyword(String raw) {
+        String keyword = trim(raw);
+        if (keyword == null) {
+            return null;
+        }
+        String escaped = keyword.replace("!", "!!").replace("%", "!%").replace("_", "!_");
+        return "%" + escaped + "%";
     }
 
     /** 按表头关键字定位列（忽略大小写）；未识别到返回 -1（不按列序兜底） */

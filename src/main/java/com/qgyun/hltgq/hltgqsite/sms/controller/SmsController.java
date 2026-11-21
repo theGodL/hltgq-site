@@ -84,6 +84,23 @@ public class SmsController {
     }
 
     /**
+     * 手动触发晚 8 点报（仅系统管理员）：与 20:00 定时任务同一链路。
+     * <p><b>内容与早 8 点报完全一致</b>（同模板、同参数、数据截止今日 08:00），
+     * 只换接收人清单（biz_type=evening），不等报文。
+     * <p>⚠ 会真实向全部晚 8 点报接收人发送短信，操作前确认取数日志无误。
+     */
+    @PostMapping("/evening/send")
+    @RequireAdmin
+    public Map<String, Object> triggerEveningSummary() {
+        log.info("手动触发晚8点报短信（管理员，立即执行不等报文）");
+        smsDailySummaryService.sendEveningSummaryNow();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("triggered", true);
+        body.put("note", "已按晚8点报链路执行（与早8点内容一致，接收人取 evening 清单），结果见服务日志");
+        return body;
+    }
+
+    /**
      * mq 告警回调：告警落库后调用，本系统负责组装变量、幂等去重、发送、记录。
      * <p>需在 auth.white-list 放行（application.properties），鉴权走 X-Sms-Token。
      */

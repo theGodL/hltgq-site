@@ -19,33 +19,34 @@ public interface SmsReceiverMapper extends BaseMapper<SmsReceiver> {
     String T_RECEIVER = "\"qixiao-apaas\".\"t_auto_hltgq_water_sms_receiver\"";
 
     /**
-     * 接收人分页：bizType 可选过滤；排序 = 类型（daily 先）→ 更新时间倒序 → 号码。
+     * 接收人分页：bizType 可选过滤；keyword 可选（已含 % 的 LIKE 条件，姓名 / 号码模糊匹配）；
+     * 排序 = 类型（每日8点报 → 晚8点报 → 报警短信）→ 更新时间倒序 → 号码。
      */
     @Select("<script>" +
             "SELECT r.id AS id, r.biz_type AS bizType, r.name AS name, r.phone AS phone, " +
             "r.updated_at AS updatedAt " +
             "FROM " + T_RECEIVER + " r " +
-            "<if test='bizType != null'>WHERE r.biz_type = #{bizType} </if>" +
-            "ORDER BY r.biz_type ASC, r.updated_at DESC NULLS LAST, r.phone ASC" +
+            "<where>" +
+            "<if test='bizType != null'>AND r.biz_type = #{bizType} </if>" +
+            "<if test='keyword != null'>AND (r.name LIKE #{keyword} ESCAPE '!' " +
+            "OR r.phone LIKE #{keyword} ESCAPE '!') </if>" +
+            "</where>" +
+            "ORDER BY CASE r.biz_type WHEN 'daily' THEN 0 WHEN 'evening' THEN 1 WHEN 'alarm' THEN 2 ELSE 9 END, " +
+            "r.updated_at DESC NULLS LAST, r.phone ASC" +
             "</script>")
-    IPage<SmsReceiverVO> selectReceiverPage(IPage<SmsReceiverVO> page, @Param("bizType") String bizType);
+    IPage<SmsReceiverVO> selectReceiverPage(IPage<SmsReceiverVO> page,
+                                            @Param("bizType") String bizType,
+                                            @Param("keyword") String keyword);
 
     /** 表内记录总数（0 = 无接收人，页面提示新增；发送时为空即不发） */
     @Select("SELECT COUNT(*) FROM " + T_RECEIVER)
     long countAll();
 
-    /** 某类型的手机号清单（发送链路取人；按创建时间稳定排序） */
+    /**
+     * 某类型的手机号文本清单（发送链路取人；每条记录可能是英文逗号分隔的多个号码，
+     * 由 Service 拆分后逐号发送；按创建时间稳定排序）
+     */
     @Select("SELECT r.phone FROM " + T_RECEIVER + " r WHERE r.biz_type = #{bizType} " +
             "ORDER BY r.created_at ASC NULLS FIRST, r.phone ASC")
     List<String> selectPhonesByType(@Param("bizType") String bizType);
-
-    /** 同类型同号码是否已存在（新增/编辑查重，编辑时经 excludeId 排除自身） */
-    @Select("<script>" +
-            "SELECT COUNT(*) FROM " + T_RECEIVER + " " +
-            "WHERE biz_type = #{bizType} AND phone = #{phone} " +
-            "<if test='excludeId != null'>AND id != #{excludeId} </if>" +
-            "</script>")
-    long countSamePhone(@Param("bizType") String bizType,
-                        @Param("phone") String phone,
-                        @Param("excludeId") String excludeId);
 }

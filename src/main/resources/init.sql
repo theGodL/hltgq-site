@@ -242,18 +242,21 @@ CREATE TABLE IF NOT EXISTS t_auto_hltgq_water_message_rule (
 ALTER TABLE t_auto_hltgq_water_message_rule ADD COLUMN IF NOT EXISTS site_id VARCHAR;
 
 -- 短信接收人表（2026-11 新增，页面 message-rule-setting.html「短信管理」Tab 维护；独立执行版见项目根 sms-receiver-ddl.sql）
--- 发送取人口径：表不存在/为空 → 用 application.properties 配置清单；表有数据 → 完全以表为准（某类型空=该类型不发）
+-- 发送取人口径：完全以本表为准（无配置兜底）；表不存在/查询失败或某类型 0 人 → 该类型不发送
 CREATE TABLE IF NOT EXISTS "qixiao-apaas".t_auto_hltgq_water_sms_receiver (
     id         VARCHAR(64) PRIMARY KEY,
-    biz_type   VARCHAR(16) NOT NULL,          -- 短信类型：daily=每日8点报 / alarm=报警短信
-    name       VARCHAR(64),                   -- 接收人姓名（应用层必填，最长 32 字）
-    phone      VARCHAR(20) NOT NULL,          -- 手机号码（11 位，应用层校验）
+    biz_type   VARCHAR(16) NOT NULL,          -- 短信类型：daily=每日8点报 / evening=晚8点报 / alarm=报警短信
+    name       VARCHAR(64),                   -- 接收人姓名（选填，填写时最长 32 字）
+    phone      VARCHAR(255) NOT NULL,         -- 手机号码：一行可存多个（英文逗号分隔，最多 10 个，发送时拆分逐号发送）
     corp_code  VARCHAR(64),
     created_at TIMESTAMP,
     created_by VARCHAR(64),
     updated_at TIMESTAMP,
     updated_by VARCHAR(64)
 );
+-- 列兜底：存量表 phone 原为 VARCHAR(20)，一行多号码后需扩宽（幂等）
+ALTER TABLE "qixiao-apaas".t_auto_hltgq_water_sms_receiver
+    ALTER COLUMN phone TYPE VARCHAR(255);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_sms_receiver_biz_phone
     ON "qixiao-apaas".t_auto_hltgq_water_sms_receiver(biz_type, phone);
 

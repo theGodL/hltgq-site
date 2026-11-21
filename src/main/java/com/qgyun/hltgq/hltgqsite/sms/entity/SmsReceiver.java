@@ -8,7 +8,7 @@ import lombok.EqualsAndHashCode;
 
 /**
  * 短信接收人表实体（{@code /message-rule-setting.html}「短信管理」Tab 维护）。
- * <p>biz_type：daily=每日 8 点报 / alarm=报警短信（雨量告警与水位涨幅共用同一清单）。
+ * <p>biz_type：daily=每日 8 点报 / evening=晚 8 点报 / alarm=报警短信（雨量告警与水位涨幅共用同一清单）。
  * <p>发送取人口径见 {@link com.qgyun.hltgq.hltgqsite.sms.service.SmsReceiverService#resolvePhones}：
  * 完全以本表为准（页面增删改即生效；未建表或某类型 0 人 = 该类短信不发送）。
  */
@@ -17,11 +17,11 @@ import lombok.EqualsAndHashCode;
 @TableName("\"qixiao-apaas\".\"t_auto_hltgq_water_sms_receiver\"")
 public class SmsReceiver extends BaseWaterEntity {
 
-    /** 短信类型：daily=每日 8 点报 / alarm=报警短信 */
+    /** 短信类型：daily=每日 8 点报 / evening=晚 8 点报 / alarm=报警短信 */
     @TableField("\"biz_type\"")
     private String bizType;
 
-    /** 接收人姓名（必填，最长 32 字） */
+    /** 接收人姓名（选填，填写时最长 32 字） */
     @TableField("\"name\"")
     private String name;
 
