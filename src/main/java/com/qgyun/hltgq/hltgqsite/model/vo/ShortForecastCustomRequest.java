@@ -1,6 +1,7 @@
 package com.qgyun.hltgq.hltgqsite.model.vo;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.util.List;
@@ -27,7 +28,12 @@ public class ShortForecastCustomRequest {
     /** 逐小时降雨量(mm)（可选：不传则自动取气象数据；传则长度必须等于 start→end 逐小时步数） */
     private List<Double> rainfall;
 
-    /** 逐小时总出库流量(m3/s)（必填，模型 q_out：非负有限数，长度必须等于逐小时步数，含首尾） */
-    @JsonAlias("q_out")
+    /**
+     * 逐小时总出库流量(m3/s)（必填，模型 q_out：非负有限数，长度必须等于逐小时步数，含首尾）。
+     * <p>对外字段名固定为 qOut：Jackson 把 getter getQOut 推导成 qout（前两位大写按 legacy 命名转小写），
+     * 不显式声明 JsonProperty 时传 qOut 会收不到值，故此处显式指定，并兼容 q_out 与 qout 两种写法。
+     */
+    @JsonProperty("qOut")
+    @JsonAlias({"q_out", "qout"})
     private List<Double> qOut;
 }
