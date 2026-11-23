@@ -15,6 +15,7 @@ import com.qgyun.hltgq.hltgqsite.model.service.LongPredictService;
 import com.qgyun.hltgq.hltgqsite.model.service.ModelRecordCommonService;
 import com.qgyun.hltgq.hltgqsite.model.service.ShortForecastService;
 import com.qgyun.hltgq.hltgqsite.model.vo.LongPredictRequest;
+import com.qgyun.hltgq.hltgqsite.model.vo.ShortForecastCustomRequest;
 import com.qgyun.hltgq.hltgqsite.model.vo.ShortForecastRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -73,6 +74,17 @@ public class WaterForecastController {
     public Map<String, Object> submitShort(@RequestBody ShortForecastRequest req) {
         Map<String, Object> result = new HashMap<>();
         result.put("recordId", shortForecastService.submit(req));
+        return result;
+    }
+
+    /**
+     * 提交短期来水预测·自定义出库（秒回 recordId）：按给定逐小时总出库流量推演水位/库容。
+     * <p>入参 qOut 必填且与逐小时步数等长；该模式不使用三开关与机组台数。
+     */
+    @PostMapping("/short/custom")
+    public Map<String, Object> submitShortCustom(@RequestBody ShortForecastCustomRequest req) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("recordId", shortForecastService.submitCustom(req));
         return result;
     }
 

@@ -1,5 +1,6 @@
 package com.qgyun.hltgq.hltgqsite.model.vo;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Data;
 
 import java.util.List;
@@ -23,6 +24,14 @@ public class ShortForecastRequest {
 
     /** 是否启用发电下泄（默认 false） */
     private Boolean enablePower;
+
+    /**
+     * 发电机组台数（1~4，默认 1）：模型按单台 30 m³/s 计发电分项，
+     * 即 1/2/3/4 台对应 30/60/90/120 m³/s；enablePower=false 时按 0 计。
+     * <p>兼容模型契约写法 power_units。
+     */
+    @JsonAlias("power_units")
+    private Integer powerUnits;
 
     /** 是否启用泄洪隧洞（默认 false） */
     private Boolean enableTunnel;

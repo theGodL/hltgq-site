@@ -12,6 +12,7 @@ import com.qgyun.hltgq.hltgqsite.model.task.ModelTaskExecutor;
 import com.qgyun.hltgq.hltgqsite.model.util.BoolTextUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils;
 import com.qgyun.hltgq.hltgqsite.model.util.StorageCurveService;
+import com.qgyun.hltgq.hltgqsite.model.vo.ShortForecastCustomRequest;
 import com.qgyun.hltgq.hltgqsite.model.vo.ShortForecastRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,9 +43,12 @@ import static com.qgyun.hltgq.hltgqsite.model.util.JsonFieldUtils.textOf;
  * <p>参数口径（会议定稿）：
  * <ul>
  *   <li>起调水位：自动取花凉亭坝上最新水位（不再由用户输入）；</li>
- *   <li>三开关（发电/泄洪隧洞/溢洪道）：默认均 false；</li>
+ *   <li>三开关（发电/泄洪隧洞/溢洪道）：默认均 false（显式传 JSON 布尔值，模型仅省略时才取自身默认值）；</li>
+ *   <li>发电机组台数：1~4 台（默认 1 台），单台 30 m³/s，即 30/60/90/120 m³/s；</li>
  *   <li>逐小时降雨：未传时自动拉取气象 16 天逐小时数据，缺失小时填 0，起止与窗口对齐。</li>
  * </ul>
+ * <p>另提供自定义出库模式 {@link #submitCustom}：按给定逐小时总出库流量推演水位/库容（模型 /forecast/custom），
+ * 该模式不使用三开关与机组台数。
  */
 @Service
 public class ShortForecastService {
@@ -56,6 +60,11 @@ public class ShortForecastService {
 
     /** 预报窗口小时数上限：气象预报 16 天 = 384 小时 */
     private static final int MAX_RANGE_HOURS = 384;
+
+    /** 发电机组台数上下限与默认值（手册 4.2：1~4 台，单台 30 m³/s，默认 1 台） */
+    private static final int MIN_POWER_UNITS = 1;
+    private static final int MAX_POWER_UNITS = 4;
+    private static final int DEFAULT_POWER_UNITS = 1;
 
     /** 小时流量(m3/s) → 小时水量(万方) 换算系数：3600 / 10000 */
     private static final double RATE_TO_VOLUME = 0.36;
@@ -115,17 +124,15 @@ public class ShortForecastService {
         if (end == null) {
             throw new IllegalArgumentException("结束时间不能为空（格式 YYYY-MM-DD HH:mm）");
         }
-        if (!end.isAfter(start)) {
-            throw new IllegalArgumentException("结束时间必须晚于开始时间");
-        }
-        int steps = (int) ChronoUnit.HOURS.between(start, end) + 1;
-        // 窗口含端点逐小时；上限 384 小时（气象 16 天），下限 2 步
-        if (steps < 2 || steps - 1 > MAX_RANGE_HOURS) {
-            throw new IllegalArgumentException("预报窗口必须在 1~" + MAX_RANGE_HOURS + " 小时之间");
-        }
+        int steps = requireSteps(start, end);
         boolean enablePower = Boolean.TRUE.equals(req.getEnablePower());
         boolean enableTunnel = Boolean.TRUE.equals(req.getEnableTunnel());
         boolean enableSpillway = Boolean.TRUE.equals(req.getEnableSpillway());
+        // 机组台数：1~4 台（省略按 1 台）；enablePower=false 时模型按 0 计发电流量
+        Integer powerUnits = req.getPowerUnits();
+        if (powerUnits != null && (powerUnits < MIN_POWER_UNITS || powerUnits > MAX_POWER_UNITS)) {
+            throw new IllegalArgumentException("发电机组台数必须在 " + MIN_POWER_UNITS + "~" + MAX_POWER_UNITS + " 台之间");
+        }
         if (req.getRainfall() != null && req.getRainfall().size() != steps) {
             throw new IllegalArgumentException("逐小时降雨数组长度必须等于预报窗口逐小时步数（" + steps + "）");
         }
@@ -141,6 +148,8 @@ public class ShortForecastService {
         body.put("enable_power", enablePower);
         body.put("enable_tunnel", enableTunnel);
         body.put("enable_spillway", enableSpillway);
+        // 发电流量按 30 m³/s/台：显式传台数（省略按 1 台，与模型默认一致）
+        body.put("power_units", powerUnits == null ? DEFAULT_POWER_UNITS : powerUnits);
         final List<Double> rainfall = req.getRainfall() == null
                 ? weatherRainService.loadHourlyRain(start, steps) : req.getRainfall();
         body.put("rainfall", rainfall);
@@ -172,7 +181,8 @@ public class ShortForecastService {
 
         // 异步执行模型计算
         String recordId = record.getId();
-        taskExecutor.submit(() -> execute(recordId, body, start, rainfall));
+        taskExecutor.submit(() -> execute(recordId, ModelClient.PATH_FORECAST, body, start, rainfall,
+                "合计下泄流量_m3s"));
         log.info("短期来水预测任务已提交：recordId={}, 窗口 {} ~ {}, steps={}", recordId,
                 start.format(HOUR_FMT), end.format(HOUR_FMT), steps);
         return recordId;
@@ -186,15 +196,114 @@ public class ShortForecastService {
     }
 
     /**
-     * 异步任务：调模型 → 构建逐小时明细 → 事务内写明细+回写汇总 → 更新状态。
-     * <p>事务边界：模型调用（/forecast）在事务外，避免长事务占用连接；
-     * 明细写入 + 汇总回写包在事务内，中途失败整体回滚，不留孤儿明细。
+     * 提交短期来水预测·自定义出库（秒回 recordId），异步执行模型计算。
+     * <p>与常规版共用 start/end/rainfall/起调水位；q_out（逐小时总出库流量）必填、非负、与逐小时步数等长，
+     * 模型直接采用给定值，不按当时水位对应的泄流能力限流。该模式不使用三开关与机组台数。
      */
-    private void execute(String recordId, Map<String, Object> body,
-                         LocalDateTime start, List<Double> rainfall) {
+    public String submitCustom(ShortForecastCustomRequest req) {
+        if (req == null) {
+            throw new IllegalArgumentException("请求体不能为空");
+        }
+        LocalDateTime start = parseHour(req.getStart());
+        if (start == null) {
+            throw new IllegalArgumentException("开始时间不能为空（格式 YYYY-MM-DD HH:mm）");
+        }
+        LocalDateTime end = parseHour(req.getEnd());
+        if (end == null) {
+            throw new IllegalArgumentException("结束时间不能为空（格式 YYYY-MM-DD HH:mm）");
+        }
+        int steps = requireSteps(start, end);
+        if (req.getRainfall() != null && req.getRainfall().size() != steps) {
+            throw new IllegalArgumentException("逐小时降雨数组长度必须等于预报窗口逐小时步数（" + steps + "）");
+        }
+        List<Double> qOut = req.getQOut();
+        if (qOut == null || qOut.isEmpty()) {
+            throw new IllegalArgumentException("逐小时出库流量数组不能为空");
+        }
+        if (qOut.size() != steps) {
+            throw new IllegalArgumentException("逐小时出库流量数组长度必须等于预报窗口逐小时步数（" + steps + "）");
+        }
+        for (Double value : qOut) {
+            if (value == null || value.isNaN() || value.isInfinite() || value < 0) {
+                throw new IllegalArgumentException("逐小时出库流量必须为非负有限数值（m3/s）");
+            }
+        }
+
+        // 组装模型请求体（/forecast/custom：start/end/start_level/rainfall/q_out，不接受三开关与机组台数）
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("start", start.format(HOUR_FMT));
+        body.put("end", end.format(HOUR_FMT));
+        Double startLevel = loadLatestLevel();
+        if (startLevel != null) {
+            body.put("start_level", startLevel);
+        }
+        final List<Double> rainfall = req.getRainfall() == null
+                ? weatherRainService.loadHourlyRain(start, steps) : req.getRainfall();
+        body.put("rainfall", rainfall);
+        body.put("q_out", qOut);
+
+        ShortForecastRecord record = new ShortForecastRecord();
+        String schemeName = req.getSchemeName() == null ? null : req.getSchemeName().trim();
+        record.setSchemeName(schemeName == null || schemeName.isEmpty()
+                ? "短期预报_自定义出库_" + start.format(HOUR_FMT) + "_" + steps + "小时" : schemeName);
+        record.setStatus(ModelRecordCommonService.STATUS_CALCULATING);
+        record.setDelFlag(BoolTextUtils.FALSE);
+        record.setStartDate(start);
+        record.setEndDate(end);
+        record.setDays((double) steps);
+        record.setStartLevel(startLevel);
+        // 自定义出库不走设施开关：三开关按“未启用”留痕（机组台数不适用）
+        record.setEnablePower(BoolTextUtils.FALSE);
+        record.setEnableTunnel(BoolTextUtils.FALSE);
+        record.setEnableSpillway(BoolTextUtils.FALSE);
+        record.setCorpCode(corpCode);
+        record.setCreatedAt(LocalDateTime.now());
+        record.setCreatedBy(ModelRecordCommonService.operatorId(createdBy));
+        record.setUpdatedAt(record.getCreatedAt());
+        record.setUpdatedBy(createdBy);
         try {
-            // 1. 调用 /forecast
-            JsonNode response = modelClient.postJson(ModelClient.PATH_FORECAST, body);
+            record.setRequestJson(objectMapper.writeValueAsString(body));
+            record.setRainfallJson(objectMapper.writeValueAsString(rainfall));
+            record.setCustomDischargeJson(objectMapper.writeValueAsString(qOut));
+        } catch (Exception e) {
+            throw new IllegalArgumentException("请求体归档失败: " + e.getMessage());
+        }
+        recordMapper.insert(record);
+
+        // 异步执行模型计算
+        String recordId = record.getId();
+        taskExecutor.submit(() -> execute(recordId, ModelClient.PATH_FORECAST_CUSTOM, body, start, rainfall,
+                "出库流量_m3s"));
+        log.info("短期来水预测（自定义出库）任务已提交：recordId={}, 窗口 {} ~ {}, steps={}", recordId,
+                start.format(HOUR_FMT), end.format(HOUR_FMT), steps);
+        return recordId;
+    }
+
+    /** 校验窗口并返回逐小时步数（含端点）：结束须晚于开始，跨度 1~384 小时（气象 16 天）。 */
+    private static int requireSteps(LocalDateTime start, LocalDateTime end) {
+        if (!end.isAfter(start)) {
+            throw new IllegalArgumentException("结束时间必须晚于开始时间");
+        }
+        int steps = (int) ChronoUnit.HOURS.between(start, end) + 1;
+        if (steps < 2 || steps - 1 > MAX_RANGE_HOURS) {
+            throw new IllegalArgumentException("预报窗口必须在 1~" + MAX_RANGE_HOURS + " 小时之间");
+        }
+        return steps;
+    }
+
+    /**
+     * 异步任务：调模型 → 构建逐小时明细 → 事务内写明细+回写汇总 → 更新状态。
+     * <p>事务边界：模型调用在事务外，避免长事务占用连接；
+     * 明细写入 + 汇总回写包在事务内，中途失败整体回滚，不留孤儿明细。
+     *
+     * @param path       模型路径：/forecast（常规）或 /forecast/custom（自定义出库）
+     * @param outflowKey 逐小时出库流量字段名：常规版「合计下泄流量_m3s」、自定义版「出库流量_m3s」
+     */
+    private void execute(String recordId, String path, Map<String, Object> body,
+                         LocalDateTime start, List<Double> rainfall, String outflowKey) {
+        try {
+            // 1. 调用模型
+            JsonNode response = modelClient.postJson(path, body);
 
             // 2. 解析 meta/summary/data（逐小时演算表）
             JsonNode summary = response.path("summary");
@@ -221,7 +330,7 @@ public class ShortForecastService {
                 daily.setRainfall(rain);
                 // 流量：data 直出；水量=流量×0.36（小时量换算）
                 Double inflowRate = doubleOf(item, "入库流量_m3s");
-                Double outflowRate = doubleOf(item, "合计下泄流量_m3s");
+                Double outflowRate = doubleOf(item, outflowKey);
                 daily.setInflowRate(inflowRate);
                 daily.setOutflowRate(outflowRate);
                 daily.setInflowVolume(inflowRate == null ? null : round2(inflowRate * RATE_TO_VOLUME));
@@ -287,16 +396,16 @@ public class ShortForecastService {
 
     /**
      * 起调水位：自动取花凉亭坝上最新一条水位（站点取配置 flood-drought.obs-level-stcd）。
-     * 无数据返回 null（不传则模型默认 80.0）。
+     * 无数据返回 null（不传则模型按起调水位默认 70.0 m）。
      */
     private Double loadLatestLevel() {
         if (obsLevelStcd == null) {
-            log.warn("短期预报：坝上水位站未配置，start_level 不传（模型默认 80.0）");
+            log.warn("短期预报：坝上水位站未配置，start_level 不传（模型默认 70.0）");
             return null;
         }
         Double value = floodDroughtMapper.selectLatestLevel(obsLevelStcd);
         if (value == null) {
-            log.warn("短期预报：坝上水位站 {} 无最新水位数据，start_level 不传（模型默认 80.0）", obsLevelStcd);
+            log.warn("短期预报：坝上水位站 {} 无最新水位数据，start_level 不传（模型默认 70.0）", obsLevelStcd);
             return null;
         }
         return Math.round(value * 1000.0) / 1000.0;

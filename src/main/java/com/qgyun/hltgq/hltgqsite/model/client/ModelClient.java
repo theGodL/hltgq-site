@@ -38,6 +38,8 @@ public class ModelClient {
 
     public static final String PATH_HEALTH = "/health";
     public static final String PATH_FORECAST = "/forecast";
+    /** 短期来水·自定义逐小时总出库流量（手册 4.2.1，1120 版本开放） */
+    public static final String PATH_FORECAST_CUSTOM = "/forecast/custom";
     public static final String PATH_MOISTURE = "/moisture";
     public static final String PATH_PREDICT = "/predict";
     public static final String PATH_DEMAND = "/demand";

@@ -72,7 +72,7 @@ public class ShortForecastRecord extends BaseRecordEntity {
     @TableField("\"rainfall_json\"")
     private String rainfallJson;
 
-    /** 自定义下泄数组归档 JSON（旧字段，小时尺度废弃） */
+    /** 自定义下泄数组归档 JSON：自定义出库模式（/forecast/custom）的逐小时 q_out 归档 */
     @TableField("\"custom_discharge_json\"")
     private String customDischargeJson;
 
