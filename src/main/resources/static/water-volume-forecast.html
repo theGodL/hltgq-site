@@ -218,6 +218,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .detail-hd h4{font-size:14px;font-weight:500;color:#333}
 .detail-tools{display:flex;align-items:center;gap:8px}
 .detail-tools .field{width:180px;height:32px}
+/* 短期页：发电机组台数下拉（跟在「启用发电下泄流量」后面） */
+.chk-row .unit-select{height:28px;min-width:76px;margin-left:8px;padding:0 6px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;color:#333;font-size:13px}
+.chk-row .unit-select:focus{outline:none;border-color:#1677ff}
+.chk-note{margin:0 0 8px 24px;color:#999;font-size:12px;line-height:1.6}
+/* 自定义短期来水预报：逐小时可编辑小表（内部滚动条） */
+.hour-grid{border:1px solid #e8e8e8;border-radius:6px;background:#fff;overflow:hidden}
+.hour-grid-hd,.hour-grid-row{display:grid;grid-template-columns:1.4fr 1fr 1fr;align-items:center}
+.hour-grid-hd{background:#fafafa;border-bottom:1px solid #e8e8e8;color:#333;font-size:13px;font-weight:500}
+.hour-grid-hd span{padding:8px 6px;text-align:center}
+.hour-grid-body{max-height:300px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+.hour-grid-row{border-bottom:1px solid #f5f5f5;font-size:13px}
+.hour-grid-row:last-child{border-bottom:none}
+.hour-grid-row .hg-time{padding:6px;text-align:center;color:#666;white-space:nowrap}
+.hour-grid-row input{width:100%;height:26px;border:1px solid transparent;border-radius:4px;background:transparent;padding:0 6px;color:#333;font-size:13px;text-align:right}
+.hour-grid-row input:hover{border-color:#e8e8e8;background:#fafafa}
+.hour-grid-row input:focus{outline:none;border-color:#1677ff;background:#fff}
+.hour-grid-row input.is-invalid{border-color:#ff4d4f;background:#fff1f0}
+.hour-grid-body::-webkit-scrollbar{width:6px}
+.hour-grid-body::-webkit-scrollbar-thumb{background:#d9d9d9;border-radius:3px}
+.hour-grid-body::-webkit-scrollbar-track{background:transparent}
+.hour-grid-empty{padding:24px;text-align:center;color:#bbb;font-size:13px}
 .tbl-wrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;min-height:120px}
 table{width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e8e8e8}
 thead tr{background:#fafafa}
@@ -265,6 +286,7 @@ tbody tr:hover td{background:#fafafa}
 
   <div class="top-tabs" id="top-tabs">
     <div class="top-tab active" data-panel="short">短期来水预报</div>
+    <div class="top-tab" data-panel="custom">自定义短期来水预报</div>
     <div class="top-tab" data-panel="mid">中长期来水预报</div>
     <div class="top-tab" data-panel="demand">需水预报</div>
     <div class="top-tab" data-panel="loss">水量损失预报</div>
@@ -300,7 +322,14 @@ tbody tr:hover td{background:#fafafa}
             <div class="chk-row">
               <input type="checkbox" id="enable-power">
               <label for="enable-power">启用发电下泄流量</label>
+              <select class="unit-select" id="power-units" title="发电机组台数（1~4 台）">
+                <option value="1">1 台</option>
+                <option value="2">2 台</option>
+                <option value="3">3 台</option>
+                <option value="4">4 台</option>
+              </select>
             </div>
+            <div class="chk-note">一台机组 30m³/s 下泄数量</div>
             <div class="chk-row">
               <input type="checkbox" id="enable-tunnel">
               <label for="enable-tunnel">启用泄洪隧洞</label>
@@ -366,13 +395,13 @@ tbody tr:hover td{background:#fafafa}
                   <thead>
                     <tr>
                       <th>时间</th>
-                      <th>降雨量(mm)</th>
                       <th>入库流量(m³/s)</th>
-                      <th>出库流量(m³/s)</th>
                       <th>水位(m)</th>
                       <th>库容(万方)</th>
-                      <th>入库水量(万方)</th>
-                      <th>出库水量(万方)</th>
+                      <th>发电流量(m³/s)</th>
+                      <th>泄洪隧洞流量(m³/s)</th>
+                      <th>溢洪道流量(m³/s)</th>
+                      <th>合计下泄流量(m³/s)</th>
                     </tr>
                   </thead>
                   <tbody id="short-tbody"></tbody>
@@ -381,6 +410,119 @@ tbody tr:hover td{background:#fafafa}
               <div class="pg-bar">
                 <div class="pg-info" id="short-pg-info">共 0 条</div>
                 <div class="pg-btns" id="short-pg-btns"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 自定义短期来水预报（小时尺度 /forecast/custom） -->
+  <div class="panel" id="panel-custom">
+    <div class="main-layout">
+      <div class="left-panel">
+        <div class="left-scroll">
+          <div class="form-item">
+            <label class="form-label" for="custom-start-datetime"><span class="req">*</span>预报开始时间</label>
+            <input type="datetime-local" class="field" id="custom-start-datetime" step="3600" disabled title="开始时间固定为当前整点，不可编辑">
+          </div>
+          <div class="form-item">
+            <label class="form-label" for="custom-end-datetime"><span class="req">*</span>预报结束时间</label>
+            <input type="datetime-local" class="field" id="custom-end-datetime" step="3600" title="结束时间可编辑（整点），最多往后 16 天">
+            <div class="form-hint" style="margin-top:8px">开始时间固定为当前时刻；结束时间最多往后 16 天</div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label">起始水位</label>
+            <div class="form-row">
+              <input type="text" class="field" id="custom-start-level-display" value="默认取花凉亭坝上最新水位" readonly title="由后端自动取花凉亭坝上最新水位，不可编辑">
+              <span class="unit">m</span>
+            </div>
+            <div class="form-hint" id="custom-start-level-tip" style="margin-top:8px">加载坝上最新水位…</div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label">逐小时降雨量与出库流量</label>
+            <div class="hour-grid">
+              <div class="hour-grid-hd">
+                <span>时间</span><span>降雨量(mm)</span><span>出库流量(m³/s)</span>
+              </div>
+              <div class="hour-grid-body" id="custom-hour-rows"></div>
+            </div>
+            <div class="form-hint" style="margin-top:8px">时间与上方预报起止时间一致；出库流量为逐小时总出库流量，默认 0，可逐行修改</div>
+          </div>
+        </div>
+        <div class="left-actions">
+          <button class="btn btn-primary btn-block" id="custom-calc-btn">模型计算</button>
+        </div>
+      </div>
+
+      <div class="right-panel">
+        <div class="right-scroll">
+          <div class="result-hd" id="custom-result-hd">
+            <h2 id="custom-result-title">自定义短期来水预报</h2>
+            <button type="button" class="btn btn-default result-rename-btn" id="custom-rename-btn" title="编辑名称" style="display:none;height:28px;padding:0 8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 7l4 4" stroke="currentColor" stroke-width="1.6"/></svg>
+            </button>
+            <button class="btn history-btn" id="custom-history-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V4h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              查看历史计算方案
+            </button>
+          </div>
+
+          <div class="empty-state" id="custom-result-empty">
+            <svg width="120" height="100" viewBox="0 0 120 100" fill="none">
+              <rect x="18" y="28" width="84" height="56" rx="6" fill="#f5f5f5" stroke="#e8e8e8"/>
+              <path d="M30 68l18-18 12 10 16-20 14 28H30z" fill="#e6f4ff" stroke="#91caff" stroke-width="1.2"/>
+              <circle cx="42" cy="44" r="6" fill="#bae0ff"/>
+              <rect x="38" y="16" width="44" height="10" rx="3" fill="#f0f0f0"/>
+            </svg>
+            <p>暂无计算结果，请设置参数后点击「模型计算」</p>
+          </div>
+
+          <div id="custom-result-content" style="display:none">
+            <div class="stats-row cols-5" id="custom-stats"></div>
+            <div class="chart-card">
+              <div class="chart-title">降雨量分布</div>
+              <div class="chart-unit">单位: mm</div>
+              <div class="chart-box" id="custom-chart-rain"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">水位流量关系图</div>
+              <div class="chart-box" id="custom-chart-io" style="height:320px"></div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-hd">
+                <h4>自定义短期来水预报详细结果</h4>
+                <div class="detail-tools">
+                  <input type="text" class="field" id="custom-detail-filter" placeholder="筛选当前结果">
+                  <button class="btn btn-default" id="custom-detail-export">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    导出
+                  </button>
+                </div>
+              </div>
+              <div class="tbl-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>入库流量(m³/s)</th>
+                      <th>水位(m)</th>
+                      <th>库容(万方)</th>
+                      <th>发电流量(m³/s)</th>
+                      <th>泄洪隧洞流量(m³/s)</th>
+                      <th>溢洪道流量(m³/s)</th>
+                      <th>合计下泄流量(m³/s)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="custom-tbody"></tbody>
+                </table>
+              </div>
+              <div class="pg-bar">
+                <div class="pg-info" id="custom-pg-info">共 0 条</div>
+                <div class="pg-btns" id="custom-pg-btns"></div>
               </div>
             </div>
           </div>
@@ -857,13 +999,13 @@ tbody tr:hover td{background:#fafafa}
             <thead>
               <tr>
                 <th>时间</th>
-                <th>降雨量(mm)</th>
                 <th>入库流量(m³/s)</th>
-                <th>出库流量(m³/s)</th>
                 <th>水位(m)</th>
                 <th>库容(万方)</th>
-                <th>入库水量(万方)</th>
-                <th>出库水量(万方)</th>
+                <th>发电流量(m³/s)</th>
+                <th>泄洪隧洞流量(m³/s)</th>
+                <th>溢洪道流量(m³/s)</th>
+                <th>合计下泄流量(m³/s)</th>
               </tr>
             </thead>
             <tbody id="detail-tbody"></tbody>
@@ -1016,6 +1158,9 @@ tbody tr:hover td{background:#fafafa}
   let lossDetail = null;
   let shortCurrentId = null;
   let shortCurrentName = '';
+  let customDetail = null;
+  let customCurrentId = null;
+  let customCurrentName = '';
   let midCurrentId = null;
   let midCurrentName = '';
   let demandCurrentId = null;
@@ -1026,6 +1171,8 @@ tbody tr:hover td{background:#fafafa}
   let moistureCurrentName = '';
   let shortDates = [];
   let shortSeries = null;
+  let customDates = [];
+  let customSeries = null;
   let midSeries = null;
   let demandRowsCache = [];
   let demandPeriods = [];
@@ -1046,6 +1193,11 @@ tbody tr:hover td{background:#fafafa}
   let detailPage = 1;
   const DETAIL_PAGE_SIZE = 10;
   let detailFilter = '';
+  let customPage = 1;
+  let customFilter = '';
+  // 自定义短期来水预报：左侧逐小时可编辑序列（默认 0，不用空值）
+  let customRain = [];
+  let customQout = [];
   let charts = {};
   let demandTab = 'canal';
   let demandFilter = '';
@@ -1076,6 +1228,7 @@ tbody tr:hover td{background:#fafafa}
 
   function apiByType(type) {
     if (type === 'short') return API.short;
+    if (type === 'custom') return API.shortCustom;
     if (type === 'mid') return API.long;
     if (type === 'demand') return API.demand;
     if (type === 'loss') return API.loss;
@@ -1209,10 +1362,10 @@ tbody tr:hover td{background:#fafafa}
       if (fromUser) toast('结束时间最多往后 16 天');
     }
   }
-  /** 进页拉取花凉亭坝上最新水位提示 */
-  async function loadDamLatestLevelTip() {
-    const tip = $('start-level-tip');
-    const input = $('start-level-display');
+  /** 进页拉取花凉亭坝上最新水位提示（短期 / 自定义短期共用） */
+  async function loadLatestLevelTip(tipId, inputId) {
+    const tip = $(tipId);
+    const input = $(inputId);
     if (!tip) return;
     tip.textContent = '加载坝上最新水位…';
     try {
@@ -1250,6 +1403,7 @@ tbody tr:hover td{background:#fafafa}
   }
   const SCHEME_TITLE_DEFAULTS = {
     short: '短期来水预报计算结果',
+    custom: '自定义短期来水预报计算结果',
     mid: '中长期来水预报计算结果',
     demand: '需水预报计算结果',
     loss: '水量损失预报计算结果',
@@ -1257,6 +1411,7 @@ tbody tr:hover td{background:#fafafa}
   };
   function getSchemeCurrent(type) {
     if (type === 'short') return { id: shortCurrentId, name: shortCurrentName };
+    if (type === 'custom') return { id: customCurrentId, name: customCurrentName };
     if (type === 'mid') return { id: midCurrentId, name: midCurrentName };
     if (type === 'demand') return { id: demandCurrentId, name: demandCurrentName };
     if (type === 'loss') return { id: lossCurrentId, name: lossCurrentName };
@@ -1265,6 +1420,7 @@ tbody tr:hover td{background:#fafafa}
   }
   function setSchemeCurrent(type, id, name) {
     if (type === 'short') { shortCurrentId = id; shortCurrentName = name || ''; }
+    else if (type === 'custom') { customCurrentId = id; customCurrentName = name || ''; }
     else if (type === 'mid') { midCurrentId = id; midCurrentName = name || ''; }
     else if (type === 'demand') { demandCurrentId = id; demandCurrentName = name || ''; }
     else if (type === 'loss') { lossCurrentId = id; lossCurrentName = name || ''; }
@@ -1483,7 +1639,10 @@ tbody tr:hover td{background:#fafafa}
       capacity: dailies.map(d => d.storage),
       evaporation: dailies.map(d => d.evaporation),
       inFlowRate: dailies.map(d => d.inflowRate),
-      outFlowRate: outRates
+      outFlowRate: outRates,
+      generation: dailies.map(d => d.generationRate),
+      tunnel: dailies.map(d => d.tunnelRate),
+      spillway: dailies.map(d => d.spillwayRate)
     };
   }
   function revealResultHd(id) {
@@ -1739,13 +1898,13 @@ tbody tr:hover td{background:#fafafa}
     if (!shortSeries || !shortDates.length) return [];
     return shortDates.map((dt, i) => ({
       date: API.fmtDateTime(dt),
-      rain: numOrDash(shortSeries.rainfall[i], 2),
       inFlow: numOrDash(shortSeries.inFlowRate[i], 2),
-      outFlow: numOrDash(shortSeries.outFlowRate[i], 2),
       level: numOrDash(shortSeries.level[i], 2),
       capacity: numOrDash(shortSeries.capacity[i], 2),
-      inflow: numOrDash(shortSeries.inflow[i], 2),
-      outflow: numOrDash(shortSeries.outflow[i], 2)
+      generation: numOrDash(shortSeries.generation[i], 2),
+      tunnel: numOrDash(shortSeries.tunnel[i], 2),
+      spillway: numOrDash(shortSeries.spillway[i], 2),
+      outFlow: numOrDash(shortSeries.outFlowRate[i], 2)
     }));
   }
   function filteredRows() {
@@ -1764,13 +1923,13 @@ tbody tr:hover td{background:#fafafa}
     const html = pageRows.map(r =>
       `<tr>
         <td>${r.date}</td>
-        <td>${r.rain}</td>
         <td>${r.inFlow}</td>
-        <td>${r.outFlow}</td>
         <td>${r.level}</td>
         <td>${r.capacity}</td>
-        <td>${r.inflow}</td>
-        <td>${r.outflow}</td>
+        <td>${r.generation}</td>
+        <td>${r.tunnel}</td>
+        <td>${r.spillway}</td>
+        <td>${r.outFlow}</td>
       </tr>`
     ).join('') || `<tr><td colspan="8" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>`;
     ['detail-tbody', 'short-tbody'].forEach(id => {
@@ -1852,14 +2011,23 @@ tbody tr:hover td{background:#fafafa}
     }).join('') || '<div style="padding:48px;text-align:center;color:#bbb">暂无历史记录</div>';
   }
 
+  /** 短期与自定义短期共用 /short/list：按 custom_discharge_json 是否为空分流两类方案 */
   async function loadHistory(type) {
     const mod = apiByType(type);
     if (!mod) return;
+    const sharedShortGroup = type === 'short' || type === 'custom';
     try {
       const list = await mod.list();
-      historyList = historyList.filter(h => h.type !== type).concat(
-        (list || []).map(r => mapHistoryItem(r, type))
-      );
+      const mapped = (list || []).map(r => {
+        // 分流以 discharge_mode 为准：存量常规方案的 custom_discharge_json 也存了旧版逐日出库数组，
+        // 旧版逐日方案也用过 discharge_mode=custom，因此只认小时尺度专用的 custom_hourly
+        const itemType = sharedShortGroup
+          ? (r.dischargeMode === 'custom_hourly' ? 'custom' : 'short')
+          : type;
+        return mapHistoryItem(r, itemType);
+      });
+      const dropTypes = sharedShortGroup ? ['short', 'custom'] : [type];
+      historyList = historyList.filter(h => dropTypes.indexOf(h.type) < 0).concat(mapped);
       if (historyType === type) renderHistory();
     } catch (err) {
       toast(err.message || '历史方案加载失败');
@@ -1887,6 +2055,9 @@ tbody tr:hover td{background:#fafafa}
       }
       if (tab.dataset.panel === 'moisture' && moistureDetail) {
         showMoistureResult();
+      }
+      if (tab.dataset.panel === 'custom' && customSeries) {
+        renderCustomCharts();
       }
       Object.values(charts).forEach(c => c && c.resize());
     }, 60);
@@ -1931,7 +2102,9 @@ tbody tr:hover td{background:#fafafa}
       end: toApiDateTime(endLocal),
       enablePower: !!$('enable-power').checked,
       enableTunnel: !!$('enable-tunnel').checked,
-      enableSpillway: !!$('enable-spillway').checked
+      enableSpillway: !!$('enable-spillway').checked,
+      // 发电机组台数：1~4 台，单台 30 m³/s（未启用发电时模型按 0 计发电流量）
+      powerUnits: Number($('power-units') && $('power-units').value) || 1
     };
 
     const btn = $('calc-btn');
@@ -1953,6 +2126,301 @@ tbody tr:hover td{background:#fafafa}
       btn.classList.remove('is-loading');
     }
   });
+
+  /* ========== 自定义短期来水预报（/forecast/custom） ========== */
+  /** 按当前起止时间生成逐小时序列（含首尾） */
+  function customHours() {
+    const startEl = $('custom-start-datetime');
+    const endEl = $('custom-end-datetime');
+    if (!startEl || !endEl || !startEl.value || !endEl.value) return [];
+    const a = new Date(startEl.value);
+    const b = new Date(endEl.value);
+    if (Number.isNaN(+a) || Number.isNaN(+b) || b < a) return [];
+    const n = Math.round((b - a) / 3600000) + 1;
+    const list = [];
+    for (let i = 0; i < n; i++) list.push(new Date(a.getTime() + i * 3600000));
+    return list;
+  }
+  function initCustomRange() {
+    const start = new Date();
+    start.setMinutes(0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 15);
+    const se = $('custom-start-datetime');
+    const ee = $('custom-end-datetime');
+    if (!se || !ee) return;
+    se.value = toLocalDatetimeValue(start);
+    ee.value = toLocalDatetimeValue(end);
+    syncCustomEndBounds();
+  }
+  function syncCustomEndBounds(fromUser) {
+    const startEl = $('custom-start-datetime');
+    const endEl = $('custom-end-datetime');
+    if (!startEl || !endEl || !startEl.value) return;
+    // 结束时间强制整点
+    if (endEl.value) {
+      const ed = new Date(endEl.value);
+      if (!Number.isNaN(+ed) && (ed.getMinutes() !== 0 || ed.getSeconds() !== 0)) {
+        ed.setMinutes(0, 0, 0);
+        endEl.value = toLocalDatetimeValue(ed);
+      }
+    }
+    endEl.min = startEl.value;
+    const start = new Date(startEl.value);
+    if (Number.isNaN(+start)) return;
+    const max = new Date(start);
+    max.setDate(max.getDate() + 15);
+    endEl.max = toLocalDatetimeValue(max);
+    if (endEl.value && endEl.value < startEl.value) endEl.value = startEl.value;
+    if (endEl.value && endEl.value > endEl.max) {
+      endEl.value = endEl.max;
+      if (fromUser) toast('结束时间最多往后 16 天');
+    }
+    renderCustomHourRows();
+  }
+  /** 逐小时序列按行数补齐/裁剪：保留已填值，新增行默认 0 */
+  function syncCustomArrays(n) {
+    const fix = arr => {
+      const out = arr.slice(0, n).map(v => {
+        const num = Number(v);
+        return Number.isFinite(num) && num >= 0 ? num : 0;
+      });
+      while (out.length < n) out.push(0);
+      return out;
+    };
+    customRain = fix(customRain);
+    customQout = fix(customQout);
+  }
+  function renderCustomHourRows() {
+    const body = $('custom-hour-rows');
+    if (!body) return;
+    const times = customHours();
+    syncCustomArrays(times.length);
+    if (!times.length) {
+      body.innerHTML = '<div class="hour-grid-empty">请先设置预报时间</div>';
+      return;
+    }
+    body.innerHTML = times.map((d, i) => {
+      const label = fmtHourLabel(toLocalDatetimeValue(d).replace('T', ' '));
+      return '<div class="hour-grid-row">' +
+        '<span class="hg-time">' + label + '</span>' +
+        '<input type="text" inputmode="decimal" data-idx="' + i + '" data-kind="rain" value="' + customRain[i] + '">' +
+        '<input type="text" inputmode="decimal" data-idx="' + i + '" data-kind="qout" value="' + customQout[i] + '">' +
+        '</div>';
+    }).join('');
+  }
+  if ($('custom-hour-rows')) {
+    // 编辑即写回数组：空值按 0 参与计算；非法文本标红且不静默归零（避免错值被静默带进模型）
+    $('custom-hour-rows').addEventListener('input', e => {
+      const el = e.target;
+      if (!el || el.tagName !== 'INPUT') return;
+      const idx = Number(el.dataset.idx);
+      const key = el.dataset.kind === 'rain' ? 'rain' : 'qout';
+      const raw = String(el.value).trim();
+      if (raw === '') {
+        el.classList.remove('is-invalid');
+        el.dataset.invalid = '';
+        if (key === 'rain') customRain[idx] = 0;
+        else customQout[idx] = 0;
+        return;
+      }
+      const num = Number(raw);
+      if (!Number.isFinite(num) || num < 0) {
+        el.classList.add('is-invalid');
+        el.dataset.invalid = '1';
+        return;
+      }
+      el.classList.remove('is-invalid');
+      el.dataset.invalid = '';
+      if (key === 'rain') customRain[idx] = num;
+      else customQout[idx] = num;
+    });
+    // 失焦：合法值回填规范值；非法值保留原文并提示，不覆写成 0
+    $('custom-hour-rows').addEventListener('focusout', e => {
+      const el = e.target;
+      if (!el || el.tagName !== 'INPUT') return;
+      if (el.dataset.invalid === '1') {
+        toast('请输入非负数值');
+        return;
+      }
+      const idx = Number(el.dataset.idx);
+      el.value = el.dataset.kind === 'rain' ? customRain[idx] : customQout[idx];
+    });
+  }
+  if ($('custom-end-datetime')) {
+    $('custom-end-datetime').addEventListener('change', () => syncCustomEndBounds(true));
+  }
+  function applyCustomDetail(detail) {
+    customDetail = detail || null;
+    const dailies = (detail && detail.dailies) || [];
+    const rec = (detail && detail.record) || {};
+    customCurrentId = rec.id || customCurrentId || null;
+    updateSchemeResultTitle('custom', rec.schemeName || customCurrentName || SCHEME_TITLE_DEFAULTS.custom);
+    customDates = dailies.map(d => d.forecastDate);
+    const outRates = dailies.map(d => d.outflowRate);
+    let maxOut = null;
+    outRates.forEach(v => {
+      const n = Number(v);
+      if (!Number.isNaN(n) && (maxOut == null || n > maxOut)) maxOut = n;
+    });
+    if (rec.startLevel != null && $('custom-start-level-display')) {
+      $('custom-start-level-display').value = numOrDash(rec.startLevel, 2);
+    }
+    customSeries = {
+      summary: {
+        maxLevel: rec.maxWaterLevel,
+        totalIn: rec.totalInflow,
+        totalOut: rec.totalOutflow,
+        totalRain: rec.totalRainfall,
+        peakInFlow: rec.peakInflowRate,
+        maxOutFlow: maxOut
+      },
+      rainfall: dailies.map(d => d.rainfall),
+      level: dailies.map(d => d.waterLevel),
+      capacity: dailies.map(d => d.storage),
+      inFlowRate: dailies.map(d => d.inflowRate),
+      outFlowRate: outRates,
+      generation: dailies.map(d => d.generationRate),
+      tunnel: dailies.map(d => d.tunnelRate),
+      spillway: dailies.map(d => d.spillwayRate)
+    };
+    // 查看历史方案只回看右侧结果，不覆盖左侧时窗与逐小时入参：
+    // 开始时间固定为当前整点且 disabled，若回填成历史时刻，再次计算会静默沿用历史时窗（与坝上最新起调水位不自洽）。
+  }
+  function showCustomResult() {
+    if (!customSeries) return;
+    revealResultHd('custom-result-hd');
+    $('custom-result-empty').style.display = 'none';
+    $('custom-result-content').style.display = 'block';
+    renderStats('custom-stats', customSeries.summary);
+    renderCustomCharts();
+    customPage = 1;
+    customFilter = '';
+    if ($('custom-detail-filter')) $('custom-detail-filter').value = '';
+    renderCustomDetailTable();
+  }
+  function renderCustomCharts() {
+    if (!customSeries || !customDates.length) return;
+    const rain = ensureChart('customRain', $('custom-chart-rain'));
+    if (rain) rain.setOption(rainOption(customDates, customSeries.rainfall));
+    const io = ensureChart('customIo', $('custom-chart-io'));
+    if (io) io.setOption(levelFlowOption(customDates, customSeries.level, customSeries.inFlowRate, customSeries.outFlowRate));
+  }
+  function buildCustomDetailRows() {
+    if (!customSeries || !customDates.length) return [];
+    return customDates.map((dt, i) => ({
+      date: API.fmtDateTime(dt),
+      inFlow: numOrDash(customSeries.inFlowRate[i], 2),
+      level: numOrDash(customSeries.level[i], 2),
+      capacity: numOrDash(customSeries.capacity[i], 2),
+      generation: numOrDash(customSeries.generation[i], 2),
+      tunnel: numOrDash(customSeries.tunnel[i], 2),
+      spillway: numOrDash(customSeries.spillway[i], 2),
+      outFlow: numOrDash(customSeries.outFlowRate[i], 2)
+    }));
+  }
+  function filteredCustomRows() {
+    const rows = buildCustomDetailRows();
+    const q = customFilter.trim();
+    if (!q) return rows;
+    return rows.filter(r => Object.values(r).some(v => String(v).includes(q)));
+  }
+  function renderCustomDetailTable() {
+    const tbody = $('custom-tbody');
+    if (!tbody) return;
+    const rows = filteredCustomRows();
+    const total = rows.length;
+    const pages = Math.max(1, Math.ceil(total / DETAIL_PAGE_SIZE));
+    if (customPage > pages) customPage = pages;
+    const start = (customPage - 1) * DETAIL_PAGE_SIZE;
+    const pageRows = rows.slice(start, start + DETAIL_PAGE_SIZE);
+    tbody.innerHTML = pageRows.map(r =>
+      '<tr>' +
+        '<td>' + r.date + '</td>' +
+        '<td>' + r.inFlow + '</td>' +
+        '<td>' + r.level + '</td>' +
+        '<td>' + r.capacity + '</td>' +
+        '<td>' + r.generation + '</td>' +
+        '<td>' + r.tunnel + '</td>' +
+        '<td>' + r.spillway + '</td>' +
+        '<td>' + r.outFlow + '</td>' +
+      '</tr>'
+    ).join('') || '<tr><td colspan="8" style="text-align:center;color:#bbb;padding:32px">暂无数据</td></tr>';
+    const from = total ? start + 1 : 0;
+    const to = Math.min(start + DETAIL_PAGE_SIZE, total);
+    if ($('custom-pg-info')) $('custom-pg-info').textContent = '共 ' + total + ' 条，本页显示 ' + from + '-' + to + ' 条';
+    if ($('custom-pg-btns')) $('custom-pg-btns').innerHTML = API.pagerHtml(customPage, pages);
+  }
+  if ($('custom-detail-filter')) {
+    $('custom-detail-filter').addEventListener('input', e => {
+      customFilter = e.target.value;
+      customPage = 1;
+      renderCustomDetailTable();
+    });
+  }
+  if ($('custom-pg-btns')) {
+    $('custom-pg-btns').addEventListener('click', e => {
+      const btn = e.target.closest('[data-page]');
+      if (!btn) return;
+      customPage = +btn.dataset.page;
+      renderCustomDetailTable();
+    });
+  }
+  function exportCustomDetail() {
+    const rows = filteredCustomRows();
+    if (!rows.length) return toast('暂无数据可导出');
+    if (!window.XLSX) return toast('导出组件未加载');
+    const header = ['时间', '入库流量(m³/s)', '水位(m)', '库容(万方)', '发电流量(m³/s)', '泄洪隧洞流量(m³/s)', '溢洪道流量(m³/s)', '合计下泄流量(m³/s)'];
+    const data = rows.map(r => [r.date, r.inFlow, r.level, r.capacity, r.generation, r.tunnel, r.spillway, r.outFlow]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+    ws['!cols'] = MonitorExport.fitCols(header);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '明细');
+    XLSX.writeFile(wb, '自定义短期来水预报明细.xlsx');
+  }
+  if ($('custom-detail-export')) $('custom-detail-export').addEventListener('click', exportCustomDetail);
+
+  // 自定义短期来水预报：提交计算（入参逐小时降雨量 + 出库流量全部下传）
+  if ($('custom-calc-btn')) {
+    $('custom-calc-btn').addEventListener('click', async () => {
+      const startLocal = $('custom-start-datetime').value;
+      const endLocal = $('custom-end-datetime').value;
+      if (!startLocal || !endLocal) return toast('请选择预报时间');
+      if (endLocal < startLocal) return toast('截止时间不能早于开始时间');
+      const times = customHours();
+      if (times.length < 2 || times.length - 1 > 384) return toast('预报时段需满足 1～384 小时（最长约 16 天）');
+      syncCustomArrays(times.length);
+      // 有未修正的非法单元格时不允许提交，避免错值进模型
+      const invalidCells = $('custom-hour-rows') ? $('custom-hour-rows').querySelectorAll('input.is-invalid') : [];
+      if (invalidCells.length) return toast('有 ' + invalidCells.length + ' 个单元格不是有效数值，请修正后再计算');
+
+      const body = {
+        start: toApiDateTime(startLocal),
+        end: toApiDateTime(endLocal),
+        rainfall: customRain.map(v => Number(v) || 0),
+        qOut: customQout.map(v => Number(v) || 0)
+      };
+
+      const btn = $('custom-calc-btn');
+      btn.classList.add('is-loading');
+      API.showLoading('自定义短期来水模型计算中，请稍候…');
+      try {
+        const { recordId } = await API.shortCustom.submit(body);
+        customCurrentId = recordId;
+        await API.shortCustom.wait(recordId);
+        const detail = await API.shortCustom.detail(recordId);
+        applyCustomDetail(detail);
+        showCustomResult();
+        toast('计算完成');
+        loadHistory('custom');
+      } catch (err) {
+        toast(API.friendlyError(err, '计算失败'));
+      } finally {
+        API.hideLoading();
+        btn.classList.remove('is-loading');
+      }
+    });
+  }
 
   // 中长期模型计算
   $('mid-calc-btn').addEventListener('click', async () => {
@@ -3183,6 +3651,12 @@ tbody tr:hover td{background:#fafafa}
     clearMoistureResult();
     toast('已重置');
   });
+  if ($('short-rename-btn')) {
+    $('short-rename-btn').addEventListener('click', () => openSchemeRename('short'));
+  }
+  if ($('custom-rename-btn')) {
+    $('custom-rename-btn').addEventListener('click', () => openSchemeRename('custom'));
+  }
   if ($('moisture-rename-btn')) {
     $('moisture-rename-btn').addEventListener('click', () => openSchemeRename('moisture'));
   }
@@ -3258,6 +3732,7 @@ tbody tr:hover td{background:#fafafa}
     $('history-drawer').classList.remove('show');
   }
   $('history-btn').addEventListener('click', () => openDrawer('short'));
+  $('custom-history-btn').addEventListener('click', () => openDrawer('custom'));
   $('mid-history-btn').addEventListener('click', () => openDrawer('mid'));
   $('demand-history-btn').addEventListener('click', () => openDrawer('demand'));
   $('loss-history-btn').addEventListener('click', () => openDrawer('loss'));
@@ -3332,6 +3807,11 @@ tbody tr:hover td{background:#fafafa}
           activatePanel('moisture');
           showMoistureResult();
           if (!moistureRowsCache.length) toast('该方案暂无明细数据');
+        } else if (item.type === 'custom') {
+          customCurrentId = item.id;
+          applyCustomDetail(detail);
+          activatePanel('custom');
+          showCustomResult();
         } else {
           shortCurrentId = item.id;
           applyShortDetail(detail);
@@ -3439,8 +3919,8 @@ tbody tr:hover td{background:#fafafa}
     const rows = filteredRows();
     if (!rows.length) return toast('暂无数据可导出');
     if (!window.XLSX) return toast('导出组件未加载');
-    const header = ['时间', '降雨量(mm)', '入库流量(m³/s)', '出库流量(m³/s)', '水位(m)', '库容(万方)', '入库水量(万方)', '出库水量(万方)'];
-    const data = rows.map(r => [r.date, r.rain, r.inFlow, r.outFlow, r.level, r.capacity, r.inflow, r.outflow]);
+    const header = ['时间', '入库流量(m³/s)', '水位(m)', '库容(万方)', '发电流量(m³/s)', '泄洪隧洞流量(m³/s)', '溢洪道流量(m³/s)', '合计下泄流量(m³/s)'];
+    const data = rows.map(r => [r.date, r.inFlow, r.level, r.capacity, r.generation, r.tunnel, r.spillway, r.outFlow]);
     const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
     ws['!cols'] = MonitorExport.fitCols(header);
     const wb = XLSX.utils.book_new();
@@ -3488,8 +3968,10 @@ tbody tr:hover td{background:#fafafa}
 
   // init — 保持空态，不自动展示图表
   initShortRange();
+  initCustomRange();
   if ($('end-datetime')) $('end-datetime').addEventListener('change', () => syncShortEndBounds(true));
-  loadDamLatestLevelTip();
+  loadLatestLevelTip('start-level-tip', 'start-level-display');
+  loadLatestLevelTip('custom-start-level-tip', 'custom-start-level-display');
   initMoistureRange();
   fillMoistureStationSelect();
   if ($('moisture-station')) $('moisture-station').value = '';

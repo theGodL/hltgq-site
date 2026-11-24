@@ -122,7 +122,14 @@ ALTER TABLE t_auto_hltgq_water_short_forecast_record ADD COLUMN IF NOT EXISTS st
 ALTER TABLE t_auto_hltgq_water_short_forecast_record ADD COLUMN IF NOT EXISTS enable_power TEXT;
 ALTER TABLE t_auto_hltgq_water_short_forecast_record ADD COLUMN IF NOT EXISTS enable_tunnel TEXT;
 ALTER TABLE t_auto_hltgq_water_short_forecast_record ADD COLUMN IF NOT EXISTS enable_spillway TEXT;
+-- discharge_mode 取值（小时尺度）：regular=常规开关模式，custom_hourly=自定义出库模式；
+-- 旧版逐日方案遗留 max/none/custom，前端历史方案分流只认 custom_hourly
 CREATE INDEX IF NOT EXISTS idx_short_forecast_record_end_date ON t_auto_hltgq_water_short_forecast_record(end_date);
+-- 2026-11 分项下泄（明细表已建时补列，幂等）：常规版取 /forecast 响应的发电流量/泄洪隧洞流量/溢洪道流量，
+-- 自定义出库版模型只回总出库流量，这三列为 null（页面显示“—”）
+ALTER TABLE t_auto_hltgq_water_short_forecast_daily ADD COLUMN IF NOT EXISTS generation_rate DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_short_forecast_daily ADD COLUMN IF NOT EXISTS tunnel_rate DOUBLE PRECISION;
+ALTER TABLE t_auto_hltgq_water_short_forecast_daily ADD COLUMN IF NOT EXISTS spillway_rate DOUBLE PRECISION;
 
 -- 中长期来水预测
 ALTER TABLE t_auto_hltgq_water_long_predict_record ALTER COLUMN request_json TYPE TEXT;

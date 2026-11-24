@@ -497,6 +497,12 @@
     daysBetween: daysBetween,
     zeros: zeros,
     short: moduleApi('/water-forecast/short'),
+    /** 自定义短期来水预报：与短期共用 status/detail/list/rename/remove，仅提交走 /short/custom */
+    shortCustom: Object.assign(moduleApi('/water-forecast/short'), {
+      submit: function (body) {
+        return postJson('/water-forecast/short/custom', body);
+      }
+    }),
     long: moduleApi('/water-forecast/long'),
     loss: moduleApi('/water-forecast/loss'),
     demand: Object.assign(moduleApi('/water-forecast/demand'), {

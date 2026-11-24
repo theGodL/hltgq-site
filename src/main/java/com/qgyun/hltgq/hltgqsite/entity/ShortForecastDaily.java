@@ -53,7 +53,19 @@ public class ShortForecastDaily extends BaseWaterEntity {
     @TableField("\"inflow_rate\"")
     private Double inflowRate;
 
-    /** 出库流量(m3/s)（data[].合计下泄流量_m3s） */
+    /** 出库流量(m3/s)（常规版 data[].合计下泄流量_m3s；自定义出库版 data[].出库流量_m3s） */
     @TableField("\"outflow_rate\"")
     private Double outflowRate;
+
+    /** 发电流量(m3/s)（data[].发电流量_m3s；自定义出库模式模型不返回分项，留 null） */
+    @TableField("\"generation_rate\"")
+    private Double generationRate;
+
+    /** 泄洪隧洞流量(m3/s)（data[].泄洪隧洞流量_m3s；自定义出库模式留 null） */
+    @TableField("\"tunnel_rate\"")
+    private Double tunnelRate;
+
+    /** 溢洪道流量(m3/s)（data[].溢洪道流量_m3s；自定义出库模式留 null） */
+    @TableField("\"spillway_rate\"")
+    private Double spillwayRate;
 }

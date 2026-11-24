@@ -69,6 +69,13 @@ public class ShortForecastService {
     /** 小时流量(m3/s) → 小时水量(万方) 换算系数：3600 / 10000 */
     private static final double RATE_TO_VOLUME = 0.36;
 
+    /**
+     * discharge_mode 来源标记（小时尺度）。旧版逐日方案曾用 max / none / custom，
+     * 且历史数据的 custom_discharge_json 也存过旧版逐日出库数组，故用独立值区分，避免前端历史方案串台。
+     */
+    private static final String DISCHARGE_MODE_REGULAR = "regular";
+    private static final String DISCHARGE_MODE_CUSTOM_HOURLY = "custom_hourly";
+
     private final ShortForecastRecordMapper recordMapper;
     private final ShortForecastDailyMapper dailyMapper;
     private final ModelClient modelClient;
@@ -166,6 +173,8 @@ public class ShortForecastService {
         record.setEnablePower(BoolTextUtils.boolToText(enablePower));
         record.setEnableTunnel(BoolTextUtils.boolToText(enableTunnel));
         record.setEnableSpillway(BoolTextUtils.boolToText(enableSpillway));
+        // 来源标记（小时尺度）：旧版逐日方案曾用 max/none/custom，故取独立值，避免历史方案串台
+        record.setDischargeMode(DISCHARGE_MODE_REGULAR);
         record.setCorpCode(corpCode);
         record.setCreatedAt(LocalDateTime.now());
         record.setCreatedBy(ModelRecordCommonService.operatorId(createdBy));
@@ -256,6 +265,8 @@ public class ShortForecastService {
         record.setEnablePower(BoolTextUtils.FALSE);
         record.setEnableTunnel(BoolTextUtils.FALSE);
         record.setEnableSpillway(BoolTextUtils.FALSE);
+        // 来源标记（小时尺度·自定义出库）：旧版逐日方案也用过 custom，这里取独立值以区分
+        record.setDischargeMode(DISCHARGE_MODE_CUSTOM_HOURLY);
         record.setCorpCode(corpCode);
         record.setCreatedAt(LocalDateTime.now());
         record.setCreatedBy(ModelRecordCommonService.operatorId(createdBy));
@@ -333,6 +344,10 @@ public class ShortForecastService {
                 Double outflowRate = doubleOf(item, outflowKey);
                 daily.setInflowRate(inflowRate);
                 daily.setOutflowRate(outflowRate);
+                // 分项下泄：data 直出（自定义出库模式模型只回总出库，分项留 null，前端显示 “—”）
+                daily.setGenerationRate(doubleOf(item, "发电流量_m3s"));
+                daily.setTunnelRate(doubleOf(item, "泄洪隧洞流量_m3s"));
+                daily.setSpillwayRate(doubleOf(item, "溢洪道流量_m3s"));
                 daily.setInflowVolume(inflowRate == null ? null : round2(inflowRate * RATE_TO_VOLUME));
                 daily.setOutflowVolume(outflowRate == null ? null : round2(outflowRate * RATE_TO_VOLUME));
                 if (outflowRate != null) {
