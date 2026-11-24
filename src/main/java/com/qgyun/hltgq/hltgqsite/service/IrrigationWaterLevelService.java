@@ -21,13 +21,16 @@ public interface IrrigationWaterLevelService {
      * @param startTime 监测开始时间（可选）
      * @param endTime   监测结束时间（可选）
      * @param zone      灌区范围（可选）：hlt=花凉亭灌区 / mth=麻塘湖灌区；空值不过滤
+     * @param canalId   渠系 id（可选，站点表 ywvyds → 渠系管理表 id；传入时按渠系树过滤，
+     *                  与 zone 叠加取交集）；空值不过滤
      * @return 分页结果
      */
     Page<IrrigationWaterLevelVO> page(Page<IrrigationWaterLevelVO> page,
                                        String stcd,
                                        LocalDateTime startTime,
                                        LocalDateTime endTime,
-                                       String zone);
+                                       String zone,
+                                       String canalId);
 
     /**
      * 水位变化图表：单站点小时级水位值 + 水位变化（用于水位统计曲线图）

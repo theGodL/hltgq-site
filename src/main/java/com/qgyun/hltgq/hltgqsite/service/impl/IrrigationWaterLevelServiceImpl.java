@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qgyun.hltgq.hltgqsite.entity.StStinfo;
 import com.qgyun.hltgq.hltgqsite.mapper.IrrigationWaterLevelMapper;
 import com.qgyun.hltgq.hltgqsite.mapper.StStinfoMapper;
+import com.qgyun.hltgq.hltgqsite.service.CanalService;
 import com.qgyun.hltgq.hltgqsite.service.IrrigationScopeService;
 import com.qgyun.hltgq.hltgqsite.service.IrrigationWaterLevelService;
 import com.qgyun.hltgq.hltgqsite.vo.IrrigationWaterLevelChartVO;
@@ -43,12 +44,16 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
     @Autowired
     private IrrigationScopeService irrigationScopeService;
 
+    @Autowired
+    private CanalService canalService;
+
     @Override
     public Page<IrrigationWaterLevelVO> page(Page<IrrigationWaterLevelVO> page,
                                               String stcd,
                                               LocalDateTime startTime,
                                               LocalDateTime endTime,
-                                              String zone) {
+                                              String zone,
+                                              String canalId) {
         // 时间过滤：下沉到各站「取最新一条」的 LATERAL 内（空表示不限）
         Timestamp start = startTime == null ? null : Timestamp.valueOf(startTime);
         Timestamp end = endTime == null ? null : Timestamp.valueOf(endTime);
@@ -58,6 +63,26 @@ public class IrrigationWaterLevelServiceImpl implements IrrigationWaterLevelServ
 
         // 灌区范围过滤（站点档案渠系所属顶级灌区）：下沉到 SQL，分页与计数同口径
         SiteScopeFilter scope = irrigationScopeService.resolve(zone);
+        // 渠系树过滤：canalId 非空时收集该渠系及所有子孙渠系 id（含自身），
+        // 与灌区范围取交集（渠系树已按 Tab 过滤，交集防跨灌区误传）；选中具体渠系后不保留空渠系站点
+        List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
+        if (canalIds != null && !canalIds.isEmpty()) {
+            if (scope != null && scope.getCanalIds() != null) {
+                canalIds.retainAll(scope.getCanalIds());
+            }
+            // 渠系与灌区范围无交集（如跨灌区误传）时直接返回空页，避免 SQL 构造出空 IN 条件
+            if (canalIds.isEmpty()) {
+                page.setTotal(0);
+                page.setRecords(Collections.emptyList());
+                return page;
+            }
+            SiteScopeFilter canalScope = new SiteScopeFilter();
+            canalScope.setZone(scope == null ? null : scope.getZone());
+            canalScope.setCanalIds(canalIds);
+            canalScope.setIncludeUnassigned(false);
+            canalScope.setExcludeStcds(scope == null ? new ArrayList<>() : scope.getExcludeStcds());
+            scope = canalScope;
+        }
 
         // 计算分页偏移
         int offset = (int) ((page.getCurrent() - 1) * page.getSize());

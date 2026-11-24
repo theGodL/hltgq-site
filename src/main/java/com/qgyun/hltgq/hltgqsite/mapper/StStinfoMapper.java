@@ -40,4 +40,18 @@ public interface StStinfoMapper extends BaseMapper<StStinfo> {
             @Result(column = "lat", property = "lat")
     })
     List<StationSiteVO> selectArchiveSites(@Param("keys") Collection<String> keys);
+
+    /**
+     * 站点档案渠系引用全量：站点编号 + 站点管理主键 + 归属渠系。
+     * <p>供无站点行渠系列的内存聚合场景（如灌区日雨情）按灌区范围 / 渠系树收窄站点集合使用；
+     * 档案表规模有限（百级），一次查全后在内存判定，避免逐站查库。
+     */
+    @Select("SELECT iofhpi AS stcd, id AS site_id, ywvyds AS canal_id " +
+            "FROM \"qixiao-apaas\".\"t_auto_hltgq_5nw74_vnqqef\"")
+    @Results({
+            @Result(column = "stcd", property = "stcd"),
+            @Result(column = "site_id", property = "siteId"),
+            @Result(column = "canal_id", property = "canalId")
+    })
+    List<StationSiteVO> selectAllArchiveCanalRefs();
 }

@@ -217,15 +217,19 @@ public class StPptnRController {
      * days[]:    日雨情 — 按水文日（8:00 切分）聚合的逐日雨量透视表
      * 站点集合 = 雨量表全部 STCD 排除水库 13 站（STCD + 名称双重排除）
      * startDate/endDate 非必填，默认当天
+     * canalId 可选：传入时只统计该渠系及其子孙渠系下的站点（与灌区实时雨情 /gq-rainfall 同口径）
+     * zone 可选：hlt 排除麻塘湖站点、mth 仅含麻塘湖站点（灌区 Tab 分区展示）；空值不过滤
      */
     @GetMapping("/gq-daily-rainfall")
     public GqDailyRainfallVO gqDailyRainfall(
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate) {
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
+            @RequestParam(required = false) String canalId,
+            @RequestParam(required = false) String zone) {
         LocalDate now = LocalDate.now();
         if (startDate == null) startDate = now;
         if (endDate == null) endDate = now;
-        return stPptnRService.gqDailyRainfall(startDate, endDate);
+        return stPptnRService.gqDailyRainfall(startDate, endDate, canalId, zone);
     }
 
     /**

@@ -617,9 +617,29 @@ public class StPptnRServiceImpl extends ServiceImpl<StPptnRMapper, StPptnR> impl
     }
 
     @Override
-    public GqDailyRainfallVO gqDailyRainfall(LocalDate startDate, LocalDate endDate) {
+    public GqDailyRainfallVO gqDailyRainfall(LocalDate startDate, LocalDate endDate, String canalId, String zone) {
         // 1. 非水库雨量站点（STCD 匹配 + 名称匹配双重排除，顺序已按「站点排序」配置重排）
         Map<String, StStinfo> resolved = resolveGqStcds();
+        // 灌区范围 + 渠系树过滤：站点档案表一次查全后在内存判定（本方法无站点行渠系列）
+        // zone 为空且 canalId 为空时不过滤；canalId 非空时仅保留该渠系及全部子孙渠系下的站点，
+        // 未挂渠系的站点不参与（与列表接口 ywvyds IN (...) 口径一致），渠道与灌区无交集时返回空表
+        List<String> canalIds = canalService.collectDescendantCanalIds(canalId);
+        SiteScopeFilter scope = irrigationScopeService.resolve(zone);
+        if (scope != null || (canalIds != null && !canalIds.isEmpty())) {
+            Set<String> canalIdSet = (canalIds == null || canalIds.isEmpty()) ? null : new HashSet<>(canalIds);
+            Map<String, StationSiteVO> refs = new HashMap<>();
+            for (StationSiteVO ref : stStinfoMapper.selectAllArchiveCanalRefs()) {
+                if (ref.getStcd() != null) refs.put(ref.getStcd(), ref);
+            }
+            resolved.keySet().removeIf(stcd -> {
+                StationSiteVO ref = refs.get(stcd);
+                if (ref == null) return true;
+                if (scope != null && !irrigationScopeService.matches(scope, ref.getCanalId(), ref.getStcd(), ref.getSiteId())) {
+                    return true;
+                }
+                return canalIdSet != null && (ref.getCanalId() == null || !canalIdSet.contains(ref.getCanalId()));
+            });
+        }
         List<String> gqStcds = new ArrayList<>(resolved.keySet());
 
         // 2. 扩展查询范围（向前后各 1 天，确保水文日边界完整）

@@ -80,8 +80,13 @@ public interface StPptnRService extends IService<StPptnR> {
 
     /**
      * 灌区日雨情：非水库站点（排除水库 13 站），按水文日（8:00 切分）聚合逐日雨量透视表
+     *
+     * @param canalId 渠系 id（可选，站点表 ywvyds → 渠系管理表 id；传入时只统计该渠系及其子孙渠系下的站点，
+     *                未挂渠道的站点不参与，与灌区实时雨情 /gq-rainfall 同口径）
+     * @param zone    灌区范围（可选，hlt / mth；hlt 排除麻塘湖站点与麻塘湖兜底站，mth 仅含麻塘湖站点；
+     *                空值不过滤，兼容大屏等既有调用）
      */
-    GqDailyRainfallVO gqDailyRainfall(LocalDate startDate, LocalDate endDate);
+    GqDailyRainfallVO gqDailyRainfall(LocalDate startDate, LocalDate endDate, String canalId, String zone);
 
     /**
      * 水库实时雨情：12 个固定站点，按水文日（8:00 切分）聚合日雨量
